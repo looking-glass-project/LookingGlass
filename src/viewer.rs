@@ -68,6 +68,9 @@ pub(crate) struct LevelArt {
     levels: Vec<Option<Box<dyn crate::level::LevelArt>>>,
 }
 impl LevelArt {
+    pub(crate) fn coop_view(&mut self, local: usize) {
+        if let Some(art) = &mut self.duchess { art.local_player = Some(local); }
+    }
     fn handoff_pose(&self) -> Option<&crate::cinematic::ActorPose> {
         self.village
             .as_ref()
@@ -228,13 +231,19 @@ impl LevelArt {
             }
         }
     }
-    /// Registered controllers' effects, drawn with the particle pass.
+    /// Shared legacy and registered effects, drawn once with the particle pass.
     pub(crate) fn effects(
         &mut self,
         i: &Interactions,
         camera: Vec3,
         atmosphere: &crate::environment::Atmosphere,
     ) {
+        if let (Some(p), Some(art)) = (&i.pandemonium, &mut self.pandemonium) {
+            art.draw_effects(p, camera, atmosphere);
+        }
+        if let (Some(d), Some(art)) = (&i.duchess, &mut self.duchess) {
+            art.effects(d, camera, atmosphere);
+        }
         for (art, slot) in self.levels.iter_mut().zip(&i.levels) {
             if let Some(a) = art {
                 a.effects(&*slot.ctl, camera, atmosphere);
@@ -242,7 +251,8 @@ impl LevelArt {
         }
     }
     /// Registered controllers' HUD elements.
-    fn hud(&mut self, i: &Interactions) {
+    pub(crate) fn hud(&mut self, i: &Interactions) {
+        if let (Some(d), Some(art)) = (&i.duchess, &self.duchess) { art.hud(d); }
         for (art, slot) in self.levels.iter_mut().zip(&i.levels) {
             if let Some(a) = art {
                 a.hud(&*slot.ctl);
@@ -2963,12 +2973,6 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
                     b.draw_waves();
                 }
             }
-            if let (Some(p), Some(art)) = (&interactions.pandemonium, &mut level_art.pandemonium) {
-                art.draw_effects(p, camera, &scene.atmosphere);
-            }
-            if let (Some(d), Some(art)) = (&interactions.duchess, &mut level_art.duchess) {
-                art.effects(d, camera, &scene.atmosphere);
-            }
             level_art.effects(&interactions, camera, &scene.atmosphere);
             alice.draw_effects(camera, fullbright, show_alice);
             let can_aim = !interactions.level_blocks_weapons() && !flying
@@ -3263,9 +3267,6 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
             }
             if preferences.subtitles {
                 story.draw(&input.label(&preferences, "E"), &ui);
-            }
-            if let (Some(d), Some(art)) = (&interactions.duchess, &level_art.duchess) {
-                art.hud(d);
             }
             level_art.hud(&interactions);
             if interactions

@@ -9,7 +9,7 @@ pub mod campaign;
 pub mod checkpoint;
 mod clock;
 mod placement;
-mod separation;
+pub(crate) mod separation;
 mod effects;
 pub(crate) mod codec;
 pub mod hosting;

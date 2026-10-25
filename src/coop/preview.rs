@@ -557,6 +557,7 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                 scene.update_ropes_many(elapsed, &hands, &transforms);
                 scene.draw(camera_eye, frame.tick as f32 * FIXED_DT, false, false, &transforms);
                 level_art.story_pose(&arena.stage.story);
+                level_art.coop_view(local.index());
                 level_art.draw(&arena.stage.interactions, &arena.stage.hints, &scene.atmosphere, camera_eye, false);
                 // Rage uses the owning player's authoritative transformation
                 // pose, rather than a separate cinematic Alice in LevelArt.
@@ -600,6 +601,7 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                 let fade = arena.stage.fade();
                 if fade.a > 0. { draw_rectangle(0., 0., screen_width(), screen_height(), fade); }
                 if !arena.stage.busy() { hud.draw_coop(personal, &arena.catalog, &controls, &prefs); }
+                level_art.hud(&arena.stage.interactions);
                 arena.stage.story.draw(&controls.label(&prefs, "E"), &ui);
                 if let Some(notice) = &arena.stage.notices[local.index()] {
                     if notice.until > frame.tick { ui.toast(&notice.text, screen_height() * 0.3); }

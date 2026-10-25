@@ -154,6 +154,7 @@ impl Stage {
     pub fn speaker(&self) -> PlayerId { self.owner.unwrap_or(self.last_owner) }
     pub fn respawned(&mut self, id: PlayerId) {
         self.contacts.reset_player(id);
+        if let Some(d) = &mut self.interactions.duchess { d.coop_respawned(id.index()); }
         for slot in &mut self.interactions.levels { slot.ctl.coop_respawned(id.index()); }
     }
 
@@ -272,6 +273,11 @@ impl Stage {
             if self.busy() { break; }
             let body = &roster.players[id.index()];
             if !body.stats.alive() { continue; }
+            if self.interactions.duchess.as_mut().is_some_and(|d| d.coop_pickup(&body.stats)) {
+                self.sounds.emit(roster.tick, "sound/ambience/special/roomsplit.wav", None, 1., false);
+                self.accept(Events::default(), id, roster, world);
+                break;
+            }
             if let Some(village) = &mut self.interactions.village {
                 village.cinema.sync_pickups(&body.stats, &mut self.story);
                 self.accept(Events::default(), id, roster, world);
@@ -296,6 +302,12 @@ impl Stage {
         dt: f32,
     ) -> Result<()> {
         self.sync_school_return_items(roster);
+        if let Some(d) = &mut self.interactions.duchess {
+            let mut players = roster.players.each_mut().map(|b| crate::level::CoopPlayer {
+                player: &mut b.player, stats: &mut b.stats,
+            });
+            d.coop_prepare(&mut players);
+        }
         if !roster.players[self.last_owner.index()].stats.alive() {
             if let Some(alive) = PlayerId::ALL
                 .into_iter()
@@ -469,6 +481,12 @@ impl Stage {
         for slot in &mut self.interactions.levels {
             let body = &mut roster.players[owner.index()];
             slot.ctl.coop_scene_step(owner.index(), &mut body.player, &mut body.stats);
+        }
+        if let Some(d) = &mut self.interactions.duchess
+            .as_mut().filter(|d| d.state.stage != crate::duchess::Stage::Fighting) {
+            let body = &mut roster.players[owner.index()];
+            let feedback = d.update(FIXED_DT, world, &mut body.player, &mut body.stats, &mut self.story);
+            self.sounds.feedback(roster.tick, &feedback);
         }
         self.sync_school_return_items(roster);
         let feedback = self.school2_step(FIXED_DT, roster, world, true);

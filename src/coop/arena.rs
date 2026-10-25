@@ -174,18 +174,26 @@ impl Arena {
                 character.dismiss_summon();
             }
         }
-        for ((character, (movement, input)), body) in self.characters.iter().zip(&mut inputs).zip(&roster.players) {
+        let held = std::array::from_fn(|i| self.stage.interactions.duchess.as_ref()
+            .is_some_and(|d| d.coop_controlled(i)));
+        for (index, ((character, (movement, input)), body)) in self.characters.iter_mut().zip(&mut inputs).zip(&roster.players).enumerate() {
             if !self.stage.story.busy() {
                 movement.use_pressed |= input.rope_use(&body.player, world);
             }
             if character.attack_movement_locked() || character.ice_locked() {
                 *movement = Controls::default();
             }
+            if held[index] {
+                *movement = Controls::default();
+                input.primary = false;
+                input.alternate = false;
+                character.cancel_weapon_action();
+            }
         }
         let feet = roster.players.each_ref().map(|b| b.player.feet);
         let movement_audio = roster.players.each_ref().map(|b|
             (b.player.jumps,b.player.landings,b.player.immersion.level));
-        roster.move_players(world, inputs);
+        roster.move_players_with_locks(world, inputs, held);
         for (body,(jumps,landings,water)) in roster.players.iter().zip(movement_audio) {
             let at = Some(body.player.eye());
             if body.player.jumps != jumps { self.stage.sounds.emit(roster.tick,"sound/character/alice/jump.wav",at,1.,false); }
@@ -230,6 +238,7 @@ impl Arena {
             if let Some(encounters) = &self.stage.interactions.encounters { targets.extend(encounters.targets()); }
             if let Some(school) = &self.stage.interactions.school2 { targets.extend(school.targets()); }
             if let Some(pool) = &self.stage.interactions.pool { targets.extend(pool.targets()); }
+            targets.extend(self.stage.interactions.duchess.as_ref().and_then(|d| d.target()));
             targets.extend(crate::level::targets(&self.stage.interactions.levels));
             targets.extend(self.stage.interactions.shot_targets());
             targets.extend(character.ice_targets());
@@ -287,6 +296,15 @@ impl Arena {
                         }
                         continue;
                     }
+                    if hit.id == crate::duchess::ID {
+                        if let Some(d) = &mut self.stage.interactions.duchess {
+                            if let Some(sound) = d.hit(hit.damage) {
+                                self.stage.sounds.emit(roster.tick, sound, Some(d.state.feet), 1., false);
+                            }
+                        }
+                        self.stage.accept(Default::default(), PlayerId::ALL[index], roster, world);
+                        continue;
+                    }
                     self.npcs.hit(hit);
                     if let Some(encounters) = &mut self.stage.interactions.encounters { encounters.hit(hit); }
                     if let Some(pool) = &mut self.stage.interactions.pool {
@@ -320,6 +338,17 @@ impl Arena {
             roster, world, talking));
         if let Some(pool) = &mut self.stage.interactions.pool {
             feedback.append(pool.combat_players(world_dt, world, targets));
+        }
+        if let Some(d) = &mut self.stage.interactions.duchess {
+            if world_dt > 0. {
+                if let Some(target) = d.target() {
+                    d.threatened(self.characters.iter().any(|c| c.threatens(world, target)));
+                }
+            }
+            let mut players = roster.players.each_mut().map(|b| crate::level::CoopPlayer {
+                player: &mut b.player, stats: &mut b.stats,
+            });
+            feedback.append(d.coop_combat(world_dt, world, &mut players, talking));
         }
         for slot in &mut self.stage.interactions.levels {
             feedback.append(slot.ctl.coop_combat(world_dt, world, targets));

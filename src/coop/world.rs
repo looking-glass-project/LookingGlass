@@ -156,9 +156,13 @@ impl Roster {
     }
     /// Shared combat resolves after movement and before the one death-policy step.
     pub fn move_players(&mut self, world: &World, inputs: [(Controls, Input); 2]) {
+        self.move_players_with_locks(world, inputs, [false; 2]);
+    }
+    /// A boss hold locks only its captured actor; personal clocks still advance.
+    pub fn move_players_with_locks(&mut self, world: &World, inputs: [(Controls, Input); 2], locked: [bool; 2]) {
         self.tick += 1;
         let previous = self.players.each_ref().map(|body| body.player.feet);
-        for (body, (controls, look)) in self.players.iter_mut().zip(inputs) {
+        for ((body, (controls, look)), locked) in self.players.iter_mut().zip(inputs).zip(locked) {
             if !body.stats.alive() {
                 continue;
             }
@@ -167,6 +171,7 @@ impl Roster {
             body.running = controls.run;
             body.stats.update(FIXED_DT);
             body.stats.prepare_player(&mut body.player);
+            if locked { body.running = false; continue; }
             let landings = body.player.landings;
             body.player.tick(world, controls);
             body.stats
@@ -345,6 +350,24 @@ mod tests {
         assert!(crate::inventory::collect(&mut players[0], &[item], Vec3::ZERO, &world).is_empty());
         assert_eq!(players[0].sanity(), 30.);
         assert_eq!(players[1].sanity(), 30.);
+    }
+    #[test]
+    fn captured_player_stays_put_while_partner_and_personal_clocks_continue() {
+        let world = floor();
+        for captured in 0..2 {
+            let mut roster = Roster::new(&world, Vec3::Z*(EYE_HEIGHT+0.04), 0., Stats::default()).unwrap();
+            roster.players[captured].stats.invisible = 2.;
+            let before = roster.players.each_ref().map(|b| b.player.feet);
+            let inputs = [(Controls { wish: Vec2::Y, run: true, ..Default::default() }, Input::default()); 2];
+            for _ in 0..120 {
+                roster.move_players_with_locks(&world, inputs, std::array::from_fn(|i| i == captured));
+            }
+            assert_eq!(roster.players[captured].player.feet, before[captured]);
+            assert!(!roster.players[captured].running);
+            assert!(roster.players[1-captured].player.feet.distance(before[1-captured]) > 100.);
+            assert!((roster.players[captured].stats.invisible-1.).abs() < 0.01);
+            assert_eq!(roster.tick, 120);
+        }
     }
     #[test]
     fn two_bodies_share_the_host_clock_but_keep_separate_motion_and_health() {

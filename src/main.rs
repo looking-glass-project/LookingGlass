@@ -427,6 +427,8 @@ fn run() -> Result<()> {
             "--world-check" => mode = "world",
             "--coop-world-check" => mode = "coop-world",
             "--coop-pool-check" => mode = "coop-pool",
+            "--coop-duchess-check" => mode = "coop-duchess",
+            "--coop-duchess-arena-check" => mode = "coop-duchess-arena",
             "--coop-campaign-check" => mode = "coop-campaign",
             "--coop-village-check" => mode = "coop-village",
             "--coop-pandemonium-check" => mode = "coop-pandemonium",
@@ -648,6 +650,7 @@ fn run() -> Result<()> {
     if mode == "coop-pool" {
         return pool::coop_check::check(&mut assets);
     }
+    if mode == "coop-duchess" { return duchess::coop_check::check(&mut assets); }
     if mode == "coop-campaign" { return coop::campaign::check(&mut assets); }
     if mode == "coop-fortress" { return fortress::coop_check::check(&mut assets); }
     if mode == "coop-beyond" { return beyond::coop_check::check(&mut assets); }
@@ -1263,6 +1266,15 @@ fn run() -> Result<()> {
         macroquad::Window::from_config(viewer::config(), async move {
             if let Err(e) = coop::pandemonium_check::check(&mut assets).await {
                 eprintln!("Co-op Pandemonium check failed: {e:#}");
+                std::process::exit(1);
+            }
+        });
+        return Ok(());
+    }
+    if mode == "coop-duchess-arena" {
+        macroquad::Window::from_config(viewer::config(), async move {
+            if let Err(e) = duchess::coop_check::arena_check(&mut assets).await {
+                eprintln!("Co-op Duchess arena check failed: {e:#}");
                 std::process::exit(1);
             }
         });

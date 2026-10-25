@@ -91,3 +91,19 @@ This is an independently authored encounter, not execution of original AI or cin
 Private test logs and screenshots live under `private/duchess-*`; user save slots were not used. The local source-review archive excludes game data, executables, screenshots and saves.
 
 An actual v0.25/format-7 potears3 save was loaded and resaved in format 8 with identical player/resources and the new encounter/gates initialized. The original fixture remains in `private/duchess-legacy-v7`; logs are `private/duchess-legacy-{write,read}.log`.
+
+## Co-op checks
+
+`--coop-duchess-check` runs staged, headless checks against the real map for both
+players' targets, grabs, personal healing and original scene ownership/replicas.
+`--coop-duchess-arena-check` needs a game window (use Anode); it drives native
+weapon/movement inputs and counts particle output without screenshot inspection.
+Both accept the usual `--data` and isolated `--profile` options.
+
+The shared host owns the fight. A bite locks only its captured player; healing
+cooldowns and visibility are personal. Both modes use the ordinary pickup-volume
+occlusion check so furniture under an essence's base does not prevent contact
+with its reachable upper volume. Original amounts and replenishment times remain.
+See [co-op evidence and remaining scope](COOP.md) and the
+[campaign matrix](COOP_CAMPAIGN.md); these component fixtures do not complete the
+co-op campaign route requirement.

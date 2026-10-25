@@ -13,6 +13,11 @@ personal fish deaths, guards and moving pickups. Full two-client traversal and
 recovery remain open for both visits. Report these smaller milestones alongside
 the total; a successful component or segment is not a completed campaign visit.
 
+Duchess/Just Desserts now has a paired combat adapter, 22 passing native
+component cases and six passing production-Arena checks. Those cover both
+actors' attacks/grabs, personal healing, original scenes and particle emission.
+Full two-client traversal and recovery for that visit are still open.
+
 ## Agreed behavior
 
 - Two separate players: blue Alice and the same model with red clothing. Recolor
@@ -4211,3 +4216,49 @@ The last full attempt **fails later at waypoint 17**: Red stalls near
 health. Bank 4, later transport/swimming and the full visit remain unverified.
 The fixture uses ordinary client input and normal checkpoint saves throughout;
 the game runtime is unchanged. Test windows were closed and the Anode lease released.
+
+### Duchess paired encounter integration (2026-10-25)
+
+The host now exposes the Duchess to both players' weapons and advances her
+existing attack logic once against the living roster. Target selection respects
+visibility and death. A grab retains its captured actor across saved snapshots;
+only that Alice loses movement/weapon control, receives bites and is thrown.
+Death or interruption releases the hold. Entry restoration happens once per
+visit, and respawning does not grant another full heal. The first Jackbomb
+collector owns the original intro; the finisher owns the original death/reward
+scene and temple transition. Cinematic handoff cannot run a single-player combat
+tick before the paired simulation resumes.
+
+Each Alice has separate availability and cooldowns for the four healing items.
+The native fixture exposed an existing encounter contact bug: a ray to the
+item's base could intersect furniture while its upper pickup volume remained
+reachable. Both single-player and co-op now use the existing inventory contact
+box/occlusion check. Amount (25) and cooldown (10 seconds) are unchanged.
+The co-op viewer draws the boss HUD and personal healing visibility. Duchess
+and Pandemonium effects now enter the shared particle pass; the single-player
+viewer uses the same pass once, without duplicate emission.
+
+Frozen source identity:
+`3353e534f00e815151090698ffb4f1722314d2fe2d003fee1d15a4ea7fcd7354`.
+Executable SHA-256:
+`fe461f125bce4c77b8a8a24084bf51c2a95b098814f8da5ceab8c682576a048c`.
+
+- `--coop-duchess-check`: 22 real-map cases pass, including both actors' targeting,
+  invisibility/death retargeting, isolated melee/bites/throws, paused combat,
+  exact saved continuation, all four personal healing items, and watched/skipped
+  intro/outro ownership, frozen partner, replica and safe intro reunion.
+- `--coop-duchess-arena-check`: six production-Arena cases pass in Anode. Each
+  actor's captured controls/weapon stay locked while the partner moves; a real
+  Blade input defeats the staged one-health boss and binds the finisher's scene;
+  the shared effect pass emits 3,717 particle batches per actor's fixture.
+- `--duchess-check`: the ordinary single-player entrance/fight/reward/temple route
+  passes in 15,061 ticks, 18 throws, 35 Cards and 67.49947 final Sanity, with
+  32 boss attacks and 11 dodges. Its scene, pause and restore contracts also pass.
+- `--coop-world-check` passes. Locked release build and all 788 Rust tests pass
+  (one unrelated ignored test). Logs are `private/coop-duchess-{native-final,
+  arena-final,single-player,world,unit-final}.log`.
+
+These are staged component/Arena checks, not a normal co-op entrance-to-exit
+route or a two-client internet run. Full traversal, recovery and rejoin remain
+open. No campaign row is completed; the total stays 42.1%. No screenshots were
+opened for this work.

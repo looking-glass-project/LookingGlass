@@ -4,6 +4,15 @@ Development branch: `coop`, based on public main `0220970`.
 This is work in progress. A policy test or a connected pair of windows does not
 establish campaign support. Single-player behavior and saves must remain supported.
 
+Current milestone: **42.1% estimated overall; six campaign visits have combined
+verification evidence, 33 remain open.** Earlier contact-system repeats are still
+required as detailed in the campaign matrix. The next visit under test is Pool of
+Tears. Its paired leaf/rock/combat integration has 38 passing native cases; the
+public two-client entrance and lower-bank checkpoint segments now have evidence.
+The full climb, leaves, swimming, exit and recovery tests remain open. Report these
+smaller milestones alongside the total; a successful segment is not a completed
+campaign visit.
+
 ## Agreed behavior
 
 - Two separate players: blue Alice and the same model with red clothing. Recolor
@@ -4059,3 +4068,47 @@ Pool remains **partial**: full ordinary-input two-client traversal, swimming,
 scripted rides/reunions, weapon/reward integration, death/wipe and transition
 rejoin still require campaign evidence. This component work does not complete
 another campaign row; the overall estimate remains **42.1%**.
+
+
+### Pool network route automation: entrance and bank segments
+
+Runtime `215f76fbc1df1879cf01fdf001530c3a38d522df2a6534ed05082bbfb0ce1fd7`
+retains the preceding Pool integration and corrects only opt-in test steering:
+speed limits now cap input magnitude without suppressing small final corrections.
+The physics regression covers both walk/run and delayed observation/input.
+All 787 Rust tests pass (one ignored), as does the locked release build.
+
+`tools/test_coop_pool.py` drives ordinary movement in two independent clients,
+using public internet connections with 40 ms delay and 20 ms jitter by default.
+It saves normal checkpoints after paired waypoints, records fixture/build hashes,
+and can resume unchanged checkpoint files. Supported waiting positions are checked
+by actually walking to them. Stalls, deaths and failed body-clearance checks fail
+the run; no state relocation, forced progression or health assistance is used.
+
+The opening scene has independent recorded verification in
+`private/coop/pool-route-8179b7c94a654cb785a79a077a25c182/opening-verification.json`:
+Blue owns the scene, Red waits, reunion completes, both retain 100 health, and
+597 comparable authoritative player/world states match. The resumed final
+lower-bank segment passes in `pool-route-edc214e490624434a9643a4c4932e46f`, with
+146 matching player/world states and both players at 100 health. Its ordinary
+`checkpoint-bank1.json` has SHA-256
+`21cc06748e3d92ab02fd2c465132e02c636f1f47fb21ff8bf81cf874eeffcfb7`.
+
+`pool-route-880a167c6415495480d16bd33796205d` subsequently crosses the first
+high-bank gap with both players and reaches waypoint 6. The independently
+checked prefix has 285 matching player/world states, no respawns/wipes and both
+players at 100 health (`segment-verification.json`). Its complete run fails later:
+Red catches a ledge at waypoint 7 and the original fixture never sends the
+additional jump input that starts a pull-up. The fixture now requests that
+ordinary input when an observed hanging player has stopped advancing. These
+checkpoint segments are partial evidence; they do not complete campaign row 9.
+
+The pull-up repeat in `pool-route-96ccfe0322f449e5ac25ce0b2003736b` passes paired
+waypoints 7 and 8: 774 matching player/world states, both players at 100 health,
+no respawns/wipes. Its normal waypoint-8 checkpoint has SHA-256
+`34e865e9f2ae250fbc20cafffb2eb8c547758e3f4254e47d65c1663380bd2154`.
+The later waypoint-9 approach times out after a scene reunion places Blue near
+Red's goal. Both remain grounded at 100 health, approximately 36 units apart;
+the fixture still needs to move the waiting player away after that reunion.
+The complete bank segment remains failed, with its passing prefix recorded
+separately. All checks above used logs/state; no screenshots were opened.

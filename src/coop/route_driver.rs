@@ -59,6 +59,15 @@ struct Command {
     finish: bool,
 }
 fn default_arrival_radius() -> f32 { 8. }
+
+fn straight_wish(delta: Vec2, velocity: Vec2, lead: f32, run: bool, limit: Option<f32>) -> Vec2 {
+    let steering = delta - velocity * lead;
+    let wish = steering.normalize_or_zero() * (steering.length() / 48.).min(1.);
+    let full = if run { 320. } else { crate::movement::WALK_SPEED };
+    // The limit caps requested speed; multiplying every input by it also
+    // suppresses already-slow final corrections and can stall on a slope.
+    limit.map_or(wish, |speed| wish.clamp_length_max((speed / full).min(1.)))
+}
 impl Command {
     fn validate(&self) -> Result<()> {
         ensure!(self.id > 0 && self.epoch > 0 && self.heartbeat > 0, "Invalid route command identity");
@@ -718,13 +727,8 @@ impl Driver {
             if self.worker.is_some() { self.report.phase="planning"; }
         } else {
             self.report.phase="walking";
-            let steering = delta.truncate() - body.player.velocity.truncate()
-                * command.input_lead;
-            keys.wish=steering.normalize_or_zero()*(steering.length()/48.).min(1.);
-            if let Some(speed) = command.speed_limit {
-                let full = if command.run { 320. } else { crate::movement::WALK_SPEED };
-                keys.wish *= (speed/full).min(1.);
-            }
+            keys.wish=straight_wish(delta.truncate(), body.player.velocity.truncate(),
+                command.input_lead, command.run, command.speed_limit);
             keys.swim=keys.wish.extend(0.);
             keys.run=command.run;
             if let Some(runup) = command.runup.as_ref().filter(|r|
@@ -774,6 +778,29 @@ impl Driver {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn speed_limited_walking_finishes_small_corrections_with_delayed_input() {
+        let world = World::fixture(&[(vec3(-100., -100., -100.), vec3(100., 100., 0.))]);
+        for delay in [0, 12] { for run in [false, true] {
+            let mut player = Player::spawn(&world, Vec3::Z * crate::movement::EYE_HEIGHT).unwrap();
+            let goal = vec2(4., 0.);
+            let mut views = VecDeque::from(vec![player.clone(); delay + 1]);
+            let mut pending = VecDeque::from(vec![Controls::default(); delay]);
+            for _ in 0..240 {
+                let view = views.pop_front().unwrap();
+                let delta = goal - view.feet.truncate();
+                let wish = if delta.length() < 1. { Vec2::ZERO } else {
+                    straight_wish(delta, view.velocity.truncate(), 2. * delay as f32 / 120., run, Some(20.))
+                };
+                pending.push_back(Controls { wish, run, ..Default::default() });
+                player.tick(&world, pending.pop_front().unwrap());
+                assert!(player.grounded && player.velocity.truncate().length() <= 20.001);
+                views.push_back(player.clone());
+            }
+            assert!(player.feet.truncate().distance(goal) < 1.1,
+                "Slow correction stalled: delay={delay}, run={run}, feet={:?}", player.feet);
+        }}
+    }
     #[test]
     fn automatic_door_waits_for_delayed_open_confirmation() {
         use crate::interaction::Interactions;

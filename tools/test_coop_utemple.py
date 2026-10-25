@@ -26,6 +26,15 @@ class TemplePair(Pair):
         (self.folder / 'fixture-source.py').write_bytes(source)
         self.evidence['fixture_sha256'] = hashlib.sha256(source).hexdigest()
         self.last_node = -1
+        checkpoint = getattr(args, 'checkpoint', None)
+        if checkpoint:
+            saved = checkpoint.read_bytes()
+            payload = json.loads(saved)['payload']
+            assert payload['visit']['map'] == self.map_name and payload['visit']['epoch'] == 1
+            assert payload['frame']['combat']['stage']['world']['levels']['utemple']['open']
+            (self.folder / 'host' / 'coop-checkpoint.json').write_bytes(saved)
+            self.resume_checkpoint = True
+            self.evidence['checkpoint_sha256'] = hashlib.sha256(saved).hexdigest()
 
     def set(self, role, *args, follow=False, **kwargs):
         kwargs['attack'] = False
@@ -69,6 +78,8 @@ class TemplePair(Pair):
         for role, rows in self.history.items():
             temple_rows = [row for row in rows if row['map'] == self.map_name and row['epoch'] == 1]
             assert temple_rows and max(row['temple']['node'] for row in temple_rows) == 160
+            if not getattr(self.args, 'checkpoint', None):
+                assert temple_rows[0]['temple']['node'] == 0, 'Full route did not start at the entrance'
             owners = {row['owner'] for row in temple_rows if row['owner'] is not None}
             assert owners == {self.args.first.title()}, f'{role}: wrong exit owner {owners}'
             assert any(row['temple']['scene'] is not None for row in temple_rows)
@@ -92,10 +103,53 @@ class TemplePair(Pair):
         self.verify_network_states('world_sha256', 'matching_world_states')
         self.verify_network_states('native_sha256', 'matching_native_residents')
 
+    def verify_rejoined_world(self, before, report):
+        old = before['combat']['stage']['world']['levels']['utemple']
+        current = report['combat']['stage']['world']['levels']['utemple']
+        elapsed = (report['frame']['tick'] - before['frame']['tick']) / 120
+        assert old['open'] and current['open'], 'Rejoin closed the authored exit'
+        assert 157 <= old['node'] <= current['node'] <= 160
+        for field in ('guide', 'initialized', 'scene'):
+            assert current[field] == old[field], f'Rejoin changed temple {field}'
+        assert current['scene'] is None, 'Rejoin triggered the exit scene'
+        assert abs(current['clock'] - old['clock'] - elapsed) < .001
+        for event, fired in old['events'].items():
+            assert current['events'].get(event) == fired, 'Rejoin reset an authored event'
+        for name, age in old['movers'].items():
+            assert abs(current['movers'][name] - min(60, age + elapsed)) < .01, \
+                f'Rejoin changed mover {name} beyond normal elapsed time'
+        for body, prior in zip(report['frame']['players'], before['frame']['players']):
+            assert body['stats']['turtle_air'] == prior['stats']['turtle_air']
+
+    def clear_exit_enemy(self):
+        # The final WaterSnark can follow the swimmers to the exit. Defeat it
+        # with ordinary attacks before asserting that idle rejoin changes no
+        # health or position; an enemy bite is legitimate damage and knockback.
+        def fish(report):
+            actors = report['combat']['npcs']['actors']
+            return next(a['resident']['body']['Snark'] for a in actors
+                if a['spawn']['model'] == 'c_snark'
+                and a['spawn']['origin'] == [-1648, 3840, 264])
+        for role in self.commands:
+            self.set(role)
+            self.commands[role]['attack'] = True
+        self.until(lambda: all(fish(report)['health'] <= 0 for report in self.reports.values()), 15)
+        self.evidence['exit_enemy_defeated'] = True
+        print('PASS temple exit enemy defeated through ordinary attacks in both clients.', flush=True)
+
     def run(self):
         self.start_pair()
         for role in self.commands:
             self.set(role, follow=True)
+        if getattr(self.args, 'rejoin', False):
+            # Stop through normal input as the turtle opens the last wall,
+            # before either Alice reaches the exit scene trigger.
+            self.until(lambda: self.reports['host']['combat']['stage']['world']['levels']['utemple']['open'], 480)
+            self.clear_exit_enemy()
+            self.rejoin_guest()
+            self.evidence['rejoin']['near_exit'] = True
+            for role in self.commands:
+                self.set(role, follow=True)
         self.until(self.arrived, 480)
         self.verify()
         # Finish through the normal client command; automatic captures are not
@@ -107,8 +161,12 @@ class TemplePair(Pair):
         (self.folder / 'result.json').write_text(json.dumps(dict(passed=True, build=self.build,
             internet=not self.args.local, first=self.args.first, delay_ms=self.args.delay_ms,
             jitter_ms=self.args.jitter_ms, evidence=self.evidence,
-            scope='Full two-client temple traversal; death/wipe/rejoin remain separate'), indent=2))
-        print('PASS internet temple: both swimmers, original exit, personal air, matching residents/world and garden arrival.', flush=True)
+            scope=('Checkpoint-based temple exit segment; not a full traversal' if getattr(self.args, 'checkpoint', None)
+                else 'Full two-client temple traversal') +
+                (' with a fresh guest rejoin before the outgoing transition' if getattr(self.args, 'rejoin', False) else '') +
+                '; death/wipe remain separate'), indent=2))
+        print('PASS internet temple' + (' exit segment' if getattr(self.args, 'checkpoint', None) else ' full traversal') +
+            ': original exit, personal air, matching residents/world and garden arrival.', flush=True)
 
     def close(self):
         planning = {}
@@ -132,11 +190,15 @@ if __name__ == '__main__':
     parser.add_argument('--data', type=Path, required=True)
     parser.add_argument('--first', choices=('blue', 'red'), default='blue')
     parser.add_argument('--local', action='store_true')
+    parser.add_argument('--rejoin', action='store_true', help='Restart the guest beside the opened exit before completing the route')
+    parser.add_argument('--checkpoint', type=Path, help='Use an existing temple exit checkpoint for an isolated rejoin/exit test; does not verify full traversal')
     parser.add_argument('--delay-ms', type=int, default=40)
     parser.add_argument('--jitter-ms', type=int, default=20)
     args = parser.parse_args()
     if not (0 <= args.delay_ms <= 500 and 0 <= args.jitter_ms <= 500):
         parser.error('Delay/jitter must be between 0 and 500 ms')
+    if args.checkpoint and not args.rejoin:
+        parser.error('--checkpoint requires --rejoin')
     pair = TemplePair(args)
     try:
         pair.run()

@@ -25,9 +25,12 @@ Arena, covering both leaders and watched/skipped endings. Both single-player
 swimming routes also pass. Full public-internet traversal now passes in both
 leader orders, with correct exit ownership and matching player, machinery and
 native-enemy state. Both drowning/respawn roles, shared checkpoint restoration
-and entrance rejoin now pass too. Transition rejoin remains open. Internet testing
-found a ceiling stall and two test-navigation faults; these have regressions.
-The automated fixture retains failed states and timings without screenshots.
+and entrance rejoin now pass too. Focused exit-rejoin segments pass with either
+leader from an exact captured gameplay state. Placed personal pickups and focused
+native-enemy target switching remain open. Later full-route attempts also exposed
+intermittent trap deaths in the automated swimmer; the earlier passing routes do
+not establish repeatable navigation. The fixture retains failures and timings
+without screenshots and can reuse an exit checkpoint for faster focused checks.
 
 ## Agreed behavior
 
@@ -4476,3 +4479,43 @@ fixture source is retained with its reports. All owned clients/helpers close
 and Anode is released. An entrance rejoin does not establish transition rejoin.
 That and the remaining combined-evidence requirements must pass before this row
 gains completion credit; the overall estimate remains 42.1%.
+
+### Temple exit rejoin and reusable focused tests
+
+On the same `0c9d40b5907d22224b65cc68959853ddbf0318139320848635709e972ba2ff5c`
+build, `tools/test_coop_utemple.py --rejoin` stops by the opened final wall,
+defeats the following WaterSnark through ordinary attacks, restarts the guest,
+and completes the authored exit. Exact idle resource/position checks run after
+combat, while guide/mover checks allow their normal elapsed time.
+`--checkpoint PATH` uses an existing isolated exit checkpoint and explicitly
+reports an exit segment, not a full traversal. No screenshot is required.
+
+The focused public-internet repeats pass with 40 ms delay/20 ms jitter:
+
+- Red first: `private/coop/temple-route-0634a17a34e346c49dc76ddd1191a671/`,
+  189 matching player/world/native-enemy states, 35.4 seconds.
+- Blue first: `private/coop/temple-route-6592cfa519464decae6ce060208b3cd4/`,
+  210 matching states, 37.2 seconds.
+
+Both preserve personal resources, placement, shells and exit progress across a
+fresh guest process, select the intended scene owner, freeze the partner during
+the original scene and reach Garden with 48/20 health without deaths or warps
+during free traversal. Their exact fixture hash is
+`9fae5954e1d0316465c964b0b676b6299bfee5d9bd4cafc1fb34aeba108824c8`.
+The checkpoint hash is `6151f88c2cbe3d3d46c06e5640e499fa2b742f21ee2c21eeb4e295b1c5ee0158`.
+It packages the unchanged tick-20,007 player/world report from the ordinary-input
+internet route `private/coop/temple-route-75b5f382ad98470f92ac6540718dcb18/`;
+provenance and exact frame equality are recorded in
+`private/temple-exit-checkpoint-provenance.json`. This is captured-state component
+evidence, not a claim that an entrance-to-exit reconnect route passed.
+
+Three preceding failures remain recorded: Blue-led traversal died near the
+falling panels at tick 10,307 (`temple-route-bc15a42da02541e4a941efbfeeae1223`);
+the first Red-led exit attempt saw a legitimate 10-health bite/knockback during
+the idle reconnect assertion (`temple-route-75b5f382ad98470f92ac6540718dcb18`);
+the next Red-led traversal died near the first columns at tick 4,062
+(`temple-route-ef65fe6b666a4b6b9e1aaf9fce5d45a5`). Exact failure reports are retained.
+The focused fixture fixes the combat/idle test setup; it does not fix the two
+navigation failures or complete the outstanding pickup/targeting requirements.
+All 791 Rust tests (one unrelated ignored), locked release build, seven package
+tests and Python compilation pass. Overall credit remains **42.1%**.

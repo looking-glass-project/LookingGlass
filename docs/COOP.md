@@ -4566,3 +4566,44 @@ suspected sampling gap. A subsequent full-route trial with earlier steering also
 failed at the panels (`private/coop/temple-route-53780ccd87d946c18b3e95d6cc95d9e2/`,
 tick 10,299); that unproven steering change was reverted. Normal gameplay, damage
 and the previously verified controller settings are unchanged.
+
+### Temple test swimmer momentum checks
+
+Build `2c7e4e01061b9b762ed95365d1782dd4bc2418860436aa9a160f1debda0a5f68`
+adds braking clearance and a one-second prediction using the real movement
+controller to the opt-in route planner. It checks both the first detour leg and
+direct routes; nearby hazards keep the search in the background worker. Normal
+movement, collision hulls, trap damage and resources are unchanged.
+
+A new open-water regression starts with sideways momentum and holds each goal
+for half a second. The earlier planner crossed the forecast obstacle at tick 38;
+clearance alone and a shorter prediction also failed. The final planner reaches
+the destination without crossing it. All 792 active Rust tests, the locked
+release build, seven source-package tests, 13 native Temple component cases,
+state/migration checks and both full single-player swim routes pass.
+
+All four production-Arena paired routes also pass on that build, with either
+leader and watched/skipped endings. Blue-led runs finish at 50/48 Sanity and
+Red-led runs at 48/50; each validates 35 watched or 34 skipped exact replicas.
+Evidence: `private/temple-2c7e4e0-native.log` and
+`private/temple-2c7e4e0---utemple*.log`. The deterministic regression and these
+routes do not alone establish repeatability in separate internet clients.
+
+The full local two-client Blue-led route with 40 ms delay/20 ms jitter also
+passes in `private/coop/temple-route-2f933100ad5a44fd9dc5d9329e71a576/`:
+3,230 matching player/world/native-enemy samples, correct exit ownership,
+30/20 final Sanity, individual air, no deaths/respawns/warps, and both arriving
+in Garden. Background searches took at most 502 ms; preparation stayed below
+4.6 ms. The fixture's printed result now distinguishes local and internet runs;
+its saved `internet` field already made that distinction.
+
+Two public-internet attempts on this build instead fail early with Red drowning
+at node 23, before the panel section. Their guest reports trail the host by more
+than 2,000 simulation ticks and report about 4.3 seconds of round-trip delay.
+The previous build `221e5fd` reproduces the same failure and delay in a separate
+public run. This comparison does not isolate the cause to the new planner;
+public connection behavior still needs investigation. Retained evidence folders:
+`temple-route-5c1dd9c5c8e2422fa9acfe4bb034a555`,
+`temple-route-f7c6896bf9aa44b89f31ccbfa0bb7a3a`, and
+`temple-route-1a85e9d430ba47568f741ad981fe5c4b`, all under `private/coop/`.
+No new public pass or campaign completion credit is claimed. Overall: **42.1%**.

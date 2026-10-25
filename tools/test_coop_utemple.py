@@ -165,7 +165,8 @@ class TemplePair(Pair):
                 else 'Full two-client temple traversal') +
                 (' with a fresh guest rejoin before the outgoing transition' if getattr(self.args, 'rejoin', False) else '') +
                 '; death/wipe remain separate'), indent=2))
-        print('PASS internet temple' + (' exit segment' if getattr(self.args, 'checkpoint', None) else ' full traversal') +
+        print('PASS ' + ('local' if self.args.local else 'internet') + ' temple' +
+            (' exit segment' if getattr(self.args, 'checkpoint', None) else ' full traversal') +
             ': original exit, personal air, matching residents/world and garden arrival.', flush=True)
 
     def close(self):

@@ -11,18 +11,24 @@ fn owner(arena: &Arena) -> &Temple {
 /// Owned, read-only search inputs. The network fixture can search a cloned
 /// collision world off-thread without holding up simulation or packet delivery.
 pub(crate) struct SwimSearch {
-    from: Vec3,
+    player: Player,
     target: Vec3,
     hazards: Vec<Collider>,
 }
 impl SwimSearch {
     pub(crate) fn direct(&self, world: &World) -> Option<Vec3> {
-        (world.body_trace(self.from,self.target).fraction == 1.
-            && !self.hazards.iter().any(|h|h.touches(self.from+PLAYER_CENTER,
-                self.target+PLAYER_CENTER,PLAYER_HALF))).then_some(self.target)
+        (world.body_trace(self.player.feet,self.target).fraction == 1.
+            && super::swim_check::clear_future_leg(&self.hazards,self.player.feet,self.target)
+            // Close hazards need the curved steering check in the background
+            // worker even if the straight line appears clear. Keep the cheap
+            // direct path only when no hull is within half a second's travel.
+            && !self.hazards.iter().any(|h|h.touches(self.player.feet+PLAYER_CENTER,
+                self.player.feet+PLAYER_CENTER,PLAYER_HALF+Vec3::splat(
+                    16.+self.player.velocity.length().max(if self.player.tea {440.} else {220.})*0.5))))
+            .then_some(self.target)
     }
     pub(crate) fn waypoint(self, world: &World) -> Vec3 {
-        super::swim_check::waypoint(world,self.from,self.target,&self.hazards)
+        super::swim_check::waypoint(world,&self.player,self.target,&self.hazards)
     }
 }
 
@@ -46,7 +52,7 @@ impl Temple {
             let age = self.saved.clock - if leading {0.} else {1.};
             self.data.shell_pose(self.turtle_pose(age),age.max(0.) as f32).translation-PLAYER_CENTER
         };
-        Ok(SwimSearch {from:player.feet,target,hazards})
+        Ok(SwimSearch {player:player.clone(),target,hazards})
     }
 }
 

@@ -117,7 +117,7 @@ pub(crate) fn drive(a: &mut Assets, r: &mut Route) -> Result<()> {
                     .filter(|p| p.enabled)
                     .map(|p| p.volume.clone()),
             );
-            goal = super::swim_check::waypoint(&r.world, r.player.feet, target, &hazards);
+            goal = super::swim_check::waypoint(&r.world, &r.player, target, &hazards);
         }
         target = goal;
         let offset = target - r.player.feet;

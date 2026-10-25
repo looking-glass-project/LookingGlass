@@ -263,7 +263,11 @@ pub static RESERVATIONS: [Reservation; 39] = [
             render: &["--duchess-render"],
         },
     ),
-    visit(11, "utemple"),
+    Reservation { flags: Some(VisitFlags {
+        contract: &["--utemple-check", "--utemple-coop-check"],
+        route: &["--utemple-route-check"], skip: &["--utemple-skip-route-check"],
+        render: &["--utemple-render-check"],
+    }), ..visit(11, "utemple") },
     Reservation { flags: Some(VisitFlags {
         contract: &["--garden1-check", "--garden1-world-check", "--garden1-cast-check", "--garden1-path-check"],
         route: &["--garden1-route-check"], skip: &["--garden1-skip-route-check"],

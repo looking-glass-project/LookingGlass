@@ -18,6 +18,11 @@ component cases and six passing production-Arena checks. Those cover both
 actors' attacks/grabs, personal healing, original scenes and particle emission.
 Full two-client traversal and recovery for that visit are still open.
 
+The underwater temple now advances its guide and machinery for both swimmers.
+Thirteen native component cases pass for individual air, crushing, saved state
+and exit ownership. Both single-player swimming routes also pass. The full
+paired journey and its recovery/rejoin checks remain open.
+
 ## Agreed behavior
 
 - Two separate players: blue Alice and the same model with red clothing. Recolor
@@ -4262,3 +4267,48 @@ These are staged component/Arena checks, not a normal co-op entrance-to-exit
 route or a two-client internet run. Full traversal, recovery and rejoin remain
 open. No campaign row is completed; the total stays 42.1%. No screenshots were
 opened for this work.
+
+### Underwater temple paired machinery (2026-10-25)
+
+The temple previously had no paired controller update. Its guide, traps and air
+emitters now advance once per world tick. The machinery hook receives stable
+Blue/Red slots, including a dead partner, so crushing affects the correct
+player's health and cooldown. Both living swimmers receive the original entry
+restoration and shell once; respawning does not grant another full heal.
+Existing air remains usable while the Watch stops the world clock.
+
+Both escape positions are proposed before machinery commits. If either swimmer
+cannot escape, both positions and the shared trap movement roll back. Damage is
+personal even when both contact the same clam. The original single-player clock
+logic is shared, with its one-player movement resolution retained. The temple
+has falling traps rather than a shared passenger ride; its guide does not wait
+for a boarding group.
+
+Frozen source identity:
+`f21de58f3278876de885f0e94265ae3739e34ccb01e24920da139eead515d30b`.
+Executable SHA-256:
+`92aec2f4cc5a2b8edaa0448bca676e13d12aa93361bb484c1268b0653fcdeb90`.
+
+- `--utemple-coop-check`: 13 native cases pass. They cover both swimmers' entry
+  grants, air contacts with a stopped clock, visual-only bubble exclusion,
+  actual brush swimming and drowning, individual crushing with a living/dead
+  partner, simultaneous crushing, blocked movement in either slot, saved
+  continuation and invalid cooldown rejection. Both exit owners pass watched
+  and skipped original scenes, frozen-partner checks, compressed state
+  restoration and the garden transition.
+- `--utemple-check` passes the existing water, breath, migration, pause, restore
+  and 12 scene-outcome contracts. Both full single-player route checks pass,
+  with 154 air contacts, no teleport/drowning bypass and 90 health / 100 Will
+  carried into the garden. Watched and skipped times are 173.84 and 166.83 seconds.
+- Shared-world, Hollow Hideaway (33 cases) and Duchess (22 cases) regressions
+  pass. All six production Duchess Arena checks also pass in Anode, including
+  personal control/weapon restrictions, scene ownership and particle emission.
+- Locked release and all 788 Rust tests pass (one unrelated ignored test),
+  together with seven source-package tests. Native logs use
+  `private/utemple-f21de58-*.log`; build/unit logs use `private/coop-utemple-*`.
+
+These component fixtures stage hazard and scene contacts. They do not establish
+a complete paired swimming route or internet recovery. Full two-client
+traversal, drowning/respawn, shared wipe and transition rejoin remain open, so
+the campaign row is partial and the total remains 42.1%. No screenshots were
+opened; all reported checks use automated state assertions.

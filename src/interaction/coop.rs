@@ -143,6 +143,28 @@ impl Interactions {
         world: &mut World,
         players: &mut [&mut Player],
     ) -> Result<()> {
+        self.movers_pair_impl(dt, map, world, players, true)
+    }
+    pub fn movers_roster(&mut self, dt: f32, map: &Bsp, world: &mut World,
+        players: &mut [crate::level::CoopPlayer<'_>; 2]) -> Result<()> {
+        {
+            let mut living = players.iter_mut().filter(|p| p.stats.alive())
+                .map(|p| &mut *p.player).collect::<Vec<_>>();
+            self.movers_pair_impl(dt, map, world, &mut living, false)?;
+        }
+        for index in 0..self.levels.len() {
+            let fixed = self.doors.iter().filter(|d| d.enabled && self.event_world.enabled(d.id))
+                .map(|d| d.collider.clone())
+                .chain(self.platforms.iter().map(|p| p.2.clone()))
+                .chain(self.levels.iter().enumerate().filter(|(i, _)| *i != index)
+                    .flat_map(|(_, s)| s.ctl.colliders())).collect::<Vec<_>>();
+            self.levels[index].ctl.coop_advance_roster(dt, map, world, players, &fixed)?;
+        }
+        self.sync_coop(world);
+        Ok(())
+    }
+    fn movers_pair_impl(&mut self, dt: f32, map: &Bsp, world: &mut World,
+        players: &mut [&mut Player], registered: bool) -> Result<()> {
         if let Some(beyond) = &mut self.beyond {
             let fixed = self.doors.iter().filter(|d| d.enabled && self.event_world.enabled(d.id))
                 .map(|d| d.collider.clone()).collect::<Vec<_>>();
@@ -207,6 +229,7 @@ impl Interactions {
                 .map(|d| d.collider.clone()).collect::<Vec<_>>();
             pool.advance_players(dt, map, world, players, &fixed)?;
         }
+        if !registered { self.sync_coop(world); return Ok(()); }
         for index in 0..self.levels.len() {
             let fixed = self.doors.iter().filter(|d| d.enabled && self.event_world.enabled(d.id))
                 .map(|d| d.collider.clone())

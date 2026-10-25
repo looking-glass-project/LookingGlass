@@ -360,13 +360,10 @@ impl Stage {
                     });
                 }
             }
-            let mut bodies = roster
-                .players
-                .iter_mut()
-                .filter(|b| b.stats.alive())
-                .map(|b| &mut b.player)
-                .collect::<Vec<_>>();
-            self.interactions.movers_pair(dt, map, world, &mut bodies)?;
+            let mut bodies = roster.players.each_mut().map(|b| crate::level::CoopPlayer {
+                player: &mut b.player, stats: &mut b.stats,
+            });
+            self.interactions.movers_roster(dt, map, world, &mut bodies)?;
             for slot in &mut self.interactions.levels {
                 let mut players = roster.players.each_mut().map(|b| crate::level::CoopPlayer {
                     player: &mut b.player, stats: &mut b.stats,

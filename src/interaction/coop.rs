@@ -127,7 +127,8 @@ impl Interactions {
                 self.triggers[trigger].volume.touches(*at + PLAYER_CENTER, *at + PLAYER_CENTER, PLAYER_HALF)
             }));
         }
-        self.beyond.as_ref().and_then(|b| b.boarding_ready(thread, feet)).or_else(|| self.school
+        self.pool.as_ref().and_then(|p| p.boarding_ready(thread, feet))
+            .or_else(|| self.beyond.as_ref().and_then(|b| b.boarding_ready(thread, feet))).or_else(|| self.school
             .as_ref()
             .and_then(|s| s.boarding_ready(thread, feet)))
     }
@@ -199,6 +200,11 @@ impl Interactions {
                 .map(|d| d.collider.clone())
                 .chain(self.gym.iter().flat_map(|g| g.colliders())).collect::<Vec<_>>();
             school2.advance_players(dt, map, world, players, &fixed)?;
+        }
+        if let Some(pool) = &mut self.pool {
+            let fixed = self.doors.iter().filter(|d| d.enabled && self.event_world.enabled(d.id))
+                .map(|d| d.collider.clone()).collect::<Vec<_>>();
+            pool.advance_players(dt, map, world, players, &fixed)?;
         }
         self.sync_coop(world);
         Ok(())

@@ -354,6 +354,20 @@ impl Stage {
                 .map(|b| &mut b.player)
                 .collect::<Vec<_>>();
             self.interactions.movers_pair(dt, map, world, &mut bodies)?;
+            if let Some(pool) = &mut self.interactions.pool {
+                let targets = roster.players.iter().enumerate().filter(|(_, b)| b.stats.alive())
+                    .map(|(i, b)| crate::combat::Target {
+                        id: [crate::combat::COOP_BLUE, crate::combat::COOP_RED][i],
+                        center: b.player.feet + crate::collision::PLAYER_CENTER,
+                        half: crate::collision::PLAYER_HALF,
+                    }).collect::<Vec<_>>();
+                let feedback = pool.advance_boulders_for(dt, &targets);
+                for (body, hit) in roster.players.iter_mut().zip(feedback.players) {
+                    body.stats.damage(hit.damage);
+                    body.player.velocity += hit.impulse;
+                }
+                self.interactions.sync_coop(world);
+            }
             if controls_scene(&self.interactions) {
                 self.owner = Some(self.last_owner);
             }

@@ -155,6 +155,10 @@ impl Arena {
             return self.finish(roster, map, world, true);
         }
         let world_dt = roster.players.iter().fold(FIXED_DT, |dt, b| b.stats.powers.world_dt(dt));
+        // Moving rocks can defeat a released pusher before the ordinary weapon
+        // phase. Preserve that live identity for each player's earned reward.
+        let environmental_loot_before = self.stage.interactions.pool.as_ref()
+            .map(|p| p.loot_sources()).unwrap_or_default();
         self.stage.before_move(roster, map, world, &inputs, world_dt)?;
         // A delayed shared output may have begun a scene. Its first scene tick
         // belongs to the next fixed step, never a second world update here.
@@ -199,6 +203,7 @@ impl Arena {
         self.stage.interactions.activate_enemies();
         let mut before = self.npcs.loot_sources();
         before.extend(self.stage.interactions.loot_sources());
+        before.extend(environmental_loot_before);
         // One clock for the world. Either player's Watch can stop its enemies;
         // each player's own movement, weapon and resource clocks still run.
         let talking = self.stage.story.busy();
@@ -219,6 +224,7 @@ impl Arena {
             let mut targets = self.npcs.targets();
             if let Some(encounters) = &self.stage.interactions.encounters { targets.extend(encounters.targets()); }
             if let Some(school) = &self.stage.interactions.school2 { targets.extend(school.targets()); }
+            if let Some(pool) = &self.stage.interactions.pool { targets.extend(pool.targets()); }
             targets.extend(self.stage.interactions.shot_targets());
             targets.extend(character.ice_targets());
             if let Some(summon) = character.summon_target() {
@@ -270,6 +276,12 @@ impl Arena {
                     }
                     self.npcs.hit(hit);
                     if let Some(encounters) = &mut self.stage.interactions.encounters { encounters.hit(hit); }
+                    if let Some(pool) = &mut self.stage.interactions.pool {
+                        if let Some(Some(sound)) = pool.hit(hit) {
+                            let origin = targets.iter().find(|t| t.id == hit.id).map(|t| t.center);
+                            self.stage.sounds.emit(roster.tick, sound, origin, 1., false);
+                        }
+                    }
                     if let Some(school) = &mut self.stage.interactions.school2 {
                         if let Some(sound) = school.hit_attack(hit) {
                             let origin = targets.iter().find(|t|t.id == hit.id).map(|t|t.center);
@@ -293,6 +305,9 @@ impl Arena {
         }
         feedback.append(self.stage.school2_step(if talking { FIXED_DT } else { world_dt },
             roster, world, talking));
+        if let Some(pool) = &mut self.stage.interactions.pool {
+            feedback.append(pool.combat_players(world_dt, world, targets));
+        }
         self.stage.sounds.feedback(roster.tick,&feedback);
         for (body, hit) in roster.players.iter_mut().zip(feedback.players) {
             body.stats.damage(hit.damage);

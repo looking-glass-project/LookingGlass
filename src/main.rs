@@ -426,6 +426,7 @@ fn run() -> Result<()> {
             "--weapon-input-check" => mode = "weapon-input",
             "--world-check" => mode = "world",
             "--coop-world-check" => mode = "coop-world",
+            "--coop-pool-check" => mode = "coop-pool",
             "--coop-campaign-check" => mode = "coop-campaign",
             "--coop-village-check" => mode = "coop-village",
             "--coop-pandemonium-check" => mode = "coop-pandemonium",
@@ -643,6 +644,9 @@ fn run() -> Result<()> {
         school::coop_check::check(&mut assets)?;
         village::check_coop(&mut assets)?;
         return coop::stage::check(&mut assets);
+    }
+    if mode == "coop-pool" {
+        return pool::coop_check::check(&mut assets);
     }
     if mode == "coop-campaign" { return coop::campaign::check(&mut assets); }
     if mode == "coop-fortress" { return fortress::coop_check::check(&mut assets); }

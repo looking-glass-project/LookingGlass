@@ -4026,3 +4026,36 @@ earlier five rows retain their contact-repeat requirement. Overall estimated
 progress is 42.1%, with six combined verification rows and 33 visits still open.
 These checks used compact recorded state; no screenshots were opened. The game
 runtime is unchanged from the preceding input-delay fix.
+
+### Pool of Tears shared machinery and combat (2026-10-25)
+
+The freely controlled Pool now advances one shared world clock and carries all
+living leaf riders together. Its four ride triggers wait for both living players;
+waiting does not consume the trigger, and a survivor can depart if the partner
+dies. An obstructed leaf holds its own motion while the rest of the level keeps
+running. Recycled or newly appearing train leaves cannot carry a body from their
+previous inactive position. Original single-Alice performances retain their
+existing controller.
+
+Falling rocks now evaluate both living bodies in one update and route damage and
+impulse to the struck player. Released pusher ants join the co-op weapon targets
+and choose from both players using the existing visibility rules. Environmental
+ant deaths are included in the personal reward comparison.
+
+Build `0ca5fa5df6611cd1c35d4daab208df209019f0dab39cc2315ea1d301a9b35ae4`
+passes 38 real-data component scenarios through `--coop-pool-check`: four leaves
+in both rider orders with pause/restore; all four authored boarding contacts in
+both arrival orders with either death or neither, compressed world/contact
+restoration and integrated carry; each player beneath an obstructed leaf;
+isolated rock damage/impulse for either player; and each nearer ant target followed
+by invisibility-driven retargeting. Logs are `private/coop-pool-native.log`.
+
+The same final build passes `--pool-check` (including single-player scenes,
+watched/skipped outcomes, saves and leaf/swimmer checks), `--coop-world-check`,
+786 Rust tests with one ignored, and the optimized locked build. Source-package
+tests pass. These checks run without opening screenshots.
+
+Pool remains **partial**: full ordinary-input two-client traversal, swimming,
+scripted rides/reunions, weapon/reward integration, death/wipe and transition
+rejoin still require campaign evidence. This component work does not complete
+another campaign row; the overall estimate remains **42.1%**.

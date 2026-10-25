@@ -26,8 +26,8 @@ swimming routes also pass. Full public-internet traversal now passes in both
 leader orders, with correct exit ownership and matching player, machinery and
 native-enemy state. Both drowning/respawn roles, shared checkpoint restoration
 and entrance rejoin now pass too. Focused exit-rejoin segments pass with either
-leader from an exact captured gameplay state. Placed personal pickups and focused
-native-enemy target switching remain open. Later full-route attempts also exposed
+leader from an exact captured gameplay state. Focused native-enemy target switching
+and separate collection of the same placed healing item also pass. Later full-route attempts exposed
 intermittent trap deaths in the automated swimmer; the earlier passing routes do
 not establish repeatable navigation. The fixture retains failures and timings
 without screenshots and can reuse an exit checkpoint for faster focused checks.
@@ -4519,3 +4519,50 @@ The focused fixture fixes the combat/idle test setup; it does not fix the two
 navigation failures or complete the outstanding pickup/targeting requirements.
 All 791 Rust tests (one unrelated ignored), locked release build, seven package
 tests and Python compilation pass. Overall credit remains **42.1%**.
+
+### Temple personal pickup and native target switching
+
+`tools/test_coop_utemple_interactions.py` passes through the public internet with
+40 ms delay/20 ms jitter on build
+`2c43012c2b9d76aecd057933efeb922b46977f870316b8ca1bf275db7c05d055`.
+It resumes the same exact captured exit checkpoint described above. The new
+opt-in driver exposes native Snark selection without running additional AI and
+can send ordinary three-dimensional swimming inputs toward a local test goal.
+These additions do not change normal gameplay or network state.
+
+In `private/coop/temple-interactions-24b578549f2840b6a59bf2b9df93bdb4/`:
+
+- The original final WaterSnark selects Blue at distances 143.75/291.32, with
+  both players visible. Its bite reduces Blue from 58 to 48; Red stays at 20.
+- Ordinary swimming moves Blue away and Red closer. The same fish selects Red
+  at distances 190.76/92.26; its bite reduces Red from 20 to 10, leaving Blue at 48.
+- After defeating it through ordinary attacks, Blue collects placed item
+  `utemple:26` and heals 48 to 100 while Red retains her own uncollected copy and
+  stays at 10. Red then collects the same placed item and heals to 100 without
+  changing Blue's resources. Partner Will changes are limited to normal recovery.
+- All 206 comparable authoritative player, world and native-enemy states match.
+  There are no deaths, drowning hits, traversal warps or scenes in this focused run.
+
+The run takes 34.9 seconds and produces no screenshots. Its exact fixture hash
+is `a8d9f78b9217fc73eaa7997f2b1b92389256339ab03be5d65e0e4d3f8a2bd1a3`.
+Both full single-player swim routes, the temple state/migration checks, 13 native
+paired component cases, 791 unit tests and the locked release build also pass.
+
+Shared-passenger boarding is not applicable to this visit: `Temple::event`
+starts an independently swimming turtle guide, while `motion.rs` controls
+falling panels, columns, spikes and clams. There is no activated passenger lift
+or ride. Full-route test navigation around the lethal traps remains under
+investigation, with the failures retained above; this segment adds no campaign
+completion credit by itself. The total remains **42.1%**.
+
+The offline captured-state probe now supports selecting either body and replaying
+ordinary steering against the advancing shared machinery. On diagnostic build
+`221e5fd899512c4483703d60d6be1f19ce1ddae5815f991b0eca4d8c44e7eec3`, the recorded
+panel approach reproduces the lethal contact at ticks 10,306–10,308 with several
+steering delays (the live failure was at 10,307). This isolated replay holds the
+recorded goal and gives the other player neutral input; it is a diagnostic, not
+a full input-stream replay. The shorter forecast samples did not demonstrate the
+suspected sampling gap. A subsequent full-route trial with earlier steering also
+failed at the panels (`private/coop/temple-route-53780ccd87d946c18b3e95d6cc95d9e2/`,
+tick 10,299); that unproven steering change was reverted. Normal gameplay, damage
+and the previously verified controller settings are unchanged.

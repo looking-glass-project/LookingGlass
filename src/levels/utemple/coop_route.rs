@@ -175,11 +175,53 @@ pub(super) fn replay_report(assets: &mut Assets, path: &std::path::Path) -> Resu
     let mut stage = crate::coop::stage::Stage::load(assets,&map,&mut world,&visit,false)?;
     stage.restore(&serde_json::from_value(report["combat"]["stage"].clone())?,&map,&mut world)?;
     let temple = stage.interactions.levels.iter().find_map(|s|s.ctl.downcast_ref::<Temple>()).unwrap();
-    let player: Player = serde_json::from_value(report["frame"]["players"][1]["player"].clone())?;
-    let goal = temple.test_swim_waypoint(&map,&world,&player,false)?;
+    let index = report["probe_player"].as_u64().unwrap_or(1) as usize;
+    ensure!(index < 2, "Invalid temple replay player");
+    let player: Player = serde_json::from_value(report["frame"]["players"][index]["player"].clone())?;
+    let planned = temple.test_swim_waypoint(&map,&world,&player,
+        report["probe_leading"].as_bool().unwrap_or(false))?;
+    let goal: Vec3 = if report["probe_goal"].is_null() { planned }
+        else { serde_json::from_value(report["probe_goal"].clone())? };
+    ensure!(goal.is_finite(), "Invalid temple replay goal");
     let trace = world.body_trace(player.feet,goal);
     println!("Replay {:?} -> {goal:?}, trace fraction={} solid={} normal={:?}, velocity={:?}",
         player.feet,trace.fraction,trace.start_solid,trace.normal,player.velocity);
+    if report["probe_forecast"].as_bool().unwrap_or(false) {
+        for seconds in [0.,0.05,0.1,0.15,0.2,0.25,0.35,0.5,0.75,1.] {
+            let hazards=temple.motion.ahead(&map,&temple.saved,seconds)?;
+            let contacts=hazards.iter().filter(|h|h.touches(player.feet+PLAYER_CENTER,
+                goal+PLAYER_CENTER,PLAYER_HALF)).count();
+            println!("Replay forecast {seconds:.2}s: {contacts} moving hulls cross swim leg");
+        }
+        // Compare ordinary steering from the same captured velocity against
+        // the real advancing machinery. Other bodies receive neutral input;
+        // this isolates a turn's inertia from NPC attacks and network timing.
+        if report["probe_steering"].as_bool().unwrap_or(false) {
+            let frame:crate::coop::world::Frame=serde_json::from_value(report["frame"].clone())?;
+            for lead in [0.,0.05,0.1,0.17] {
+                let mut world=World::from_bsp(&map)?;
+                stage.restore(&serde_json::from_value(report["combat"]["stage"].clone())?,&map,&mut world)?;
+                let mut roster=Roster::from_checkpoint(&frame,&world,|_|true)?;
+                for _ in 0..120 {
+                    let body=&roster.players[index].player;
+                    let offset=goal-body.feet-body.velocity*lead;
+                    let mut inputs=std::array::from_fn(|_|(Controls::default(),Input::default()));
+                    inputs[index].0=Controls {swim:offset.normalize_or_zero()*(offset.length()/30.).min(1.),
+                        run:true,..Default::default()};
+                    stage.before_move(&mut roster,&map,&mut world,&inputs,FIXED_DT)?;
+                    let before=roster.players.each_ref().map(|b|b.player.feet);
+                    roster.move_players(&world,inputs);
+                    stage.contacts(&mut roster,&world,before)?;
+                    roster.finish_tick_with(&world,false,|at|!stage.interactions.hazardous(at))?;
+                    if !roster.players[index].stats.alive() { break; }
+                }
+                let body=&roster.players[index];
+                println!("Replay steering lead={lead:.2}: tick={}, health={}, feet={:?}, clear={}",
+                    roster.tick,body.stats.sanity(),body.player.feet,world.body_clear(body.player.feet));
+            }
+        }
+        return Ok(());
+    }
     let toward = (goal-player.feet).normalize_or_zero();
     for direction in [toward,Vec3::X,Vec3::NEG_X,Vec3::Y,Vec3::NEG_Y,Vec3::Z,Vec3::NEG_Z] {
         let mut probe = player.clone();

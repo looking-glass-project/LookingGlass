@@ -2902,6 +2902,14 @@ impl Npcs {
             })
             .collect()
     }
+    /// Read-only native enemy diagnostics for the opt-in network route fixture.
+    pub(crate) fn snarks(&self) -> impl Iterator<Item=(usize, &crate::snark::Snark, bool)> {
+        self.actors.iter().enumerate().filter_map(|(id,a)| {
+            let resident=a.resident.as_ref()?;
+            let resident::Body::Snark(snark)=&resident.body else { return None; };
+            Some((id,snark,resident.active && resident.awake))
+        })
+    }
     pub fn targets(&self) -> Vec<combat::Target> {
         self.actors
             .iter()

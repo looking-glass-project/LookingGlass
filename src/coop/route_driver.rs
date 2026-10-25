@@ -21,6 +21,9 @@ struct Command {
     marker: Option<usize>,
     #[serde(default)]
     horizontal: bool,
+    /// Ordinary three-dimensional swim input toward an explicit local test goal.
+    #[serde(default)]
+    swim: bool,
     #[serde(default)]
     rope: Option<RopeCommand>,
     #[serde(default)]
@@ -85,6 +88,11 @@ impl Command {
         ensure!(self.goal.is_none_or(|p| p.is_finite() && p.abs().max_element() < 1_000_000.),
             "Invalid route goal");
         ensure!(self.goal.is_none() || self.marker.is_none(), "Choose a route goal or a marker");
+        ensure!(!self.swim || (self.goal.is_some() && !self.horizontal && !self.navigate
+            && self.rope.is_none() && self.runup.is_none() && self.use_aim.is_none()
+            && self.beyond_step.is_none() && self.temple_follow.is_none()
+            && self.speed_limit.is_none() && !self.jump && !self.checkpoint && !self.finish),
+            "Explicit swimming requires its own three-dimensional route goal");
         ensure!(self.marker.is_none_or(|i| i < 100_000), "Invalid route marker");
         ensure!(!(self.run || self.jump) || !self.navigate && self.rope.is_none(),
             "Explicit run/jump needs straight movement, not a planned route or rope command");
@@ -198,6 +206,7 @@ pub struct Report {
     /// guests restore enemy presentation without running another AI simulation.
     pub guards: Vec<EnemyReport<crate::combat::State>>,
     pub boojums: Vec<EnemyReport<crate::boojum::State>>,
+    pub snarks: Vec<EnemyReport<crate::snark::Phase>>,
     pub beyond_steps: Option<[Vec3; 15]>,
     pub network_states: VecDeque<NetworkState>,
     pub swim_planning: Option<SwimPlanning>,
@@ -515,6 +524,19 @@ impl Driver {
             .or_else(|| arena.stage.interactions.school2.as_ref().and_then(|s|s.scene_id()))
             .or_else(|| arena.stage.interactions.beyond.as_ref().and_then(|b|b.scene_id())).map(str::to_owned);
         self.report.speech = arena.stage.story.busy() && !arena.stage.busy();
+        self.report.snarks = arena.npcs.snarks().map(|(id, snark, active)| {
+            let center = snark.target(id).center;
+            EnemyReport {
+                id, name:snark.kind.model().into(), active, feet:snark.feet,
+                health:snark.health, state:snark.phase,
+                selected_player:snark.opponents.selected_player,
+                distance:frame.players.each_ref().map(|b|center.distance(b.player.eye())),
+                line_of_sight:frame.players.each_ref().map(|b| {
+                    let trace=world.sweep(center,b.player.eye(),Vec3::splat(0.5));
+                    b.stats.alive() && !b.stats.ignores_alice() && !trace.start_solid && trace.fraction>=1.
+                }),
+            }
+        }).collect();
         self.report.guards = arena.stage.interactions.encounters.iter().flat_map(|cast| &cast.actors).enumerate()
             .filter_map(|(index, actor)| {
                 let crate::encounters::Enemy::Guard(guard) = &actor.enemy else { return None; };
@@ -761,8 +783,23 @@ impl Driver {
             landing_control(world,&body.player,goal,command.input_lead,command.arrival_radius)
         } else { None };
         self.report.reached = if command.navigate { landing.is_some_and(|(_,settled)|settled) }
+            else if command.swim { delta.length()<command.arrival_radius }
             else { delta.truncate().length()<command.arrival_radius && (command.horizontal || delta.z.abs()<35.) };
         if self.report.reached { self.report.phase="reached"; self.plan.clear(); return; }
+        if command.swim {
+            if !body.player.swimming {
+                self.report.error=Some("Explicit swim goal requires a swimming player".into()); return;
+            }
+            let steering=delta-body.player.velocity*command.input_lead;
+            keys.swim=steering.normalize_or_zero()*(steering.length()/30.).min(1.);
+            keys.run=command.run;
+            if !keys.primary && !keys.alternate && keys.swim.length_squared()>0.01 {
+                keys.yaw=keys.swim.y.atan2(keys.swim.x);
+                keys.pitch=(keys.swim.z/keys.swim.length()).asin().clamp(-1.56,1.56);
+            }
+            self.report.expected=Some(goal); self.report.phase="swimming to goal";
+            return;
+        }
         if let Some((wish,_)) = landing {
             self.report.phase="settling landing";
             self.plan.clear();

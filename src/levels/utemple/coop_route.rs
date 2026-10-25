@@ -8,11 +8,33 @@ fn owner(arena: &Arena) -> &Temple {
     arena.stage.interactions.levels.iter().find_map(|s| s.ctl.downcast_ref::<Temple>()).unwrap()
 }
 
+/// Owned, read-only search inputs. The network fixture can search a cloned
+/// collision world off-thread without holding up simulation or packet delivery.
+pub(crate) struct SwimSearch {
+    from: Vec3,
+    target: Vec3,
+    hazards: Vec<Collider>,
+}
+impl SwimSearch {
+    pub(crate) fn direct(&self, world: &World) -> Option<Vec3> {
+        (world.body_trace(self.from,self.target).fraction == 1.
+            && !self.hazards.iter().any(|h|h.touches(self.from+PLAYER_CENTER,
+                self.target+PLAYER_CENTER,PLAYER_HALF))).then_some(self.target)
+    }
+    pub(crate) fn waypoint(self, world: &World) -> Vec3 {
+        super::swim_check::waypoint(world,self.from,self.target,&self.hazards)
+    }
+}
+
 impl Temple {
     /// Read-only navigation for opt-in tests. Both native and separate-client
     /// drivers use this goal and send ordinary swimming controls toward it.
     pub(crate) fn test_swim_waypoint(&self, map: &Bsp, world: &World, player: &Player,
         leading: bool) -> Result<Vec3> {
+        Ok(self.test_swim_search(map,world,player,leading)?.waypoint(world))
+    }
+    pub(crate) fn test_swim_search(&self, map: &Bsp, world: &World, player: &Player,
+        leading: bool) -> Result<SwimSearch> {
         let mut hazards = self.motion.ahead(map,&self.saved,1.)?;
         hazards.extend(self.motion.ahead(map,&self.saved,0.5)?);
         hazards.extend(world.traversal.pushes.iter().filter(|p|p.enabled).map(|p|p.volume.clone()));
@@ -24,7 +46,7 @@ impl Temple {
             let age = self.saved.clock - if leading {0.} else {1.};
             self.data.shell_pose(self.turtle_pose(age),age.max(0.) as f32).translation-PLAYER_CENTER
         };
-        Ok(super::swim_check::waypoint(world,player.feet,target,&hazards))
+        Ok(SwimSearch {from:player.feet,target,hazards})
     }
 }
 

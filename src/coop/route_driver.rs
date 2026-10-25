@@ -200,6 +200,15 @@ pub struct Report {
     pub boojums: Vec<EnemyReport<crate::boojum::State>>,
     pub beyond_steps: Option<[Vec3; 15]>,
     pub network_states: VecDeque<NetworkState>,
+    pub swim_planning: Option<SwimPlanning>,
+}
+#[derive(Serialize)]
+pub struct SwimPlanning {
+    requested_tick: u64,
+    completed_tick: u64,
+    prepare_ms: f32,
+    search_ms: f32,
+    accepted: bool,
 }
 #[derive(Serialize)]
 pub struct CheckpointReport {
@@ -267,6 +276,14 @@ struct Worker {
 struct PlannedRoute {
     steps: Vec<(Controls, Vec3)>,
     walking: bool,
+}
+struct SwimWorker {
+    command: u64,
+    location: (u64,u64,u64,u64),
+    tick: u64,
+    from: Vec3,
+    prepare_ms: f32,
+    result: mpsc::Receiver<(Vec3,f32)>,
 }
 // Timed input sequences are needed for jumps. A route that stays grounded can
 // instead follow its intermediate positions, so a moving obstacle cannot make
@@ -395,6 +412,7 @@ pub struct Driver {
     control_used: bool,
     step_height: Option<f32>,
     swim_goal: Option<(u64, Vec3)>,
+    swim_worker: Option<SwimWorker>,
     location: Option<(u64, u64, u64)>,
     pub report: Report,
 }
@@ -424,7 +442,8 @@ impl Driver {
             worker: None, plan: VecDeque::new(), walking_plan:false, step_tick: 0, step_at: now,
             walking_progress:WalkingProgress::new(Vec3::ZERO,now),
             navigation_clock:NavigationClock::new(now), jumped: false, rope_used: false,
-            control_used: false, step_height: None, swim_goal: None, location: None, report: Report::default() }
+            control_used: false, step_height: None, swim_goal: None, swim_worker: None,
+            location: None, report: Report::default() }
     }
     pub fn poll(&mut self, now: Instant) {
         if now.duration_since(self.polled) < Duration::from_millis(50) { return; }
@@ -596,6 +615,7 @@ impl Driver {
         }
         if arena.stage.busy() {
             self.plan.clear(); self.jumped = false; self.report.phase = "scene";
+            self.swim_goal = None;
             return;
         }
         if let Some(first) = command.temple_follow {
@@ -603,13 +623,58 @@ impl Driver {
                 .find_map(|s|s.ctl.downcast_ref::<crate::levels::utemple::Temple>()) else {
                 self.report.error = Some("Temple swim command used outside the temple".into()); return;
             };
-            if self.swim_goal.is_none_or(|(tick,_)| frame.tick.saturating_sub(tick) >= 12) {
-                match temple.test_swim_waypoint(map,world,&body.player,local == first) {
-                    Ok(goal) => self.swim_goal = Some((frame.tick,goal)),
-                    Err(error) => { self.report.error = Some(error.to_string()); return; }
+            let location = (frame.epoch,frame.checkpoint_generation,body.warped_at,body.spawned_at);
+            if let Some(worker) = &self.swim_worker {
+                match worker.result.try_recv() {
+                    Ok((goal,search_ms)) => {
+                        let accepted = worker.command == command.id && worker.location == location
+                            && frame.tick.saturating_sub(worker.tick) <= 120
+                            && body.player.feet.distance(worker.from) < 96.
+                            && world.body_trace(body.player.feet,goal).fraction == 1.;
+                        self.report.swim_planning = Some(SwimPlanning {
+                            requested_tick:worker.tick,completed_tick:frame.tick,
+                            prepare_ms:worker.prepare_ms,search_ms,accepted,
+                        });
+                        if accepted { self.swim_goal = Some((frame.tick,goal)); }
+                        self.swim_worker = None;
+                    }
+                    Err(mpsc::TryRecvError::Disconnected) => {
+                        self.report.error = Some("Temple swimming search ended without a result".into());
+                        self.swim_worker = None; return;
+                    }
+                    Err(mpsc::TryRecvError::Empty) => (),
                 }
             }
-            let goal = self.swim_goal.unwrap().1;
+            if self.swim_worker.is_none()
+                && self.swim_goal.is_none_or(|(tick,_)| frame.tick.saturating_sub(tick) >= 12) {
+                let started = Instant::now();
+                let search = match temple.test_swim_search(map,world,&body.player,local == first) {
+                    Ok(search) => search,
+                    Err(error) => { self.report.error = Some(error.to_string()); return; }
+                };
+                if let Some(goal) = search.direct(world) {
+                    self.swim_goal = Some((frame.tick,goal));
+                } else {
+                    let world = world.clone();
+                    let (send,result) = mpsc::channel();
+                    self.swim_worker = Some(SwimWorker {command:command.id,location,tick:frame.tick,
+                        from:body.player.feet,prepare_ms:started.elapsed().as_secs_f32()*1000.,result});
+                    self.report.replans += 1;
+                    std::thread::spawn(move || {
+                        let started = Instant::now();
+                        let goal = search.waypoint(&world);
+                        let _ = send.send((goal,started.elapsed().as_secs_f32()*1000.));
+                    });
+                }
+            }
+            let Some((_,goal)) = self.swim_goal else {
+                self.report.phase = "planning temple swim"; return;
+            };
+            // A mover may have entered the old leg while the next search ran.
+            // Brake through ordinary neutral input until a clear leg is ready.
+            if world.body_trace(body.player.feet,goal).fraction < 1. {
+                self.swim_goal = None; self.report.phase = "planning temple swim"; return;
+            }
             let offset = goal-body.player.feet-body.player.velocity*command.input_lead;
             keys.swim = offset.normalize_or_zero()*(offset.length()/30.).min(1.);
             keys.run = true;

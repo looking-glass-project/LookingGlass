@@ -22,11 +22,12 @@ The underwater temple now advances its guide and machinery for both swimmers.
 Thirteen native component cases pass for individual air, crushing, saved state
 and exit ownership. Four full paired swimming routes now pass in the production
 Arena, covering both leaders and watched/skipped endings. Both single-player
-swimming routes also pass. Separate internet clients and recovery/rejoin remain
-open for this visit. The first internet test found a ceiling movement stall;
-that fault is fixed and covered by a failing-before/passing-after regression.
-The repeat still fails near an earlier trap, so internet traversal is not yet
-credited. The automated fixture retains failed states without screenshots.
+swimming routes also pass. Full public-internet traversal now passes in both
+leader orders, with correct exit ownership and matching player, machinery and
+native-enemy state. Both drowning/respawn roles, shared checkpoint restoration
+and entrance rejoin now pass too. Transition rejoin remains open. Internet testing
+found a ceiling stall and two test-navigation faults; these have regressions.
+The automated fixture retains failed states and timings without screenshots.
 
 ## Agreed behavior
 
@@ -4405,3 +4406,73 @@ after the Blue-first failure. Evidence is
 Internet traversal and recovery/rejoin remain required for campaign completion.
 The ceiling fix and repeatable network fixture are smaller completed milestones;
 the total remains 42.1%.
+
+### Full temple traversal through separate internet clients (2026-10-25)
+
+Both first-arrival orders now pass on source
+`0c9d40b5907d22224b65cc68959853ddbf0318139320848635709e972ba2ff5c`, executable
+SHA256 `30be6c7fa50e468b74544c6eb0c63a6416c1c6db38cd32a1b3001015309c3877`.
+The original falling column deals 100 damage; its damage and timing are unchanged.
+The test swimmer now prices future hazard contact along an entire swept leg,
+not just at its endpoint. A synthetic thin-obstacle regression fails before this
+change and passes afterward. Difficult searches run on a cloned collision world
+in a background worker. Results from old commands, visits, checkpoint generations,
+warps or spawns are discarded, as are stale or currently obstructed legs.
+
+The public Host/Join runs use separate processes and profiles, with 40 ms delay
+and 20 ms jitter per sender. Each client generates ordinary inputs from its own
+received state. Both start at the normal entrance, traverse the entire level,
+watch the intended first player's original exit, and reach garden epoch 2 alive.
+They retain their own shells, have no drowning, respawn, wipe or traversal warp,
+and keep the waiting partner still during the single-Alice scene.
+
+| First arrival | Final Blue / Red health | Matching sent/restored ticks for each of player, world and native-enemy state | Evidence folder under `private/coop/` |
+| --- | --- | ---: | --- |
+| Blue | 40 / 40 | 3,050 | `temple-route-bf02b1fdcb864bd48eb0e674a2dfb425` |
+| Red | 58 / 50 | 3,032 | `temple-route-9a7b7da7eb1d43a69050b01fb96381e5` |
+
+All compared hashes agree. The lowest observed remaining air is about 6.03
+seconds in the Blue-led run and 11.43 seconds in the Red-led run. Slow searches
+reach 533 ms in the background; preparation remains below 18 ms, with a median
+near 3–4 ms. The Blue-led clients' frame medians are about 16 ms and p95 about
+24 ms. The largest host frame occurs during garden loading, so these timings
+are not a claim that level transitions have no loading pause.
+
+On the same build, all four native paired routes, both single-player swimming
+routes, the 13 paired component cases and the temple state checks pass. Native
+Blue-led runs finish at 30/48 health; Red-led runs finish at 38/40. All 791 Rust
+tests pass, with one unrelated ignored test. Logs use
+`private/temple-0c9d40b*`, `private/utemple-internet-0c9d40b-*.log` and
+`private/temple-async-*.log`. No screenshots were captured or opened.
+
+`tools/test_coop_utemple_recovery.py` separately tests real drowning, both
+spectator roles, 25-health revival after exactly 1,200 ticks, shared checkpoint
+restoration and entrance rejoin. It does not relax the clean-route assertions.
+
+The first recovery run ended in an unintended team wipe when the survivor hit
+the falling column during the first countdown. That failed evidence remains in
+`private/coop/temple-recovery-cfccff4aa3b74ff2b6a66db017ab58d0/`. The fixture no
+longer reissues the survivor's already-active follow command when stopping the
+victim; doing so discarded its navigation state unnecessarily.
+
+The corrected fixture passes on the same `0c9d40b` executable and public
+delay/jitter settings in
+`private/coop/temple-recovery-6cf854d537f74d58a7bec8c26fb3d802/`:
+
+- Red drowns at tick 3,719 and respawns at 4,919; Blue drowns at 8,279 and
+  respawns at 9,479. Both clients agree on these exact 1,200-tick intervals.
+  Each victim's camera follows the moving survivor and returns to that victim
+  at revival. Both revive swimming at 25 health, in clear space near the partner,
+  with their weapons, collection records and personal shell preserved.
+- A subsequent ordinary drowning wipe restores both at tick 12,020. The actual
+  saved entrance resources, placements, guide, node, events and machinery state
+  return; both have their saved 100 health and the restored world clock resumes.
+- A new guest process rejoins the restored entrance without moving either player
+  or changing resources or temple progression. All 1,712 comparable sent/restored
+  player, world and native-enemy hashes match.
+
+Logs are in `private/utemple-recovery-0c9d40b-repeat.log`; the exact recovery
+fixture source is retained with its reports. All owned clients/helpers close
+and Anode is released. An entrance rejoin does not establish transition rejoin.
+That and the remaining combined-evidence requirements must pass before this row
+gains completion credit; the overall estimate remains 42.1%.

@@ -54,7 +54,12 @@ pub(super) fn waypoint(world: &World, from: Vec3, to: Vec3, hazards: &[Collider]
                     if !clear(p, q) {
                         continue;
                     }
-                    let next = cost[&c] + p.distance(q) + if safe(q) { 0. } else { 500. };
+                    // A clear endpoint can lie on the far side of a thin future
+                    // obstacle. Price the whole swept body segment, as we do
+                    // for the direct route, while still allowing an escape
+                    // when the current body is already inside a forecast hull.
+                    let next = cost[&c] + p.distance(q)
+                        + if safe(q) && future_clear(p,q) { 0. } else { 500. };
                     if cost.get(&n).is_some_and(|v| *v <= next) {
                         continue;
                     }
@@ -72,4 +77,20 @@ pub(super) fn waypoint(world: &World, from: Vec3, to: Vec3, hazards: &[Collider]
         best = p;
     }
     point(best)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn swim_waypoint_does_not_cut_through_a_future_trap() {
+        let world = World::fixture(&[]);
+        let hazard = Collider::fixture(vec3(23.,-30.,-30.),vec3(25.,30.,90.));
+        let from = Vec3::ZERO;
+        let to = vec3(240.,0.,0.);
+        let next = waypoint(&world,from,to,std::slice::from_ref(&hazard));
+        assert!(next.distance(from)>1., "Planner did not find the open detour");
+        assert!(!hazard.touches(from+PLAYER_CENTER,next+PLAYER_CENTER,PLAYER_HALF),
+            "First swim leg cuts through the future trap: {next:?}");
+    }
 }

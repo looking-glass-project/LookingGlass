@@ -110,6 +110,21 @@ class TemplePair(Pair):
             scope='Full two-client temple traversal; death/wipe/rejoin remain separate'), indent=2))
         print('PASS internet temple: both swimmers, original exit, personal air, matching residents/world and garden arrival.', flush=True)
 
+    def close(self):
+        planning = {}
+        for role, rows in self.history.items():
+            samples = {row['driver']['swim_planning']['requested_tick']: row['driver']['swim_planning']
+                for row in rows if row['driver'].get('swim_planning')}
+            def timing(field):
+                values = sorted(sample[field] for sample in samples.values())
+                return dict(median=values[len(values)//2], p95=values[95*(len(values)-1)//100],
+                            maximum=values[-1]) if values else None
+            planning[role] = dict(searches=len(samples),
+                accepted=sum(sample['accepted'] for sample in samples.values()),
+                prepare_ms=timing('prepare_ms'), search_ms=timing('search_ms'))
+        self.evidence['swim_planning'] = planning
+        super().close()
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)

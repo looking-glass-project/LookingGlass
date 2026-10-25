@@ -22,6 +22,7 @@ use std::{any::Any, collections::BTreeMap};
 mod art;
 mod coop;
 mod coop_check;
+mod coop_route;
 mod check;
 pub(crate) use check::drive as drive_route;
 mod data;
@@ -617,6 +618,11 @@ pub static REGISTRATION: super::Registration = super::Registration {
     target_base: None,
     story_beats: &[],
     checks: &[
+        super::Check {
+            flag: "--utemple-coop-route-check",
+            help: "Swim the full temple with both players using ordinary inputs.",
+            run: super::Run::Windowed(|a| Box::pin(coop_route::check(a))),
+        },
         super::Check {
             flag: "--utemple-coop-check",
             help: "Verify both swimmers' breath, machinery contacts and temple exit.",

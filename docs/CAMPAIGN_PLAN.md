@@ -1948,8 +1948,9 @@ it shares the existing grounds2 visit and hit-ID reservation.
 Hollow Hideaway additionally reserves `--potears2-transport-check` (headless moving supports and fish), `--potears2-coop-check` (paired supports, boarding, guards and personal fish recovery), `--potears2-route-native-check` (production resident cast), and `--potears2-store-write-check` / `--potears2-store-read-check` (separate native save processes). They share the existing potears2 owner and hit-ID reservation. `LOOKING_GLASS_HOLLOW_WATCH=1` selects the watched ending for the route checks.
 
 The underwater temple additionally reserves `--utemple-coop-check` for paired
-breathing, swimming, machinery contacts and original exit ownership. It shares
-the existing utemple controller and hit-ID reservation.
+breathing, swimming, machinery contacts and original exit ownership, and
+`--utemple-coop-route-check` for normal-input paired swimming through the full
+visit in the production Arena. They share the existing controller and hit IDs.
 
 Majestic Maze additionally reserves `--hedge1-save-write` and `--hedge1-save-read` for fresh-process native save checks. Its route requires a native window for the existing NPC cast; it has no active cinematic to skip.
 

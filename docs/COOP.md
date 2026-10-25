@@ -20,8 +20,10 @@ Full two-client traversal and recovery for that visit are still open.
 
 The underwater temple now advances its guide and machinery for both swimmers.
 Thirteen native component cases pass for individual air, crushing, saved state
-and exit ownership. Both single-player swimming routes also pass. The full
-paired journey and its recovery/rejoin checks remain open.
+and exit ownership. Four full paired swimming routes now pass in the production
+Arena, covering both leaders and watched/skipped endings. Both single-player
+swimming routes also pass. Separate internet clients and recovery/rejoin remain
+open for this visit.
 
 ## Agreed behavior
 
@@ -4312,3 +4314,38 @@ a complete paired swimming route or internet recovery. Full two-client
 traversal, drowning/respawn, shared wipe and transition rejoin remain open, so
 the campaign row is partial and the total remains 42.1%. No screenshots were
 opened; all reported checks use automated state assertions.
+
+### Full paired temple swimming (2026-10-25)
+
+`--utemple-coop-route-check` now follows the whole visit from its normal paired
+entrance using ordinary swimming input. The second Alice follows the guide's
+air trail one second behind the leader; each independently navigates current
+geometry and anticipated traps. The test runs the production Arena, including
+the native cast and personal damage. It does not change positions, resources,
+guide events or hazards. Skipped runs call the original cinematic skip path.
+
+All four routes pass on source
+`c2a598bd44d1dad38827b95d9342bb78bdf4686944abdcd79aff2437ba799ab4`, executable
+SHA-256 `b6cd878b7c1fd05b60c3fc0dbb3e33a98941d0d6a21257b53d01a461fbc58434`.
+
+| Leader | Ending | Ticks | Matching restored world samples | Final Blue / Red health |
+| --- | --- | ---: | ---: | --- |
+| Blue | Watched | 20,861 | 35 | 30 / 48 |
+| Blue | Skipped | 20,020 | 34 | 30 / 48 |
+| Red | Watched | 20,873 | 35 | 58 / 30 |
+| Red | Skipped | 20,032 | 34 | 58 / 30 |
+
+Every route verifies the intended exit owner, a frozen partner during the scene,
+both personal shells, no drowning, no death/respawn or team wipe, clear bodies
+during traversal and no free-movement teleport. Minimum remaining air is 15.89
+seconds. A second Arena restores compressed snapshots every five simulated
+seconds and matches the full world, NPC and character state. Rendering runs
+periodically in Anode; no screenshots were captured or opened.
+
+Evidence is `private/utemple-route-c2a598b.log` and four JSON results in
+`private/utemple-route-c2a598b/`. The 13 component cases pass on the same build,
+as do all 788 Rust tests (one unrelated ignored test), the locked release build
+and seven source-package tests. This is full traversal in one process. It does
+not yet prove delayed internet traversal, death recovery, shared checkpoint
+restoration or transition rejoin. Those remain required before completing the
+campaign row; total credit remains 42.1%.

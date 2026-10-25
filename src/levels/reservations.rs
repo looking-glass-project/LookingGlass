@@ -265,7 +265,7 @@ pub static RESERVATIONS: [Reservation; 39] = [
     ),
     Reservation { flags: Some(VisitFlags {
         contract: &["--utemple-check", "--utemple-coop-check"],
-        route: &["--utemple-route-check"], skip: &["--utemple-skip-route-check"],
+        route: &["--utemple-route-check", "--utemple-coop-route-check"], skip: &["--utemple-skip-route-check"],
         render: &["--utemple-render-check"],
     }), ..visit(11, "utemple") },
     Reservation { flags: Some(VisitFlags {

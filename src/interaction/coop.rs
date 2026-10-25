@@ -131,6 +131,7 @@ impl Interactions {
             .or_else(|| self.beyond.as_ref().and_then(|b| b.boarding_ready(thread, feet))).or_else(|| self.school
             .as_ref()
             .and_then(|s| s.boarding_ready(thread, feet)))
+            .or_else(|| self.levels.iter().find_map(|s| s.ctl.coop_boarding_ready(thread, feet)))
     }
 
     /// The reviewed adapters advance shared machinery once and carry all living
@@ -205,6 +206,14 @@ impl Interactions {
             let fixed = self.doors.iter().filter(|d| d.enabled && self.event_world.enabled(d.id))
                 .map(|d| d.collider.clone()).collect::<Vec<_>>();
             pool.advance_players(dt, map, world, players, &fixed)?;
+        }
+        for index in 0..self.levels.len() {
+            let fixed = self.doors.iter().filter(|d| d.enabled && self.event_world.enabled(d.id))
+                .map(|d| d.collider.clone())
+                .chain(self.platforms.iter().map(|p| p.2.clone()))
+                .chain(self.levels.iter().enumerate().filter(|(i, _)| *i != index)
+                    .flat_map(|(_, s)| s.ctl.colliders())).collect::<Vec<_>>();
+            self.levels[index].ctl.coop_advance(dt, map, world, players, &fixed)?;
         }
         self.sync_coop(world);
         Ok(())

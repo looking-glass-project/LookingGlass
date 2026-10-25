@@ -132,6 +132,13 @@ pub struct Combat<'a> {
     pub threatens: &'a dyn Fn(&Target) -> bool,
 }
 
+/// Stable Blue/Red slots in the host simulation, including a dead teammate.
+/// Controllers must inspect health before advancing personal contacts.
+pub struct CoopPlayer<'a> {
+    pub player: &'a mut Player,
+    pub stats: &'a mut Stats,
+}
+
 /// A visual actor visible only in the current map's planar mirror.
 #[derive(Clone, Copy)]
 pub struct ReflectionActor {
@@ -273,6 +280,22 @@ pub trait LevelController: Any {
     ) -> Result<()> {
         Ok(())
     }
+    /// Explicit paired adapter. Never invoke the single-player world clock
+    /// twice: advance shared machinery once and commit all living riders together.
+    fn coop_advance(&mut self, _dt: f32, _map: &Bsp, _world: &mut World,
+        _players: &mut [&mut Player], _fixed: &[Collider]) -> Result<()> { Ok(()) }
+    /// Personal hazards before free movement. A returned slot owns a newly
+    /// started single-Alice scene; the caller freezes the other player immediately.
+    fn coop_contacts(&mut self, _dt: f32, _players: &mut [CoopPlayer<'_>; 2]) -> Option<usize> { None }
+    fn coop_respawned(&mut self, _player: usize) {}
+    /// Apply a scene's personal consequences only to its bound actor.
+    fn coop_scene_step(&mut self, _owner: usize, player: &mut Player, stats: &mut Stats) {
+        self.prepare_player(stats, player);
+    }
+    /// Shared ride activation waits for every living player on its deck.
+    fn coop_boarding_ready(&self, _thread: &str, _feet: &[Vec3]) -> Option<bool> { None }
+    /// Script-owned lethal volumes also exclude checkpoint/reunion placement.
+    fn hazardous(&self, _feet: Vec3) -> bool { false }
     /// The pose of a trigger volume that rides a mover.
     fn trigger_pose(&self, _name: &str, _base: Vec3) -> Option<(Vec3, Quat)> {
         None
@@ -375,6 +398,8 @@ pub trait LevelController: Any {
     fn combat(&mut self, _combat: &mut Combat<'_>) -> Feedback {
         Feedback::default()
     }
+    fn coop_combat(&mut self, _dt: f32, _world: &World,
+        _players: [crate::combat::PlayerTarget; 2]) -> Feedback { Feedback::default() }
     fn loot_sources(&self) -> Vec<Source> {
         Vec::new()
     }

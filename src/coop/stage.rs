@@ -154,6 +154,7 @@ impl Stage {
     pub fn speaker(&self) -> PlayerId { self.owner.unwrap_or(self.last_owner) }
     pub fn respawned(&mut self, id: PlayerId) {
         self.contacts.reset_player(id);
+        for slot in &mut self.interactions.levels { slot.ctl.coop_respawned(id.index()); }
     }
 
     pub fn accept(&mut self, events: Events, id: PlayerId, roster: &mut Roster, world: &World) {
@@ -354,6 +355,17 @@ impl Stage {
                 .map(|b| &mut b.player)
                 .collect::<Vec<_>>();
             self.interactions.movers_pair(dt, map, world, &mut bodies)?;
+            for slot in &mut self.interactions.levels {
+                let mut players = roster.players.each_mut().map(|b| crate::level::CoopPlayer {
+                    player: &mut b.player, stats: &mut b.stats,
+                });
+                if let Some(index) = slot.ctl.coop_contacts(dt, &mut players) {
+                    ensure!(index < 2 && players[index].stats.alive(), "Invalid paired scene actor");
+                    self.owner = Some(PlayerId::ALL[index]);
+                    self.last_owner = PlayerId::ALL[index];
+                    break;
+                }
+            }
             if let Some(pool) = &mut self.interactions.pool {
                 let targets = roster.players.iter().enumerate().filter(|(_, b)| b.stats.alive())
                     .map(|(i, b)| crate::combat::Target {
@@ -454,12 +466,23 @@ impl Stage {
             world,
             &mut roster.players[owner.index()].player,
         )?;
+        for slot in &mut self.interactions.levels {
+            let body = &mut roster.players[owner.index()];
+            slot.ctl.coop_scene_step(owner.index(), &mut body.player, &mut body.stats);
+        }
         self.sync_school_return_items(roster);
         let feedback = self.school2_step(FIXED_DT, roster, world, true);
         self.sounds.feedback(roster.tick, &feedback);
         self.speech_step(roster, world, inputs[owner.index()].0.use_pressed);
         self.interactions.sync_coop(world);
         if self.transition.is_none() && !controls_scene(&self.interactions) && !self.story.busy() {
+            // A lethal personal scene returns to the ordinary spectator/respawn
+            // system. Leave the survivor at their safe waiting position.
+            if !roster.players[owner.index()].stats.alive() {
+                self.contacts.reset_player(owner);
+                self.owner = None;
+                return Ok(());
+            }
             let partner = owner.partner();
             if roster.players[partner.index()].stats.alive() {
                 let Some(player) =

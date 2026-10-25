@@ -242,6 +242,7 @@ pub static RESERVATIONS: [Reservation; 39] = [
             contract: &[
                 "--potears2-check",
                 "--potears2-transport-check",
+                "--potears2-coop-check",
                 "--potears2-store-write-check",
                 "--potears2-store-read-check",
             ],

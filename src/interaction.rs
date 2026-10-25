@@ -1156,7 +1156,7 @@ impl Interactions {
         Ok(())
     }
     pub fn hazardous(&self, feet: Vec3) -> bool {
-        self.triggers.iter().any(|t| {
+        self.levels.iter().any(|s| s.ctl.hazardous(feet)) || self.triggers.iter().any(|t| {
             matches!(t.kind, TriggerKind::Hurt(_) | TriggerKind::Fall)
                 && self.event_world.enabled(t.id)
                 && self
@@ -1751,17 +1751,22 @@ impl Interactions {
         }
         self.level_sync_story(story);
     }
+    /// Bound item positions derive from the current authoritative mover pose.
+    /// Both clients call this after restore; collection remains personal.
+    pub fn sync_pickup_positions(&self, items: &mut [crate::inventory::Pickup]) {
+        for item in items {
+            if let Some(p) = self.levels.iter().find_map(|l| l.ctl.pickup_origin(&item.id)) {
+                item.origin = p;
+            }
+        }
+    }
     pub fn sync_pickups(
         &mut self,
         stats: &crate::inventory::Stats,
         items: &mut Vec<crate::inventory::Pickup>,
         story: &mut crate::story::Story,
     ) {
-        for item in items.iter_mut() {
-            if let Some(p) = self.levels.iter().find_map(|l| l.ctl.pickup_origin(&item.id)) {
-                item.origin = p;
-            }
-        }
+        self.sync_pickup_positions(items);
         if let Some(v) = &mut self.village {
             v.cinema.sync_pickups(stats, story);
         }

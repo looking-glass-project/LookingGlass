@@ -136,6 +136,8 @@ impl Arena {
             }
             self.stage.scene_step(roster, map, world, &inputs)?;
             self.stage.interactions.activate_enemies();
+            self.npcs.activate_levels(&self.stage.interactions.levels);
+            self.npcs.level_patrols(&self.stage.interactions.levels);
             self.story_cast(roster, world);
             return self.finish(roster, map, world, true);
         }
@@ -193,6 +195,7 @@ impl Arena {
         }
         self.stage.contacts(roster, world, feet)?;
         if self.stage.busy() { return self.finish(roster, map, world, true); }
+        self.sync_pickup_positions();
         for (index, body) in roster.players.iter_mut().enumerate() {
             if body.stats.alive() {
                 if let Some(weapon) = inputs[index].1.weapon { body.stats.select(weapon as usize); }
@@ -201,6 +204,8 @@ impl Arena {
         self.stage.collect_pickups(roster, world, &self.pickups);
         if self.stage.busy() { return self.finish(roster, map, world, true); }
         self.stage.interactions.activate_enemies();
+        self.npcs.activate_levels(&self.stage.interactions.levels);
+        self.npcs.level_patrols(&self.stage.interactions.levels);
         let mut before = self.npcs.loot_sources();
         before.extend(self.stage.interactions.loot_sources());
         before.extend(environmental_loot_before);
@@ -225,6 +230,7 @@ impl Arena {
             if let Some(encounters) = &self.stage.interactions.encounters { targets.extend(encounters.targets()); }
             if let Some(school) = &self.stage.interactions.school2 { targets.extend(school.targets()); }
             if let Some(pool) = &self.stage.interactions.pool { targets.extend(pool.targets()); }
+            targets.extend(crate::level::targets(&self.stage.interactions.levels));
             targets.extend(self.stage.interactions.shot_targets());
             targets.extend(character.ice_targets());
             if let Some(summon) = character.summon_target() {
@@ -274,6 +280,13 @@ impl Arena {
                     } else {
                         hit.damage = roster.players[index].stats.attack_damage(hit.damage);
                     }
+                    if let Some(owner) = crate::level::hit_owner(&self.stage.interactions.levels, hit.id) {
+                        if let Some(sound) = self.stage.interactions.levels[owner].ctl.hit(hit) {
+                            let origin = targets.iter().find(|t| t.id == hit.id).map(|t| t.center);
+                            self.stage.sounds.emit(roster.tick, sound, origin, 1., false);
+                        }
+                        continue;
+                    }
                     self.npcs.hit(hit);
                     if let Some(encounters) = &mut self.stage.interactions.encounters { encounters.hit(hit); }
                     if let Some(pool) = &mut self.stage.interactions.pool {
@@ -307,6 +320,9 @@ impl Arena {
             roster, world, talking));
         if let Some(pool) = &mut self.stage.interactions.pool {
             feedback.append(pool.combat_players(world_dt, world, targets));
+        }
+        for slot in &mut self.stage.interactions.levels {
+            feedback.append(slot.ctl.coop_combat(world_dt, world, targets));
         }
         self.stage.sounds.feedback(roster.tick,&feedback);
         for (body, hit) in roster.players.iter_mut().zip(feedback.players) {
@@ -342,6 +358,10 @@ impl Arena {
         if let Some(village) = &self.stage.interactions.village {
             village.cinema.apply_npcs(&mut self.npcs);
         }
+        self.sync_pickup_positions();
+    }
+    fn sync_pickup_positions(&mut self) {
+        self.stage.interactions.sync_pickup_positions(&mut self.pickups);
     }
     fn finish(&mut self, roster: &mut Roster, map: &Bsp, world: &mut World, cinematic: bool) -> Result<()> {
         let generation = roster.checkpoint_generation;

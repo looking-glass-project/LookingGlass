@@ -6,12 +6,12 @@ establish campaign support. Single-player behavior and saves must remain support
 
 Current milestone: **42.1% estimated overall; six campaign visits have combined
 verification evidence, 33 remain open.** Earlier contact-system repeats are still
-required as detailed in the campaign matrix. The next visit under test is Pool of
-Tears. Its paired leaf/rock/combat integration has 38 passing native cases; the
-public two-client entrance and lower-bank checkpoint segments now have evidence.
-The full climb, leaves, swimming, exit and recovery tests remain open. Report these
-smaller milestones alongside the total; a successful segment is not a completed
-campaign visit.
+required as detailed in the campaign matrix. Pool of Tears has 38 passing native
+component cases plus public two-client opening and bank checkpoint segments.
+Hollow Hideaway now has 33 passing native cases for paired rides, boarding,
+personal fish deaths, guards and moving pickups. Full two-client traversal and
+recovery remain open for both visits. Report these smaller milestones alongside
+the total; a successful component or segment is not a completed campaign visit.
 
 ## Agreed behavior
 
@@ -4112,3 +4112,45 @@ Red's goal. Both remain grounded at 100 health, approximately 36 units apart;
 the fixture still needs to move the waiting player away after that reunion.
 The complete bank segment remains failed, with its passing prefix recorded
 separately. All checks above used logs/state; no screenshots were opened.
+
+### Hollow Hideaway paired machinery and personal hazards (2026-10-25)
+
+The registered level controller now participates in the host's paired movement,
+boarding, targeting, weapon-hit and personal-damage paths. The pond advances once
+per world tick and carries both living riders on each of its seven paths. Each
+triggered leaf waits for all living players. If either rider is obstructed, that
+path retains its pose and clock while unrelated paths keep advancing. The second
+leaf's initial turn now carries both riders from its authored boarding pose;
+saving during a blocked departure retains that pose and the pending departure.
+
+Fish exposure is saved separately for Blue and Red. The first threshold crossing
+owns the original bite scene; its partner and support stay still during the
+scene. Only the victim dies. The survivor stays at their waiting position while
+the victim enters the existing spectator/respawn flow. Fish water is excluded
+from automatic respawn/reunion placement. Bound pickups follow the authoritative
+pad pose after movement and snapshot restoration, with collection and healing
+remaining personal.
+
+Frozen source `6c11e46a8599a474b0a8ab28fbd4b88f991d056b1cb5dbd839dfbdf88f297178`
+passes all 33 `--potears2-coop-check` scenarios in
+`private/coop-potears2-native6.log`: fourteen paired pad rides, twelve original
+boarding contacts (both orders and either death), two blocked-start/save/release
+cases, two nearest-visible guard/damage cases, both fish victims with
+mid-contact/mid-scene restoration and exact 1,200-tick/25-health respawns, and
+moving pickup restoration/personal collection. These are real-data component
+fixtures, not a full ordinary-input two-client traversal.
+
+The same production code passed 787 Rust tests (one ignored), the locked release
+build, `--coop-world-check`, single-player transport/save/fish checks at
+30/60/144 Hz, and both ordinary entrance-to-Just-Desserts routes with the default
+and watched ending. The routes finish at 100 health with eleven jumps, two
+throws, twenty-four cards and one pickup, without authored teleport assistance.
+Those regression logs are `private/coop-potears2-rust-final.log`,
+`private/coop-potears2-world.log` and
+`private/coop-potears2-sp-{transport,route,watched}.log`, on source `93d29da`;
+the final source differs only in the obstruction test's fixture placement.
+
+Hollow remains **partial**. Full network traversal in both arrival orders,
+combat/reward integration, shared wipe, final reunion and rejoin-to-exit still
+need campaign evidence. No campaign row or percentage is credited for these
+component checks. All validation above used state/logs; no screenshots were opened.

@@ -4154,3 +4154,60 @@ Hollow remains **partial**. Full network traversal in both arrival orders,
 combat/reward integration, shared wipe, final reunion and rejoin-to-exit still
 need campaign evidence. No campaign row or percentage is credited for these
 component checks. All validation above used state/logs; no screenshots were opened.
+
+### Pool bank continuation and scene-aware route control (2026-10-25)
+
+The route fixture now checks both the local client's and host's grounded state
+and stopping speed before choosing a waiting position. A scene reunion only
+clears the waiting partner when that partner blocks the next goal. If the
+original scene has already placed both players on a narrow bank in distinct
+supported positions, the fixture accepts that paired landing. Ordinary bank
+wayfinding uses the single-player route's 20-unit horizontal/48-unit vertical
+tolerance, followed by a neutral, supported stop; exact waiting spots still
+require their tighter position check. No player/world state is written by these
+steering changes.
+
+On frozen runtime `6c11e46`, `pool-route-7a8e56f4ecba41b0a4d65eaf9e0a4704`
+passes the unchanged waypoint-8 checkpoint through waypoint 9 and the original
+rock scene/reunion: 752 matching player/world states, both players at 100 health,
+no respawns or wipes (`segment-verification.json`). The later slope attempt
+failed because the earlier fixture accepted arrival while the guest was still
+moving. With the stopping check corrected,
+`pool-route-cff881d68bf64cffb9b7605beda79d2d` passes the resumed waypoint-9 to
+bank-2 segment, including waypoints 10 and 11: 752 matching player/world states
+and both players at 100 health. Its ordinary bank-2 checkpoint has SHA-256
+`b4b734f9611a04cd9b64e190017305b62f6bd257744149ecc3fb3c7be1f430fd`.
+Both runs use the public internet path with 40 ms delay and 20 ms jitter.
+
+The same runtime also passes the complete single-player Pool route to Hollow:
+56,884 ticks, 26 jumps, seven throws, 72 cards, 57.864 combat damage, two pickups,
+three enemy rewards, 100 final health and no authored teleports. Evidence is
+`private/coop-pool-route-reference.log`; this headless route does not certify
+two-client traversal. Higher-bank fixtures are still under test, and Pool's
+full campaign row remains partial. No screenshots were opened.
+
+The higher-bank driver now gives the ordinary jumps a short running approach,
+matching the moving takeoffs in the single-player route. After the second rock
+scene, both players leave immediately: stopping to save or waiting for one
+player leaves the other in the falling rock's path. The fixture waits until
+both have reached the following bank before neutralizing their inputs, and
+retains distinct supported positions instead of requiring a place exchange.
+It validates the observed rock-scene owner and rejects a resume index that
+would skip every remaining waypoint.
+
+The prefix of `pool-route-93df380f927e4d79b37ad06cc67c33c7` through waypoints
+12/13 has 268 matching player/world states and both players at 100 health.
+On the subsequent corrected fixture,
+`pool-route-83cf17bb073a4d8d90cc115d76611382` passes from that unchanged
+waypoint-13 checkpoint through the running jump, Red-owned second rock scene,
+frozen partner/reunion, paired escape and bank-3 waypoint 16. Independent prefix
+verification records 900 matching player/world states, both players at 100
+health, and no respawns/wipes. Its ordinary waypoint-16 checkpoint has SHA-256
+`ee8e17c3e116b4d9939968e1ab6b6b6c1771f6c0d8180945f318725ffe1a3fcf`.
+Both prefixes retain `segment-verification.json` alongside their full histories.
+
+The last full attempt **fails later at waypoint 17**: Red stalls near
+(-2180, 3104, 1263) approaching (-2128, 3104, 1248); both remain alive at 100
+health. Bank 4, later transport/swimming and the full visit remain unverified.
+The fixture uses ordinary client input and normal checkpoint saves throughout;
+the game runtime is unchanged. Test windows were closed and the Anode lease released.

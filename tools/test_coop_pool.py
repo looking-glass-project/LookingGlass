@@ -73,7 +73,11 @@ class PoolPair(PandemoniumPair):
             self.pump()
 
     def settled(self, role):
-        return self.reached(role) and self.bodies(role)[0 if role == 'host' else 1]['player']['grounded']
+        index = 0 if role == 'host' else 1
+        return self.reached(role) and all(
+            self.bodies(view)[index]['player']['grounded']
+            and distance(self.bodies(view)[index]['player']['velocity'][:2], [0, 0]) < 12
+            for view in (role, 'host'))
 
     def move_aside(self, role):
         index = 0 if role == 'host' else 1
@@ -135,10 +139,52 @@ class PoolPair(PandemoniumPair):
         index = 0 if role == 'host' else 1
         previous = self.bodies()[index]['player']['feet']
         checked = self.reports['host']['frame']['tick']
+        scene_owner = self.reports['host']['combat']['stage']['owner']
+        def at_goal():
+            # These authored wayfinding targets use the native route's
+            # twenty-unit tolerance; some sit just past a bank's solid edge.
+            return all(self.reports[view]['combat']['stage']['owner'] is None
+                and self.bodies(view)[index]['player']['grounded']
+                and distance(self.bodies(view)[index]['player']['feet'][:2], goal[:2]) < 20
+                and abs(self.bodies(view)[index]['player']['feet'][2] - goal[2]) < 48
+                for view in (role, 'host'))
         deadline = time.monotonic() + 60
         while not self.settled(role):
             assert time.monotonic() < deadline, f'Pool approach stalled for {role} at {goal}'
             self.pump()
+            owner = self.reports['host']['combat']['stage']['owner']
+            if scene_owner is not None and owner is None:
+                # Reunion can place the waiting partner on this approach's
+                # destination. Clear them with ordinary supported walking
+                # before resuming; do this once per observed scene exit.
+                scene_owner = None
+                other = 'guest' if role == 'host' else 'host'
+                self.set(role)
+                self.set(other)
+                if at_goal() and all(distance(self.bodies(view)[index]['player']['velocity'][:2], [0, 0]) < 12
+                        for view in (role, 'host')):
+                    return
+                self.hold(.5)
+                other_index = 1-index
+                other_feet = self.bodies()[other_index]['player']['feet']
+                if not at_goal() and distance(other_feet[:2], goal[:2]) < 40 \
+                        and abs(other_feet[2]-goal[2]) < 56:
+                    self.move_aside(other)
+                    self.evidence.setdefault('reunion_clearances', []).append(
+                        dict(role=role, tick=self.reports['host']['frame']['tick'], goal=goal))
+                self.set(role, goal, run=True)
+                previous = self.bodies()[index]['player']['feet']
+                checked = self.reports['host']['frame']['tick']
+                deadline = time.monotonic() + 60
+                continue
+            scene_owner = owner
+            if at_goal():
+                self.set(role)
+                self.hold(.8)
+                if at_goal() and all(distance(self.bodies(view)[index]['player']['velocity'][:2], [0, 0]) < 12
+                        for view in (role, 'host')):
+                    return
+                self.set(role, goal, run=True, speed_limit=80)
             report = self.reports[role]
             player = self.bodies()[index]['player']
             tick = self.reports['host']['frame']['tick']
@@ -156,7 +202,42 @@ class PoolPair(PandemoniumPair):
                         ledge_pull=bool(hanging)))
                 previous, checked = player['feet'], tick
 
-    def go_pair(self, goal, jump=False, takeoff=None, runup=None):
+    def go_pair(self, goal, jump=False, takeoff=None, runup=None, together=False):
+        warped = [b['warped_at'] for b in self.bodies()]
+        if together:
+            # Both must leave the boulder's path after its scene. Let the
+            # actual first arrival take a waiting spot while the other follows.
+            for role in self.commands:
+                self.set(role, goal, run=True)
+            def near(role, radius=20):
+                body = self.bodies()[0 if role == 'host' else 1]['player']
+                return body['grounded'] and distance(body['feet'][:2], goal[:2]) < radius \
+                    and abs(body['feet'][2]-goal[2]) < 48
+            self.until(lambda: any(near(role) for role in self.commands)
+                and all(near(role, 64) for role in self.commands), 30)
+            lead = next(role for role in self.commands if near(role))
+            follow = 'guest' if lead == 'host' else 'host'
+            for role in self.commands:
+                self.set(role)
+            self.hold(.8)
+            self.go_one(lead, goal)
+            self.set(lead)
+            bodies = self.bodies()
+            if all(b['player']['grounded']
+                   and distance(b['player']['feet'][:2], goal[:2]) < 64
+                   and abs(b['player']['feet'][2]-goal[2]) < 48
+                   and distance(b['player']['velocity'][:2], [0, 0]) < 12 for b in bodies) \
+                    and distance(bodies[0]['player']['feet'][:2], bodies[1]['player']['feet'][:2]) >= 36:
+                self.evidence.setdefault('paired_escapes', []).append(dict(
+                    goal=goal, tick=self.reports['host']['frame']['tick'],
+                    feet=[b['player']['feet'] for b in bodies]))
+                print('PASS Pool both leave boulder path onto the bank', goal, flush=True)
+                return
+            self.move_aside(lead)
+            self.go_one(follow, goal)
+            self.set(follow)
+            print('PASS Pool paired boulder escape', goal, flush=True)
+            return
         self.set(self.partner)
         if takeoff:
             other = 0 if self.partner == 'host' else 1
@@ -165,6 +246,20 @@ class PoolPair(PandemoniumPair):
             self.go_one(self.first, takeoff)
         self.go_one(self.first, goal, jump, runup)
         self.set(self.first)
+        # An original scene can finish with both already on this bank, in
+        # distinct supported positions. Do not make them exchange places on
+        # a narrow landing merely to touch the same wayfinding coordinate.
+        bodies = self.bodies()
+        if all(b['warped_at'] != old and b['player']['grounded']
+               and distance(b['player']['feet'][:2], goal[:2]) < 96
+               and abs(b['player']['feet'][2]-goal[2]) < 48
+               for b, old in zip(bodies, warped)) \
+                and distance(bodies[0]['player']['feet'][:2], bodies[1]['player']['feet'][:2]) >= 36:
+            self.evidence.setdefault('paired_reunions', []).append(dict(
+                goal=goal, tick=self.reports['host']['frame']['tick'],
+                feet=[b['player']['feet'] for b in bodies]))
+            print('PASS Pool paired scene landing', goal, flush=True)
+            return
         self.move_aside(self.first)
         if takeoff:
             self.go_one(self.partner, takeoff)
@@ -203,10 +298,15 @@ class PoolPair(PandemoniumPair):
                     partner = 1 if after['owner'] == 'Blue' else 0
                     assert before['players'][partner]['feet'] == after['players'][partner]['feet'], \
                         f'{role}: waiting partner moved during a scene'
+            assert all(r['owner'] == self.args.first.title() for r in rows
+                if r['scene'] in ('Boulder1', 'Boulder2') and r['owner'] is not None), \
+                f'{role}: rock scene did not belong to the first arrival'
             assert all(b['spawned_at'] == 0 for r in rows for b in r['players']), 'Unexpected respawn'
             assert self.pool(role)['cinema']['done'][0], f'{role}: opening scene unfinished'
-            if self.args.stop_after == 'bank2':
+            if self.args.stop_after in ('bank2', 'bank3', 'bank4'):
                 assert self.pool(role)['cinema']['done'][1], f'{role}: first falling-rock scene unfinished'
+            if self.args.stop_after in ('bank3', 'bank4'):
+                assert self.pool(role)['cinema']['done'][2], f'{role}: second falling-rock scene unfinished'
             assert self.reports[role]['combat']['stage']['owner'] is None
         self.verify_network_states()
         self.verify_network_states('world_sha256', 'matching_sent_and_restored_world_states')
@@ -219,23 +319,41 @@ class PoolPair(PandemoniumPair):
         label = 'restored_positions' if self.saved else 'entrance_handoff'
         self.evidence[label] = [b['player']['feet'] for b in self.bodies()]
         print('PASS Pool start', label, self.evidence[label], flush=True)
-        if self.args.stop_after in ('bank1', 'bank2'):
+        if self.args.stop_after in ('bank1', 'bank2', 'bank3', 'bank4'):
             waypoints = [(-3160, 3096, 178.13634), (-3008, 3352, 107.15195),
                          (-2912, 3536, 55.28264), (-2768, 3568, 37.2)]
-            if self.args.stop_after == 'bank2':
+            if self.args.stop_after in ('bank2', 'bank3', 'bank4'):
                 waypoints += [(-2496, 3504, 100), (-2496, 2944, 277.28308),
                               (-2440, 2240, 500), (-2360, 2816, 720),
                               (-2360, 3248, 756), (-2376, 3744, 760), (-2344, 3936, 948)]
+            if self.args.stop_after in ('bank3', 'bank4'):
+                waypoints += [(-2240, 3936, 990), (-2256, 3892, 960),
+                              (-2232, 3344, 1216), (-2128, 3168, 1272), (-1968, 3072, 1280)]
+            if self.args.stop_after == 'bank4':
+                waypoints += [(-2128, 3104, 1248), (-2150, 3020, 1248),
+                              (-2180, 2900, 1294), (-2216, 2832, 1328), (-2208, 2700, 1360),
+                              (-2208, 2464, 1472), (-2208, 2432, 1472),
+                              (-2168, 2256, 1520), (-2136, 2512, 1632)]
+            jumps = {
+                5: ((-2778, 3568, 37.2), dict(millis=150, wish=[1, 0])),
+                14: ((-2256, 3910, 960), dict(millis=150, wish=[0, -1])),
+                22: ((-2208, 2719, 1360), dict(millis=150, wish=[0, -1])),
+                24: ((-2208, 2450, 1472), dict(millis=150, wish=[0, -1])),
+            }
             for index, goal in enumerate(waypoints, 1):
                 if index <= (self.args.resume_index or 0):
                     continue
                 # The bank gap needs a running takeoff from the path, not a
                 # standing diagonal jump from the partner's waiting position.
-                self.go_pair(goal, jump=index == 5,
-                    takeoff=(-2778, 3568, 37.2) if index == 5 else None,
-                    runup=dict(millis=150, wish=[1, 0]) if index == 5 else None)
-                if index == 9:
-                    self.wait(20)
+                takeoff, runup = jumps.get(index, (None, None))
+                self.go_pair(goal, jump=index in jumps, takeoff=takeoff, runup=runup,
+                    together=index == 15)
+                if index == 14:
+                    # The original rock keeps falling after this scene. Leave
+                    # immediately; save the pair once both reach the next bank.
+                    continue
+                if index in (9, 16):
+                    self.wait(20 if index == 9 else 16)
                 self.save_checkpoint(f'bank-path{index}')
             self.save_checkpoint(self.args.stop_after)
         self.wait(1)
@@ -253,9 +371,9 @@ if __name__ == '__main__':
     parser.add_argument('--exe', type=Path, default=ROOT / 'target/release/looking-glass.exe')
     parser.add_argument('--data', type=Path, required=True)
     parser.add_argument('--first', choices=('blue', 'red'), default='blue')
-    parser.add_argument('--stop-after', choices=('entrance', 'bank1', 'bank2'), default='bank1')
+    parser.add_argument('--stop-after', choices=('entrance', 'bank1', 'bank2', 'bank3', 'bank4'), default='bank1')
     parser.add_argument('--checkpoint', type=Path)
-    parser.add_argument('--resume-index', type=int, choices=range(1, 12))
+    parser.add_argument('--resume-index', type=int, choices=range(1, 26))
     parser.add_argument('--local', action='store_true')
     parser.add_argument('--delay-ms', type=int, default=40)
     parser.add_argument('--jitter-ms', type=int, default=20)
@@ -264,6 +382,9 @@ if __name__ == '__main__':
         parser.error('Delay/jitter must be between 0 and 500 ms')
     if bool(args.checkpoint) != bool(args.resume_index):
         parser.error('Supply both the unchanged ordinary checkpoint and its completed waypoint index')
+    if args.resume_index and args.resume_index >= {'entrance': 0, 'bank1': 4,
+            'bank2': 11, 'bank3': 16, 'bank4': 25}[args.stop_after]:
+        parser.error('The resumed route must contain at least one unfinished waypoint')
     pair = PoolPair(args)
     try:
         pair.run()

@@ -708,12 +708,12 @@ fn slide(world: &World, mut position: Vec3, mut velocity: Vec3, dt: f32) -> (Vec
             normals.push(hit.normal);
         }
         let tangent_stall = hit.fraction <= 0.000001
-            && hit.normal.z.abs() < GROUND_Z
+            && hit.normal.z < GROUND_Z
             && velocity.dot(hit.normal).abs() < 0.01;
         velocity = constrain(velocity, &normals);
         // A tangent slide at large map coordinates can round back onto the
         // same plane on every sweep. Merely retaining the tangent velocity
-        // then pins Alice in mid-air while gravity accumulates indefinitely.
+        // then pins Alice against a wall or traps a swimmer under a ceiling.
         // Separate by one collision skin, only along the hit normal and only
         // when the entire tiny move and its endpoint are unobstructed.
         if tangent_stall && velocity.length_squared() > 0.0001 {
@@ -977,6 +977,30 @@ mod tests {
             if damaging {
                 assert!((880.0..910.0).contains(&p.landing_speed));
                 assert!((45.0..55.0).contains(&stats.sanity()));
+            }
+        }
+    }
+    #[test]
+    fn upward_push_keeps_sliding_along_a_shallow_ceiling() {
+        // A vertical current must still move a body along a sloping ceiling.
+        // Exercise translated copies: tangent sweeps lose precision far from zero.
+        let normal = vec3(-0.020757, 0.058921, -1.).normalize();
+        for x in [0., 1042.2766, 4096.] {
+            for y in [0., -2758.9866, -8192.] {
+                let origin = vec3(x, y, 314.);
+                let world = World::sloped_fixture(
+                    origin - vec3(1000., 1000., 100.),
+                    origin + vec3(1000., 1000., 1000.),
+                    crate::bsp::Plane {normal, distance:normal.dot(origin)},
+                );
+                let start = origin - vec3(0., 0., 60.);
+                let mut feet = start;
+                for _ in 0..120 {
+                    (feet, _) = slide(&world, feet, Vec3::Z * 178.88544, FIXED_DT);
+                    assert!(world.body_clear(feet), "Ceiling penetrated at {feet:?}");
+                }
+                assert!((feet-start).truncate().length() > 8.,
+                    "Upward push pinned body: start={start:?}, end={feet:?}");
             }
         }
     }

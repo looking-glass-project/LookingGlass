@@ -810,6 +810,12 @@ impl World {
         self.liquids.push((contents, hull));
     }
     #[cfg(test)]
+    pub fn sloped_fixture(min: Vec3, max: Vec3, plane: Plane) -> Self {
+        let mut world = Self::fixture(&[(min, max)]);
+        world.hulls[0].planes.push(plane);
+        world
+    }
+    #[cfg(test)]
     pub fn ramp_fixture() -> Self {
         let mut world = Self::fixture(&[(vec3(-200., -300., -1000.), vec3(500., 300., 1000.))]);
         world.hulls[0].planes.push(Plane {

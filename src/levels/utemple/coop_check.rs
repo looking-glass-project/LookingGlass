@@ -252,6 +252,9 @@ fn simultaneous_and_rollback(a:&mut Assets,map:&Bsp)->Result<()> {
     Ok(())
 }
 pub(super) fn check(assets: &mut Assets) -> Result<()> {
+    if let Some(path) = std::env::var_os("LOOKING_GLASS_TEMPLE_REPLAY_REPORT") {
+        return super::coop_route::replay_report(assets,std::path::Path::new(&path));
+    }
     let map=Bsp::parse(&assets.read("maps/utemple.bsp")?)?;
     air(assets,&map)?;
     crush(assets,&map)?;

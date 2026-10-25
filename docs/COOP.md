@@ -23,7 +23,10 @@ Thirteen native component cases pass for individual air, crushing, saved state
 and exit ownership. Four full paired swimming routes now pass in the production
 Arena, covering both leaders and watched/skipped endings. Both single-player
 swimming routes also pass. Separate internet clients and recovery/rejoin remain
-open for this visit.
+open for this visit. The first internet test found a ceiling movement stall;
+that fault is fixed and covered by a failing-before/passing-after regression.
+The repeat still fails near an earlier trap, so internet traversal is not yet
+credited. The automated fixture retains failed states without screenshots.
 
 ## Agreed behavior
 
@@ -4349,3 +4352,56 @@ and seven source-package tests. This is full traversal in one process. It does
 not yet prove delayed internet traversal, death recovery, shared checkpoint
 restoration or transition rejoin. Those remain required before completing the
 campaign row; total credit remains 42.1%.
+
+### Temple internet test and ceiling regression (2026-10-25)
+
+`tools/test_coop_utemple.py` runs two independent profiles through ordinary
+public Host/Join, with 40 ms delay and 20 ms jitter by default. Each client
+plans swimming input from its own received world. It checks personal air and
+shells, scene ownership, the frozen partner, survival, clear bodies and the
+garden transition. Tick-matched hashes now include native residents alongside
+players and shared machinery. The fixture needs no screenshots.
+
+The first run on `0e898b0` failed at temple node 81: an upward launch volume
+pinned Red against a shallow ceiling until she drowned. An offline replay of
+the captured body and world produced zero displacement for all seven steering
+directions, even though a nearby body sweep was clear. Host and guest matched
+1,440 authoritative ticks, including native residents, so this was a movement
+fault rather than a replicated-state disagreement. Evidence is
+`private/coop/temple-route-173be7fcd7394689be83b7a0f66ce620/`.
+
+The existing checked collision-skin separation now also handles tangent
+ceiling stalls. Walkable floor handling and the authored launch velocity stay
+unchanged. A synthetic regression fails before the fix and passes afterward at
+nine translated ceiling positions, checking displacement and collision clearance.
+The opt-in `LOOKING_GLASS_TEMPLE_REPLAY_REPORT` diagnostic replays the captured
+Red body through `--utemple-coop-check` without modifying a live game or save.
+Unset it to run the normal component suite.
+
+Fixed source `44335efa33445207fcd830f672cb8dc42f8697ae50b555e092bf920f4d2460bd`
+and executable SHA256
+`5052c307f16899a7105457fe701518336574d9426cbbdc05e7233a2edbf53a2c` pass:
+
+- The captured stall replay: all seven steering probes move over 11 units in
+  one second and remain clear every tick (`private/utemple-swim-replay-fixed.log`).
+- All 790 Rust tests, with one unrelated ignored test, and the locked release build.
+- All 13 paired component cases, the existing temple state checks and both
+  single-player swimming routes (`private/temple-44335ef--utemple*.log`).
+- All four full paired routes in Anode, with the same final health, ticks and
+  air margins as the preceding table (`private/temple-44335ef-native.log`).
+
+The public repeat on this build also fails. Red dies near the first falling
+spike at about tick 4026/node 30, with no drowning hits, while Blue stays at 100
+health. It ends before reaching the previously stuck ceiling, so it cannot
+establish a complete internet route. The retained run has 591 matching
+authoritative player/world/native-resident samples and no hash mismatches.
+Observed guest round-trip latency has a 228 ms median and 274 ms p95; a late
+host frame reaches 347 ms. The cause of this earlier death and the test swimmer's
+response to those timings remain to be investigated. Red-first was not run
+after the Blue-first failure. Evidence is
+`private/coop/temple-route-baa86d7d5b20435580efedaf32ebf638/` and
+`private/utemple-internet-44335ef-blue.log`.
+
+Internet traversal and recovery/rejoin remain required for campaign completion.
+The ceiling fix and repeatable network fixture are smaller completed milestones;
+the total remains 42.1%.

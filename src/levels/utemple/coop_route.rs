@@ -8,6 +8,26 @@ fn owner(arena: &Arena) -> &Temple {
     arena.stage.interactions.levels.iter().find_map(|s| s.ctl.downcast_ref::<Temple>()).unwrap()
 }
 
+impl Temple {
+    /// Read-only navigation for opt-in tests. Both native and separate-client
+    /// drivers use this goal and send ordinary swimming controls toward it.
+    pub(crate) fn test_swim_waypoint(&self, map: &Bsp, world: &World, player: &Player,
+        leading: bool) -> Result<Vec3> {
+        let mut hazards = self.motion.ahead(map,&self.saved,1.)?;
+        hazards.extend(self.motion.ahead(map,&self.saved,0.5)?);
+        hazards.extend(world.traversal.pushes.iter().filter(|p|p.enabled).map(|p|p.volume.clone()));
+        let target = if self.saved.guide.is_none() {
+            if leading { vec3(-88.,-5980.,1330.) } else { player.feet }
+        } else if self.saved.open && leading {
+            vec3(-2144.,3352.,488.)
+        } else {
+            let age = self.saved.clock - if leading {0.} else {1.};
+            self.data.shell_pose(self.turtle_pose(age),age.max(0.) as f32).translation-PLAYER_CENTER
+        };
+        Ok(super::swim_check::waypoint(world,player.feet,target,&hazards))
+    }
+}
+
 async fn route(assets: &mut Assets, first: PlayerId, skip: bool) -> Result<()> {
     let visit = Visit { epoch:1, map:"utemple".into(), entry:None,
         difficulty:Default::default(), combat_preview:false };
@@ -29,22 +49,9 @@ async fn route(assets: &mut Assets, first: PlayerId, skip: bool) -> Result<()> {
     for tick in 0..120*260 {
         let temple = owner(&arena);
         if tick%12 == 0 && !arena.stage.busy() {
-            let mut hazards = temple.motion.ahead(&scene.map,&temple.saved,1.)?;
-            hazards.extend(temple.motion.ahead(&scene.map,&temple.saved,0.5)?);
-            hazards.extend(scene.world.traversal.pushes.iter().filter(|p|p.enabled).map(|p|p.volume.clone()));
             for id in PlayerId::ALL {
                 let body = &roster.players[id.index()].player;
-                let target = if temple.saved.guide.is_none() {
-                    if id == first { vec3(-88.,-5980.,1330.) } else { body.feet }
-                } else if temple.saved.open && id == first {
-                    vec3(-2144.,3352.,488.)
-                } else {
-                    // Follow the same air trail a second apart. Each swimmer
-                    // still navigates independently around current/future traps.
-                    let age = temple.saved.clock - if id == first {0.} else {1.};
-                    temple.data.shell_pose(temple.turtle_pose(age),age.max(0.) as f32).translation-PLAYER_CENTER
-                };
-                goals[id.index()] = super::swim_check::waypoint(&scene.world,body.feet,target,&hazards);
+                goals[id.index()] = temple.test_swim_waypoint(&scene.map,&scene.world,body,id == first)?;
             }
         }
         let input = std::array::from_fn(|i| {
@@ -132,6 +139,35 @@ pub(super) async fn check(assets: &mut Assets) -> Result<()> {
     std::fs::create_dir_all(crate::preferences::path(""))?;
     for first in PlayerId::ALL {
         for skip in [false,true] { route(assets,first,skip).await?; }
+    }
+    Ok(())
+}
+
+/// Offline physics probe from an opt-in test report. No live game is modified.
+pub(super) fn replay_report(assets: &mut Assets, path: &std::path::Path) -> Result<()> {
+    let report: serde_json::Value = serde_json::from_slice(&std::fs::read(path)?)?;
+    let visit: Visit = serde_json::from_value(report["visit"].clone())?;
+    ensure!(visit.map == "utemple", "Swim replay requires a temple report");
+    let map = Bsp::parse(&assets.read("maps/utemple.bsp")?)?;
+    let mut world = World::from_bsp(&map)?;
+    let mut stage = crate::coop::stage::Stage::load(assets,&map,&mut world,&visit,false)?;
+    stage.restore(&serde_json::from_value(report["combat"]["stage"].clone())?,&map,&mut world)?;
+    let temple = stage.interactions.levels.iter().find_map(|s|s.ctl.downcast_ref::<Temple>()).unwrap();
+    let player: Player = serde_json::from_value(report["frame"]["players"][1]["player"].clone())?;
+    let goal = temple.test_swim_waypoint(&map,&world,&player,false)?;
+    let trace = world.body_trace(player.feet,goal);
+    println!("Replay {:?} -> {goal:?}, trace fraction={} solid={} normal={:?}, velocity={:?}",
+        player.feet,trace.fraction,trace.start_solid,trace.normal,player.velocity);
+    let toward = (goal-player.feet).normalize_or_zero();
+    for direction in [toward,Vec3::X,Vec3::NEG_X,Vec3::Y,Vec3::NEG_Y,Vec3::Z,Vec3::NEG_Z] {
+        let mut probe = player.clone();
+        for _ in 0..120 {
+            probe.tick(&world,Controls {swim:direction,run:true,..Default::default()});
+            ensure!(world.body_clear(probe.feet), "Replay swimmer penetrated a surface");
+        }
+        println!("Replay swim {direction:?}: displacement {:?}, clear={}, velocity={:?}",
+            probe.feet-player.feet,world.body_clear(probe.feet),probe.velocity);
+        ensure!(probe.feet.distance(player.feet) > 1., "Replay swimmer remains pinned");
     }
     Ok(())
 }

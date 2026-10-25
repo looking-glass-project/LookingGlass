@@ -35,6 +35,9 @@ struct Command {
     watch_dialogue: bool,
     #[serde(default)]
     beyond_step: Option<usize>,
+    /// Opt-in swimming fixture: identifies the first arrival, not a state write.
+    #[serde(default)]
+    temple_follow: Option<PlayerId>,
     /// Test controller's estimate of observation plus input delivery delay.
     /// Only anticipates steering; it never changes the received body or physics.
     #[serde(default)]
@@ -100,6 +103,12 @@ impl Command {
             ensure!((1..=15).contains(&step) && self.goal.is_none() && self.marker.is_none()
                 && self.rope.is_none() && self.use_aim.is_none() && !self.navigate && !self.run && !self.jump,
                 "Invalid moving-step command");
+        }
+        if self.temple_follow.is_some() {
+            ensure!(self.goal.is_none() && self.marker.is_none() && self.rope.is_none()
+                && self.use_aim.is_none() && self.beyond_step.is_none() && self.speed_limit.is_none()
+                && !self.navigate && !self.attack && !self.run && !self.jump && !self.checkpoint && !self.finish,
+                "Temple swimming requires its own neutral route command");
         }
         ensure!(!self.checkpoint || (self.goal.is_none() && self.marker.is_none()
             && self.rope.is_none() && self.use_aim.is_none() && self.beyond_step.is_none()
@@ -207,6 +216,8 @@ pub struct NetworkState {
     /// Includes shared movers, quest progress and scene state at this exact
     /// sent/restored tick, independent of local diagnostic report timing.
     world_sha256: String,
+    /// Native residents are separate from the registered encounter controllers.
+    native_sha256: String,
 }
 #[derive(Serialize)]
 pub struct EnemyReport<S> {
@@ -383,6 +394,7 @@ pub struct Driver {
     rope_used: bool,
     control_used: bool,
     step_height: Option<f32>,
+    swim_goal: Option<(u64, Vec3)>,
     location: Option<(u64, u64, u64)>,
     pub report: Report,
 }
@@ -397,9 +409,11 @@ impl Driver {
         let bytes = serde_json::to_vec(&(frame.epoch, frame.tick, frame.checkpoint_generation,
             &frame.players, &frame.lives, enemies))?;
         let world = serde_json::to_vec(&(frame.epoch, frame.tick, arena.stage.snapshot()))?;
+        let native = serde_json::to_vec(&(frame.epoch, frame.tick, arena.npcs.snapshot()))?;
         states.push_back(NetworkState { epoch:frame.epoch, tick:frame.tick,
             sha256:format!("{:x}",Sha256::digest(bytes)),
-            world_sha256:format!("{:x}",Sha256::digest(world)) });
+            world_sha256:format!("{:x}",Sha256::digest(world)),
+            native_sha256:format!("{:x}",Sha256::digest(native)) });
         while states.len() > 64 { states.pop_front(); }
         Ok(())
     }
@@ -410,7 +424,7 @@ impl Driver {
             worker: None, plan: VecDeque::new(), walking_plan:false, step_tick: 0, step_at: now,
             walking_progress:WalkingProgress::new(Vec3::ZERO,now),
             navigation_clock:NavigationClock::new(now), jumped: false, rope_used: false,
-            control_used: false, step_height: None, location: None, report: Report::default() }
+            control_used: false, step_height: None, swim_goal: None, location: None, report: Report::default() }
     }
     pub fn poll(&mut self, now: Instant) {
         if now.duration_since(self.polled) < Duration::from_millis(50) { return; }
@@ -430,6 +444,7 @@ impl Driver {
                     self.plan.clear(); self.jumped = false; self.rope_used = false; self.location = None;
                     self.control_used = false;
                     self.step_height = None;
+                    self.swim_goal = None;
                     self.report.error = None;
                 }
                 self.report.command = Some(command.id);
@@ -532,6 +547,7 @@ impl Driver {
         let location = (frame.epoch, body.warped_at, body.spawned_at);
         if self.location != Some(location) {
             self.plan.clear(); self.jumped = false; self.location = Some(location);
+            self.swim_goal = None;
             self.step_tick = frame.tick; self.step_at = now;
             self.navigation_clock = NavigationClock::new(now);
         }
@@ -580,6 +596,29 @@ impl Driver {
         }
         if arena.stage.busy() {
             self.plan.clear(); self.jumped = false; self.report.phase = "scene";
+            return;
+        }
+        if let Some(first) = command.temple_follow {
+            let Some(temple) = arena.stage.interactions.levels.iter()
+                .find_map(|s|s.ctl.downcast_ref::<crate::levels::utemple::Temple>()) else {
+                self.report.error = Some("Temple swim command used outside the temple".into()); return;
+            };
+            if self.swim_goal.is_none_or(|(tick,_)| frame.tick.saturating_sub(tick) >= 12) {
+                match temple.test_swim_waypoint(map,world,&body.player,local == first) {
+                    Ok(goal) => self.swim_goal = Some((frame.tick,goal)),
+                    Err(error) => { self.report.error = Some(error.to_string()); return; }
+                }
+            }
+            let goal = self.swim_goal.unwrap().1;
+            let offset = goal-body.player.feet-body.player.velocity*command.input_lead;
+            keys.swim = offset.normalize_or_zero()*(offset.length()/30.).min(1.);
+            keys.run = true;
+            if keys.swim.length_squared() > 0.01 {
+                keys.yaw = keys.swim.y.atan2(keys.swim.x);
+                keys.pitch = (keys.swim.z/keys.swim.length()).asin().clamp(-1.56,1.56);
+            }
+            self.report.expected = Some(goal);
+            self.report.phase = "following temple guide";
             return;
         }
         if let Some(aim) = command.use_aim {
@@ -1180,7 +1219,7 @@ mod tests {
         let old:Command=serde_json::from_value(base.clone()).unwrap(); assert!(old.validate().is_ok());
         assert!(old.rope.is_none() && old.marker.is_none() && !old.horizontal && !old.run && !old.jump);
         assert!(old.use_aim.is_none() && !old.watch_dialogue && old.beyond_step.is_none());
-        assert!(old.speed_limit.is_none() && !old.prefer_cards);
+        assert!(old.speed_limit.is_none() && !old.prefer_cards && old.temple_follow.is_none());
         assert_eq!(old.arrival_radius,8.);
         for radius in [0.99,8.01] {
             let mut input=base.clone(); input["arrival_radius"]=radius.into();
@@ -1218,5 +1257,22 @@ mod tests {
         }
         let mut input=base; input["goal"]=serde_json::json!([1,2,3]); input["marker"]=serde_json::json!(598);
         assert!(serde_json::from_value::<Command>(input).unwrap().validate().is_err());
+    }
+    #[test]
+    fn temple_swimming_cannot_be_combined_with_other_route_actions() {
+        let base=serde_json::json!({"id":1,"heartbeat":1,"epoch":1,"goal":null,
+            "navigate":false,"attack":false,"capture":false,"finish":false});
+        for first in ["Blue","Red"] {
+            let mut swim=base.clone(); swim["temple_follow"]=first.into();
+            assert!(serde_json::from_value::<Command>(swim.clone()).unwrap().validate().is_ok());
+            for (field,value) in [("goal",serde_json::json!([0,0,0])),("marker",1.into()),
+                ("attack",true.into()),("navigate",true.into()),("checkpoint",true.into()),
+                ("finish",true.into()),("beyond_step",1.into()),("speed_limit",80.into())] {
+                let mut invalid=swim.clone(); invalid[field]=value;
+                assert!(serde_json::from_value::<Command>(invalid).unwrap().validate().is_err());
+            }
+        }
+        let mut invalid=base; invalid["temple_follow"]="Green".into();
+        assert!(serde_json::from_value::<Command>(invalid).is_err());
     }
 }

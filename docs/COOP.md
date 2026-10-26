@@ -88,9 +88,23 @@ healing stations and slide protection, and shared defeat/spike/mushroom timing.
 **28 staged native cases pass** on source `993d722`, including both scene owners,
 watched/skipped intro reunion, saved grabs and progression through the original
 mushroom exit. All 810 active unit tests pass. This adds 0.25 combat and 0.25 shared
-progression points, bringing the estimate to **44.6%**. Full paired traversal,
-production Arena integration, independent internet clients, rendered effects and
-recovery/rejoin remain open. See [Sanctum details](CENTIPEDE2.md).
+progression points, bringing the estimate to **44.6%**. Independent internet
+clients, broader rendered effects and rejoin remain open.
+Ten focused production Arena checks now pass on source `ead0be3`: both grab
+victims, funded weapon hits, personal acid damage, native acid-death/spectator/
+1,200-tick revival and a paired checkpoint wipe. Thirty guest snapshots match
+exactly; both actual particle passes emit 8,287 batches with zero drops. This
+verifies the existing adapter credit and leaves the estimate at **44.6%**.
+All **4/4 ordinary-input native paired routes now pass** on source `0edf86a`,
+with either leader and watched/skipped intro, six funded boss hits, both alive,
+correct exit ownership and the real next-level arrival. This run exposed and
+fixed overlap between simultaneous ledge pull-ups: the approaching climber now
+waits with a valid path/pose until their partner clears it. The follower takes
+a later climbing fall but survives and travels onward through the first-arrival
+scene/level handoff. All 812 active unit tests and the repeated 28 component/ten
+Arena cases pass. Internet/rejoin testing is still required; no campaign row or
+additional percentage credit is claimed for this local route milestone.
+See [Sanctum details](CENTIPEDE2.md).
 
 The overall percentage is a weighted estimate, not elapsed time or a live build
 indicator. An earlier Garden build passed 4/4 native paired routes. After adding

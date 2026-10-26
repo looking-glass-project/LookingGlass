@@ -9,7 +9,7 @@ fn combat(o: &mut Centipede, w: &World, p: &mut Pair, dt: f32) -> Feedback {
 fn advance(o: &mut Centipede, map: &Bsp, w: &mut World, p: &mut Pair, dt: f32) -> Result<()> {
     o.coop_advance_roster(dt,map,w,&mut p.each_mut().map(|(player,stats)|CoopPlayer{player,stats}),&[])
 }
-fn fixture(a: &mut Assets, map: &Bsp) -> Result<(Centipede,World,Pair)> {
+pub(super) fn fixture(a: &mut Assets, map: &Bsp) -> Result<(Centipede,World,Pair)> {
     let mut o=Centipede::load(a,map)?;o.phase(Phase::Fight);o.rebuild(map)?;
     let mut w=World::from_bsp(map)?;w.set_dynamic(o.colliders());
     let origin=o.saved.battle.pose.translation;

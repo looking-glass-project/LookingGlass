@@ -1,9 +1,11 @@
 //! Centipede arena: animation-driven weak point, three combat stages and mushroom departure.
 mod art;
+mod arena_check;
 mod battle;
 mod check;
 mod coop;
 mod coop_check;
+mod coop_route;
 pub(crate) use check::drive as drive_route;
 mod data;
 mod saves;
@@ -492,6 +494,16 @@ pub static REGISTRATION: super::Registration = super::Registration {
         BeatSpec::linear("centipede2", TALK2, "centipede2_cinematics", TALK2, 1),
     ],
     checks: &[
+        super::Check {
+            flag: "--centipede2-coop-route-check",
+            help: "Play the paired Sanctum boss and climbing route with ordinary controls.",
+            run: super::Run::Windowed(coop_route::check),
+        },
+        super::Check {
+            flag: "--centipede2-coop-arena-check",
+            help: "Verify paired Sanctum controls, attacks, recovery and rendered guest effects.",
+            run: super::Run::Windowed(arena_check::check),
+        },
         super::Check {
             flag: "--centipede2-coop-check",
             help: "Verify paired Centipede combat, personal pickups and scene handoffs.",

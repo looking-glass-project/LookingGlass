@@ -1982,7 +1982,16 @@ original ambush ownership/reunion. It shares the existing controller and hit IDs
 full paired traversal and independent-client networking require separate proof.
 
 Centipede's Sanctum additionally reserves `--centipede2-coop-check` for native
-paired boss targeting, personal attacks/grabs/healing and original scene handoffs.
+paired boss targeting, personal attacks/grabs/healing and original scene handoffs,
+and `--centipede2-coop-arena-check` for the production two-player controls,
+attacks, recovery and rendered guest-state checks.
+`--centipede2-coop-route-check` reserves the complete paired ordinary-input route
+with either climbing leader and watched/skipped arrival. Failure recordings are
+private diagnostics; a registered command does not establish a passing route.
+Source `0edf86a` now passes all four native paired routes after fixing simultaneous
+ledge pull-up contact, with both players alive at the actual next-level arrival.
+The follower survives a later climb fall and uses the first-arrival scene/level
+handoff. Independent internet traversal/rejoin remains open; see `CENTIPEDE2.md`.
 It shares the existing boss stages and hit IDs. Staged checks do not establish
 full paired traversal or independent-client networking.
 

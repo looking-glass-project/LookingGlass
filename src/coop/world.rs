@@ -164,7 +164,8 @@ impl Roster {
     /// A boss hold locks only its captured actor; personal clocks still advance.
     pub fn move_players_with_locks(&mut self, world: &World, inputs: [(Controls, Input); 2], locked: [bool; 2]) {
         self.tick += 1;
-        let previous = self.players.each_ref().map(|body| body.player.feet);
+        let previous_players = self.players.each_ref().map(|body| body.player.clone());
+        let previous = previous_players.each_ref().map(|player| player.feet);
         for ((body, (controls, look)), locked) in self.players.iter_mut().zip(inputs).zip(locked) {
             if !body.stats.alive() {
                 continue;
@@ -186,6 +187,7 @@ impl Roster {
                 body.stats.damage(10000.);
             }
         }
+        super::separation::wait_for_climbers(world, &mut self.players, &previous_players);
         super::separation::resolve(world, &mut self.players, previous);
     }
     #[cfg(test)]

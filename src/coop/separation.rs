@@ -67,11 +67,7 @@ fn contact_position(world: &World, body: &Body, to: Vec3) -> Option<Vec3> {
     clear(world, body, raised).then_some(raised)
 }
 
-pub fn resolve(world: &World, bodies: &mut [Body; 2], previous: [Vec3; 2]) {
-    if bodies.iter().any(|b| !b.stats.alive()) { return; }
-    let end = bodies.each_ref().map(|b| b.player.feet);
-    let start = previous[0] - previous[1];
-    let finish = end[0] - end[1];
+fn contact(start: Vec3, finish: Vec3) -> Option<(f32, Vec3)> {
     let delta = finish - start;
     let xy = start.truncate();
     let travel = delta.truncate();
@@ -81,11 +77,11 @@ pub fn resolve(world: &World, bodies: &mut [Body; 2], previous: [Vec3; 2]) {
     let b = xy.dot(travel);
     let c = xy.length_squared() - DISTANCE * DISTANCE;
     let (enter, leave) = if a < 0.000001 {
-        if c >= 0. { return; }
+        if c >= 0. { return None; }
         (0., 1.)
     } else {
         let discriminant = b*b - a*c;
-        if discriminant < 0. { return; }
+        if discriminant < 0. { return None; }
         (((-b-discriminant.sqrt())/a).max(0.),
          ((-b+discriminant.sqrt())/a).min(1.))
     };
@@ -94,7 +90,7 @@ pub fn resolve(world: &World, bodies: &mut [Body; 2], previous: [Vec3; 2]) {
     // at the first horizontal contact (which would miss that entire tick).
     let half_height = PLAYER_HALF.z * 2.;
     let (below, above) = if delta.z.abs() < 0.000001 {
-        if start.z.abs() >= half_height { return; }
+        if start.z.abs() >= half_height { return None; }
         (0., 1.)
     } else {
         let t0 = (-half_height-start.z)/delta.z;
@@ -102,7 +98,46 @@ pub fn resolve(world: &World, bodies: &mut [Body; 2], previous: [Vec3; 2]) {
         (t0.min(t1).max(0.), t0.max(t1).min(1.))
     };
     let contact = enter.max(below);
-    if contact >= leave.min(above) { return; }
+    if contact >= leave.min(above) { return None; }
+    let normal = (xy + travel * contact).try_normalize()
+        .or_else(|| xy.try_normalize()).unwrap_or(Vec2::X);
+    let vertical = below >= enter && start.z.abs() >= half_height;
+    Some((contact, if vertical { Vec3::Z * start.z.signum() } else { normal.extend(0.) }))
+}
+
+/// A checked pull-up cannot be pushed sideways off its authored path. Pause
+/// only the approaching climber, including its path clock, until room clears.
+pub fn wait_for_climbers(world: &World, bodies: &mut [Body; 2], previous: &[crate::movement::Player; 2]) {
+    if bodies.iter().any(|b| !b.stats.alive()) { return; }
+    let start = previous[0].feet - previous[1].feet;
+    for _ in 0..2 {
+        let end = bodies.each_ref().map(|b| b.player.feet);
+        let Some((_, normal)) = contact(start, end[0] - end[1]) else { break; };
+        let mut changed = false;
+        for index in 0..2 {
+            let p = &mut bodies[index].player;
+            let old = &previous[index];
+            let guided = p.ledge.is_some() || p.climbing()
+                || p.grounded && (old.ledge.is_some() || old.climbing());
+            let outward = if index == 0 { normal } else { -normal };
+            if !guided || (p.feet - old.feet).dot(outward) >= -0.000001 { continue; }
+            let trace = world.body_trace(p.feet, old.feet);
+            if trace.start_solid || trace.fraction < 1. || !world.body_clear(old.feet) { continue; }
+            p.wait_at_climb_contact(old);
+            changed = true;
+        }
+        if !changed { break; }
+    }
+}
+
+pub fn resolve(world: &World, bodies: &mut [Body; 2], previous: [Vec3; 2]) {
+    if bodies.iter().any(|b| !b.stats.alive()) { return; }
+    let end = bodies.each_ref().map(|b| b.player.feet);
+    let start = previous[0] - previous[1];
+    let finish = end[0] - end[1];
+    let Some((contact, _)) = contact(start, finish) else { return; };
+    let xy = start.truncate();
+    let travel = (finish - start).truncate();
     let normal = (xy + travel * contact).try_normalize()
         .or_else(|| xy.try_normalize()).unwrap_or(Vec2::X);
     let penetration = DISTANCE - finish.truncate().dot(normal);
@@ -144,7 +179,7 @@ pub fn resolve(world: &World, bodies: &mut [Body; 2], previous: [Vec3; 2]) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{inventory::Stats, movement::{Controls, Player, EYE_HEIGHT}, coop::world::Roster};
+    use crate::{inventory::Stats, movement::{Controls, Player, EYE_HEIGHT, FIXED_DT}, coop::world::Roster};
     fn rope_body(feet: Vec3, length: f32, velocity: Vec3) -> Body {
         let mut player = Player::new(feet);
         player.rope = Some(crate::movement::RopeGrip { id:crate::entity::Id(353), length, rise:0. });
@@ -261,6 +296,73 @@ mod tests {
         let mut r = Roster::new(world, feet[0]+Vec3::Z*EYE_HEIGHT,0.,Stats::default()).unwrap();
         for (body,at) in r.players.iter_mut().zip(feet) { body.player = Player::spawn(world,at+Vec3::Z*EYE_HEIGHT).unwrap(); }
         r
+    }
+    #[test]
+    fn following_pull_up_waits_then_finishes_in_either_player_slot() {
+        let world = World::fixture(&[
+            (vec3(-3200.,3900.,2700.),vec3(-2000.,4300.,2800.)),
+            (vec3(-2820.,3900.,2800.),vec3(-2000.,4300.,2960.)),
+        ]);
+        for leader in 0..2 { for touching in [false,true] {
+            let mut r = pair(&world,[vec3(-3000.,4000.,2800.04),vec3(-3100.,4000.,2800.04)]);
+            for i in 0..2 {
+                let leading = i == leader;
+                let y = if leading {4083.7578125} else {4073.809814453125};
+                let feet = if leading {vec3(if touching {-2808.942626953125} else {-2809.146728515625},y,2960.15625)}
+                    else {vec3(-2835.03125,y,if touching {2904.15625} else {2903.917724609375})};
+                let p = &mut r.players[i].player;
+                *p = Player::new(feet);
+                p.ledge = Some(serde_json::from_value(serde_json::json!({
+                    "start":[-2835.03125,y,2899.15625],"top":2960.03125,"forward":[1.,0.],
+                    "elapsed":(if leading {2.2000010013580322} else {0.25000008940696716})-if touching {0.} else {FIXED_DT},
+                    "pulling":true,"side":0.,"forward_held":true
+                })).unwrap());
+                p.validate_world(&world).unwrap();
+            }
+            let mut waits = 0;
+            for _ in 0..360 {
+                let old = r.players[1-leader].player.feet;
+                r.move_players(&world,[(Controls{wish:Vec2::X,jump:true,run:true,..Default::default()},Default::default());2]);
+                if r.players[1-leader].player.feet == old {waits+=1;}
+                assert!(separate(&r.players),"Climbers overlap: {:?}",r.players.each_ref().map(|b|b.player.feet));
+                for b in &r.players {b.player.validate_save().unwrap();b.player.validate_world(&world).unwrap();}
+            }
+            assert!(waits>0,"Follower never waited");
+            assert!(r.players.iter().all(|b|b.player.ledge.is_none() && b.player.climbs==1));
+        }}
+    }
+    #[test]
+    fn low_climb_waits_without_shoving_then_resumes_when_partner_moves_or_dies() {
+        let world = World::fixture(&[
+            (vec3(-500.,-500.,-100.),vec3(500.,500.,0.)),
+            (vec3(50.,-100.,0.),vec3(500.,100.,64.)),
+        ]);
+        for moving in 0..2 { for dies in [false,true] {
+            let mut r = pair(&world,[vec3(34.,0.,0.04),vec3(92.,0.,64.04)]);
+            if moving==1 {r.players.swap(0,1);}
+            r.move_players(&world,Default::default());
+            let stationary = r.players[1-moving].player.feet;
+            let mut inputs = [(Controls::default(),Default::default());2];
+            inputs[moving].0 = Controls{wish:Vec2::X,jump:true,..Default::default()};
+            for _ in 0..180 {
+                r.move_players(&world,inputs);
+                assert!(separate(&r.players));
+                assert_eq!(r.players[1-moving].player.feet,stationary);
+                r.players[moving].player.validate_world(&world).unwrap();
+            }
+            assert!(r.players[moving].player.climbing());
+            // A saved wait must retain a valid path clock and be resumable.
+            r.players[moving].player=serde_json::from_value(serde_json::to_value(&r.players[moving].player).unwrap()).unwrap();
+            if dies {r.players[1-moving].stats.damage(10000.);}
+            else {inputs[1-moving].0.wish=Vec2::X;}
+            inputs[moving].0.jump=false;
+            for _ in 0..120 {
+                r.move_players(&world,inputs);
+                if !dies {assert!(separate(&r.players));}
+            }
+            assert!(!r.players[moving].player.climbing());
+            assert!(r.players[moving].player.feet.x>76.);
+        }}
     }
     #[test]
     fn approaching_either_player_stops_without_pushing_the_partner_and_can_slide_away() {

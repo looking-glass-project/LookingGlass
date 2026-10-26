@@ -578,6 +578,25 @@ impl Player {
     pub fn climbing(&self) -> bool {
         self.climb.is_some()
     }
+    /// Keep a co-op climb's path and pose together while another body blocks
+    /// it. Breath, damage and other personal timers have still advanced a tick.
+    pub(crate) fn wait_at_climb_contact(&mut self, previous: &Self) {
+        self.feet = previous.feet;
+        self.velocity = previous.velocity;
+        self.grounded = previous.grounded;
+        self.ground_normal = previous.ground_normal;
+        self.ledge = previous.ledge.clone();
+        self.ledge_cooldown = previous.ledge_cooldown;
+        self.climb = previous.climb.clone();
+        self.climbs = previous.climbs;
+        self.climb_height = previous.climb_height;
+        self.climb_direction = previous.climb_direction;
+        self.jumps = previous.jumps;
+        self.landings = previous.landings;
+        self.landing_speed = previous.landing_speed;
+        self.swimming = previous.swimming;
+        self.immersion = previous.immersion;
+    }
     pub fn climb_progress(&self) -> Option<f32> {
         self.climb
             .as_ref()

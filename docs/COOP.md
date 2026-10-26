@@ -22,11 +22,12 @@ Dry Landing/Garden now has 21 passing native component cases for personal arriva
 resources, scene ownership/reunion, paired lily supports at three update rates,
 obstructed/dead riders, independent clocks and saved bridge timing. Full paired
 traversal, combat, recovery and internet transition/rejoin remain open.
-The ordinary-input route now recovers a lost first-rope grip, completes the
-Rabbit scene/reunion and crosses the later bank obstacle with both players.
-Settling the later grip before its timed swing lets both survive through step
-127. A launcher/landing failure remains; these are partial milestones, not a
-completed visit. The single-player automated course also fails at that launcher.
+The ordinary-input route now completes Garden and loads Garden2 with both players
+alive in three variants: either leader with watched scenes, and Red leading with
+skipped scenes. Personal resources carry over exactly and arrivals are clear and
+separate. Blue leading with skipped scenes still stalls during combat at step 62.
+These are single-process paired routes; internet traversal and recovery remain
+open. The separate single-player automated course still fails at its launcher.
 
 The underwater temple now advances its guide and machinery for both swimmers.
 Thirteen native component cases pass for individual air, crushing, saved state
@@ -4800,3 +4801,61 @@ Evidence: `private/garden1-coop-route-c0f1211.log`,
 `private/garden1-sp-launch-samples.log`. The final build passes 796 active unit
 tests (one ignored) and the locked release build. Full paired and single-player
 route failures remain recorded; overall credit stays **42.1%**.
+
+### Garden launcher, rope landing and three complete paired routes
+
+The paired course now has its own authored control file, `coop_steps.json`.
+Relative to the single-player course, it clears a larger area before the
+launcher, approaches the first mushroom at its trigger centre, steers farther
+onto the second landing, explicitly pulls up and slows over the final rope
+landing. These change test inputs only. Gameplay movement, enemies, resources
+and the single-player control file are unchanged.
+
+Sparse flight logs and exact launch/release captures distinguish steering,
+combat knockback and collision. The second launch originally stopped short of
+its ledge; a farther inland approach catches it. A single-player replay of an
+earned hanging state then showed an enemy hit interrupting the pull-up. Clearing
+that enemy before crossing resolves the interruption. A comparison using the
+older fixture also defeats the enemy with the larger clear radius: the separate
+aim-tracking adjustment is not established as the cause of this improvement.
+The fixture preserves pitch and continues target observation during locked
+weapon animations while holding traversal controls neutral.
+
+The later rope trace showed full-speed steering overshooting the platform
+before Alice descended onto it. A proportional hold at the landing point fixes
+that crossing using ordinary controls. Build
+`3327b3911b5f3e013566702e0f41e559fc3447d04bb906fad4ae9d8f2308e604`
+with the exact saved course completes:
+
+| First player | Scenes | Ticks | Matching replica samples | Final Blue/Red Sanity |
+| --- | --- | ---: | ---: | --- |
+| Blue | Watched | 31,263 | 53 | 47.735 / 8.223 |
+| Red | Watched | 30,071 | 51 | 95.000 / 41.897 |
+| Red | Skipped | 23,445 | 40 | 97.914 / 95.000 |
+
+Each pass requires the authored exit, two scene reunions, no death/recovery or
+unexpected warp, a real Garden2 load, exact personal-resource carry-over and
+clear arrivals at least 36 units apart. Blue-led skipped scenes still stall at
+step 62's combat clear. Both players remain alive; the nearby corporal retains
+49 health. This is a recorded failure, not a passing four-case suite.
+
+Evidence: `private/garden1-coop-route-3327b39-ropehold.log`,
+`private/garden1-coop-route-3327b39-red-ropehold.log`, their isolated profiles,
+`private/garden1-coop-route-3327b39-clear.log` (overshoot trace), and
+`private/garden1-coop-route-4476ea3-clear-control.log` (comparison).
+The diagnostic build passes 796 active unit tests, one ignored test, the locked
+release build and seven package tests. No screenshots were used. These three
+routes do not complete the combined campaign verification row; total remains
+**42.1%**, with this explicit intermediate milestone reported alongside it.
+
+Final default-course build
+`fe62901dbae493398c607c62183445d3eeda758a7093cd35fce844f2e13e5a1f`
+repeats all three passes with the same ticks, sample counts and resources. Its
+Blue-led skipped case repeats the same step-62 failure. Logs are
+`private/garden1-coop-route-fe62901-blue.log` and
+`private/garden1-coop-route-fe62901-red.log`; both profiles' saved courses match
+`coop_steps.json` exactly. Run `--garden1-coop-route-check` with
+`LOOKING_GLASS_GARDEN_COOP_FIRST=Blue` or `Red` to select the leader; each selector
+runs watched then skipped scenes and stops on the first failure. No route-file
+override is needed. The final build passes all 796 active unit tests (one ignored),
+the locked release build, seven package tests and the 812-file worktree audit.

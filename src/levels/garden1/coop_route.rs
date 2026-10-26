@@ -56,13 +56,10 @@ impl Driver {
         let mut control = Controls::default();
         let mut input = Input {
             yaw: body.yaw,
+            pitch: body.pitch,
             ..Default::default()
         };
-        // Do not consume a timed jump while the production weapon animation
-        // will discard movement. Let the action finish using neutral controls.
-        if arena.characters[id.index()].attack_movement_locked() {
-            return Ok((control, input));
-        }
+        let movement_locked = arena.characters[id.index()].attack_movement_locked();
         let targets = arena.npcs.targets();
         self.fight.observe(&targets, FIXED_DT);
         let context = crate::combat::Context {
@@ -79,13 +76,21 @@ impl Driver {
                 && body.stats.will() >= fight::CARD_COST,
         );
         if attack.target.is_some() && p.rope.is_none() {
-            input.weapon = Some(attack.weapon as u8);
-            input.primary = !attack.alternate;
-            input.alternate = attack.alternate;
+            if !movement_locked {
+                input.weapon = Some(attack.weapon as u8);
+                input.primary = !attack.alternate;
+                input.alternate = attack.alternate;
+            }
             input.yaw = attack.aim.y.atan2(attack.aim.x);
             input.pitch = attack.aim.z.asin().clamp(-1.56, 1.56);
             self.fight.weapon = attack.weapon;
             self.fight.last_aim = attack.aim;
+        }
+        // Keep tracking the target until the projectile actually leaves Alice's
+        // hand. Resetting pitch during the wind-up makes elevated shots miss.
+        // Movement stays neutral and timed traversal inputs are not consumed.
+        if movement_locked {
+            return Ok((control, input));
         }
         loop {
             let Some(step) = steps.get(self.index) else {
@@ -238,6 +243,18 @@ fn garden(arena: &Arena) -> &Garden {
         .find_map(|s| s.ctl.downcast_ref::<Garden>())
         .unwrap()
 }
+fn report(
+    arena: &Arena,
+    roster: &Roster,
+    drivers: &[Driver; 2],
+    first: PlayerId,
+    skip: bool,
+    samples: usize,
+) -> serde_json::Value {
+    serde_json::json!({"build":env!("LOOKING_GLASS_BUILD"),"first":first,"skip":skip,"samples":samples,
+        "steps":drivers.each_ref().map(|d|d.index),"step_ticks":drivers.each_ref().map(|d|d.ticks),
+        "cards":drivers.each_ref().map(|d|d.cards),"frame":roster.frame(1,0),"world":arena.snapshot()})
+}
 fn record(
     arena: &Arena,
     roster: &Roster,
@@ -246,12 +263,9 @@ fn record(
     skip: bool,
     samples: usize,
 ) -> Result<()> {
-    let proof = serde_json::json!({"build":env!("LOOKING_GLASS_BUILD"),"first":first,"skip":skip,"samples":samples,
-        "steps":drivers.each_ref().map(|d|d.index),"step_ticks":drivers.each_ref().map(|d|d.ticks),
-        "frame":roster.frame(1,0),"world":arena.snapshot()});
     std::fs::write(
         crate::preferences::path(&format!("garden1-{first:?}-{skip}-route.json")),
-        serde_json::to_vec(&proof)?,
+        serde_json::to_vec(&report(arena, roster, drivers, first, skip, samples))?,
     )?;
     Ok(())
 }
@@ -281,7 +295,7 @@ async fn route(a: &mut Assets, first: PlayerId, skip: bool) -> Result<()> {
     let course = if let Ok(path) = std::env::var("LOOKING_GLASS_GARDEN_COOP_ROUTE") {
         std::fs::read(path).context("Cannot read Garden co-op test course")?
     } else {
-        include_bytes!("route_steps.json").to_vec()
+        include_bytes!("coop_steps.json").to_vec()
     };
     let steps: Vec<Step> = serde_json::from_slice(&course)?;
     ensure!(
@@ -303,7 +317,9 @@ async fn route(a: &mut Assets, first: PlayerId, skip: bool) -> Result<()> {
     let mut rabbit_seen = false;
     let mut reunions = 0;
     let mut close_recorded = false;
+    let mut flight_ticks = [0; 2];
     for tick in 0..120 * 1200 {
+        let indices_before = drivers.each_ref().map(|d| d.index);
         let owner_before = arena.stage.owner;
         let feet_before = roster.players.each_ref().map(|b| b.player.feet);
         let warps_before = roster.players.each_ref().map(|b| b.warped_at);
@@ -353,7 +369,42 @@ async fn route(a: &mut Assets, first: PlayerId, skip: bool) -> Result<()> {
         };
         arena.step(&mut roster, &scene.map, &mut scene.world, inputs)?;
         for id in PlayerId::ALL {
+            for step in indices_before[id.index()]..drivers[id.index()].index {
+                if let Some(s) = steps
+                    .get(step)
+                    .filter(|s| matches!(s.mode.as_str(), "launch" | "release"))
+                {
+                    flight_ticks[id.index()] = 360;
+                    // The captured driver counters and bodies both include the
+                    // first input tick after the launch/release step completed.
+                    std::fs::write(
+                        crate::preferences::path(&format!(
+                            "garden1-{first:?}-{skip}-{id:?}-{}-{step}.json", s.mode
+                        )),
+                        serde_json::to_vec(&report(
+                            &arena, &roster, &drivers, first, skip, samples,
+                        ))?,
+                    )?;
+                }
+            }
             let body = &roster.players[id.index()];
+            if flight_ticks[id.index()] > 0 {
+                flight_ticks[id.index()] -= 1;
+                if flight_ticks[id.index()] % 10 == 0 {
+                    let p = &body.player;
+                    let control = inputs[id.index()].0;
+                    println!(
+                        "Garden flight {}",
+                        serde_json::json!({
+                            "id": id, "tick": roster.tick, "step": drivers[id.index()].index,
+                            "feet": p.feet, "velocity": p.velocity, "grounded": p.grounded,
+                            "ledge": p.ledge, "health": body.stats.sanity(), "wish": control.wish,
+                            "rise": control.rise, "jump": control.jump,
+                            "attack_locked": arena.characters[id.index()].attack_movement_locked()
+                        })
+                    );
+                }
+            }
             if body.player.landings != landings_before[id.index()]
                 && body.player.landing_speed > 550.
             {

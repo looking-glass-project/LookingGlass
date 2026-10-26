@@ -78,6 +78,18 @@ pub(super) fn load(map: &Bsp) -> Result<(Vec<crate::ant::Ant>, Vec<Lady>)> {
     Ok((ants, ladies))
 }
 impl Garden {
+    pub(super) fn advance_spawns(&mut self, dt: f32) {
+        for l in &mut self.saved.ladies {
+            if let Some(t) = &mut l.delay {
+                *t = (*t - dt).max(0.);
+                if *t == 0. {
+                    l.enabled = true;
+                    l.actor.patrol_started = true;
+                    l.delay = None;
+                }
+            }
+        }
+    }
     pub(super) fn spawn_ladies(&mut self, group: u8) {
         let ids: &[(usize, f32)] = match group {
             1 => &[(154, 0.), (599, 2.1)],
@@ -145,16 +157,9 @@ impl Garden {
             .actor
             .hit_attack(h)
     }
-    pub(super) fn encounter_combat(
-        &mut self,
-        c: &mut crate::level::Combat<'_>,
-    ) -> crate::combat::Feedback {
-        let mut f = crate::combat::Feedback::default();
-        if self.scripted() || c.dt <= 0. {
-            return f;
-        }
+    pub(super) fn advance_ambush(&mut self, dt: f32, world: &World) {
         if let Some(t) = &mut self.saved.under_ambush {
-            *t = (*t + c.dt).min(8.);
+            *t = (*t + dt).min(8.);
             if let Some(a) = self.saved.ants.iter_mut().find(|a| a.id == 139) {
                 let delta = self.data.points["ant_under_pos1"].translation - a.feet;
                 if a.health <= 0. || *t >= 8. || (*t >= 1. && delta.truncate().length() < 16.) {
@@ -165,16 +170,26 @@ impl Garden {
                     a.phase = crate::ant::Phase::Chase;
                     a.yaw = delta.y.atan2(delta.x);
                     a.feet = crate::combat::walk_body(
-                        c.world,
+                        world,
                         a.feet,
                         delta.truncate().extend(0.).normalize_or_zero()
                             * self.data.speed(a.model(), "walk_medium")
-                            * c.dt,
+                            * dt,
                         a.target(0).half,
                     );
                 }
             }
         }
+    }
+    pub(super) fn encounter_combat(
+        &mut self,
+        c: &mut crate::level::Combat<'_>,
+    ) -> crate::combat::Feedback {
+        let mut f = crate::combat::Feedback::default();
+        if self.scripted() || c.dt <= 0. {
+            return f;
+        }
+        self.advance_ambush(c.dt, c.world);
         for a in &mut self.saved.ants {
             if a.enabled {
                 a.advance(c, &self.data, &mut f);

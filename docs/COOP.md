@@ -4,7 +4,7 @@ Development branch: `coop`, based on public main `0220970`.
 This is work in progress. A policy test or a connected pair of windows does not
 establish campaign support. Single-player behavior and saves must remain supported.
 
-Current milestone: **42.6% estimated overall; six campaign visits have combined
+Current milestone: **43.1% estimated overall; six campaign visits have combined
 verification evidence, 33 remain open.** Earlier contact-system repeats are still
 required as detailed in the campaign matrix. Pool of Tears has 38 passing native
 component cases plus public two-client opening and bank checkpoint segments.
@@ -12,6 +12,18 @@ Hollow Hideaway now has 33 passing native cases for paired rides, boarding,
 personal fish deaths, guards and moving pickups. Full two-client traversal and
 recovery remain open for both visits. Report these smaller milestones alongside
 the total; a successful component or segment is not a completed campaign visit.
+
+Herbaceous Border now has an explicit paired platform/enemy adapter and **44
+passing native component cases**: shared fulcrum carrying/counterbalance, both
+dead-partner roles, resident targeting/personal damage, delayed spawns and ambush,
+all original scene owners/reunions with watched/skipped outcomes, and Ladybug
+impact effects surviving the guest snapshot path. The same build passes existing
+single-player scene/machinery checks and 808 active Rust tests. These staged
+checks take about six seconds without a window. Full traversal, independent
+internet clients and the recovery/rejoin matrix remain open. Build
+`0601aeb39bc98a7828a398e3c59f6fc5ef637ab54ab5fe343994a079cc45f8a2`;
+evidence `private/coop-garden2-components-0601aeb.log` and
+`private/coop-garden2-single-0601aeb.log`. See [Herbaceous details](GARDEN2.md).
 
 The overall percentage is a weighted estimate, not elapsed time or a live build
 indicator. An earlier Garden build passed 4/4 native paired routes. After adding
@@ -214,21 +226,25 @@ movement viewer both wait for helper shutdown before exiting.
 After tightening cancellation and the forged-message regression, all 21 focused
 co-op tests passed again. This final focused run includes the latest source changes.
 
-Overall estimate after completing the village, Pandemonium, both Fortress visits, Beyond and return-school verification rows, plus native-rope recovery: **about 42.6%**. Credited
+Overall estimate after completing the village, Pandemonium, both Fortress visits, Beyond and return-school verification rows, plus native-rope recovery and Herbaceous component integration: **about 43.1%**. Credited
 points are 8/10 for foundation/diagnostics, 7/15 for internet Host/Join,
-9/15 for two-player movement/presentation, paired school supports, dry/swimming arrival placement, complete delayed village/Pandemonium traversal in separate clients and rendered independent rope controls, and 7.5/20 for native targeting, host-owned
+9.25/15 for two-player movement/presentation, paired school supports, dry/swimming arrival placement, complete delayed village/Pandemonium traversal in separate clients and rendered independent rope controls, and 7.75/20 for native targeting, host-owned
 weapons/damage, personal resources, timed respawns and full saved-state team wipes.
 The additional 0.5 points credit tested recovery beside a survivor hanging on an
 active native rope: both-role unit coverage plus a captured fall/revival through
 independent internet clients. This does not cover custom controlled ropes.
+The Herbaceous adapter adds 0.25 movement points for its verified native paired
+fulcrum and 0.25 combat points for its integrated Ant/Ladybug targeting, personal
+damage and preserved impact effects. These are component credits; no campaign
+row or independent-client credit is added by the staged checks.
 Credit also includes
 8/20 for shared world replication, ordered contacts, the verified theatre
 ownership/reunion slice, school boarding barriers, visit history and restart/backup
 restoration of shared checkpoints, and native traversal of all six village scenes
 and all four Pandemonium scenes with either player arriving first (also verified through public internet clients).
 Full-campaign verification now earns 120/39 points (about 3.08/20), for those six
-visits' complete combined evidence. Total credited points are about 42.58, reported
-as 42.6%. The previous 41.56 estimate was rounded to 42%; future updates include
+visits' complete combined evidence. Total credited points are about 43.08, reported
+as 43.1%, up from 42.58 before the Herbaceous adapter. Updates include
 completed milestones so rounding does not conceal progress. Standalone policy
 tests receive no campaign credit; 33 visits remain open. The first five historical
 passes still need the contact-system repeats described in the campaign matrix.

@@ -1959,6 +1959,11 @@ does not certify a full paired traversal.
 `--garden1-coop-route-check` additionally reserves a windowed production-Arena
 paired course using ordinary controls; its existence alone is not a passing run.
 
+Herbaceous Border additionally reserves `--garden2-coop-check` for staged native
+paired fulcrum, resident targeting/damage, scene ownership and snapshot checks.
+It shares the existing Garden2 controller and hit IDs and does not establish a
+full paired traversal or an independent-client network pass.
+
 Majestic Maze additionally reserves `--hedge1-save-write` and `--hedge1-save-read` for fresh-process native save checks. Its route requires a native window for the existing NPC cast; it has no active cinematic to skip.
 
 Clockwork and Ascension additionally reserve `--hatter1-route-native-check` and

@@ -102,7 +102,7 @@ pub struct Acorn {
     velocity: Vec3,
     pub age: f32,
 }
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Serialize, Deserialize)]
 pub struct Burst {
     pub position: Vec3,
     pub age: f32,
@@ -126,7 +126,7 @@ pub struct Ladybug {
     pub carrying: bool,
     pub notarget: bool,
     pub acorns: Vec<Acorn>,
-    #[serde(skip)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub bursts: Vec<Burst>,
     pub drops: u32,
     pub patrol_started: bool,
@@ -197,6 +197,8 @@ impl Ladybug {
                     .landed
                     .is_none_or(|t| t.is_finite() && t >= 0. && t <= self.time)
                 && ((self.health == 0.) == (self.state == State::Dead))
+                && self.bursts.len() <= 32
+                && self.bursts.iter().all(|b|b.position.is_finite() && (0. ..=0.6).contains(&b.age))
                 && self.acorns.len() <= 16
                 && self.acorns.iter().all(|p| p.position.is_finite()
                     && p.velocity.is_finite()
@@ -351,10 +353,9 @@ impl Ladybug {
                         );
                     }
                 }
-                self.bursts.push(Burst {
-                    position: p.position,
-                    age: 0.,
-                });
+                if self.bursts.len() < 32 {
+                    self.bursts.push(Burst { position: p.position, age: 0. });
+                }
                 out.sounds.push(SOUNDS[5]);
             }
             !impact
@@ -907,6 +908,34 @@ impl Art {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn impact_burst_survives_replication_and_expires_without_breaking_older_saves() {
+        let world=floor();
+        let native=bug();
+        let mut source=native.clone();
+        source.notarget=true;
+        source.acorns.push(Acorn {position:vec3(-24.,0.,28.),velocity:Vec3::X*600.,age:0.});
+        let hit=source.advance(STEP,&world,Vec3::Z*48.,timing());
+        assert!(hit.damage>0. && source.bursts.len()==1);
+        let saved=json(&source);
+        let mut restored:Ladybug=serde_json::from_value(saved.clone()).unwrap();
+        restored.validate_save(&native).unwrap();
+        assert_eq!(serde_json::to_value(&restored.bursts).unwrap(),serde_json::to_value(&source.bursts).unwrap());
+        restored.advance(0.,&world,Vec3::Z*48.,timing());
+        assert_eq!(json(&restored),saved);
+        for _ in 0..74 { restored.advance(STEP,&world,Vec3::Z*48.,timing()); }
+        assert!(restored.bursts.is_empty());
+        let mut old=saved;
+        old.as_object_mut().unwrap().remove("bursts");
+        let old:Ladybug=serde_json::from_value(old).unwrap();
+        old.validate_save(&native).unwrap();
+        assert!(old.bursts.is_empty());
+        restored.bursts=vec![Burst{position:Vec3::ZERO,age:0.};33];
+        assert!(restored.validate_save(&native).is_err());
+        restored.bursts.truncate(1);
+        restored.bursts[0].age=f32::NAN;
+        assert!(restored.validate_save(&native).is_err());
+    }
     #[test]
     fn acorns_and_blasts_hit_demons_separately_from_alice() {
         let world = floor();

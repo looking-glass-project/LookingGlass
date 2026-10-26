@@ -68,3 +68,40 @@ Exact original quake noise, actor approach avoidance and translucent facial
 deformation remain fidelity limits. The route proof covers the described Normal
 path, not every optional branch or difficulty. Native checks run muted. No
 original script or subtitle prose is stored.
+
+## Co-op integration
+
+The host advances the native fulcrum, fade, spawn delays and Corporal ambush once
+per world tick. The fulcrum uses the mean position of living supported riders;
+opposite riders balance it. It commits the platform and all riders together or
+rejects an obstructed move. A dead teammate contributes no weight and is not
+carried. This passive weight-driven support has no triggered passenger departure
+to gate on boarding. The single-player controller keeps its original behavior.
+
+Owned Ants and Ladybugs receive both living/visible player targets and route
+damage to separate player slots. Their native cast identities, attacks and loot
+remain shared. Short Ladybug explosion bursts now survive snapshot serialization
+with bounded count, position and age validation. Older saves omit this optional
+field and load with no pending bursts; the save-envelope version is unchanged.
+
+`--garden2-coop-check` provides staged headless checks, with optional group
+selection via `LOOKING_GLASS_GARDEN2_COOP_CASE=platform|combat|scenes`. On source
+`0601aeb39bc98a7828a398e3c59f6fc5ef637ab54ab5fe343994a079cc45f8a2`,
+44 cases pass: six platform cases, 20 cast/impact cases and 18 scene cases.
+These include 30/60/144 Hz paired carry, balancing, dead-partner single-player
+parity, pause/save, targeting and isolated impacts in both slots, bounded shared
+spawn/ambush clocks, impact snapshot restoration, and original triggers with
+either first arrival, frozen partners, watched/skipped scenes and safe reunion.
+The automatic arrival is simultaneous and uses Blue as the existing tie-break.
+
+The Cat fixtures now approach trigger 52 from the supported route waypoint;
+the former trigger-53 approach fell into a gap before contact in both single-
+and two-player checks. Existing `--garden2-check` passes on the same build,
+including all 45 scene variants, legacy migration, patrols and single-rider
+fulcrum checks. Logs: `private/coop-garden2-components-0601aeb.log` and
+`private/coop-garden2-single-0601aeb.log`. All 808 active Rust tests pass, including
+impact replication/expiry and old-save loading. No images were viewed.
+
+This does not establish full co-op traversal, independent-client internet play,
+rendered guest effects, or this visit's death/wipe/rejoin matrix. The campaign row
+remains partial.

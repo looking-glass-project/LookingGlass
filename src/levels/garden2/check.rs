@@ -20,12 +20,12 @@ fn tick(
     i.sync(w);
     Ok(())
 }
-fn approach(kind: Kind) -> Vec3 {
+pub(super) fn approach(kind: Kind) -> Vec3 {
     match kind {
         Kind::North => vec3(2536., -1552., -1300.),
         Kind::South => vec3(1850., -2660., -750.),
         Kind::Second => vec3(1136., -752., -1450.),
-        Kind::Cat => vec3(-215., -2863., -968.),
+        Kind::Cat => vec3(-100., -1600., -928.),
         _ => Vec3::ZERO,
     }
 }
@@ -45,7 +45,7 @@ fn enter(i: &mut Interactions, map: &Bsp, w: &mut World, p: &mut Player, kind: K
         Kind::North => 130,
         Kind::South => 129,
         Kind::Second => 114,
-        Kind::Cat => 53,
+        Kind::Cat => 52,
         _ => unreachable!(),
     };
     let pos = data::at(&map.entities[id]).translation;

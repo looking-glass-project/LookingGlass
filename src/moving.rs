@@ -22,7 +22,7 @@ pub fn aboard(collider: &Collider, feet: Vec3) -> bool {
 /// carrying that body would pull it into the floor and stop every other rider.
 /// At equal height, a straight vertical departure can pick up the body. A
 /// rotating/sideways platform must not recapture someone already on a landing.
-fn supported_by(world: &World, collider: &Collider, feet: Vec3, lifting_off: bool) -> bool {
+pub(crate) fn supported_by(world: &World, collider: &Collider, feet: Vec3, lifting_off: bool) -> bool {
     let support = collider.trace(
         feet + PLAYER_CENTER,
         feet + PLAYER_CENTER - Vec3::Z * 3.,

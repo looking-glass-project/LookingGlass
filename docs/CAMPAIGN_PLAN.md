@@ -1963,6 +1963,9 @@ Herbaceous Border additionally reserves `--garden2-coop-check` for staged native
 paired fulcrum, resident targeting/damage, scene ownership and snapshot checks.
 It shares the existing Garden2 controller and hit IDs and does not establish a
 full paired traversal or an independent-client network pass.
+`--garden2-coop-route-check` reserves a production-Arena paired course using
+ordinary controls and the original authored route waypoints. It saves failures
+and recent controls; adding the driver alone does not establish a passing route.
 
 Majestic Maze additionally reserves `--hedge1-save-write` and `--hedge1-save-read` for fresh-process native save checks. Its route requires a native window for the existing NPC cast; it has no active cinematic to skip.
 

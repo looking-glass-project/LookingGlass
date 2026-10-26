@@ -105,3 +105,36 @@ impact replication/expiry and old-save loading. No images were viewed.
 This does not establish full co-op traversal, independent-client internet play,
 rendered guest effects, or this visit's death/wipe/rejoin matrix. The campaign row
 remains partial.
+
+## Ordinary-input paired route
+
+`--garden2-coop-route-check` runs the production co-op Arena against the existing
+108-step authored route. Each player chooses ordinary movement and attacks;
+enemy targeting, resources, physics, scene ownership and reunion remain gameplay.
+Both initial input orders run with watched and skipped scenes. The driver checks
+frozen partners, free-play body spacing, periodic compressed guest snapshot
+restoration, and unchanged personal resources on the authored Garden3 transition.
+Any death, recovery, unexplained warp or stalled waypoint fails the attempt.
+The windowed check uses Anode; results need no screenshot inspection.
+
+Set `LOOKING_GLASS_SETTINGS_DIR` to a fresh private profile. That directory receives
+the exact course, marked waypoint states and a final passed/failed report for
+each attempt, including the full frame/world and the last 240 input ticks. A
+failed attempt does not stop the other three variants. These are native paired
+checks, not independent network clients or a rendered-effects check.
+
+First run on source
+`da5e242bd7751ff0a691cacf7923bc7c73bd3ebec80c766b0431a583b966e7ad`
+fails all four variants around the first thermal climb. With Blue starting,
+Blue dies at steps `[22,25]`, ticks 13,422 watched / 4,847 skipped, while Red
+retains 90 Sanity. With Red starting, Red dies at steps `[23,23]`, ticks 13,708
+watched / 5,133 skipped, while Blue retains 33 Sanity. Watched/skipped pairs
+reach the same outcomes, shifted by scene time. The preceding bridge and slime
+bank states are captured, with no earlier spacing or replica mismatch reported.
+The failure's gameplay-versus-driver cause is not established yet.
+
+Evidence: `private/coop-garden2-route-da5e242.log` and
+`private/garden2-coop-route-da5e242/`. The four attempts finish in 43.6 seconds,
+with 808 active unit tests, the locked release build and seven source-package
+checks passing. No images were inspected. No full-route or campaign credit is
+awarded; total estimated co-op progress remains 43.1%.

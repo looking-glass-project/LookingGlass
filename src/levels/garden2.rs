@@ -3,6 +3,7 @@ mod art;
 mod check;
 mod coop;
 mod coop_check;
+mod coop_route;
 mod data;
 mod encounters;
 mod motion;
@@ -787,6 +788,11 @@ pub static REGISTRATION: Registration = Registration {
     target_base: Some(BASE),
     story_beats: BEATS,
     checks: &[
+        Check {
+            flag: "--garden2-coop-route-check",
+            help: "Run both Herbaceous players through ordinary controls; save exact failure states.",
+            run: Run::Windowed(coop_route::check),
+        },
         Check {
             flag: "--garden2-coop-check",
             help: "Verify paired Herbaceous platform, enemies and scene handoffs; staged component checks.",

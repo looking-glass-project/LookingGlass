@@ -25,6 +25,13 @@ internet clients and the recovery/rejoin matrix remain open. Build
 evidence `private/coop-garden2-components-0601aeb.log` and
 `private/coop-garden2-single-0601aeb.log`. See [Herbaceous details](GARDEN2.md).
 
+The new ordinary-input Herbaceous paired route now produces reproducible failure
+states without image inspection. Its first four attempts (both initial input
+orders, watched/skipped scenes) fail near the first thermal climb when one
+player dies; see `private/coop-garden2-route-da5e242.log`. The cause still needs
+isolation. This adds diagnosis and repeatability, not a completed campaign visit
+or percentage credit. The estimate remains **43.1%**.
+
 The overall percentage is a weighted estimate, not elapsed time or a live build
 indicator. An earlier Garden build passed 4/4 native paired routes. After adding
 rope contact, the current build passes **2/4 native paired routes** (both watched

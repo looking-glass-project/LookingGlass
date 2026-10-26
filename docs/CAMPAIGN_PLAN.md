@@ -1976,6 +1976,11 @@ rock damage, shared ice/wall clocks, Easy altar contacts, original scene reunion
 and portal unlock. It shares the existing controller and hit IDs; a component
 pass does not establish full paired traversal or independent internet clients.
 
+Fungiferous Flora additionally reserves `--centipede1-coop-check` for staged
+paired Ant targeting/damage, shared wave/countdown clocks, spawn visibility and
+original ambush ownership/reunion. It shares the existing controller and hit IDs;
+full paired traversal and independent-client networking require separate proof.
+
 Majestic Maze additionally reserves `--hedge1-save-write` and `--hedge1-save-read` for fresh-process native save checks. Its route requires a native window for the existing NPC cast; it has no active cinematic to skip.
 
 Clockwork and Ascension additionally reserve `--hatter1-route-native-check` and

@@ -112,6 +112,9 @@ impl Roster {
         next.lives = self.lives.clone();
         for (body, old) in next.players.iter_mut().zip(&self.players) {
             body.stats = old.stats.clone();
+            // A scripted health floor belongs to the visit being left. The new
+            // controller must supply its own rule before movement/combat.
+            body.stats.minimum_sanity = 0.;
             body.stats.ensure_level_weapons(map, entry);
             body.spawned_at = old.spawned_at;
             body.warped_at = self.tick;
@@ -388,6 +391,26 @@ mod tests {
         assert!(crate::inventory::collect(&mut players[0], &[item], Vec3::ZERO, &world).is_empty());
         assert_eq!(players[0].sanity(), 30.);
         assert_eq!(players[1].sanity(), 30.);
+    }
+    #[test]
+    fn leaving_a_scripted_health_floor_preserves_resources_without_protecting_the_next_visit() {
+        let world=floor();
+        let mut roster=Roster::new(&world,Vec3::Z*(EYE_HEIGHT+0.04),0.,
+            Stats::for_level("centipede2",Some("centipede2_start1"))).unwrap();
+        for (i,b) in roster.players.iter_mut().enumerate() {
+            b.stats.set_health(if i==0 {20.} else {5.}).unwrap();
+            b.stats.spend_will(13.+i as f32);
+            b.stats.minimum_sanity=if i==0 {10.} else {30.};
+        }
+        let resources=roster.players.each_ref().map(|b|serde_json::to_value(&b.stats).unwrap());
+        let mut next=roster.arrive(&world,Vec3::Z*(EYE_HEIGHT+0.04),0.,"centipede2",Some("centipede2_start1")).unwrap();
+        for (b,s) in next.players.iter_mut().zip(resources) {
+            assert_eq!(serde_json::to_value(&b.stats).unwrap(),s);
+            assert_eq!(b.stats.minimum_sanity,0.);
+            b.stats.damage(10000.);
+            assert!(!b.stats.alive());
+        }
+        assert!(next.checkpoint.iter().all(|b|b.stats.minimum_sanity==0.));
     }
     #[test]
     fn captured_player_stays_put_while_partner_and_personal_clocks_continue() {

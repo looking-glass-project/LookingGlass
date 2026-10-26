@@ -18,6 +18,11 @@ component cases and six passing production-Arena checks. Those cover both
 actors' attacks/grabs, personal healing, original scenes and particle emission.
 Full two-client traversal and recovery for that visit are still open.
 
+Dry Landing/Garden now has 21 passing native component cases for personal arrival
+resources, scene ownership/reunion, paired lily supports at three update rates,
+obstructed/dead riders, independent clocks and saved bridge timing. Full paired
+traversal, combat, recovery and internet transition/rejoin remain open.
+
 The underwater temple now advances its guide and machinery for both swimmers.
 Thirteen native component cases pass for individual air, crushing, saved state
 and exit ownership. Four full paired swimming routes now pass in the production
@@ -4649,3 +4654,48 @@ The public connection is healthy in these runs, but yesterday's older-build
 comparison does not establish that this change alone caused today's latency
 improvement. The receipt bound is established independently by the regression.
 Temple traversal reliability remains open; overall credit stays **42.1%**.
+
+### Garden arrival and shared lily supports
+
+Garden now prepares both living players before its automatic arrival scene.
+The normal entrance refill applies once to each; the shared shell story grant
+reaches the waiting partner too. A dead partner is not revived by preparation,
+and later low-health respawns do not repeat the entry refill. Already initialized
+single-player saves retain their resources when entering co-op.
+
+Each of the three free-running lilies advances once per shared update, carrying
+its living riders together. A blocked rider holds that pad without holding the
+other lilies or the world clock. The optional collapsing bridge has a shared
+saved clock and commits proposed rider movement together. These lilies have no
+activation or boarding trigger; separate pads can run while players occupy
+different parts of the route. Existing single-player saves omit the new optional
+clock state; enabling co-op preserves their current machinery poses.
+
+The first focused headless run on source
+`33f62542ccbd79664b821582a54813aaa4f4483794ae641bc1e90e580bc9e660`
+passes arrival/dead-partner/migration checks, both Rabbit scene owners watched
+and skipped, frozen waiting actors, repeated pause/restore, safe reunions and
+two separated riders on each lily for 75 seconds. Existing single-player scene
+and world checks also pass. Evidence: `private/garden1-coop-native-33f6254.log`,
+`private/garden1-scenes-33f6254.log`, `private/garden1-world-33f6254.log`.
+
+The expanded native check additionally covers each pad at 30/60/144 Hz, either
+blocked rider preventing partial movement, other pads continuing independently,
+exact stopped-clock restoration, resuming after the obstacle clears, dead riders
+neither moving nor blocking, and bridge activation/restoration/retirement. Its
+obstruction fixtures use measured native movement to place a wall just beyond the
+current body; no game physics or damage is changed for these checks. Bridge
+coverage here verifies its timeline and saved poses, not a full two-rider route
+over the falling pieces.
+
+All 21 expanded cases pass in the final release build with source identity
+`35a38d41ac947da40155971c029f1a121b502a90f8eefef4f42853e64983322c`;
+evidence is `private/garden1-coop-native-final.log`. All 795 active unit tests
+also pass (one remains ignored). No screenshots or desktop interaction were
+needed for these checks. The single-player evidence above exercises the same
+runtime adapter; subsequent changes only expand/format the check code.
+
+These are component checks, not a full paired Garden traversal. Combat,
+consumables, recovery, internet traversal and transition/rejoin still need their
+combined evidence. No campaign row gains completion credit; total remains
+**42.1%**. Progress reports should name completed components alongside that total.

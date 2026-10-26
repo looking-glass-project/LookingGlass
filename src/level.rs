@@ -284,6 +284,9 @@ pub trait LevelController: Any {
     /// twice: advance shared machinery once and commit all living riders together.
     fn coop_advance(&mut self, _dt: f32, _map: &Bsp, _world: &mut World,
         _players: &mut [&mut Player], _fixed: &[Collider]) -> Result<()> { Ok(()) }
+    /// Idempotent personal preparation, including automatic arrival scenes.
+    /// This does not advance clocks or move either actor.
+    fn coop_prepare(&mut self, _players: &mut [CoopPlayer<'_>; 2]) {}
     /// Stable Blue/Red slots let machinery apply personal damage even when one
     /// player is dead. Existing movement-only adapters still receive living bodies.
     fn coop_advance_roster(&mut self, dt: f32, map: &Bsp, world: &mut World,

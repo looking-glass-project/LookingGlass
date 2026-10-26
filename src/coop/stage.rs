@@ -293,6 +293,14 @@ impl Stage {
             }
         }
     }
+    fn prepare_registered_players(&mut self, roster: &mut Roster) {
+        for slot in &mut self.interactions.levels {
+            let mut players = roster.players.each_mut().map(|b| crate::level::CoopPlayer {
+                player: &mut b.player, stats: &mut b.stats,
+            });
+            slot.ctl.coop_prepare(&mut players);
+        }
+    }
     pub fn before_move(
         &mut self,
         roster: &mut Roster,
@@ -301,6 +309,7 @@ impl Stage {
         inputs: &[(Controls, Input); 2],
         dt: f32,
     ) -> Result<()> {
+        self.prepare_registered_players(roster);
         self.sync_school_return_items(roster);
         if let Some(d) = &mut self.interactions.duchess {
             let mut players = roster.players.each_mut().map(|b| crate::level::CoopPlayer {
@@ -452,6 +461,7 @@ impl Stage {
         world: &mut World,
         inputs: &[(Controls, Input); 2],
     ) -> Result<()> {
+        self.prepare_registered_players(roster);
         roster.tick += 1;
         let Some(owner) = self.owner else {
             return Ok(());

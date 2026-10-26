@@ -269,7 +269,7 @@ pub static RESERVATIONS: [Reservation; 39] = [
         render: &["--utemple-render-check"],
     }), ..visit(11, "utemple") },
     Reservation { flags: Some(VisitFlags {
-        contract: &["--garden1-check", "--garden1-world-check", "--garden1-cast-check", "--garden1-path-check"],
+        contract: &["--garden1-check", "--garden1-world-check", "--garden1-cast-check", "--garden1-path-check", "--garden1-coop-check"],
         route: &["--garden1-route-check"], skip: &["--garden1-skip-route-check"],
         render: &["--garden1-render-check"],
     }), ..visit(12, "garden1") },

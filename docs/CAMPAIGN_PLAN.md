@@ -1952,6 +1952,11 @@ breathing, swimming, machinery contacts and original exit ownership, and
 `--utemple-coop-route-check` for normal-input paired swimming through the full
 visit in the production Arena. They share the existing controller and hit IDs.
 
+Dry Landing additionally reserves `--garden1-coop-check` for paired arrival
+resources, scene ownership/reunion, moving supports and saved machinery. This
+focused headless check shares the existing Garden controller and hit IDs; it
+does not certify a full paired traversal.
+
 Majestic Maze additionally reserves `--hedge1-save-write` and `--hedge1-save-read` for fresh-process native save checks. Its route requires a native window for the existing NPC cast; it has no active cinematic to skip.
 
 Clockwork and Ascension additionally reserve `--hatter1-route-native-check` and

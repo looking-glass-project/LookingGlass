@@ -24,8 +24,9 @@ obstructed/dead riders, independent clocks and saved bridge timing. Full paired
 traversal, combat, recovery and internet transition/rejoin remain open.
 The ordinary-input route now recovers a lost first-rope grip, completes the
 Rabbit scene/reunion and crosses the later bank obstacle with both players.
-It still fails later during traversal; these are partial milestones, not a
-completed visit.
+Settling the later grip before its timed swing lets both survive through step
+127. A launcher/landing failure remains; these are partial milestones, not a
+completed visit. The single-player automated course also fails at that launcher.
 
 The underwater temple now advances its guide and machinery for both swimmers.
 Thirteen native component cases pass for individual air, crushing, saved state
@@ -4765,3 +4766,37 @@ The final build passes 796 unit tests (one ignored), the locked release build,
 seven source-package tests and the invalid-selector native check. No gameplay
 physics, damage, resources or placements were changed. Overall campaign credit
 remains **42.1%**; report these intermediate results alongside it.
+
+### Garden grip height and launcher diagnostics
+
+A grab followed directly by a timed swing now first climbs to the approach's
+height. Catching that rope high after an obstacle jump previously started the
+swing several hundred units above its intended path. Build
+`c0f121135c442f8fb2d1cd9c881591a89d68a9129517f25136812e531c9e2a12`
+keeps both players alive through step 127, at 68.735/54.440 Sanity; the former
+death at step 83 is gone in that run. Hard landings now log speed and health
+changes, so fall damage can be distinguished from an unexplained resource loss.
+
+Final fixture build
+`3310b54a70a1fd869aa659e802f1fd8dc8b2debf8e195f9ec4a27cfcce4794c3`
+also permits grounded obstacle jumps on launcher approaches. Its default course
+still fails there. An ordinary-input override aimed at the first launcher's
+centre gets both past it, but the second launcher/landing still fails. A fresh
+single-player native-cast run also dies at step 131, near the same gap. Steering
+and ledge-approach variants have not yet resolved the paired failure. A short
+single-player replay from its genuinely earned second-launch checkpoint reaches
+a hanging ledge; that focused diagnostic deliberately has no campaign exit and
+is not a route pass.
+
+`LOOKING_GLASS_GARDEN_COOP_ROUTE` accepts a diagnostic course JSON without a new
+executable build. The fixture saves the exact course in its isolated profile.
+It also now requires a real Garden2 load, safe separate arrivals and exact
+personal resource carry-over before reporting full success. That new exit gate
+has not yet been reached. No gameplay movement, damage or placement code changed.
+
+Evidence: `private/garden1-coop-route-c0f1211.log`,
+`private/garden1-coop-route-3310b54*.log`,
+`private/garden1-sp-route-3310b54.log`, and
+`private/garden1-sp-launch-samples.log`. The final build passes 796 active unit
+tests (one ignored) and the locked release build. Full paired and single-player
+route failures remain recorded; overall credit stays **42.1%**.

@@ -93,6 +93,11 @@ impl Driver {
             };
             let goal = Vec3::from_array(step.pos);
             let delta = goal - p.feet;
+            // A timed swing without an explicit climb step assumes the grip
+            // height of its approach. An obstacle jump can catch the same rope
+            // much higher; descend through ordinary controls before swinging.
+            let settle_grip =
+                step.mode == "grab" && steps.get(self.index + 1).is_some_and(|s| s.mode == "input");
             // Wait on the bank with combat available, not hanging from a rope
             // under fire. This changes only the test player's chosen inputs.
             if wait_before == Some(self.index) {
@@ -113,7 +118,7 @@ impl Driver {
                 "wait" | "hold" | "input" | "inputjump" | "release" => self.ticks >= step.frames,
                 "clear" => self.quiet >= 120,
                 "rope" => p.rope.is_some() && delta.z.abs() < 8.,
-                "grab" => p.rope.is_some(),
+                "grab" => p.rope.is_some() && (!settle_grip || delta.z.abs() < 8.),
                 "launch" => p.velocity.z > 500.,
                 _ => delta.truncate().length() < 20. && delta.z.abs() < 52.,
             };
@@ -130,6 +135,7 @@ impl Driver {
                     self.quiet = if visible { 0 } else { self.quiet + 1 };
                 }
                 "wait" => (),
+                "grab" if p.rope.is_some() => control.rise = delta.z.signum(),
                 "hold" => {
                     control.wish = (delta.truncate() * 4. / 320.).clamp_length_max(1.);
                     control.run = true;
@@ -198,7 +204,9 @@ impl Driver {
                         },
                         run: true,
                         jump: (step.mode == "jump" && self.ticks == 0)
-                            || ((step.mode.is_empty() || (step.mode == "grab" && p.grounded))
+                            || ((step.mode.is_empty()
+                                || (matches!(step.mode.as_str(), "grab" | "launch")
+                                    && p.grounded))
                                 && stuck),
                         use_pressed: step.mode == "grab" && self.ticks % 4 == 0 && p.rope.is_none(),
                         ..Default::default()
@@ -270,7 +278,25 @@ async fn route(a: &mut Assets, first: PlayerId, skip: bool) -> Result<()> {
     let mut replica = Arena::load(a, &scene.map, &mut replica_world, &visit, false)?;
     let mut art = crate::viewer::LevelArt::default();
     art.prepare(a, &scene, &arena.stage.interactions, false)?;
-    let steps: Vec<Step> = serde_json::from_slice(include_bytes!("route_steps.json"))?;
+    let course = if let Ok(path) = std::env::var("LOOKING_GLASS_GARDEN_COOP_ROUTE") {
+        std::fs::read(path).context("Cannot read Garden co-op test course")?
+    } else {
+        include_bytes!("route_steps.json").to_vec()
+    };
+    let steps: Vec<Step> = serde_json::from_slice(&course)?;
+    ensure!(
+        !steps.is_empty()
+            && steps
+                .iter()
+                .all(|s| s.pos.iter().all(|v| v.is_finite()) && s.frames <= 120 * 90),
+        "Invalid Garden co-op test course"
+    );
+    // Keep the exact controls course beside the state report, including any
+    // private diagnostic override, so a result can be reproduced.
+    std::fs::write(
+        crate::preferences::path("garden1-coop-course.json"),
+        &course,
+    )?;
     let mut drivers: [Driver; 2] = Default::default();
     let mut free_ticks = 0;
     let mut samples = 0;
@@ -282,6 +308,8 @@ async fn route(a: &mut Assets, first: PlayerId, skip: bool) -> Result<()> {
         let feet_before = roster.players.each_ref().map(|b| b.player.feet);
         let warps_before = roster.players.each_ref().map(|b| b.warped_at);
         let ropes_before = roster.players.each_ref().map(|b| b.player.rope.clone());
+        let landings_before = roster.players.each_ref().map(|b| b.player.landings);
+        let health_before = roster.players.each_ref().map(|b| b.stats.sanity());
         let inputs = (|| -> Result<_> {
             let mut out = std::array::from_fn(|_| (Controls::default(), Input::default()));
             if !arena.stage.busy() {
@@ -326,6 +354,18 @@ async fn route(a: &mut Assets, first: PlayerId, skip: bool) -> Result<()> {
         arena.step(&mut roster, &scene.map, &mut scene.world, inputs)?;
         for id in PlayerId::ALL {
             let body = &roster.players[id.index()];
+            if body.player.landings != landings_before[id.index()]
+                && body.player.landing_speed > 550.
+            {
+                println!(
+                    "Garden {id:?} hard landing tick{tick} step{} speed={} health={}->{} feet={:?}",
+                    drivers[id.index()].index,
+                    body.player.landing_speed,
+                    health_before[id.index()],
+                    body.stats.sanity(),
+                    body.player.feet
+                );
+            }
             if ropes_before[id.index()].is_some() && body.player.rope.is_none() {
                 println!(
                     "Garden {id:?} rope released tick{tick} step{} use={} health={} feet={:?} velocity={:?}",
@@ -491,8 +531,43 @@ async fn route(a: &mut Assets, first: PlayerId, skip: bool) -> Result<()> {
                 .is_some_and(|e| e.0 == "garden2" && e.1.as_deref() == Some("garden2_start1")),
         "Garden paired course did not reach its authored exit"
     );
+    let (map, entry) = arena.stage.transition.as_ref().unwrap();
+    let next_visit = Visit {
+        epoch: 2,
+        map: map.clone(),
+        entry: entry.clone(),
+        ..visit
+    };
+    let mut next_scene = Scene::load_for(a, map, next_visit.difficulty)?;
+    let next_arena = Arena::load(
+        a,
+        &next_scene.map,
+        &mut next_scene.world,
+        &next_visit,
+        false,
+    )?;
+    let (eye, yaw) = crate::interaction::spawn(&next_scene.map, entry.as_deref());
+    let arrived = roster.arrive_with(&next_scene.world, eye, yaw, map, entry.as_deref(), |at| {
+        !next_arena.stage.interactions.hazardous(at)
+    })?;
+    for (old, new) in roster.players.iter().zip(&arrived.players) {
+        ensure!(
+            serde_json::to_value(&old.stats)? == serde_json::to_value(&new.stats)?
+                && new.stats.alive()
+                && next_scene.world.body_clear(new.player.feet),
+            "Garden2 arrival changed personal resources or obstructed a player"
+        );
+    }
+    ensure!(
+        arrived.players[0]
+            .player
+            .feet
+            .distance(arrived.players[1].player.feet)
+            >= 36.,
+        "Garden2 arrival overlapped players"
+    );
     println!(
-        "PASS full Garden co-op {first:?} skip={skip}: {} ticks, {samples} replicas, health {:?}",
+        "PASS full Garden co-op into Garden2 {first:?} skip={skip}: {} ticks, {samples} replicas, exact resources, health {:?}",
         roster.tick,
         roster.players.each_ref().map(|b| b.stats.sanity())
     );

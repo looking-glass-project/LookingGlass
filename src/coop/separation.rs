@@ -23,8 +23,11 @@ fn clear(world: &World, body: &Body, to: Vec3) -> bool {
     if p.grounded {
         let ground = world.body_trace(to, to - Vec3::Z * 2.);
         if ground.start_solid || ground.fraction >= 1. || ground.normal.z < 0.65 { return false; }
-        // Preserve support beneath the centre as well as the collision box.
-        let support = world.sweep(to + Vec3::Z, to - Vec3::Z * 2., Vec3::ZERO);
+        // On a slope the uphill edge of the box rests above the ground under
+        // its centre. Account for that footprint without accepting a centre
+        // beyond the support's edge. Flat supports retain the two-unit probe.
+        let slope_depth = ground.normal.truncate().abs().dot(PLAYER_HALF.truncate()) / ground.normal.z;
+        let support = world.sweep(to + Vec3::Z, to - Vec3::Z * (2.+slope_depth), Vec3::ZERO);
         if support.start_solid || support.fraction >= 1. || support.normal.z < 0.65 { return false; }
     }
     true
@@ -64,12 +67,19 @@ pub fn resolve(world: &World, bodies: &mut [Body; 2], previous: [Vec3; 2]) {
     for index in 0..2 {
         if !movable(&bodies[index]) || weights[index] == 0. { continue; }
         let outward = if index == 0 { normal } else { -normal };
-        let candidate = end[index] + (outward * penetration * weights[index]).extend(0.);
+        let mut along = outward.extend(0.);
+        let p = &bodies[index].player;
+        if p.grounded && p.ground_normal.z >= 0.65 {
+            along.z = -outward.dot(p.ground_normal.truncate()) / p.ground_normal.z;
+        }
+        let candidate = end[index] + along * penetration * weights[index];
         if clear(world, &bodies[index], candidate) {
             let p = &mut bodies[index].player;
             p.feet = candidate;
             let inward = p.velocity.truncate().dot(outward).min(0.);
-            p.velocity -= (outward * inward).extend(0.);
+            // Cancel the approach along the same surface. Keeping its upward
+            // component after stopping uphill motion would launch Alice.
+            p.velocity -= along * inward;
         }
     }
 }
@@ -101,6 +111,26 @@ mod tests {
             input[moving].0.wish = (direction+Vec2::Y).normalize();
             for _ in 0..60 { r.move_players(&world,input); }
             assert!(r.players[moving].player.feet.y>80.);
+        }
+    }
+    #[test]
+    fn approaching_on_a_slope_preserves_personal_space_and_the_stationary_partner() {
+        let world=World::ramp_fixture();
+        for moving in 0..2 {
+            // The box rests on the uphill edge: z = x/2 + half.x/2 + skin.
+            let mut r=pair(&world,[vec3(-60.,0.,-22.46),vec3(60.,0.,37.54)]);
+            let still=r.players[1-moving].player.feet;
+            let mut input=[(Controls::default(),Default::default());2];
+            input[moving].0=Controls {wish:if moving==0 {Vec2::X}else{-Vec2::X},run:true,..Default::default()};
+            for _ in 0..240 {
+                r.move_players(&world,input);
+                let spacing=(r.players[0].player.feet-r.players[1].player.feet).truncate().length();
+                assert!(spacing>=DISTANCE-0.1,"Slope overlap moving{moving}: spacing{spacing}, feet{:?}",r.players.each_ref().map(|b|b.player.feet));
+                assert!(r.players.iter().all(|b|world.body_clear(b.player.feet)
+                    && world.body_trace(b.player.feet,b.player.feet-Vec3::Z*2.).fraction<1.),
+                    "Slope contact lost support: {:?}",r.players.each_ref().map(|b|b.player.feet));
+                assert!(r.players[1-moving].player.feet.distance(still)<0.1);
+            }
         }
     }
     #[test]

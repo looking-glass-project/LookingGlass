@@ -495,5 +495,72 @@ pub(super) fn check(a: &mut Assets) -> Result<()> {
     pads(a, &map)?;
     pad_obstructions(a, &map)?;
     bridge_clock(a, &map)?;
+    if let Ok(path) = std::env::var("LOOKING_GLASS_GARDEN_CONTACT_REPORT") {
+        replay_contact(a, &map, &path)?;
+    }
+    Ok(())
+}
+
+/// Optional exact captured-state regression. Only an offline copy is corrected;
+/// live characters, resources and saved gameplay are never changed by this check.
+fn replay_contact(a: &mut Assets, map: &Bsp, path: &str) -> Result<()> {
+    let report: serde_json::Value = serde_json::from_slice(&std::fs::read(path)?)?;
+    let mut frame: crate::coop::world::Frame = serde_json::from_value(report["frame"].clone())?;
+    frame.validate()?;
+    let snapshot: crate::coop::arena::Snapshot = serde_json::from_value(report["world"].clone())?;
+    let previous: [Vec3; 2] = serde_json::from_value(report["before"].clone())?;
+    ensure!(
+        previous.iter().all(|p| p.is_finite()),
+        "Invalid contact history"
+    );
+    let visit = Visit {
+        epoch: 1,
+        map: "garden1".into(),
+        entry: Some("garden1_start1".into()),
+        difficulty: Default::default(),
+        combat_preview: false,
+    };
+    let mut world = World::from_bsp(map)?;
+    let mut stage = Stage::load(a, map, &mut world, &visit, false)?;
+    stage.restore(&snapshot.stage, map, &mut world)?;
+    let before = frame.players.clone();
+    ensure!(
+        before
+            .iter()
+            .all(|b| b.stats.alive() && b.player.grounded && world.body_clear(b.player.feet)),
+        "Contact report is not two living supported players"
+    );
+    let old_gap = (before[0].player.feet - before[1].player.feet)
+        .truncate()
+        .length();
+    ensure!(
+        old_gap < 20.,
+        "Contact report does not reproduce the overlap"
+    );
+    crate::coop::separation::resolve(&world, &mut frame.players, previous);
+    let gap = (frame.players[0].player.feet - frame.players[1].player.feet)
+        .truncate()
+        .length();
+    ensure!(
+        gap >= crate::coop::separation::DISTANCE - 0.1
+            && frame
+                .players
+                .iter()
+                .all(|b| world.body_clear(b.player.feet)),
+        "Native Garden contact still overlaps: {old_gap} -> {gap}"
+    );
+    for (i, (old, new)) in before.iter().zip(&frame.players).enumerate() {
+        ensure!(
+            serde_json::to_value(&old.stats)? == serde_json::to_value(&new.stats)?,
+            "Contact changed resources"
+        );
+        if old.player.feet == previous[i] {
+            ensure!(
+                new.player.feet == old.player.feet,
+                "Contact moved stationary native partner"
+            );
+        }
+    }
+    println!("PASS exact captured Garden bank contact: {old_gap:.3} -> {gap:.3}, clear bodies, stationary partner and personal resources preserved");
     Ok(())
 }

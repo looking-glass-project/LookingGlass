@@ -3,6 +3,7 @@ mod art;
 mod check;
 mod coop;
 mod coop_check;
+mod coop_route;
 mod data;
 mod route;
 pub(crate) use route::drive as drive_route;
@@ -604,6 +605,11 @@ pub static REGISTRATION: Registration = Registration {
     target_base: Some(7_200_000),
     story_beats: BEATS,
     checks: &[
+        Check {
+            flag: "--garden1-coop-route-check",
+            help: "Traverse Garden with both players, production combat and ordinary controls.",
+            run: Run::Windowed(|a| Box::pin(coop_route::check(a))),
+        },
         Check {
             flag: "--garden1-coop-check",
             help: "Verify paired Garden arrivals, scenes, lily supports and saved machinery.",

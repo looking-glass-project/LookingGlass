@@ -4699,3 +4699,40 @@ These are component checks, not a full paired Garden traversal. Combat,
 consumables, recovery, internet traversal and transition/rejoin still need their
 combined evidence. No campaign row gains completion credit; total remains
 **42.1%**. Progress reports should name completed components alongside that total.
+
+### Player contact on slopes
+
+The first native paired Garden course captured two ordinary grounded players
+overlapping on the initial bank. Both were dry, without rope/ledge/climb or
+scripted movement. The contact check required a centre support within two units,
+but a box standing on a slope touches the surface at its uphill edge; its centre
+can be higher. The horizontal correction also needed to follow the ground slope.
+
+Grounded contact now follows the current surface normal and allows the centre
+support depth implied by the collision footprint. Swept clearance, walkable
+support and the stationary partner's position remain checked. Removing inward
+velocity uses the same surface direction, avoiding an upward impulse when an
+uphill approach stops. Flat supports retain the original short centre probe.
+
+A ramp regression fails before the fix at 35.125 units of horizontal separation
+(the requirement is 36). Both uphill and downhill approaches pass after the fix,
+along with all 796 active unit tests. The native Garden route remains a separate
+verification requirement; the earlier attempts are failures, not completed visits.
+
+Final source `4baa8d5f79534e675fafa062435189d8faea0043828e6dd3dd378e3036261aba`
+passes the 21 Garden component cases plus an offline replay of the exact native
+bank capture: separation increases from 18.434 to 36.000 units with clear bodies,
+the stationary partner unchanged and both personal resource states preserved.
+The optional replay uses `LOOKING_GLASS_GARDEN_CONTACT_REPORT` with
+`--garden1-coop-check`. Evidence: `private/coop-slope-before.log`,
+`private/coop-slope-after-unit.log`, `private/coop-slope-native.log`; the original
+capture is under `private/garden1-coop-route-73b4109/`.
+
+The new windowed `--garden1-coop-route-check` drives both players with ordinary
+controls through the production Arena and records private world/player state.
+Its current full attempt on the same runtime (`8474635`, before adding the
+offline replay check) fails after Blue loses the first rope and Red dies while
+waiting farther ahead. No full-route pass is claimed. The route log/profile are
+`private/garden1-coop-route-8474635.log` and `private/garden1-coop-route-8474635/`.
+All owned Anode jobs/windows closed and the lease was released; no screenshots
+were opened. Overall campaign credit stays **42.1%**.

@@ -1956,6 +1956,8 @@ Dry Landing additionally reserves `--garden1-coop-check` for paired arrival
 resources, scene ownership/reunion, moving supports and saved machinery. This
 focused headless check shares the existing Garden controller and hit IDs; it
 does not certify a full paired traversal.
+`--garden1-coop-route-check` additionally reserves a windowed production-Arena
+paired course using ordinary controls; its existence alone is not a passing run.
 
 Majestic Maze additionally reserves `--hedge1-save-write` and `--hedge1-save-read` for fresh-process native save checks. Its route requires a native window for the existing NPC cast; it has no active cinematic to skip.
 

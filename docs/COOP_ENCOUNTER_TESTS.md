@@ -149,3 +149,27 @@ the grip, then dies at tick 18,970 before Blue's countdown finishes. The team
 checkpoint restores exactly. This does not establish safe continued idle survival
 under attack or a Blue-victim internet pass; its failing expectation and nonzero
 exit status remain recorded. Full traversal/combat work is still required.
+
+
+## Garden traversal segments
+
+The Garden fixture captures host reports at steps 69, 71, 72 and 75. Export an
+isolated checkpoint from one of those reports using the encounter fixture above,
+then run:
+
+```powershell
+python tools/test_coop_garden.py --exe <tested-exe> --data <local-base> --checkpoint <isolated-checkpoint> --start-step 71 --end-step 84 --first blue --scenes skipped
+```
+
+The start/end steps are explicit test controls and must match the captured
+position. The host restores the unmodified checkpoint and replicates it to the guest.
+Both keep ordinary combat and traversal, and stop after passing the requested
+course point.
+The result retains the checkpoint, executable, embedded course and Python fixture
+identities, measured input lead, health and matching network-state counts. It
+always records `full_route_passed: false`. Omitting checkpoint/start/end continues
+to run and verify the full original entrance-to-Garden2 route.
+
+See the Garden segment evidence and the separate unresolved same-rope overlap
+case in `COOP.md`; traversal success alone does not prove collision or complete
+campaign support.

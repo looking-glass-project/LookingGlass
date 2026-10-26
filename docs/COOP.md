@@ -16,8 +16,10 @@ the total; a successful component or segment is not a completed campaign visit.
 The overall percentage is a weighted estimate, not elapsed time or a live build
 indicator. Current Garden milestones are **4/4 native paired routes passed** and
 **0 full independent internet routes passed**. The furthest internet run passed
-the early crossings, Rabbit scene, early combat clear and later ropes; the latest
-repeat failed when Red fell at step 72 while Blue reached step 73. Earlier runs
+the early crossings, Rabbit scene, early combat clear and later ropes; a
+repeat passed that rope and reached Blue step 93 before Red fell at the next
+rope approach (step 79). A subsequent captured segment now passes both crossings
+with measured-delay steering; the complete route is still unverified. Earlier runs
 still retain their grenade-wipe failures. A [short encounter replay](COOP_ENCOUNTER_TESTS.md) now
 reproduces saved combat and checkpoint outcomes without a full-level rerun.
 Earlier snapshots are captured for the grenade investigation. Report the last
@@ -5013,3 +5015,53 @@ This remains a failed full route. The next investigation is the clustered
 players' response to the corporal's grenades. The four native-route passes
 above belong to build `235926e`; the later rope-intent change affects only the
 independent-client test controller and its regression test.
+
+
+### Garden running approaches and short network segments
+
+The previous Red fall at step 72 was preceded by braking at the waypoint before
+an airborne rope interception. Source
+`45cbce80f5969a142cc6d304e1421fd116b88660b2d3e1b1c4180783a3bf9005`
+keeps the opt-in test driver's running approach. Its full public run passes that
+crossing, reaches Blue step 93, and fails when Red misses the next rope at step 79.
+All 2,377 common player/world/native-enemy states agree. Evidence:
+`private/coop/garden-route-dfe072def1c7409f83f00b1759e8685a/`.
+
+The fixture now automatically captures exact authoritative states before the
+later crossing. A normal isolated checkpoint exported from its step-71 capture
+preserves the recorded 41.592/63 health, positions, inventory and combat state.
+The independent-client course can start at explicit steps using ordinary inputs;
+this changes the test controller only. Segment results explicitly exclude the
+preceding and remaining traversal.
+
+Source `14ecae613acd29a4da3182599da26862c46547b885294e4bcc2593aebd526536`
+also keeps momentum before running jumps. Its first segment still failed: the
+fixed 170 ms steering estimate lagged actual 220-270 ms input acknowledgements.
+That failure remains in `garden-route-d265eeed2d0e4afab200fb4e97ec0a7a`.
+The Python fixture now smooths measured round-trip time, with a 50 ms allowance
+and the injected-delay estimate as its minimum. Each observation is sampled once;
+the final input lead is recorded alongside the exact fixture source and hash.
+
+The same executable then passes both rope crossings in a public checkpoint
+segment with 40 ms delay and 20 ms jitter: both begin at step 71; Blue reaches 86
+and Red 84, alive at 49.592/37 health, without respawns. All 169 comparable
+player/world/native-enemy states match. Final measured input lead is 264 ms.
+Evidence: `private/coop/garden-route-c9a199a40d8540e59068022c6eae5e79/`.
+The run takes 42.98 seconds including connection setup and closes both clients.
+No images were opened. All 803 active Rust tests (one ignored), locked release
+build, and seven source-package tests pass.
+
+These reports also reveal an open contact case: ordinary players attached to
+the same rope can overlap. The ground-contact resolver intentionally skips
+attached bodies; the spaced revival fix does not resolve later climbing contact.
+The failing segment records six overlapping samples, including horizontal
+spacing 5.51 and vertical spacing 19.72 at tick 16,091. This requires a rope-aware
+contact fix and a fresh segment check. No new campaign row is claimed; overall
+credit remains 42.6%.
+
+The subsequent full entrance repeat on `14ecae6` with measured timing fails
+before those rope segments: Blue dies in combat at step 55 (tick 13,082), while
+Red is at step 47 with 100 health. All 1,841 common player/world/native states
+match. Evidence: `private/coop/garden-route-64b6dc21d8f646c2ad8a0dc9bc73fc32/`.
+This remains a failed full-route attempt; the successful checkpoint segment
+cannot replace it. Both clients/helpers close and Anode is released.

@@ -119,11 +119,19 @@ impl Driver {
             let goal = step.goal(id);
             let delta = goal - p.feet;
             let steering = delta - p.velocity * lead;
+            // A rope approach is a running interception, not a place to stop.
+            // Braking at its preceding waypoint makes a delayed guest reach
+            // the rope only after falling below its free end.
+            let running_approach = lead > 0. && p.rope.is_none()
+                && (step.mode == "grab" || (step.mode.is_empty()
+                    && steps.get(self.index + 1).is_some_and(|s|
+                        s.mode == "grab" || (p.grounded && s.mode == "inputjump"))));
             // Queue a remote jump before its observed approach has already run
             // over the edge. The input still reaches the host normally; this
             // anticipates travel during delivery rather than moving the body.
             let approach =
-                if p.grounded && steps.get(self.index + 1).is_some_and(|s| s.mode == "jump") {
+                if (p.grounded && steps.get(self.index + 1).is_some_and(|s| s.mode == "jump"))
+                    || (running_approach && step.mode.is_empty()) {
                     20. + p.velocity.truncate().length() * lead
                 } else {
                     20.
@@ -275,7 +283,7 @@ impl Driver {
                         self.last = p.feet;
                     }
                     control = Controls {
-                        wish: if lead > 0. {
+                        wish: if lead > 0. && !running_approach {
                             (steering.truncate() * 4. / 320.).clamp_length_max(1.)
                         } else {
                             delta.truncate().normalize_or_zero()
@@ -345,7 +353,7 @@ fn rope_edge(mode: &str, keys: &mut Input) -> Result<()> {
     Ok(())
 }
 impl NetworkDriver {
-    pub(crate) fn new() -> Result<Self> {
+    pub(crate) fn new(start: usize) -> Result<Self> {
         let course = include_bytes!("coop_steps.json");
         std::fs::write(crate::preferences::path("garden1-coop-course.json"), course)?;
         let mut steps: Vec<Step> = serde_json::from_slice(course)?;
@@ -354,11 +362,16 @@ impl NetworkDriver {
                 step.pos = pos;
             }
         }
+        ensure!(start < steps.len(), "Garden course start is out of range");
+        // A checkpoint fixture may begin at an explicit ordinary-input step.
+        // It changes the test controller only, never the restored world/body.
+        let cards = steps[..start].iter().rev().find(|s| s.mode == "cards")
+            .is_some_and(|s| s.pos[0] != 0.);
         Ok(Self {
             steps,
-            driver: Driver::default(),
+            driver: Driver { index: start, cards, ..Default::default() },
             last_tick: None,
-            free_ticks: 0,
+            free_ticks: if start == 0 { 0 } else { 240 },
             first_rope_cleared: false,
             cached: Default::default(),
         })

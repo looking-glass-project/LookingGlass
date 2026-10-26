@@ -44,6 +44,9 @@ struct Command {
     /// Ordinary-input Garden course, planned independently from this client view.
     #[serde(default)]
     garden_follow: Option<PlayerId>,
+    /// Initial test-course step for an explicitly restored Garden segment.
+    #[serde(default)]
+    garden_start: Option<usize>,
     /// Test controller's estimate of observation plus input delivery delay.
     /// Only anticipates steering; it never changes the received body or physics.
     #[serde(default)]
@@ -81,6 +84,8 @@ impl Command {
     fn validate(&self) -> Result<()> {
         ensure!(self.id > 0 && self.epoch > 0 && self.heartbeat > 0, "Invalid route command identity");
         ensure!(self.input_lead.is_finite() && (0. ..=1.5).contains(&self.input_lead), "Invalid input lead");
+        ensure!(self.garden_start.is_none() || self.garden_follow.is_some(),
+            "A Garden start requires the Garden course");
         ensure!(self.arrival_radius.is_finite() && (1. ..=8.).contains(&self.arrival_radius),
             "Invalid route arrival radius");
         if let Some(speed) = self.speed_limit {
@@ -647,7 +652,7 @@ impl Driver {
         if let Some(first) = command.garden_follow {
             let result = (|| -> Result<()> {
                 if self.garden_course.is_none() {
-                    self.garden_course = Some(crate::levels::garden1::NetworkDriver::new()?);
+                    self.garden_course = Some(crate::levels::garden1::NetworkDriver::new(command.garden_start.unwrap_or(0))?);
                 }
                 let course = self.garden_course.as_mut().unwrap();
                 course.sample(frame, arena, world, local, first, command.input_lead, keys)?;

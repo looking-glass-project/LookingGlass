@@ -7,6 +7,7 @@ separate death, checkpoint and reconnect requirements.
 import argparse
 import hashlib
 import json
+import shutil
 import time
 from pathlib import Path
 
@@ -22,6 +23,9 @@ class GardenPair(Pair):
     capture_scenes = False
 
     def __init__(self, args):
+        self.minimum_lead = min(1.5, .05 + 2 * (args.delay_ms + args.jitter_ms) / 1000)
+        self.guest_lead = self.minimum_lead
+        self.lead_tick = None
         super().__init__(args)
         self.deadline = time.monotonic() + 1200
         self.progress = None
@@ -31,20 +35,41 @@ class GardenPair(Pair):
         self.evidence['fixture_sha256'] = hashlib.sha256(source).hexdigest()
         self.course_hashes = {}
         self.encounter_snapshots = set()
+        if args.checkpoint:
+            seed = json.loads(args.checkpoint.read_text())['payload']
+            assert seed['visit']['map'] == self.map_name and seed['visit']['epoch'] == 1
+            assert seed['visit']['entry'] == self.entry
+            self.resume_checkpoint = True
+            shutil.copyfile(args.checkpoint, self.folder / 'host' / 'coop-checkpoint.json')
+            self.evidence['checkpoint_sha256'] = hashlib.sha256(args.checkpoint.read_bytes()).hexdigest()
+            self.evidence['start_tick'] = seed['frame']['tick']
+            self.evidence['start_step'] = args.start_step
 
     def set(self, role, *args, follow=False, **kwargs):
         kwargs['attack'] = False
         super().set(role, *args, **kwargs)
         self.commands[role].update(
             garden_follow=self.args.first.title() if follow else None,
-            input_lead=min(1.5, .05 + 2 * (self.args.delay_ms + self.args.jitter_ms) / 1000)
-                if role == 'guest' else 0,
+            garden_start=self.args.start_step if follow else None,
+            input_lead=self.guest_lead if role == 'guest' else 0,
             watch_dialogue=self.args.scenes == 'watched')
 
     def pump(self):
         if (self.folder / 'stop-test').exists():
             raise RuntimeError('Garden route stopped; evidence retained')
         super().pump()
+        guest = self.reports.get('guest')
+        if guest and guest['frame']['tick'] != self.lead_tick:
+            self.lead_tick = guest['frame']['tick']
+            round_trip = (guest.get('network_timing') or {}).get('round_trip_ms')
+            if round_trip is not None and 0 <= round_trip < 10000:
+                # Include actual relay travel, not just the injected delay.
+                # Smooth fresh acknowledgements; a repeated report is one sample.
+                observed = min(1.5, .05 + round_trip / 1000)
+                self.guest_lead = max(self.minimum_lead, .8 * self.guest_lead + .2 * observed)
+                self.commands['guest']['input_lead'] = self.guest_lead
+                self.history['guest'][-1]['test_input_lead'] = self.guest_lead
+                self.evidence['last_measured_input_lead'] = self.guest_lead
         for role, report in self.reports.items():
             if role not in self.course_hashes and report['route_driver']['garden_course']:
                 # Read the bytes embedded in the tested executable, which may
@@ -89,6 +114,13 @@ class GardenPair(Pair):
         # Keep the real state before a combat failure, rather than only the last
         # already-doomed frame. These are private, read-only replay fixtures.
         course = report['route_driver']['garden_course']
+        # Keep an exact world/player state before the later rope approach, so
+        # a failure can be investigated without replaying the whole visit.
+        if role == 'host' and course and course['step'] in (69, 71, 72, 75):
+            marker = f'rope-step-{course["step"]}'
+            if marker not in self.encounter_snapshots:
+                (self.folder / f'encounter-{marker}.json').write_text(json.dumps(report))
+                self.encounter_snapshots.add(marker)
         if role == 'host' and course and course['step'] == 62:
             markers = ['clear-start']
             for actor, saved in enumerate(report['combat']['npcs']['actors']):
@@ -147,17 +179,32 @@ class GardenPair(Pair):
         self.start_pair()
         for role in self.commands:
             self.set(role, follow=True)
-        self.until(self.arrived, 900)
-        self.verify()
+        if self.args.checkpoint:
+            self.until(lambda: all((r['route_driver']['garden_course'] or {}).get('step', 0)
+                >= self.args.end_step for r in self.reports.values()), 120)
+            assert all(r['visit']['map'] == self.map_name for r in self.reports.values())
+            self.verify_network_states()
+            self.verify_network_states('world_sha256', 'matching_world_states')
+            self.verify_network_states('native_sha256', 'matching_native_residents')
+            self.evidence['end_steps'] = {role: r['route_driver']['garden_course']['step']
+                for role, r in self.reports.items()}
+            self.evidence['end_tick'] = self.reports['host']['frame']['tick']
+            self.evidence['final_health'] = [b['stats']['sanity'] for b in self.reports['host']['frame']['players']]
+        else:
+            self.until(self.arrived, 900)
+            self.verify()
         for role in ('guest', 'host'):
-            self.set(role, finish=True, epoch=2)
+            self.set(role, finish=True, epoch=1 if self.args.checkpoint else 2)
             self.until(lambda: self.processes[role].poll() is not None, 30)
             assert self.processes[role].returncode == 0
         (self.folder / 'result.json').write_text(json.dumps(dict(passed=True, build=self.build,
             internet=not self.args.local, first=self.args.first, scenes=self.args.scenes,
             delay_ms=self.args.delay_ms, jitter_ms=self.args.jitter_ms, evidence=self.evidence,
-            scope='Full independent two-client Garden traversal; recovery/rejoin remain separate'), indent=2))
-        print('PASS Garden full two-client traversal, owned scenes, personal inventory and Garden2 arrival.', flush=True)
+            full_route_passed=not bool(self.args.checkpoint),
+            scope='Captured Garden course segment; preceding traversal and later route excluded'
+                if self.args.checkpoint else 'Full independent two-client Garden traversal; recovery/rejoin remain separate'), indent=2))
+        print('PASS Garden checkpoint segment.' if self.args.checkpoint else
+            'PASS Garden full two-client traversal, owned scenes, personal inventory and Garden2 arrival.', flush=True)
 
 
 if __name__ == '__main__':
@@ -169,9 +216,17 @@ if __name__ == '__main__':
     parser.add_argument('--local', action='store_true')
     parser.add_argument('--delay-ms', type=int, default=40)
     parser.add_argument('--jitter-ms', type=int, default=20)
+    parser.add_argument('--checkpoint', type=Path)
+    parser.add_argument('--start-step', type=int)
+    parser.add_argument('--end-step', type=int)
     args = parser.parse_args()
     if not (0 <= args.delay_ms <= 500 and 0 <= args.jitter_ms <= 500):
         parser.error('Delay/jitter must be between 0 and 500 ms')
+    if args.checkpoint:
+        if args.start_step is None or args.end_step is None or not 26 <= args.start_step < args.end_step:
+            parser.error('A checkpoint segment needs explicit ordered start/end steps after the Rabbit scene')
+    elif args.start_step is not None or args.end_step is not None:
+        parser.error('Course start/end steps require an isolated checkpoint')
     pair = GardenPair(args)
     try:
         pair.run()

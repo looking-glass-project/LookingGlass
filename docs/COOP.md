@@ -22,6 +22,10 @@ Dry Landing/Garden now has 21 passing native component cases for personal arriva
 resources, scene ownership/reunion, paired lily supports at three update rates,
 obstructed/dead riders, independent clocks and saved bridge timing. Full paired
 traversal, combat, recovery and internet transition/rejoin remain open.
+The ordinary-input route now recovers a lost first-rope grip, completes the
+Rabbit scene/reunion and crosses the later bank obstacle with both players.
+It still fails later during traversal; these are partial milestones, not a
+completed visit.
 
 The underwater temple now advances its guide and machinery for both swimmers.
 Thirteen native component cases pass for individual air, crushing, saved state
@@ -4736,3 +4740,28 @@ waiting farther ahead. No full-route pass is claimed. The route log/profile are
 `private/garden1-coop-route-8474635.log` and `private/garden1-coop-route-8474635/`.
 All owned Anode jobs/windows closed and the lease was released; no screenshots
 were opened. Overall campaign credit stays **42.1%**.
+
+### Garden automated rope recovery
+
+The paired driver now approaches and grabs again after losing a rope, using
+ordinary movement, jump and use inputs. The follower waits with combat available
+on banks before the first rope and second launcher instead of hanging exposed
+on the second rope. Grounded rope approaches can use the same stuck-jump recovery
+as walking. Invalid `LOOKING_GLASS_GARDEN_COOP_FIRST` values now fail explicitly
+instead of returning success without running a case.
+
+Build `1be07acfdb754b6860d8e12af9ceb999c6164bc252c904a05761cc1f67385029`
+records Blue losing the first grip without a use input at tick 5846, recovering
+and intentionally releasing at tick 6438. Both players complete the Rabbit scene
+and reunion; Blue reaches step 111 while Red stalls at step 72 and dies. The next
+build, `2acee224394243f35a31b057884bdb3e37c4f13a4510c85b4014b5332fb75b6b`,
+clears that grounded approach with both players but still fails at tick 19942,
+steps 73/83, when Red dies farther along. The high grab before the timed swing
+and subsequent drop need investigation. Neither run is a full-route pass.
+
+Evidence: `private/garden1-coop-route-1be07ac.log` and
+`private/garden1-coop-route-2acee22.log`, with corresponding private state reports.
+The final build passes 796 unit tests (one ignored), the locked release build,
+seven source-package tests and the invalid-selector native check. No gameplay
+physics, damage, resources or placements were changed. Overall campaign credit
+remains **42.1%**; report these intermediate results alongside it.

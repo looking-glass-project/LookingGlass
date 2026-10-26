@@ -49,6 +49,7 @@ impl Driver {
         world: &World,
         roster: &Roster,
         id: PlayerId,
+        wait_before: Option<usize>,
     ) -> Result<(Controls, Input)> {
         let body = &roster.players[id.index()];
         let p = &body.player;
@@ -73,7 +74,9 @@ impl Driver {
             p.eye(),
             &targets,
             &self.fight,
-            self.cards && body.stats.copies(1) > 0 && body.stats.will() >= fight::CARD_COST,
+            (self.cards || wait_before == Some(self.index))
+                && body.stats.copies(1) > 0
+                && body.stats.will() >= fight::CARD_COST,
         );
         if attack.target.is_some() && p.rope.is_none() {
             input.weapon = Some(attack.weapon as u8);
@@ -90,6 +93,11 @@ impl Driver {
             };
             let goal = Vec3::from_array(step.pos);
             let delta = goal - p.feet;
+            // Wait on the bank with combat available, not hanging from a rope
+            // under fire. This changes only the test player's chosen inputs.
+            if wait_before == Some(self.index) {
+                return Ok((control, input));
+            }
             ensure!(
                 self.ticks < 120 * 90,
                 "Garden {id:?} stalled at step{} {} goal{goal:?}, feet{:?}",
@@ -135,8 +143,26 @@ impl Driver {
                     control.use_pressed = step.mode == "release" && self.ticks == 0;
                 }
                 "rope" => {
-                    control.rise = delta.z.signum();
-                    control.use_pressed = self.ticks == 0 && p.rope.is_none();
+                    if p.rope.is_some() {
+                        control.rise = delta.z.signum();
+                    } else {
+                        let grab = steps[..self.index]
+                            .iter()
+                            .rev()
+                            .find(|s| s.mode == "grab")
+                            .context("Garden rope climb has no approach")?;
+                        let approach = Vec3::from_array(grab.pos) - p.feet;
+                        control = Controls {
+                            wish: approach.truncate().normalize_or_zero(),
+                            swim: approach.normalize_or_zero(),
+                            rise: approach.z.signum(),
+                            run: true,
+                            jump: p.grounded && approach.z > 25. && self.ticks % 60 == 0,
+                            use_pressed: p.rope_prompt(world) == Some("E grab rope")
+                                && self.ticks % 4 == 0,
+                            ..Default::default()
+                        };
+                    }
                 }
                 "nav" => {
                     if self.plan.is_empty() {
@@ -172,7 +198,8 @@ impl Driver {
                         },
                         run: true,
                         jump: (step.mode == "jump" && self.ticks == 0)
-                            || (step.mode.is_empty() && stuck),
+                            || ((step.mode.is_empty() || (step.mode == "grab" && p.grounded))
+                                && stuck),
                         use_pressed: step.mode == "grab" && self.ticks % 4 == 0 && p.rope.is_none(),
                         ..Default::default()
                     };
@@ -254,16 +281,18 @@ async fn route(a: &mut Assets, first: PlayerId, skip: bool) -> Result<()> {
         let owner_before = arena.stage.owner;
         let feet_before = roster.players.each_ref().map(|b| b.player.feet);
         let warps_before = roster.players.each_ref().map(|b| b.warped_at);
+        let ropes_before = roster.players.each_ref().map(|b| b.player.rope.clone());
         let inputs = (|| -> Result<_> {
             let mut out = std::array::from_fn(|_| (Controls::default(), Input::default()));
             if !arena.stage.busy() {
                 for id in PlayerId::ALL {
-                    // The follower can climb faster from the other entrance
-                    // offset. Wait on the second rope before swinging toward
-                    // Rabbit so this variant actually exercises the chosen order.
-                    if id != first && !rabbit_seen && drivers[id.index()].index == 23 {
-                        continue;
-                    }
+                    let wait_before = (id != first && !rabbit_seen).then_some(
+                        if drivers[first.index()].index < 11 {
+                            5
+                        } else {
+                            20
+                        },
+                    );
                     if id == first || free_ticks >= 240 {
                         out[id.index()] = drivers[id.index()].sample(
                             &steps,
@@ -271,6 +300,7 @@ async fn route(a: &mut Assets, first: PlayerId, skip: bool) -> Result<()> {
                             &scene.world,
                             &roster,
                             id,
+                            wait_before,
                         )?;
                     }
                 }
@@ -294,6 +324,16 @@ async fn route(a: &mut Assets, first: PlayerId, skip: bool) -> Result<()> {
             }
         };
         arena.step(&mut roster, &scene.map, &mut scene.world, inputs)?;
+        for id in PlayerId::ALL {
+            let body = &roster.players[id.index()];
+            if ropes_before[id.index()].is_some() && body.player.rope.is_none() {
+                println!(
+                    "Garden {id:?} rope released tick{tick} step{} use={} health={} feet={:?} velocity={:?}",
+                    drivers[id.index()].index, inputs[id.index()].0.use_pressed,
+                    body.stats.sanity(), body.player.feet, body.player.velocity
+                );
+            }
+        }
         let spacing = roster.players[0].player.feet - roster.players[1].player.feet;
         if !close_recorded
             && !arena.stage.busy()
@@ -460,10 +500,17 @@ async fn route(a: &mut Assets, first: PlayerId, skip: bool) -> Result<()> {
 }
 pub(super) async fn check(a: &mut Assets) -> Result<()> {
     std::fs::create_dir_all(crate::preferences::path(""))?;
+    let selected = std::env::var("LOOKING_GLASS_GARDEN_COOP_FIRST").ok();
+    ensure!(
+        selected
+            .as_deref()
+            .is_none_or(|v| matches!(v, "Blue" | "Red")),
+        "LOOKING_GLASS_GARDEN_COOP_FIRST must be Blue or Red"
+    );
     for first in PlayerId::ALL {
-        if std::env::var("LOOKING_GLASS_GARDEN_COOP_FIRST")
-            .ok()
-            .is_some_and(|v| v != format!("{first:?}"))
+        if selected
+            .as_ref()
+            .is_some_and(|v| *v != format!("{first:?}"))
         {
             continue;
         }

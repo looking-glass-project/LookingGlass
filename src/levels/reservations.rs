@@ -283,7 +283,11 @@ pub static RESERVATIONS: [Reservation; 39] = [
         route: &["--garden3-route-check"], skip: &["--garden3-skip-route-check"],
         render: &["--garden3-render-check"],
     }), ..visit(14, "garden3") },
-    visit(15, "garden4"),
+    Reservation { flags: Some(VisitFlags {
+        contract: &["--garden4-check", "--garden4-coop-check"],
+        route: &["--garden4-route-check"], skip: &["--garden4-skip-route-check"],
+        render: &["--garden4-render-check"],
+    }), ..visit(15, "garden4") },
     Reservation {
         flags: Some(VisitFlags {
             contract: &["--centipede1-check", "--centipede1-save-write", "--centipede1-save-read"],

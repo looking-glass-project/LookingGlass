@@ -239,7 +239,8 @@ pub(super) fn check(a: &mut Assets) -> Result<()> {
                 "Stale editor exit remains active"
             );
             let mut departure = None;
-            for _ in 0..240 {
+            // Cover the portal gap at the current 104-unit/s walking speed.
+            for _ in 0..600 {
                 let from = p.feet;
                 p.tick(
                     &w,

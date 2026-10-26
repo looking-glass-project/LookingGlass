@@ -1971,6 +1971,11 @@ Rolling Stones additionally reserves `--garden3-coop-check` for staged paired
 marble contacts, shared gate/collapse clocks and original scene reunion. It
 shares the existing controller and hit IDs, with no full-route credit implied.
 
+Icy Reception additionally reserves `--garden4-coop-check` for staged paired
+rock damage, shared ice/wall clocks, Easy altar contacts, original scene reunion
+and portal unlock. It shares the existing controller and hit IDs; a component
+pass does not establish full paired traversal or independent internet clients.
+
 Majestic Maze additionally reserves `--hedge1-save-write` and `--hedge1-save-read` for fresh-process native save checks. Its route requires a native window for the existing NPC cast; it has no active cinematic to skip.
 
 Clockwork and Ascension additionally reserve `--hatter1-route-native-check` and

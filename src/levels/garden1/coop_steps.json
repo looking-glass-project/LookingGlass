@@ -156,7 +156,12 @@
       -600,
       236
     ],
-    "mode": "launch"
+    "mode": "launch",
+    "network_pos": [
+      -1650,
+      -595,
+      236
+    ]
   },
   {
     "pos": [

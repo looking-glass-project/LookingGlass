@@ -34,6 +34,7 @@ class Pair:
     map_name = 'gvillage'
     next_map = 'pandemonium'
     evidence_prefix = 'village-test-'
+    capture_scenes = True
 
     def __init__(self, args):
         self.args = args
@@ -144,7 +145,7 @@ class Pair:
             if not rows or (rows[-1]['epoch'], rows[-1]['tick']) != (row['epoch'], row['tick']):
                 rows.append(row)
         # Capture both views of each actual scene without changing their goals.
-        if len(self.reports) == 2:
+        if self.capture_scenes and len(self.reports) == 2:
             scene = self.reports['host']['route_driver']['scene']
             if scene and scene not in self.captures and self.reports['guest']['route_driver']['scene'] == scene:
                 pending = self.capture_commands.setdefault(scene, {})

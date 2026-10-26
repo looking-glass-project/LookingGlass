@@ -4910,3 +4910,87 @@ public file exactly. Evidence is `private/garden1-coop-route-74aa21e-all.log`
 and its isolated profile. The invalid scene-selector check also passes.
 Validation: locked release build, 796 active unit tests (one ignored), seven
 source-package tests and the source worktree audit pass.
+
+
+### Independent Garden clients and delayed controls
+
+`tools/test_coop_garden.py` runs two processes with separate profiles over the
+public internet transport, with 40 ms delay and 20 ms jitter by default. Each
+client drives from its own received frame and world. The harness sends local
+course commands, never positions, health, inventory or enemy state through the
+network. It records player, world and native-enemy state hashes, scene owners,
+reunions, personal inventory and the outgoing visit. Death, checkpoint recovery
+or an unexplained warp fail this clean-traversal test. Recovery still needs its
+own cases.
+
+The local route controller now accepts elapsed observation ticks. Repeated guest
+frames retain continuous inputs without repeating jump or rope edges; coalesced
+updates cannot skip periodic input boundaries. Remote jump approaches anticipate
+travel during input delivery. The authored course can provide `network_pos` for
+a delayed-client aiming point while retaining the independently verified native
+route. Its first mushroom uses that adjustment to avoid steering past the pad
+while airborne. Both clients save the exact course bytes compiled into their
+executable; the fixture hashes those bytes rather than the current working tree.
+
+Run the fixture in the background desktop, for example:
+
+```powershell
+python tools/test_coop_garden.py --exe target/release/looking-glass.exe --data <local-base> --first blue --scenes skipped
+```
+
+`--first red` exchanges the first-arrival role; `--scenes watched` exercises
+watched scenes. Public internet is the default; `--local` explicitly selects a
+local diagnostic. Scene captures are disabled. Full and previous valid reports,
+compact histories and timing summaries are retained in the isolated private
+folder on failure.
+
+The initial `8cf3e35` internet run recorded 2,590 identical sent/restored player,
+world and native-enemy states but failed the early crossing. The guest's jump
+counter advanced after the host body had already left its ledge; the host then
+overshot the first mushroom. A subsequent `a40b072` run with anticipated jumps
+and the revised aiming point passed both locations, the Rabbit scene and the
+later ropes. It failed at step 62 when the team wiped. The last pre-wipe guest
+snapshot contains a corporal grenade approaching both players, who had 36.538
+and 59.653 Sanity. The harness rejected the automatic checkpoint restart.
+These are partial route observations, not a full internet traversal pass.
+
+Evidence: `private/coop/garden-route-ffa9e18a28754f2c91cf8bfcf2afc5bd/`
+and `private/coop/garden-route-57493ff6fcbe442f8fe3bbd53293a732/`.
+The latter was a diagnostic candidate whose shared aiming-point change also
+caused a later native combat failure. The final source confines the aiming
+adjustment to the network course. Full internet traversal and the recovery
+matrix remain open; overall credit stays **42.1%**.
+
+
+Finalized native-path build
+`235926edfeb6423b88e8416d79b133acf0cb6c24e8eb9a4aa9ef6cfe9d898ce8`
+repeats all four native passes with the original ticks, replica counts and
+resources. Its internet repeat again passes the early crossing and Rabbit
+scene, then fails when Red misses the later rope at step 29. The previous valid
+state retains the fall before death; 1,461 sent/restored player, world and enemy
+states match. Both saved compiled courses match the source. Evidence is
+`private/coop/garden-route-a67829cf32d74109b28fe27c1dd82b35/`.
+
+The independent-client controller now sends explicit grab/release edges for
+rope actions. A generic use pressed before a rope prompt existed could arrive
+after automatic attachment and toggle that grip off. The regression delivers
+such an early grab after attachment through the real input latch, checks that
+the grip remains, then checks that an intentional release still works. This
+changes test input selection only; the production protocol already supports
+those distinct actions. Full internet traversal remains unverified.
+
+
+Rope-intent build
+`b716dc30251ebb8116e45b7ee40a1530fd98aba6ba7aa88257aefda2bcfb0ea5`
+passes the locked release build and all 798 active unit tests (one ignored).
+Its two-client skipped-scene run passes the previously missed rope and reaches
+the step-62 combat clear with both players. It then rejects a simultaneous
+wipe: the last valid host report is tick 14,569 with 29.873/70.000 Sanity; tick
+14,593 has restored checkpoint generation one. All 2,099 common sent/restored
+player, world and native-enemy states match. Both compiled course snapshots
+match the recorded source. Evidence, including previous valid full states, is
+`private/coop/garden-route-414a5a5a62b647a486b1a9cb253deb42/`.
+This remains a failed full route. The next investigation is the clustered
+players' response to the corporal's grenades. The four native-route passes
+above belong to build `235926e`; the later rope-intent change affects only the
+independent-client test controller and its regression test.

@@ -5,7 +5,7 @@ use crate::{
     coop::{
         arena::Arena,
         protocol::{Input, Visit},
-        world::Roster,
+        world::{Body, Frame, Roster},
         PlayerId,
     },
     movement::{Controls, FIXED_DT},
@@ -19,6 +19,9 @@ struct Step {
     pos: [f32; 3],
     #[serde(default)]
     red_pos: Option<[f32; 3]>,
+    /// Optional steering goal for the delayed independent-client test course.
+    #[serde(default)]
+    network_pos: Option<[f32; 3]>,
     #[serde(default)]
     mode: String,
     #[serde(default)]
@@ -44,6 +47,11 @@ struct Driver {
     plan_tick: usize,
     fight: fight::Tracker,
 }
+// A delayed observation can cross a periodic input boundary without containing
+// its exact tick. Fire once for the interval, never once per render of a frame.
+fn due(tick: usize, elapsed: usize, period: usize, phase: usize) -> bool {
+    (phase + period - tick % period) % period < elapsed
+}
 impl Driver {
     fn next(&mut self, feet: Vec3) {
         self.index += 1;
@@ -58,11 +66,12 @@ impl Driver {
         steps: &[Step],
         arena: &Arena,
         world: &World,
-        roster: &Roster,
+        body: &Body,
         id: PlayerId,
         wait_before: Option<usize>,
+        elapsed: usize,
+        lead: f32,
     ) -> Result<(Controls, Input)> {
-        let body = &roster.players[id.index()];
         let p = &body.player;
         let mut control = Controls::default();
         let mut input = Input {
@@ -72,7 +81,7 @@ impl Driver {
         };
         let movement_locked = arena.characters[id.index()].attack_movement_locked();
         let targets = arena.npcs.targets();
-        self.fight.observe(&targets, FIXED_DT);
+        self.fight.observe(&targets, FIXED_DT * elapsed as f32);
         let context = crate::combat::Context {
             world,
             targets: &targets,
@@ -109,6 +118,21 @@ impl Driver {
             };
             let goal = step.goal(id);
             let delta = goal - p.feet;
+            let steering = delta - p.velocity * lead;
+            // Queue a remote jump before its observed approach has already run
+            // over the edge. The input still reaches the host normally; this
+            // anticipates travel during delivery rather than moving the body.
+            let approach =
+                if p.grounded && steps.get(self.index + 1).is_some_and(|s| s.mode == "jump") {
+                    20. + p.velocity.truncate().length() * lead
+                } else {
+                    20.
+                };
+            let rise = if lead > 0. {
+                (steering.z / 40.).clamp(-1., 1.)
+            } else {
+                delta.z.signum()
+            };
             // A timed swing without an explicit climb step assumes the grip
             // height of its approach. An obstacle jump can catch the same rope
             // much higher; descend through ordinary controls before swinging.
@@ -136,7 +160,7 @@ impl Driver {
                 "rope" => p.rope.is_some() && delta.z.abs() < 8.,
                 "grab" => p.rope.is_some() && (!settle_grip || delta.z.abs() < 8.),
                 "launch" => p.velocity.z > 500.,
-                _ => delta.truncate().length() < 20. && delta.z.abs() < 52.,
+                _ => delta.truncate().length() < approach && delta.z.abs() < 52.,
             };
             if done {
                 self.next(p.feet);
@@ -148,8 +172,8 @@ impl Driver {
                         t.center.distance(p.eye()) < goal.x
                             && fight::aim_point(&context, p.eye(), t).is_some()
                     });
-                    self.quiet = if visible { 0 } else { self.quiet + 1 };
-                    if self.ticks > 0 && self.ticks % 600 == 0 {
+                    self.quiet = if visible { 0 } else { self.quiet + elapsed };
+                    if self.ticks > 0 && due(self.ticks, elapsed, 600, 0) {
                         let mut blade =
                             crate::weapons::Projectile::thrown_blade(p.eye(), attack.aim);
                         let (hit, contact_normal) = blade.contact_step(1., &context);
@@ -184,15 +208,15 @@ impl Driver {
                     // stationary attempt, to see over low cover. This uses the
                     // ordinary jump input without moving the firing position.
                     control.jump = step.frames > 0
-                        && self.ticks >= step.frames
-                        && self.ticks % 240 == 0
+                        && self.ticks + elapsed > step.frames
+                        && due(self.ticks, elapsed, 240, 0)
                         && visible
                         && p.grounded;
                 }
                 "wait" => (),
-                "grab" if p.rope.is_some() => control.rise = delta.z.signum(),
+                "grab" if p.rope.is_some() => control.rise = rise,
                 "hold" => {
-                    control.wish = (delta.truncate() * 4. / 320.).clamp_length_max(1.);
+                    control.wish = (steering.truncate() * 4. / 320.).clamp_length_max(1.);
                     control.run = true;
                 }
                 "input" | "inputjump" | "release" => {
@@ -205,7 +229,7 @@ impl Driver {
                 }
                 "rope" => {
                     if p.rope.is_some() {
-                        control.rise = delta.z.signum();
+                        control.rise = rise;
                     } else {
                         let grab = steps[..self.index]
                             .iter()
@@ -218,9 +242,9 @@ impl Driver {
                             swim: approach.normalize_or_zero(),
                             rise: approach.z.signum(),
                             run: true,
-                            jump: p.grounded && approach.z > 25. && self.ticks % 60 == 0,
+                            jump: p.grounded && approach.z > 25. && due(self.ticks, elapsed, 60, 0),
                             use_pressed: p.rope_prompt(world) == Some("E grab rope")
-                                && self.ticks % 4 == 0,
+                                && due(self.ticks, elapsed, 4, 0),
                             ..Default::default()
                         };
                     }
@@ -237,20 +261,25 @@ impl Driver {
                     if let Some((next, _)) = self.plan.front() {
                         control = *next;
                         control.jump &= self.plan_tick == 0;
-                        self.plan_tick += 1;
-                        if self.plan_tick == 24 {
+                        self.plan_tick += elapsed;
+                        while self.plan_tick >= 24 && !self.plan.is_empty() {
                             self.plan.pop_front();
-                            self.plan_tick = 0;
+                            self.plan_tick -= 24;
                         }
                     }
                 }
                 _ => {
-                    let stuck = self.ticks % 120 == 119 && p.feet.distance(self.last) < 18.;
-                    if self.ticks % 120 == 119 {
+                    let check_stuck = due(self.ticks, elapsed, 120, 119);
+                    let stuck = check_stuck && p.feet.distance(self.last) < 18.;
+                    if check_stuck {
                         self.last = p.feet;
                     }
                     control = Controls {
-                        wish: delta.truncate().normalize_or_zero(),
+                        wish: if lead > 0. {
+                            (steering.truncate() * 4. / 320.).clamp_length_max(1.)
+                        } else {
+                            delta.truncate().normalize_or_zero()
+                        },
                         swim: delta.normalize_or_zero(),
                         rise: if delta.z.abs() > 25. {
                             delta.z.signum()
@@ -263,12 +292,14 @@ impl Driver {
                                 || (matches!(step.mode.as_str(), "grab" | "launch")
                                     && p.grounded))
                                 && stuck),
-                        use_pressed: step.mode == "grab" && self.ticks % 4 == 0 && p.rope.is_none(),
+                        use_pressed: step.mode == "grab"
+                            && due(self.ticks, elapsed, 4, 0)
+                            && p.rope.is_none(),
                         ..Default::default()
                     };
                 }
             }
-            self.ticks += 1;
+            self.ticks += elapsed;
             if matches!(
                 step.mode.as_str(),
                 "jump" | "launch" | "grab" | "rope" | "release" | "input" | "inputjump"
@@ -284,6 +315,206 @@ impl Driver {
         }
     }
 }
+/// Independent client-side version of the ordinary-input course. It observes
+/// the client's received frame and never writes a body, resource or world state.
+pub(crate) struct NetworkDriver {
+    steps: Vec<Step>,
+    driver: Driver,
+    last_tick: Option<u64>,
+    free_ticks: usize,
+    first_rope_cleared: bool,
+    cached: (Controls, Input),
+}
+#[derive(Serialize)]
+pub(crate) struct CourseReport {
+    step: usize,
+    mode: String,
+    ticks: usize,
+    quiet: usize,
+    cards: bool,
+    observed_tick: Option<u64>,
+}
+fn rope_edge(mode: &str, keys: &mut Input) -> Result<()> {
+    // A grab sent before the prompt appears can arrive after automatic
+    // attachment. Preserve its intent instead of sending a generic E toggle.
+    match mode {
+        "grab" | "rope" => keys.rope_edges[0] += 1,
+        "release" => keys.rope_edges[1] += 1,
+        _ => anyhow::bail!("Unknown Garden course rope action: {mode}"),
+    }
+    Ok(())
+}
+impl NetworkDriver {
+    pub(crate) fn new() -> Result<Self> {
+        let course = include_bytes!("coop_steps.json");
+        std::fs::write(crate::preferences::path("garden1-coop-course.json"), course)?;
+        let mut steps: Vec<Step> = serde_json::from_slice(course)?;
+        for step in &mut steps {
+            if let Some(pos) = step.network_pos {
+                step.pos = pos;
+            }
+        }
+        Ok(Self {
+            steps,
+            driver: Driver::default(),
+            last_tick: None,
+            free_ticks: 0,
+            first_rope_cleared: false,
+            cached: Default::default(),
+        })
+    }
+    pub(crate) fn report(&self) -> CourseReport {
+        CourseReport {
+            step: self.driver.index,
+            mode: self
+                .steps
+                .get(self.driver.index)
+                .map_or("finished", |s| s.mode.as_str())
+                .into(),
+            ticks: self.driver.ticks,
+            quiet: self.driver.quiet,
+            cards: self.driver.cards,
+            observed_tick: self.last_tick,
+        }
+    }
+    pub(crate) fn sample(
+        &mut self,
+        frame: &Frame,
+        arena: &Arena,
+        world: &World,
+        local: PlayerId,
+        first: PlayerId,
+        lead: f32,
+        keys: &mut Input,
+    ) -> Result<()> {
+        let controller = arena
+            .stage
+            .interactions
+            .levels
+            .iter()
+            .find_map(|s| s.ctl.downcast_ref::<Garden>())
+            .context("Garden course command used outside Garden")?;
+        let fresh = self.last_tick != Some(frame.tick);
+        if fresh {
+            let elapsed = self
+                .last_tick
+                .map_or(1, |old| frame.tick.saturating_sub(old) as usize);
+            ensure!(
+                elapsed > 0 && elapsed <= 120 * 3,
+                "Garden course observation clock reset or stalled"
+            );
+            self.last_tick = Some(frame.tick);
+            let body = &frame.players[local.index()];
+            self.cached = Default::default();
+            if !arena.stage.busy() && body.stats.alive() {
+                // The Rabbit scene rejoins both players beyond the first two
+                // ropes. Resume the authored course from that observed story
+                // completion, even if a guest missed intermediate scene frames.
+                if controller.saved.rabbit_done && self.driver.index < 26 {
+                    self.driver.index = 26;
+                    self.driver.ticks = 0;
+                    self.driver.quiet = 0;
+                    self.driver.plan.clear();
+                    self.driver.last = body.player.feet;
+                }
+                let leader = &frame.players[first.index()].player;
+                self.first_rope_cleared |= leader.feet.y > -560. && leader.feet.z > 0.;
+                let wait_before = (local != first && !controller.saved.rabbit_done)
+                    .then_some(if self.first_rope_cleared { 20 } else { 5 });
+                if local == first || self.free_ticks >= 240 {
+                    self.cached = self.driver.sample(
+                        &self.steps,
+                        arena,
+                        world,
+                        body,
+                        local,
+                        wait_before,
+                        elapsed,
+                        lead,
+                    )?;
+                }
+                self.free_ticks += elapsed;
+            }
+        }
+        let (control, input) = self.cached;
+        keys.wish = control.wish;
+        keys.swim = control.swim;
+        keys.rise = control.rise;
+        keys.run = control.run;
+        keys.yaw = input.yaw;
+        keys.pitch = input.pitch;
+        keys.weapon = input.weapon;
+        keys.primary = input.primary;
+        keys.alternate = input.alternate;
+        if fresh {
+            keys.jumps += u64::from(control.jump);
+            if control.use_pressed {
+                rope_edge(&self.steps[self.driver.index].mode, keys)?;
+            }
+        }
+        keys.validate()
+    }
+}
+
+#[cfg(test)]
+mod clock_tests {
+    use super::due;
+    #[test]
+    fn coalesced_observations_do_not_miss_periodic_control_edges() {
+        for period in [4, 60, 120, 240, 600] {
+            for phase in [0, period - 1] {
+                for stride in [1, 3, 7, 17] {
+                    for start in 0..period * 2 {
+                        let expected = (start..start + stride).any(|tick| tick % period == phase);
+                        assert_eq!(due(start, stride, period, phase), expected);
+                        assert!(!due(start, 0, period, phase));
+                    }
+                }
+            }
+        }
+    }
+    #[test]
+    fn early_grab_cannot_release_a_rope_that_attaches_before_delivery() {
+        use crate::{
+            coop::protocol::{Input, RemoteInput},
+            movement::{Controls, Player},
+        };
+        use macroquad::prelude::*;
+        let mut world = crate::collision::World::fixture(&[]);
+        world.traversal.ropes.push(crate::traversal::Rope {
+            id: crate::entity::Id(1),
+            model: 1,
+            enabled: true,
+            origin: Vec3::ZERO,
+            anchor: Vec3::Z * 320.,
+            length: 320.,
+        });
+        let far = Player::new(vec3(300., 0., 40.));
+        assert!(far.rope_prompt(&world).is_none());
+        let mut keys = Input::default();
+        super::rope_edge("grab", &mut keys).unwrap();
+        assert_eq!(keys.uses, 0);
+        // By delivery, the authoritative body has caught the rope naturally.
+        let mut player = Player::new(vec3(24., 0., 40.));
+        player.tick(&world, Controls::default());
+        assert!(player.rope.is_some());
+        let mut remote = RemoteInput::default();
+        let now = std::time::Instant::now();
+        remote.accept(1, keys, now).unwrap();
+        let (mut movement, input) = remote.sample(now);
+        movement.use_pressed |= input.rope_use(&player, &world);
+        player.tick(&world, movement);
+        assert!(player.rope.is_some(), "A delayed grab detached the player");
+        super::rope_edge("release", &mut keys).unwrap();
+        remote.accept(2, keys, now).unwrap();
+        let (mut movement, input) = remote.sample(now);
+        movement.use_pressed |= input.rope_use(&player, &world);
+        player.tick(&world, movement);
+        assert!(player.rope.is_none(), "The intended release was lost");
+        assert_eq!(keys.uses, 0);
+    }
+}
+
 fn garden(arena: &Arena) -> &Garden {
     arena
         .stage
@@ -353,6 +584,8 @@ async fn route(a: &mut Assets, first: PlayerId, skip: bool) -> Result<()> {
             && steps.iter().all(|s| s.pos.iter().all(|v| v.is_finite())
                 && s.red_pos
                     .is_none_or(|pos| pos.iter().all(|v| v.is_finite()))
+                && s.network_pos
+                    .is_none_or(|pos| pos.iter().all(|v| v.is_finite()))
                 && s.frames <= 120 * 90),
         "Invalid Garden co-op test course"
     );
@@ -393,9 +626,11 @@ async fn route(a: &mut Assets, first: PlayerId, skip: bool) -> Result<()> {
                             &steps,
                             &arena,
                             &scene.world,
-                            &roster,
+                            &roster.players[id.index()],
                             id,
                             wait_before,
+                            1,
+                            0.,
                         )?;
                     }
                 }

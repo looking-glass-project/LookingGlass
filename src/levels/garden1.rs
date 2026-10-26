@@ -4,6 +4,7 @@ mod check;
 mod coop;
 mod coop_check;
 mod coop_route;
+pub(crate) use coop_route::{CourseReport, NetworkDriver};
 mod data;
 mod route;
 pub(crate) use route::drive as drive_route;

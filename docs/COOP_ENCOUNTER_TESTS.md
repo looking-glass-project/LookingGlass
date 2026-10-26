@@ -33,7 +33,8 @@ are restored exactly once at the start and are then owned by normal gameplay.
 
 Every case runs twice and must produce identical recorded outcomes and final
 state hashes. Expectations are `team_wipe`, `both_alive` (neither player dies),
-or `one_dead` (one player dies without a team wipe). A null expectation prints
+`one_dead` (one player dies without a team wipe), or `revived` (at least one
+player revives exactly 1,200 ticks after death, without a team wipe). A null expectation prints
 `OBSERVED`, never `PASS`. A wipe must restore the complete encounter checkpoint
 and both players' exact saved resources. Scenes and level transitions are outside
 this short check's scope and fail explicitly.
@@ -43,6 +44,30 @@ build, captured build, report and fixture hashes, health/movement samples and
 each assertion result. An assertion failure returns a failing exit code after
 saving the result. Even a passing reproduction of a known wipe is not a passing
 clean route; the result explicitly retains `full_route_passed: false`.
+
+## Independent-client recovery segments
+
+An optional `"export_checkpoint": true` fixture field saves the captured current
+visit through the normal checkpoint store. It requires a host report with zero
+completed campaign visits and a fresh isolated profile without a checkpoint.
+The exported checkpoint retains exact current players, resources and combat;
+it does not reconstruct omitted campaign history. Never use a personal profile.
+
+`tools/test_coop_rope_revival.py --exe <tested-exe> --data <local-base>
+--checkpoint <exported-checkpoint>` starts two independent clients through the
+public internet transport, with 40 ms delay and 20 ms jitter by default. Inputs
+remain neutral, allowing the captured falling player to die naturally. It checks
+the spectator camera, exact ten-second revival, 25 health, separate valid rope
+grips, personal items and matching player/world/enemy state. Use `--victim blue`
+for a capture in which Blue dies; the default is Red. No screenshots are requested.
+
+Native replay records every revival and camera/life-state change. Its resource
+comparison excludes world loot, whose drop lifetimes continue while a player is
+dead; the focused Roster regression checks exact full resource preservation at
+the respawn boundary. Both roles are covered by that regression, including 120
+subsequent movement ticks. Placement rejects blocked, hazardous, disabled and
+controller-managed ropes. The fallback supports active native ropes only;
+custom level-controlled ropes still need their own recovery checks.
 
 ## Garden evidence
 
@@ -84,3 +109,43 @@ checkpoint restores at tick 18,167. The expected single-death case correctly
 fails, saves its result and returns a nonzero exit code. This is an open recovery
 case, not evidence of a completed safe respawn. Its two identical runs are saved
 in `coop-encounter-bad5ddf-fall`.
+
+
+## Native-rope recovery fix
+
+Build `10063748f92ba15532639080045f3d10b9ff4e55b80c202a6f76427b52ee4a92`
+adds a clear, separate grip on the survivor's active native rope when nearby
+supported ground or water is unavailable. The survivor stays in place. Candidate
+grips retain the survivor's angular motion and pass full body-sweep, hazard,
+rope-length and saved-state validation. No safe candidate means continued spectating.
+
+Two independent public clients pass the captured natural fall with 40 ms delay
+and 20 ms jitter per sender. Red dies at tick 16,926 and revives at tick 18,126
+with 25 health, about 72 units from Blue on rope 353. The guest camera follows
+moving Blue during the countdown and returns to Red. Personal items are retained;
+142 common player, world and native-enemy states match. Both clients close
+normally without requesting screenshots. Evidence:
+`private/coop/rope-revival-4e8ad303ecd349b2b8cdf652de4ba69d/`.
+
+The first native replay assertion incorrectly compared world-drop timers across
+an ordinary simulation tick as if they were carried inventory. That failed run
+is retained in `coop-encounter-1006374-revival`; its isolated checkpoint export
+passed. The corrected comparison excludes these advancing world drops, while
+the Roster regression checks exact full Stats preservation at the spawn boundary.
+An attempted Blue-victim internet repeat in `rope-revival-ca46d00d6e914a218d7edcc419da5567`
+failed before gameplay with HTTP 530. It supplies no Blue-role gameplay evidence.
+This is a recovery-segment milestone, not a full Garden traversal or campaign pass.
+
+The corrected replay on source
+`e9c87b1f2fb5a8bb81d8f54f239e91fbefadad5f28eed1c56038338fb2e56285`
+passes the 1,210-tick fall/countdown/revival case twice with identical outcomes,
+including valid placement and exact carried resources at the spawn tick. This
+source differs from the internet-tested build only in the replay's resource
+assertion. Evidence: `private/coop-encounter-e9c87b1-revival/`.
+
+The longer neutral-input survival experiment remains a failed case. After Red's
+successful revival, Blue dies at tick 18,167. Red takes two 10-health hits, loses
+the grip, then dies at tick 18,970 before Blue's countdown finishes. The team
+checkpoint restores exactly. This does not establish safe continued idle survival
+under attack or a Blue-victim internet pass; its failing expectation and nonzero
+exit status remain recorded. Full traversal/combat work is still required.

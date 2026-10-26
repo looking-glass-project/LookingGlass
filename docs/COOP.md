@@ -4,7 +4,7 @@ Development branch: `coop`, based on public main `0220970`.
 This is work in progress. A policy test or a connected pair of windows does not
 establish campaign support. Single-player behavior and saves must remain supported.
 
-Current milestone: **42.1% estimated overall; six campaign visits have combined
+Current milestone: **42.6% estimated overall; six campaign visits have combined
 verification evidence, 33 remain open.** Earlier contact-system repeats are still
 required as detailed in the campaign matrix. Pool of Tears has 38 passing native
 component cases plus public two-client opening and bank checkpoint segments.
@@ -23,8 +23,10 @@ reproduces saved combat and checkpoint outcomes without a full-level rerun.
 Earlier snapshots are captured for the grenade investigation. Report the last
 passed milestone and the specific remaining failure
 alongside the percentage; do not imply that unchanged credit means no work ran.
-The replay also exposes a pending recovery case: a dead player waits for a safe
-respawn location while the survivor hangs over a pit. That case is not complete.
+The captured pit recovery now passes through two public internet clients: Red
+revives beside hanging Blue on the same active native rope, with separate grips,
+a ten-second spectator countdown and 25 health. Custom level-controlled ropes
+and the rest of the Garden recovery matrix remain open.
 
 Duchess/Just Desserts now has a paired combat adapter, 22 passing native
 component cases and six passing production-Arena checks. Those cover both
@@ -176,17 +178,21 @@ movement viewer both wait for helper shutdown before exiting.
 After tightening cancellation and the forged-message regression, all 21 focused
 co-op tests passed again. This final focused run includes the latest source changes.
 
-Overall estimate after completing the village, Pandemonium, both Fortress visits, Beyond and return-school verification rows: **about 42.1%**. Credited
+Overall estimate after completing the village, Pandemonium, both Fortress visits, Beyond and return-school verification rows, plus native-rope recovery: **about 42.6%**. Credited
 points are 8/10 for foundation/diagnostics, 7/15 for internet Host/Join,
-9/15 for two-player movement/presentation, paired school supports, dry/swimming arrival placement, complete delayed village/Pandemonium traversal in separate clients and rendered independent rope controls, and 7/20 for native targeting, host-owned
-weapons/damage, personal resources, timed respawns and full saved-state team wipes,
-plus 8/20 for shared world replication, ordered contacts, the verified theatre
+9/15 for two-player movement/presentation, paired school supports, dry/swimming arrival placement, complete delayed village/Pandemonium traversal in separate clients and rendered independent rope controls, and 7.5/20 for native targeting, host-owned
+weapons/damage, personal resources, timed respawns and full saved-state team wipes.
+The additional 0.5 points credit tested recovery beside a survivor hanging on an
+active native rope: both-role unit coverage plus a captured fall/revival through
+independent internet clients. This does not cover custom controlled ropes.
+Credit also includes
+8/20 for shared world replication, ordered contacts, the verified theatre
 ownership/reunion slice, school boarding barriers, visit history and restart/backup
 restoration of shared checkpoints, and native traversal of all six village scenes
 and all four Pandemonium scenes with either player arriving first (also verified through public internet clients).
 Full-campaign verification now earns 120/39 points (about 3.08/20), for those six
-visits' complete combined evidence. Total credited points are about 42.08, reported
-as 42.1%. The previous 41.56 estimate was rounded to 42%; future updates include
+visits' complete combined evidence. Total credited points are about 42.58, reported
+as 42.6%. The previous 41.56 estimate was rounded to 42%; future updates include
 completed milestones so rounding does not conceal progress. Standalone policy
 tests receive no campaign credit; 33 visits remain open. The first five historical
 passes still need the contact-system repeats described in the campaign matrix.

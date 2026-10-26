@@ -203,7 +203,7 @@ impl Roster {
             );
             self.lives.checkpoint_restored([true; 2]);
         } else if let Some((dead, survivor)) = self.lives.pending_spawn().filter(|_| !cinematic) {
-            if let Some(player) = safe_near_with(world, self.players[survivor.index()].player.feet, safe) {
+            if let Some(player) = super::placement::revival(world, &self.players[survivor.index()].player, safe) {
                 let body = &mut self.players[dead.index()];
                 body.player = player;
                 body.stats.set_health(RESPAWN_HEALTH)?;
@@ -262,6 +262,44 @@ mod tests {
     use super::*;
     fn floor() -> World {
         World::fixture(&[(vec3(-1000., -1000., -100.), vec3(1000., 1000., 0.))])
+    }
+    #[test]
+    fn either_player_revives_on_a_partners_rope_after_ten_seconds_with_own_resources() {
+        use crate::{movement::RopeGrip, traversal::Rope};
+        let mut world=floor();
+        world.traversal.ropes.push(Rope {id:crate::entity::Id(1),model:1,enabled:true,
+            origin:Vec3::ZERO,anchor:Vec3::Z*600.,length:500.});
+        for dead in PlayerId::ALL {
+            let mut roster=Roster::new(&world,Vec3::Z*(EYE_HEIGHT+0.04),0.,Stats::default()).unwrap();
+            let survivor=dead.partner();
+            let mut hanging=Player::new(Vec3::Z*300.);
+            hanging.rope=Some(RopeGrip {id:crate::entity::Id(1),length:260.,rise:0.});
+            hanging.script_motion=1;
+            roster.players[survivor.index()].player=hanging;
+            roster.players[dead.index()].stats.spend_will(17.);
+            roster.players[dead.index()].stats.damage(1000.);
+            let mut expected=roster.players[dead.index()].stats.clone();
+            expected.set_health(RESPAWN_HEALTH).unwrap();
+            roster.step(&world,Default::default()).unwrap();
+            let death_tick=roster.tick;
+            for _ in 0..super::super::rules::RESPAWN_TICKS-1 {
+                assert_eq!(camera_player(&roster.frame(1,0),dead),survivor);
+                roster.step(&world,Default::default()).unwrap();
+                assert!(!roster.players[dead.index()].stats.alive());
+            }
+            roster.step(&world,Default::default()).unwrap();
+            let revived=&roster.players[dead.index()];
+            assert_eq!(revived.spawned_at,death_tick+1200);
+            assert_eq!(serde_json::to_value(&revived.stats).unwrap(),serde_json::to_value(&expected).unwrap());
+            assert_eq!(camera_player(&roster.frame(1,0),dead),dead);
+            assert_eq!(revived.player.rope.as_ref().unwrap().id,crate::entity::Id(1));
+            assert!(revived.player.feet.distance(roster.players[survivor.index()].player.feet)>71.9);
+            roster.frame(1,0).validate().unwrap();
+            revived.player.validate_world(&world).unwrap();
+            for _ in 0..120 { roster.step(&world,Default::default()).unwrap(); }
+            assert!(roster.players.iter().all(|b|b.stats.alive() && b.player.rope.is_some()));
+            assert_eq!(roster.checkpoint_generation,0);
+        }
     }
     #[test]
     fn checkpoint_resume_and_wipe_keep_distinct_resources_and_reject_dead_or_embedded_players() {

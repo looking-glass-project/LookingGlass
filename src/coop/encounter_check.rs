@@ -5,6 +5,7 @@ use super::{
     arena::{Arena, Snapshot},
     protocol::{Input, Visit},
     world::{Body, Frame, Roster},
+    PlayerId,
 };
 use crate::{assets::Assets, bsp::Bsp, collision::World, movement::Controls};
 use anyhow::{ensure, Context, Result};
@@ -19,6 +20,9 @@ struct Fixture {
     report: PathBuf,
     #[serde(default)]
     pointer: String,
+    /// Export this isolated current visit through the normal save machinery.
+    #[serde(default)]
+    export_checkpoint: bool,
     cases: Vec<Case>,
 }
 #[derive(Deserialize, Serialize)]
@@ -37,6 +41,7 @@ enum Expected {
     TeamWipe,
     BothAlive,
     OneDead,
+    Revived,
 }
 #[derive(Default, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
@@ -129,9 +134,20 @@ struct Outcome {
     ticks: u32,
     wipe_tick: Option<u64>,
     first_death: [Option<u64>; 2],
+    revivals: Vec<Revival>,
     health: [f32; 2],
     final_sha256: String,
     samples: Vec<serde_json::Value>,
+}
+#[derive(Serialize, PartialEq)]
+struct Revival {
+    player: PlayerId,
+    death_tick: u64,
+    spawned_at: u64,
+    health: f32,
+    feet: Vec3,
+    survivor_feet: Vec3,
+    rope: Option<usize>,
 }
 fn digest(value: &impl Serialize) -> Result<String> {
     Ok(format!("{:x}", Sha256::digest(serde_json::to_vec(value)?)))
@@ -159,12 +175,19 @@ fn run(
         ticks: 0,
         wipe_tick: None,
         first_death: [None; 2],
+        revivals: vec![],
         health: frame.players.each_ref().map(|p| p.stats.sanity()),
         final_sha256: String::new(),
         samples: vec![],
     };
+    let mut death_at = [None; 2];
     for offset in 0..case.ticks {
         let before = roster.players.each_ref().map(|b| b.stats.sanity());
+        let dead_stats = roster
+            .players
+            .each_ref()
+            .map(|b| (!b.stats.alive()).then(|| b.stats.clone()));
+        let life_before = PlayerId::ALL.map(|id| std::mem::discriminant(&roster.lives.state(id)));
         let inputs = case.sample(offset, &roster.players);
         arena.step(&mut roster, map, world, inputs)?;
         roster.frame(frame.epoch, 0).validate().with_context(|| {
@@ -179,14 +202,61 @@ fn run(
         for i in 0..2 {
             if wipe || !roster.players[i].stats.alive() {
                 result.first_death[i].get_or_insert(roster.tick);
+                if before[i] > 0. {
+                    death_at[i] = Some(roster.tick);
+                }
+            } else if let Some(mut expected) = dead_stats[i].clone() {
+                let body = &roster.players[i];
+                let died = death_at[i]
+                    .take()
+                    .context("Revival has no recorded death")?;
+                ensure!(
+                    body.spawned_at == roster.tick
+                        && roster.tick >= died + u64::from(super::rules::RESPAWN_TICKS),
+                    "Revival occurred before its ten-second countdown"
+                );
+                expected.set_health(super::rules::RESPAWN_HEALTH)?;
+                // World drop lifetimes advance even for dead players during
+                // Arena::step. They are not carried inventory. The focused
+                // Roster regression checks the respawn itself preserves all
+                // Stats, including these drops, without an intervening step.
+                expected.loot = body.stats.loot.clone();
+                ensure!(
+                    serde_json::to_value(&expected)? == serde_json::to_value(&body.stats)?,
+                    "Revival changed personal resources beyond restoring low health: expected {:?}, actual {:?}",
+                    expected, body.stats
+                );
+                body.player.validate_world(world)?;
+                let partner = &roster.players[1 - i].player;
+                let delta = body.player.feet - partner.feet;
+                ensure!(
+                    world.body_clear(body.player.feet)
+                        && !arena.stage.interactions.hazardous(body.player.feet)
+                        && (delta.truncate().length() >= super::separation::DISTANCE
+                            || delta.z.abs() >= crate::collision::PLAYER_HALF.z * 2.),
+                    "Revival is obstructed, hazardous or overlaps the survivor"
+                );
+                result.revivals.push(Revival {
+                    player: PlayerId::ALL[i],
+                    death_tick: died,
+                    spawned_at: body.spawned_at,
+                    health: body.stats.sanity(),
+                    feet: body.player.feet,
+                    survivor_feet: partner.feet,
+                    rope: body.player.rope.as_ref().map(|g| g.id.0),
+                });
             }
         }
         result.health = roster.players.each_ref().map(|b| b.stats.sanity());
-        if wipe || offset % 12 == 0 || result.health != before {
+        let life_changed =
+            life_before != PlayerId::ALL.map(|id| std::mem::discriminant(&roster.lives.state(id)));
+        if wipe || offset % 12 == 0 || result.health != before || life_changed {
             result.samples.push(
                 serde_json::json!({"tick":roster.tick,"health":result.health,
                 "feet":roster.players.each_ref().map(|b|b.player.feet),
                 "jumps":roster.players.each_ref().map(|b|b.player.jumps),
+                "ropes":roster.players.each_ref().map(|b|b.player.rope.as_ref()),
+                "camera_players":PlayerId::ALL.map(|id| super::world::camera_player(&roster.frame(frame.epoch,0),id)),
                 "lives":roster.lives,"generation":roster.checkpoint_generation}),
             );
         }
@@ -255,6 +325,30 @@ pub async fn check(assets: &mut Assets) -> Result<()> {
     let map = Bsp::parse(&assets.read(&format!("maps/{}.bsp", visit.map))?)?;
     let mut world = World::from_bsp(&map)?;
     let mut arena = Arena::load(assets, &map, &mut world, &visit, false)?;
+    if fixture.export_checkpoint {
+        ensure!(captured["role"].as_str() == Some("host")
+            && captured["completed_visits"].as_u64() == Some(0),
+            "An isolated replay checkpoint requires a host capture without completed campaign visits");
+        ensure!(
+            !super::checkpoint::Store::available(),
+            "Choose a fresh isolated profile for the encounter checkpoint export"
+        );
+        arena.restore_checkpoint(&snapshot, &map, &mut world)?;
+        let mut roster =
+            Roster::from_checkpoint(&frame, &world, |at| !arena.stage.interactions.hazardous(at))?;
+        let store = super::checkpoint::Store::current(assets.fingerprint()?);
+        store.save(
+            &visit,
+            &mut roster,
+            &mut arena,
+            &world,
+            &super::campaign::Campaign::default(),
+        )?;
+        super::checkpoint::verify_restored(&store.load()?.checkpoint, &roster, &arena)?;
+        println!(
+            "PASS isolated encounter checkpoint export: exact current visit, players and resources"
+        );
+    }
     let mut results = vec![];
     let mut failed = false;
     for case in &fixture.cases {
@@ -271,6 +365,12 @@ pub async fn check(assets: &mut Assets) -> Result<()> {
             Expected::OneDead => {
                 one.wipe_tick.is_none()
                     && one.first_death.iter().filter(|t| t.is_some()).count() == 1
+            }
+            Expected::Revived => {
+                one.wipe_tick.is_none()
+                    && one.revivals.iter().any(|r| {
+                        r.spawned_at - r.death_tick == u64::from(super::rules::RESPAWN_TICKS)
+                    })
             }
         });
         failed |= passed == Some(false);
@@ -293,7 +393,7 @@ pub async fn check(assets: &mut Assets) -> Result<()> {
     let output = serde_json::json!({"build":env!("LOOKING_GLASS_BUILD"),
         "captured_build":captured["build"],"report_sha256":format!("{:x}",Sha256::digest(&source)),
         "fixture_sha256":format!("{:x}",Sha256::digest(&fixture_bytes)),"start_tick":frame.tick,
-        "results":results,"full_route_passed":false,
+        "results":results,"full_route_passed":false,"checkpoint_exported":fixture.export_checkpoint,
         "scope":"Offline restored encounter with supplied ordinary inputs; excludes original network delivery and preceding traversal"});
     let destination = crate::preferences::path("coop-encounter-result.json");
     std::fs::create_dir_all(

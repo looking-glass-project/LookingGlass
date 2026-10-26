@@ -76,6 +76,44 @@ pub fn near(world: &World, feet: Vec3, drop: f32, safe: impl Fn(Vec3) -> bool) -
     None
 }
 
+/// Prefer nearby ground/water. Over a void, a valid native rope can support a
+/// second player at a different grip length without inventing a landing.
+pub(super) fn revival(world: &World, survivor: &Player, safe: impl Fn(Vec3) -> bool) -> Option<Player> {
+    near(world, survivor.feet, 32., &safe).or_else(|| on_rope(world, survivor, &safe))
+}
+
+fn on_rope(world: &World, survivor: &Player, safe: &impl Fn(Vec3) -> bool) -> Option<Player> {
+    let grip = survivor.rope.as_ref()?;
+    let rope = world.traversal.rope(grip.id)?;
+    survivor.validate_save().ok()?;
+    survivor.validate_world(world).ok()?;
+    let center = rope.anchor - Vec3::Z * 40.;
+    let radial = (survivor.feet - center).try_normalize()?;
+    // A 72-unit radial gap exceeds the diagonal of our horizontal/vertical
+    // personal-space bounds, even while the two grips swing independently.
+    for offset in [-72., 72., -96., 96.] {
+        let length = grip.length + offset;
+        if !(32. ..=rope.length).contains(&length) { continue; }
+        let feet = center + radial * length;
+        if !clear_path(world, survivor.feet, feet) || !safe(feet)
+            || Immersion::sample(world, feet).level != 0 { continue; }
+        let delta = feet - survivor.feet;
+        if delta.truncate().length() < super::separation::DISTANCE
+            && delta.z.abs() < crate::collision::PLAYER_HALF.z * 2. { continue; }
+        let mut player = Player::new(feet);
+        player.rope = Some(crate::movement::RopeGrip {id:grip.id, length, rise:0.});
+        player.script_motion = 1;
+        player.script_facing = survivor.script_facing;
+        // Keep angular motion with the survivor, discarding radial momentum.
+        player.velocity = ((survivor.velocity - radial * survivor.velocity.dot(radial))
+            * (length / grip.length)).clamp_length_max(500.);
+        if player.validate_save().is_ok() && player.validate_world(world).is_ok() {
+            return Some(player);
+        }
+    }
+    None
+}
+
 fn directions() -> [Vec3; 8] {
     [Vec3::X, -Vec3::X, Vec3::Y, -Vec3::Y,
      vec3(1.,1.,0.).normalize(), vec3(-1.,1.,0.).normalize(),
@@ -169,6 +207,46 @@ fn supported(world: &World, feet: Vec3) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn rope_revival_uses_clear_separate_grips_and_rejects_blocked_or_inactive_ropes() {
+        use crate::{movement::{Controls, RopeGrip}, traversal::Rope};
+        let mut world = World::fixture(&[]);
+        world.traversal.ropes.push(Rope {id:crate::entity::Id(1), model:1, enabled:true,
+            origin:Vec3::ZERO, anchor:Vec3::Z*600., length:500.});
+        let mut survivor = Player::new(vec3(80.,0.,300.));
+        survivor.rope = Some(RopeGrip {id:crate::entity::Id(1),
+            length:survivor.feet.distance(Vec3::Z*560.),rise:0.});
+        survivor.script_motion = 1;
+        survivor.velocity = Vec3::Y*80.;
+        let original = serde_json::to_value(&survivor).unwrap();
+        let mut partner = revival(&world,&survivor,|_|true).unwrap();
+        assert_eq!(serde_json::to_value(&survivor).unwrap(),original);
+        assert!(partner.rope.is_some() && !partner.grounded);
+        assert!((partner.feet.distance(survivor.feet)-72.).abs()<0.001);
+        for _ in 0..120 {
+            survivor.tick(&world,Controls::default());
+            partner.tick(&world,Controls::default());
+            for player in [&survivor,&partner] {
+                player.validate_save().unwrap();
+                player.validate_world(&world).unwrap();
+            }
+            assert!(partner.feet.distance(survivor.feet)>71.9);
+        }
+        assert!(revival(&world,&survivor,|_|false).is_none());
+        world.traversal.ropes[0].enabled=false;
+        assert!(revival(&world,&survivor,|_|true).is_none());
+        world.traversal.ropes[0].enabled=true;
+        world.traversal.managed_ropes=true;
+        assert!(revival(&world,&survivor,|_|true).is_none());
+        let mut blocked=World::fixture(&[(vec3(-500.,-500.,180.),vec3(500.,500.,250.)),
+            (vec3(-500.,-500.,360.),vec3(500.,500.,500.))]);
+        blocked.traversal=world.traversal.clone();
+        blocked.traversal.managed_ropes=false;
+        let mut middle=Player::new(Vec3::Z*280.);
+        middle.rope=Some(RopeGrip {id:crate::entity::Id(1),length:280.,rise:0.});
+        middle.script_motion=1;
+        assert!(on_rope(&blocked,&middle,&|_|true).is_none());
+    }
     #[test]
     fn completed_scene_can_keep_an_already_safe_nearby_partner() {
         let floor = (vec3(-500.,-500.,-100.),vec3(500.,500.,0.));

@@ -13,6 +13,19 @@ personal fish deaths, guards and moving pickups. Full two-client traversal and
 recovery remain open for both visits. Report these smaller milestones alongside
 the total; a successful component or segment is not a completed campaign visit.
 
+The overall percentage is a weighted estimate, not elapsed time or a live build
+indicator. Current Garden milestones are **4/4 native paired routes passed** and
+**0 full independent internet routes passed**. The furthest internet run passed
+the early crossings, Rabbit scene, early combat clear and later ropes; the latest
+repeat failed when Red fell at step 72 while Blue reached step 73. Earlier runs
+still retain their grenade-wipe failures. A [short encounter replay](COOP_ENCOUNTER_TESTS.md) now
+reproduces saved combat and checkpoint outcomes without a full-level rerun.
+Earlier snapshots are captured for the grenade investigation. Report the last
+passed milestone and the specific remaining failure
+alongside the percentage; do not imply that unchanged credit means no work ran.
+The replay also exposes a pending recovery case: a dead player waits for a safe
+respawn location while the survivor hangs over a pit. That case is not complete.
+
 Duchess/Just Desserts now has a paired combat adapter, 22 passing native
 component cases and six passing production-Arena checks. Those cover both
 actors' attacks/grabs, personal healing, original scenes and particle emission.

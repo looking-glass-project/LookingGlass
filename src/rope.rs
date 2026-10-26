@@ -53,7 +53,9 @@ pub fn step_grip(
         let next = feet.lerp(end, hit.fraction);
         if world.body_clear(next) {
             *feet = next;
-            *length = feet.distance(center);
+            // World-coordinate rounding can turn a clamped 32-unit grip into
+            // 31.999992, which makes the next saved/network player invalid.
+            *length = feet.distance(center).clamp(32., max_length);
         }
     }
 
@@ -393,6 +395,26 @@ mod tests {
         assert!(escaped.x < p.x - 4.9 && escaped.z > p.z + 4.9);
     }
 
+    #[test]
+    fn climbing_to_the_minimum_grip_length_preserves_valid_saved_players() {
+        use crate::movement::{Controls, Player, RopeGrip};
+        let mut world = World::fixture(&[]);
+        let anchor = vec3(-2412., -636., 168.);
+        world.traversal.ropes.push(Rope {
+            id: crate::entity::Id(482), model: 1, enabled: true,
+            origin: Vec3::ZERO, anchor, length: 456.,
+        });
+        let mut player = Player::new(vec3(-2412.392, -634.8853, 94.470856));
+        player.velocity = vec3(-4.9506273, 15.44209, 0.5712693);
+        player.rope = Some(RopeGrip {id:crate::entity::Id(482), length:33.549957, rise:1.});
+        for tick in 0..120 {
+            player.tick(&world, Controls {rise:1., ..Default::default()});
+            player.validate_save().unwrap_or_else(|e| panic!("tick{tick} grip{:?}: {e}",player.rope));
+            let length = player.rope.as_ref().unwrap().length;
+            assert!((32. ..=456.).contains(&length));
+            assert!((player.feet.distance(anchor-Vec3::Z*40.)-length).abs()<0.001);
+        }
+    }
     #[test]
     fn grip_can_climb_slide_and_escape_while_pushing_against_a_wall() {
         let world = World::fixture(&[(vec3(40., -500., -100.), vec3(60., 500., 500.))]);

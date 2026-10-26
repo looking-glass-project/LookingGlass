@@ -30,6 +30,7 @@ class GardenPair(Pair):
         (self.folder / 'fixture-source.py').write_bytes(source)
         self.evidence['fixture_sha256'] = hashlib.sha256(source).hexdigest()
         self.course_hashes = {}
+        self.encounter_snapshots = set()
 
     def set(self, role, *args, follow=False, **kwargs):
         kwargs['attack'] = False
@@ -85,6 +86,23 @@ class GardenPair(Pair):
             assert body['spawned_at'] == 0, f'{role}: traversal respawned a player'
             assert not body['stats']['god'], f'{role}: invulnerability enabled'
         self.last_valid[role] = report
+        # Keep the real state before a combat failure, rather than only the last
+        # already-doomed frame. These are private, read-only replay fixtures.
+        course = report['route_driver']['garden_course']
+        if role == 'host' and course and course['step'] == 62:
+            markers = ['clear-start']
+            for actor, saved in enumerate(report['combat']['npcs']['actors']):
+                ant = saved.get('ant')
+                for shot in (ant or {}).get('shots', []):
+                    if shot['grenade']:
+                        birth = round(report['frame']['tick'] - shot['age'] * 120)
+                        markers.append(f'grenade-{actor}-{birth}')
+            for marker in markers:
+                if marker in self.encounter_snapshots or len(self.encounter_snapshots) >= 16:
+                    continue
+                path = self.folder / f'encounter-{marker}.json'
+                path.write_text(json.dumps(report))
+                self.encounter_snapshots.add(marker)
 
     def verify(self):
         for role, rows in self.history.items():

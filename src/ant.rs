@@ -819,6 +819,29 @@ mod tests {
         assert!(a.validate().is_err());
     }
     #[test]
+    fn one_grenade_can_defeat_both_clustered_players_without_repeated_damage() {
+        let world = floor();
+        let mut ant = Ant::new(1, true, vec3(500., 0., 0.1), 0.);
+        ant.notarget = true;
+        ant.opponents.players = Some([0., 40.].map(|x| crate::combat::PlayerTarget {
+            eye:vec3(x, 0., 48.), alive:true, hidden:false,
+        }));
+        ant.shots.push(Bullet { at:vec3(100., 0., 48.), grenade:true,
+            direction:vec3(-300., 0., 0.), age:1.75 });
+        let mut hit = Feedback::default();
+        for _ in 0..120 {
+            ant.update(1. / 120., &world, vec3(0., 0., 48.), &Clips, &mut hit);
+        }
+        assert!(hit.players[0].damage > 29. && hit.players[1].damage > 70.);
+        assert!(hit.players.iter().all(|p| p.damage <= 85.));
+        assert!(ant.shots.is_empty());
+        let mut later = Feedback::default();
+        for _ in 0..120 {
+            ant.update(1. / 120., &world, vec3(0., 0., 48.), &Clips, &mut later);
+        }
+        assert!(later.players.iter().all(|p| p.damage == 0.));
+    }
+    #[test]
     fn grenades_bounce_expire_and_preserve_mid_flight_saves() {
         let mut a = Ant::new(1, true, Vec3::Z * 0.1, 0.);
         a.notarget = true;

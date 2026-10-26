@@ -429,6 +429,7 @@ fn run() -> Result<()> {
             "--coop-pool-check" => mode = "coop-pool",
             "--coop-duchess-check" => mode = "coop-duchess",
             "--coop-duchess-arena-check" => mode = "coop-duchess-arena",
+            "--coop-encounter-check" => mode = "coop-encounter",
             "--coop-campaign-check" => mode = "coop-campaign",
             "--coop-village-check" => mode = "coop-village",
             "--coop-pandemonium-check" => mode = "coop-pandemonium",
@@ -1275,6 +1276,15 @@ fn run() -> Result<()> {
         macroquad::Window::from_config(viewer::config(), async move {
             if let Err(e) = duchess::coop_check::arena_check(&mut assets).await {
                 eprintln!("Co-op Duchess arena check failed: {e:#}");
+                std::process::exit(1);
+            }
+        });
+        return Ok(());
+    }
+    if mode == "coop-encounter" {
+        macroquad::Window::from_config(viewer::config(), async move {
+            if let Err(e) = coop::encounter_check::check(&mut assets).await {
+                eprintln!("Co-op encounter replay failed: {e:#}");
                 std::process::exit(1);
             }
         });

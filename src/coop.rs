@@ -28,6 +28,7 @@ pub mod village_check;
 pub mod pandemonium_check;
 pub mod pandemonium_route;
 pub mod route_driver;
+pub mod encounter_check;
 mod school2_pickup_check;
 mod school_return_check;
 

@@ -479,7 +479,7 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                     }
                     let mut frame = roster.frame(visit.epoch, host.acknowledged_input());
                     frame.sounds = Some(arena.stage.sounds.batch(frame.tick));
-                    if frame.tick >= last_sent + 6 {
+                    if frame.tick >= last_sent + 6 && host.can_send_frame() {
                         let mut network = frame.clone();
                         network.combat = Some(Box::new(arena.snapshot()));
                         if host.send_frame(network)? {

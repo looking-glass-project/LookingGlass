@@ -7,7 +7,7 @@ use macroquad::prelude::{Vec2, Vec3};
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 
-pub const REVISION: u32 = 5;
+pub const REVISION: u32 = 6;
 pub const INPUT_TIMEOUT: Duration = Duration::from_millis(500);
 const MAX_EDGES: u64 = 8;
 
@@ -156,6 +156,11 @@ pub enum FromGuest {
     },
     Ready {
         epoch: u64,
+    },
+    /// Receipt of a validated host snapshot, never a guest-authored world state.
+    Seen {
+        epoch: u64,
+        tick: u64,
     },
     Input {
         epoch: u64,

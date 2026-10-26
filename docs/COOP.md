@@ -4607,3 +4607,45 @@ public connection behavior still needs investigation. Retained evidence folders:
 `temple-route-f7c6896bf9aa44b89f31ccbfa0bb7a3a`, and
 `temple-route-1a85e9d430ba47568f741ad981fe5c4b`, all under `private/coop/`.
 No new public pass or campaign completion credit is claimed. Overall: **42.1%**.
+
+### Bound snapshot backlog across the connection
+
+Protocol revision 6 adds receipts for validated host snapshots. The host permits
+at most four unconfirmed snapshots across the whole connection, then sends the
+current state when space becomes available. Small local channels alone did not
+provide this bound: TCP, WebSocket and relay buffers could still accumulate old
+states. The host also avoids building snapshots while this window is full.
+Controls and session changes retain their ordered delivery.
+
+Receipts must name a snapshot actually sent in the current visit. The last
+receipt can be repeated harmlessly; unsent ticks and future visits are rejected.
+Old-visit receipts cannot affect a new visit, and travel/rejoin reset the window.
+The guest sends receipts independently of player input and coalesces them to
+the newest validated state. Both players need the same new build.
+
+A real-socket regression admitted 24 stale snapshots before the fix. It now
+holds the four-snapshot limit, resumes at the latest state, and preserves a
+movement command and exactly one jump. Additional socket checks cover forged
+receipts, duplicates, travel and rejoin. All 795 active Rust tests, the locked
+release build and seven source-package tests pass.
+
+Build `f93ea32deceba75950b7e91d91e392585d652a7e0f6bcb6312c00c2fbf33dbca`
+has the following public-internet evidence with 40 ms delay/20 ms jitter:
+
+- Blue-led traversal reaches Garden alive at 40/4 Sanity. All 2,925 comparable
+  player/world/native-enemy states match, and all 872 host observations respect
+  the four-snapshot limit. Median guest round-trip time is 223 ms, p95 251 ms.
+  The full route still fails its clean-air check: Red takes three drowning-damage
+  ticks near node 76. Evidence: `temple-route-c297b7d9e11d40c584a98395fea02a86`.
+- Red-led traversal fails when Blue dies at node 126. Its 2,305 comparable states
+  match, the receipt limit holds, and median/p95 round-trip time is 217/249 ms.
+  Evidence: `temple-route-d9fa0dbe51d54800bf13e3fee4af6702`.
+- The isolated Blue-led exit segment passes fresh-process guest rejoin and the
+  original Garden transition, preserving resources/progress at 48/20 Sanity,
+  with 194 matching states. Evidence: `temple-route-5f69717cf9ab42ae84759c054ea0e5ca`.
+
+These folders are under `private/coop/`; failures remain recorded as failures.
+The public connection is healthy in these runs, but yesterday's older-build
+comparison does not establish that this change alone caused today's latency
+improvement. The receipt bound is established independently by the regression.
+Temple traversal reliability remains open; overall credit stays **42.1%**.

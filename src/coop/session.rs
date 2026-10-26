@@ -13,6 +13,26 @@ use std::{
 
 const CHECK_TIMEOUT: Duration = Duration::from_secs(15);
 const LOAD_TIMEOUT: Duration = Duration::from_secs(120);
+const FRAMES_IN_FLIGHT: usize = 4;
+
+/// TCP/relay buffers can hold seconds of stale snapshots even when the local
+/// channels are small. Receipt feedback bounds the entire path to the guest.
+#[derive(Default)]
+struct SnapshotWindow {
+    pending: VecDeque<u64>,
+    sent: Option<u64>,
+    seen: Option<u64>,
+}
+impl SnapshotWindow {
+    fn acknowledge(&mut self, tick: u64) -> Result<()> {
+        if self.seen == Some(tick) { return Ok(()); }
+        let index = self.pending.iter().position(|&sent| sent == tick)
+            .ok_or_else(||anyhow::anyhow!("Guest acknowledged an unsent or old snapshot."))?;
+        self.pending.drain(..=index);
+        self.seen = Some(tick);
+        Ok(())
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Phase {
@@ -56,6 +76,7 @@ pub struct Host {
     guest_ready: bool,
     guest_loading: bool,
     input: TimedInput,
+    frames: SnapshotWindow,
 }
 impl Host {
     pub fn new(peer: Peer, identity: Identity, visit: Visit) -> Result<Self> {
@@ -73,6 +94,7 @@ impl Host {
             guest_ready: false,
             guest_loading: false,
             input: TimedInput::default(),
+            frames: SnapshotWindow::default(),
         })
     }
     pub fn phase(&self) -> Phase {
@@ -90,21 +112,39 @@ impl Host {
     pub fn acknowledged_input(&self) -> u64 {
         self.input.sequence()
     }
-    pub fn input_timing(&self) -> serde_json::Value { self.input.timing() }
-    pub fn send_frame(&self, frame: super::world::Frame) -> Result<bool> {
-        if self.phase != Phase::Playing || !self.pending.is_empty() {
+    pub fn input_timing(&self) -> serde_json::Value {
+        let mut timing = self.input.timing();
+        timing["unacknowledged_frames"] = self.frames.pending.len().into();
+        timing["latest_sent_frame"] = self.frames.sent.into();
+        timing["acknowledged_frame"] = self.frames.seen.into();
+        timing
+    }
+    pub fn can_send_frame(&self) -> bool {
+        self.phase == Phase::Playing && self.pending.is_empty()
+            && self.frames.pending.len() < FRAMES_IN_FLIGHT
+    }
+    pub fn send_frame(&mut self, frame: super::world::Frame) -> Result<bool> {
+        if !self.can_send_frame() {
             return Ok(false);
         }
         ensure!(
             frame.epoch == self.visit.epoch,
             "Host snapshot belongs to another visit."
         );
+        ensure!(self.frames.sent.is_none_or(|tick| frame.tick > tick),
+            "Host snapshot is out of order.");
         frame.validate()?;
-        self.peer.send(super::codec::encode(&serde_json::to_vec(
+        let tick = frame.tick;
+        let sent = self.peer.send(super::codec::encode(&serde_json::to_vec(
             &FromHost::Frame {
                 frame: Box::new(frame),
             },
-        )?)?)
+        )?)?)?;
+        if sent {
+            self.frames.pending.push_back(tick);
+            self.frames.sent = Some(tick);
+        }
+        Ok(sent)
     }
 
     pub fn poll(&mut self, now: Instant) -> Result<()> {
@@ -113,6 +153,7 @@ impl Host {
             self.peer.disconnect();
             self.phase = Phase::Waiting;
             self.input = TimedInput::default();
+            self.frames = SnapshotWindow::default();
             self.pending.clear();
             self.deadline = None;
             self.guest_loading = false;
@@ -132,6 +173,7 @@ impl Host {
                 Phase::Waiting
             };
             self.input = TimedInput::default();
+            self.frames = SnapshotWindow::default();
             self.guest_ready = false;
             self.guest_loading = false;
             self.pending.clear();
@@ -144,6 +186,7 @@ impl Host {
             self.guest_ready = false;
             self.guest_loading = false;
             self.input = TimedInput::default();
+            self.frames = SnapshotWindow::default();
             self.pending.clear();
             self.deadline = Some(now + CHECK_TIMEOUT);
             queue(
@@ -208,6 +251,14 @@ impl Host {
                             "Guest readiness arrived before the loading barrier."
                         );
                         self.guest_ready = true;
+                    }
+                }
+                FromGuest::Seen {epoch, tick} => {
+                    ensure!(matches!(self.phase, Phase::Loading | Phase::Playing),
+                        "Guest snapshot receipt arrived before identification.");
+                    ensure!(epoch <= self.visit.epoch, "Guest acknowledged a future visit.");
+                    if epoch == self.visit.epoch && self.phase == Phase::Playing {
+                        self.frames.acknowledge(tick)?;
                     }
                 }
                 FromGuest::Input {
@@ -275,6 +326,7 @@ impl Host {
         self.guest_ready = false;
         self.guest_loading = false;
         self.input = TimedInput::default();
+        self.frames = SnapshotWindow::default();
         if matches!(self.phase, Phase::Loading | Phase::Playing) {
             queue(
                 &mut self.pending,
@@ -316,6 +368,7 @@ pub struct Guest {
     input_round_trip_ms: Option<f32>,
     frame: Option<super::world::Frame>,
     last_tick: Option<u64>,
+    receipt: Option<u64>,
     pending: VecDeque<Vec<u8>>,
 }
 impl Guest {
@@ -337,6 +390,7 @@ impl Guest {
             input_round_trip_ms: None,
             frame: None,
             last_tick: None,
+            receipt: None,
             pending: VecDeque::new(),
         })
     }
@@ -436,6 +490,7 @@ impl Guest {
                     self.input_round_trip_ms = None;
                     self.frame = None;
                     self.last_tick = None;
+                    self.receipt = None;
                     self.pending.clear();
                     queue(
                         &mut self.pending,
@@ -472,11 +527,21 @@ impl Guest {
                         self.sent_inputs.pop_front();
                     }
                     self.last_tick = Some(frame.tick);
+                    self.receipt = Some(frame.tick);
                     self.frame = Some(*frame);
                 }
             }
         }
         flush(&self.peer, &mut self.pending)?;
+        // Coalesce receipts to the newest validated snapshot in this poll.
+        // This is independent of input, including while the player's menu is open.
+        if self.phase == Phase::Playing && self.pending.is_empty() {
+            if let Some(tick) = self.receipt {
+                if self.peer.send(serde_json::to_vec(&FromGuest::Seen {
+                    epoch: self.visit.as_ref().unwrap().epoch, tick,
+                })?)? { self.receipt = None; }
+            }
+        }
         self.flush_controls()
     }
     pub fn loaded(&mut self, epoch: u64) -> Result<()> {
@@ -525,6 +590,109 @@ mod tests {
     use crate::coop::transport::{self, Conditions};
     use macroquad::prelude::Vec2;
     use std::thread;
+
+    #[test]
+    fn delayed_snapshot_reader_resumes_with_latest_state_without_losing_controls() {
+        use crate::{collision::World, inventory::Stats, movement::EYE_HEIGHT};
+        use macroquad::prelude::{vec3, Vec3};
+        let (mut host, mut guest, _) = pair();
+        play(&mut host, &mut guest);
+        let world = World::fixture(&[(vec3(-1000., -1000., -100.), vec3(1000., 1000., 0.))]);
+        let roster = crate::coop::world::Roster::new(&world,
+            Vec3::Z * (EYE_HEIGHT + 0.04), 0., Stats::default()).unwrap();
+        let mut admitted = Vec::new();
+        // The transport thread can drain the app's small queue into TCP even
+        // while the receiving game cannot consume snapshots. Bound freshness
+        // across that boundary, not merely the size of one internal channel.
+        for tick in (6..=144).step_by(6) {
+            let mut frame = roster.frame(1, 0);
+            frame.tick = tick;
+            if host.send_frame(frame).unwrap() { admitted.push(tick); }
+            thread::sleep(Duration::from_millis(5));
+        }
+        assert!(!admitted.is_empty());
+        assert!(admitted.len() <= 4, "Queued {} obsolete snapshots behind a delayed reader", admitted.len());
+        guest.controls(Input {wish: Vec2::X, jumps: 1, ..Default::default()}).unwrap();
+        until(&mut host, &mut guest, |h,g|
+            h.acknowledged_input() == 1 && g.last_tick == admitted.last().copied());
+        let controls = host.controls(Instant::now()).0;
+        assert_eq!(controls.wish, Vec2::X);
+        assert!(controls.jump);
+        assert!(!host.controls(Instant::now()).0.jump);
+
+        let mut latest = roster.frame(1, 1);
+        latest.tick = 1200;
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !host.send_frame(latest.clone()).unwrap() {
+            assert!(Instant::now() < deadline, "Snapshot receipt did not reopen the sender");
+            host.poll(Instant::now()).unwrap();
+            guest.poll(Instant::now()).unwrap();
+            thread::sleep(Duration::from_millis(5));
+        }
+        until(&mut host, &mut guest, |_,g|g.last_tick == Some(1200));
+        assert_eq!(guest.take_frame().unwrap().tick, 1200);
+    }
+
+    fn snapshot(epoch: u64, tick: u64) -> crate::coop::world::Frame {
+        use crate::{collision::World, inventory::Stats, movement::EYE_HEIGHT};
+        use macroquad::prelude::{vec3, Vec3};
+        let world = World::fixture(&[(vec3(-1000., -1000., -100.), vec3(1000., 1000., 0.))]);
+        let roster = crate::coop::world::Roster::new(&world,
+            Vec3::Z * (EYE_HEIGHT + 0.04), 0., Stats::default()).unwrap();
+        let mut frame = roster.frame(epoch, 0);
+        frame.tick = tick;
+        frame
+    }
+
+    #[test]
+    fn snapshot_receipts_reject_unsent_ticks_and_future_visits() {
+        for (epoch,tick) in [(1,0),(1,7),(2,6)] {
+            let (mut host, mut guest, _) = pair();
+            play(&mut host, &mut guest);
+            assert!(host.send_frame(snapshot(1,6)).unwrap());
+            assert!(guest.peer.send(serde_json::to_vec(&FromGuest::Seen {epoch,tick}).unwrap()).unwrap());
+            let deadline = Instant::now() + Duration::from_secs(2);
+            loop {
+                if host.poll(Instant::now()).is_err() { break; }
+                assert!(Instant::now() < deadline, "Accepted invalid receipt {epoch}/{tick}");
+                thread::sleep(Duration::from_millis(5));
+            }
+            assert_eq!(host.phase(), Phase::Waiting);
+        }
+    }
+
+    #[test]
+    fn snapshot_receipts_reset_at_transition_and_rejoin_without_replaying_old_state() {
+        let (mut host, mut guest, invite) = pair();
+        play(&mut host, &mut guest);
+        for tick in [6,12,18,24] { assert!(host.send_frame(snapshot(1,tick)).unwrap()); }
+        assert!(!host.send_frame(snapshot(1,30)).unwrap());
+        host.enter("skool1".into(), None, Default::default(), Instant::now()).unwrap();
+        play(&mut host, &mut guest);
+        assert!(guest.peer.send(serde_json::to_vec(&FromGuest::Seen {epoch:1,tick:24}).unwrap()).unwrap());
+        assert!(host.send_frame(snapshot(2,6)).unwrap());
+        until(&mut host, &mut guest, |h,g|h.frames.seen == Some(6) && g.last_tick == Some(6));
+        // Duplicating the last receipt is idempotent and cannot open extra slots.
+        assert!(guest.peer.send(serde_json::to_vec(&FromGuest::Seen {epoch:2,tick:6}).unwrap()).unwrap());
+        for tick in [12,18,24,30] { assert!(host.send_frame(snapshot(2,tick)).unwrap()); }
+        assert!(!host.send_frame(snapshot(2,36)).unwrap());
+        thread::sleep(Duration::from_millis(30));
+        host.poll(Instant::now()).unwrap();
+        assert!(!host.send_frame(snapshot(2,36)).unwrap());
+        drop(guest);
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while host.phase() != Phase::Waiting {
+            host.poll(Instant::now()).unwrap();
+            assert!(Instant::now() < deadline);
+            thread::sleep(Duration::from_millis(5));
+        }
+        let mut replacement = Guest::new(transport::join(invite, Conditions::default()).unwrap(),
+            identity(), Instant::now()).unwrap();
+        play(&mut host, &mut replacement);
+        assert!(host.send_frame(snapshot(2,1200)).unwrap());
+        until(&mut host, &mut replacement, |h,g|h.frames.seen == Some(1200) && g.last_tick == Some(1200));
+        assert_eq!(replacement.take_frame().unwrap().tick, 1200);
+    }
 
     fn identity() -> Identity {
         Identity::current("0".repeat(64))

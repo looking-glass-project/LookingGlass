@@ -791,6 +791,14 @@ async fn route(a: &mut Assets, first: PlayerId, skip: bool) -> Result<()> {
                 roster.players.each_ref().map(|b| b.stats.sanity())
             );
         }
+        if !arena.stage.busy() && roster.players.iter().any(|b|b.player.rope.is_some()) {
+            let spacing = roster.players[0].player.feet - roster.players[1].player.feet;
+            if spacing.truncate().length() < crate::coop::separation::DISTANCE-0.05
+                && spacing.z.abs() < crate::collision::PLAYER_HALF.z*2.-0.05 {
+                record(&arena, &roster, &drivers, first, skip, samples)?;
+                anyhow::bail!("Garden rope bodies overlap at tick{tick}: {spacing:?}");
+            }
+        }
         if tick % 600 == 0 {
             let packed = crate::coop::codec::encode(&serde_json::to_vec(&arena.snapshot())?)?;
             replica.replicate(

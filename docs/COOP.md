@@ -14,8 +14,10 @@ recovery remain open for both visits. Report these smaller milestones alongside
 the total; a successful component or segment is not a completed campaign visit.
 
 The overall percentage is a weighted estimate, not elapsed time or a live build
-indicator. Current Garden milestones are **4/4 native paired routes passed** and
-**0 full independent internet routes passed**. The furthest internet run passed
+indicator. An earlier Garden build passed 4/4 native paired routes. After adding
+rope contact, the current build passes **2/4 native paired routes** (both watched
+variants); the skipped variants fail in late combat and a later fall. There are
+still **0 full independent internet routes passed**. The furthest internet run passed
 the early crossings, Rabbit scene, early combat clear and later ropes; a
 repeat passed that rope and reached Blue step 93 before Red fell at the next
 rope approach (step 79). A subsequent captured segment now passes both crossings
@@ -29,6 +31,38 @@ The captured pit recovery now passes through two public internet clients: Red
 revives beside hanging Blue on the same active native rope, with separate grips,
 a ten-second spectator countdown and 25 health. Custom level-controlled ropes
 and the rest of the Garden recovery matrix remain open.
+
+Latest contact milestone: native rope grips now separate on their pendulum
+spheres instead of bypassing player contact. Swept contact also catches vertical
+climbing into a partner. The approaching player yields; the correction keeps the
+grip and checks the complete body against the world before moving it. Blocked
+corrections retain the valid grip rather than pushing through geometry. Custom
+level-controlled ropes remain outside this change.
+The exact captured overlap fails before the fix and passes afterward through
+240 movement ticks with valid grips and unchanged personal resources. Both-role
+short-grip, vertical-climb and wall cases pass, along with all 807 active Rust
+tests (one pre-existing test ignored). The new independent-client check also
+rejects all eight overlap observations missed by the earlier fixture.
+
+Build `319effeed590564c67f85e2f3ea37cb4a9f4eb5bc3ba429c8bea8054d3be7a99`
+passes the saved two-rope segment through separate public internet clients with
+40 ms delay and 20 ms jitter per sender. All 115 authoritative rope-spacing
+samples pass (56 host, 59 guest), and 156 matching player/world/native-state
+samples agree. Both finish alive at course steps 85/84, with no respawn or wipe;
+health is 49.592/53. Evidence:
+`private/coop/garden-route-4c5a26bbfa07436f9c751617fa9d0d3e/`.
+No images were viewed. This is a segment regression, not a completed campaign row.
+
+Full native regression on the same build passes both watched variants into
+Garden2, with correct resources and rope spacing checked every free tick:
+Blue first takes 31,099 ticks/52 replica checks and ends at 68.070/100 health;
+Red first takes 28,947 ticks/49 checks and ends at 100/21.549 health.
+The skipped variants remain failures: Blue first dies in late combat at tick
+23,231 (steps 168/163); with Red first, Blue falls at tick 16,873 (steps 131/130).
+Neither reports rope overlap before the death. These failures must be resolved;
+the old 4/4 result cannot establish a full-route pass for this changed build.
+Evidence: `private/garden1-coop-route-319effe-all/`,
+`private/garden1-coop-route-319effe-red/` and their matching `.log` files.
 
 Duchess/Just Desserts now has a paired combat adapter, 22 passing native
 component cases and six passing production-Arena checks. Those cover both

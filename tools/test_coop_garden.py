@@ -110,6 +110,17 @@ class GardenPair(Pair):
         for body in report['frame']['players']:
             assert body['spawned_at'] == 0, f'{role}: traversal respawned a player'
             assert not body['stats']['god'], f'{role}: invulnerability enabled'
+        players = [b['player'] for b in report['frame']['players']]
+        if report['combat']['stage']['owner'] is None and any(p['rope'] for p in players):
+            left, right = [p['feet'] for p in players]
+            horizontal = distance(left[:2], right[:2])
+            vertical = abs(left[2] - right[2])
+            observed = self.evidence.setdefault('rope_spacing_samples', {})
+            observed[role] = observed.get(role, 0) + 1
+            if horizontal < 35.95 and vertical < 55.95:
+                (self.folder / f'{role}-rope-overlap.json').write_text(json.dumps(report))
+                raise AssertionError(f'{role}: rope bodies overlap at tick {report["frame"]["tick"]}: '
+                                     f'horizontal={horizontal:.3f}, vertical={vertical:.3f}')
         self.last_valid[role] = report
         # Keep the real state before a combat failure, rather than only the last
         # already-doomed frame. These are private, read-only replay fixtures.

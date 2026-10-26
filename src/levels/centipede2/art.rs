@@ -2,6 +2,7 @@ use super::*;
 use crate::{npc::Puppet, particles::Attached, weapons::Prop};
 use std::collections::BTreeMap;
 pub(super) struct Art {
+    local_player: Option<usize>,
     ui: std::rc::Rc<crate::ui::Ui>,
     actors: BTreeMap<String, Puppet>,
     essence: crate::loot_art::Art,
@@ -36,6 +37,7 @@ impl Art {
         let image = crate::texture::decode(a, &path)?;
         let mark = Texture2D::from_rgba8(image.width, image.height, &image.pixels);
         Ok(Self {
+            local_player: None,
             ui: crate::ui::Ui::load(a)?,
             actors,
             mark,
@@ -55,6 +57,7 @@ impl Art {
     }
 }
 impl LevelArt for Art {
+    fn coop_view(&mut self, local: usize) { self.local_player = Some(local); }
     fn story_pose(&mut self, s: &Story) {
         self.actors
             .get_mut("alice")
@@ -139,8 +142,8 @@ impl LevelArt for Art {
                 cat.draw("sit_idle1", o.saved.time, true, pose, 1., bright);
             }
         }
-        if o.saved.phase == Phase::Fight && o.saved.essence_wait == 0. {
-            self.essence.draw(crate::loot::Grade::Medium, o.essence_position(), atm, camera, o.saved.clock);
+        if let Some(position) = o.personal_essence(self.local_player) {
+            self.essence.draw(crate::loot::Grade::Medium, position, atm, camera, o.saved.clock);
         }
         if let Some(acid) = &mut self.acid {
             for s in b.shots.iter().filter(|s| s.ended.is_none()) {

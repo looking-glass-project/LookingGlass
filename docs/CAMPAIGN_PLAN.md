@@ -1981,6 +1981,11 @@ paired Ant targeting/damage, shared wave/countdown clocks, spawn visibility and
 original ambush ownership/reunion. It shares the existing controller and hit IDs;
 full paired traversal and independent-client networking require separate proof.
 
+Centipede's Sanctum additionally reserves `--centipede2-coop-check` for native
+paired boss targeting, personal attacks/grabs/healing and original scene handoffs.
+It shares the existing boss stages and hit IDs. Staged checks do not establish
+full paired traversal or independent-client networking.
+
 Majestic Maze additionally reserves `--hedge1-save-write` and `--hedge1-save-read` for fresh-process native save checks. Its route requires a native window for the existing NPC cast; it has no active cinematic to skip.
 
 Clockwork and Ascension additionally reserve `--hatter1-route-native-check` and

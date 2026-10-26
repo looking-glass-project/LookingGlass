@@ -63,3 +63,52 @@ The damage window, stage count, attack frames, spike groups/distances and exit t
 come from local asset facts. This is not a claim of identical native-engine physics.
 
 Private research extracts, captures, test logs and local builds remain under `private/`.
+
+## Co-op adapter
+
+The paired adapter advances one boss clock and chooses the closest visible living
+Alice. Acid and melee contacts consider both living bodies, while a grab binds
+only its victim's movement and throw. The other Alice retains her controls.
+Larvae use the existing paired targeting and personal damage paths. Boss holds
+test the partner's space as well as world clearance, and the co-op grab uses the
+existing player model rather than adding the single-player scene puppet.
+
+Each player has a separate rotating essence station and ten-second cooldown;
+the local view shows that player's available station. Slide health protection is
+removed per player at the authored arena trigger. Saved paired state includes
+the boss target/grab, personal healing, arrival flags and swept trigger positions.
+Older single-player snapshots omit these fields and retain their existing path.
+
+`--centipede2-coop-check` stages native-map combat, grab/save, healing and original
+intro handoff cases. Full paired boss traversal, production Arena integration,
+independent internet clients, rendered effects and recovery/rejoin remain open.
+
+Source `993d722cbcdd1ad904d6ff66269e3a5fbf5ee54c245e816959bedebe3ea94c9b`
+passes **28 native co-op cases**: eight target/acid/melee/grab cases, six attack
+timing cases at 30/60/144 Hz, two personal healing cases, eight watched/skipped
+intro handoffs with either owner and a living/dead partner, two individual slide
+arrival cases, and two boss-defeat/mushroom progression cases. The latter stage
+six native weak-point reactions, then run the actual death/thrash/spike clocks,
+saved scene continuation, reunion, a short walk into the original mushroom
+trigger, both conversations and the committed exit. They do not traverse the
+complete fight or climbing route. The first exit fixture incorrectly started
+at the acting marker outside the trigger; the corrected fixture walks into it.
+
+All **810 active unit tests** pass, with one existing ignored test. The new
+unit regression checks that a boss drag cannot cross or end inside the living
+partner; a dead partner does not obstruct it. The locked release build passes.
+Evidence: `private/coop-centipede2-components-993d722.log`,
+`private/coop-centipede2-unit.log` and `private/coop-centipede2-build2.log`.
+No images were viewed and no desktop session was used.
+
+Before this adapter, source `e3d0555` passes the existing component check and the
+Normal watched route (12,039 ticks, 13 Sanity, followed by the real `wforest`
+arrival). The Hard skipped route fails during combat at
+`(-3332.1218, 3946.9988, 2848.0313)`. Logs:
+`private/coop-centipede2-baseline-e3d0555.log` and
+`private/coop-centipede2-route-baseline-e3d0555.log`. This is the regression
+baseline; earlier full-route claims do not establish a current Hard-route pass.
+The final adapter's complete component and route logs are identical to that
+baseline: `private/coop-centipede2-single-993d722.log` and
+`private/coop-centipede2-route-993d722.log`. The current Hard-route failure remains
+open; it was not introduced or hidden by the paired adapter.

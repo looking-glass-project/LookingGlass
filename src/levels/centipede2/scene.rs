@@ -170,7 +170,7 @@ impl Centipede {
                     },
             )),
             Phase::Fight
-                if matches!(
+                if self.saved.coop.is_none() && matches!(
                     self.saved.battle.action,
                     battle::Action::Strike | battle::Action::Shake
                 ) =>

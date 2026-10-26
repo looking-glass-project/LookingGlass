@@ -299,6 +299,8 @@ pub trait LevelController: Any {
     /// started single-Alice scene; the caller freezes the other player immediately.
     fn coop_contacts(&mut self, _dt: f32, _players: &mut [CoopPlayer<'_>; 2]) -> Option<usize> { None }
     fn coop_respawned(&mut self, _player: usize) {}
+    /// A personal boss hold must leave the other player's controls available.
+    fn coop_controlled(&self, _player: usize) -> bool { false }
     /// Apply a scene's personal consequences only to its bound actor.
     fn coop_scene_step(&mut self, _owner: usize, player: &mut Player, stats: &mut Stats) {
         self.prepare_player(stats, player);
@@ -411,6 +413,12 @@ pub trait LevelController: Any {
     }
     fn coop_combat(&mut self, _dt: f32, _world: &World,
         _players: [crate::combat::PlayerTarget; 2]) -> Feedback { Feedback::default() }
+    fn coop_combat_roster(&mut self, dt: f32, world: &World,
+        players: &mut [CoopPlayer<'_>; 2]) -> Feedback {
+        self.coop_combat(dt, world, players.each_ref().map(|p| crate::combat::PlayerTarget {
+            eye: p.player.eye(), alive: p.stats.alive(), hidden: p.stats.ignores_alice(),
+        }))
+    }
     fn loot_sources(&self) -> Vec<Source> {
         Vec::new()
     }
@@ -456,6 +464,7 @@ impl dyn LevelController {
 /// The drawing half of a visit. It owns GPU resources, so it lives in the viewer's `LevelArt`
 /// group and is replaced on every level change. It downcasts its controller inside the module.
 pub trait LevelArt: Any {
+    fn coop_view(&mut self, _local: usize) {}
     fn draw(
         &mut self,
         _level: &dyn LevelController,

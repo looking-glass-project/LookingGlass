@@ -31,8 +31,15 @@ pub(super) struct Shot {
     pub fragment: bool,
     pub normal: Vec3,
 }
+#[derive(Clone, Default, Serialize, Deserialize)]
+pub(super) struct Paired {
+    pub target: Option<usize>,
+    pub grab: Option<usize>,
+}
 #[derive(Clone, Serialize, Deserialize)]
 pub(super) struct Battle {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub coop: Option<Paired>,
     pub pose: Transform,
     pub action: Action,
     pub time: f32,
@@ -58,6 +65,7 @@ pub(super) struct Battle {
 impl Battle {
     pub fn new(pose: Transform) -> Self {
         Self {
+            coop: None,
             pose,
             action: Action::Walk,
             time: 0.,
@@ -82,6 +90,10 @@ impl Battle {
         }
     }
     pub fn validate(&self) -> Result<()> {
+        if let Some(c) = &self.coop {
+            ensure!(c.target.is_none_or(|i| i < 2) && c.grab.is_none_or(|i| i < 2)
+                && c.grab.is_some() == self.grabbed, "Invalid paired Centipede victim");
+        }
         ensure!(
             self.pose.translation.is_finite()
                 && self.pose.translation.abs().max_element() < 20000.
@@ -271,6 +283,7 @@ impl Battle {
         self.hits += 1;
         self.variant = u8::from(self.roll(50));
         self.grabbed = false;
+        if let Some(c) = &mut self.coop { c.grab = None; }
         self.set(if self.hits == 6 {
             Action::Death
         } else {
@@ -283,24 +296,62 @@ impl Battle {
         self.accumulator += f64::from(c.dt.min(0.1));
         while self.accumulator + 1e-9 >= f64::from(STEP) {
             self.accumulator = (self.accumulator - f64::from(STEP)).max(0.);
-            self.step(c, d, &mut out);
+            self.step(c.world, c.player, c.notarget, None, d, &mut out);
         }
         out
     }
-    fn melee(&self, c: &Combat<'_>, damage: f32, out: &mut Feedback) {
+    pub fn release_player(&mut self, player: usize) {
+        if self.coop.as_ref().is_some_and(|c| c.grab == Some(player)) {
+            self.grabbed = false;
+            self.coop.as_mut().unwrap().grab = None;
+            self.set(Action::Return);
+        }
+    }
+    pub fn advance_pair(&mut self, dt: f32, world: &World, players: &mut [crate::level::CoopPlayer<'_>; 2], d: &data::Data) -> Feedback {
+        let mut out = Feedback::default();
+        self.coop.get_or_insert_with(|| Paired { target: None, grab: self.grabbed.then_some(0) });
+        self.accumulator += f64::from(dt.min(0.1));
+        while self.accumulator + 1e-9 >= f64::from(STEP) {
+            self.accumulator = (self.accumulator - f64::from(STEP)).max(0.);
+            let targets = players.each_ref().map(|p| combat::PlayerTarget {
+                eye: p.player.eye(), alive: p.stats.alive(), hidden: p.stats.ignores_alice(),
+            });
+            for (i,p) in targets.iter().enumerate() { if !p.alive { self.release_player(i); } }
+            let from = self.pose.translation + Vec3::Z * 96.;
+            let selected = self.coop.as_ref().unwrap().grab.or_else(|| (0..2).filter(|i| {
+                let p = targets[*i];
+                let sight = world.sweep(from, p.eye, Vec3::splat(0.5));
+                p.alive && !p.hidden && !sight.start_solid && sight.fraction >= 1.
+            }).min_by(|a,b| from.distance_squared(targets[*a].eye).total_cmp(&from.distance_squared(targets[*b].eye))));
+            self.coop.as_mut().unwrap().target = selected;
+            let index = selected.or_else(|| targets.iter().position(|p| p.alive)).unwrap_or(0);
+            self.step(world, players[index].player, selected.is_none(), Some(targets), d, &mut out);
+            self.coop.as_mut().unwrap().grab = self.grabbed.then_some(index);
+            if self.hits < 6 {
+                for (i,p) in players.iter_mut().enumerate().filter(|(_,p)| p.stats.alive()) {
+                    if self.coop.as_ref().unwrap().grab == Some(i) { continue; }
+                    let delta = p.player.feet - self.pose.translation;
+                    if delta.truncate().length() < 120. && (-64. ..452.).contains(&delta.z) {
+                        let goal = (self.pose.translation + delta.with_z(0.).try_normalize().unwrap_or(Vec3::X) * 120.).with_z(p.player.feet.z);
+                        let trace = world.body_trace(p.player.feet, goal);
+                        let at = p.player.feet.lerp(goal, trace.fraction);
+                        if !trace.start_solid && pair_clear(targets, Some(i), p.player.feet, at) { p.player.feet = at; }
+                    }
+                }
+            }
+        }
+        out
+    }
+    fn melee(&self, world: &World, player: &Player, pair: Option<[combat::PlayerTarget; 2]>, damage: f32, out: &mut Feedback) {
         let toward = self.pose.rotation * Vec3::X;
         let center = self.pose.translation + toward * 128. + Vec3::Z * 44.;
-        let delta = c.player.feet + Vec3::Z * 32. - center;
-        if delta.x.abs() < 120.
-            && delta.y.abs() < 152.
-            && delta.z.abs() < 100.
-            && c.world
-                .sweep(center, c.player.feet + Vec3::Z * 32., Vec3::ZERO)
-                .fraction
-                >= 0.99
-        {
-            out.damage += damage;
-            out.impulse += delta.with_z(0.).normalize_or_zero() * 200.;
+        let bodies = bodies(pair, player);
+        for body in bodies {
+            let delta = body.center - center;
+            if delta.x.abs() < 120. && delta.y.abs() < 152. && delta.z.abs() < 100.
+                && world.sweep(center, body.center, Vec3::ZERO).fraction >= 0.99 {
+                out.strike(body.id, damage, delta.with_z(0.).normalize_or_zero() * 200., DamageKind::Other);
+            }
         }
     }
     fn move_toward(&mut self, w: &World, delta: Vec3, speed: f32) {
@@ -318,7 +369,7 @@ impl Battle {
             }
         }
     }
-    fn step(&mut self, c: &mut Combat<'_>, d: &data::Data, out: &mut Feedback) {
+    fn step(&mut self, world: &World, player: &mut Player, notarget: bool, pair: Option<[combat::PlayerTarget; 2]>, d: &data::Data, out: &mut Feedback) {
         let clip = self.clip();
         let old = self.time;
         self.time = (self.time + STEP).min(3600.);
@@ -344,9 +395,10 @@ impl Battle {
             }
         }
         for l in &mut self.larvae {
-            l.notarget = c.notarget;
+            l.notarget = pair.is_none() && notarget;
             l.opponents.summon = None;
-            l.step(c.world, c.player.feet + Vec3::Z * 32., d, out);
+            l.opponents.players = pair;
+            l.step(world, player.feet + Vec3::Z * 32., d, out);
         }
         let mut fragments = Vec::new();
         for s in &mut self.shots {
@@ -359,16 +411,15 @@ impl Battle {
             }
             let end = s.at + s.velocity * STEP;
             let half = Vec3::splat(if s.fragment { 8. } else { 16. });
-            let wall = c.world.sweep(s.at, end, half);
-            let hit = combat::segment_box(
-                s.at,
-                end,
-                c.player.feet + Vec3::Z * 32.,
-                vec3(16., 16., 32.) + half,
-            );
-            let fraction = hit.filter(|f| *f < wall.fraction && !wall.start_solid);
-            if fraction.is_some() {
-                out.damage += if s.fragment { 10. } else { 15. };
+            let wall = world.sweep(s.at, end, half);
+            let bodies = bodies(pair, player);
+            let hit = bodies.iter().filter_map(|body| {
+                combat::segment_box(s.at, end, body.center, vec3(16., 16., 32.) + half)
+                    .filter(|f| *f < wall.fraction && !wall.start_solid).map(|f| (body.id, f))
+            }).min_by(|a,b| a.1.total_cmp(&b.1));
+            let fraction = hit.map(|(_, f)| f);
+            if let Some((id, _)) = hit {
+                out.strike(id, if s.fragment { 10. } else { 15. }, Vec3::ZERO, DamageKind::Other);
             }
             s.at = s.at.lerp(end, fraction.unwrap_or(wall.fraction));
             if fraction.is_some() || wall.start_solid || wall.fraction < 1. || s.age >= 8. {
@@ -418,12 +469,12 @@ impl Battle {
         for s in fragments.into_iter().take(128 - self.shots.len()) {
             self.shots.push(s);
         }
-        let delta = c.player.feet - self.pose.translation;
+        let delta = player.feet - self.pose.translation;
         let distance = delta.truncate().length();
         if matches!(
             self.action,
             Action::Walk | Action::Ready | Action::Spit | Action::Larvae | Action::Strike
-        ) && !c.notarget
+        ) && !notarget
         {
             let yaw = self.pose.rotation.to_euler(EulerRot::ZYX).0;
             let turn = (delta.y.atan2(delta.x) - yaw + std::f32::consts::PI)
@@ -433,23 +484,22 @@ impl Battle {
         }
         match self.action {
             Action::Walk => {
-                if c.notarget {
+                if notarget {
                     return;
                 }
                 if distance > 240. {
-                    self.move_toward(c.world, delta, d.speed("c_centipede", clip));
+                    self.move_toward(world, delta, d.speed("c_centipede", clip));
                 }
                 if (old / frame / 5.).floor() != (self.time / frame / 5.).floor() {
-                    self.melee(c, 0.5, out);
+                    self.melee(world, player, pair, 0.5, out);
                 }
                 self.decision = (self.decision - STEP).max(0.);
                 if self.decision == 0. {
                     self.decision = 1.;
-                    let sight = c
-                        .world
+                    let sight = world
                         .sweep(
                             self.pose.translation + Vec3::Z * 96.,
-                            c.player.feet + Vec3::Z * 32.,
+                            player.feet + Vec3::Z * 32.,
                             Vec3::ZERO,
                         )
                         .fraction
@@ -479,8 +529,8 @@ impl Battle {
                             Action::Spit
                         };
                         if action == Action::Strike {
-                            self.grab_camera = c.player.feet + vec3(80., 280., 200.);
-                            self.victim_feet = c.player.feet;
+                            self.grab_camera = player.feet + vec3(80., 280., 200.);
+                            self.victim_feet = player.feet;
                         }
                         self.set(action);
                     }
@@ -499,7 +549,7 @@ impl Battle {
                     self.quake = 0.5;
                 }
                 if cross(30.) {
-                    self.melee(c, 25., out);
+                    self.melee(world, player, pair, 25., out);
                 }
                 if self.time >= duration {
                     if self.stage == 3 {
@@ -511,9 +561,9 @@ impl Battle {
             Action::Spit | Action::Larvae => {
                 let larvae = self.action == Action::Larvae;
                 for (n, f) in [8., if larvae { 12. } else { 14. }].into_iter().enumerate() {
-                    if cross(f) {
+                    if cross(f) && (pair.is_none() || !notarget) {
                         let start = self.tag(d, "tag_tongue").translation;
-                        let aim = (c.player.feet + Vec3::Z * 32. - start).normalize_or_zero();
+                        let aim = (player.feet + Vec3::Z * 32. - start).normalize_or_zero();
                         if larvae {
                             let slot = self
                                 .larvae
@@ -557,25 +607,25 @@ impl Battle {
                 }
             }
             Action::Charge => {
-                self.move_toward(c.world, self.pose.rotation * Vec3::X, 400.);
+                self.move_toward(world, self.pose.rotation * Vec3::X, 400.);
                 self.quake = 0.15;
                 if distance < 240. || self.time > 3. {
-                    self.melee(c, if self.stage == 2 { 25. } else { 35. }, out);
+                    self.melee(world, player, pair, if self.stage == 2 { 25. } else { 35. }, out);
                     self.set(Action::Ready);
                 }
             }
             Action::Strike => {
                 if self.time >= duration {
-                    self.grabbed = distance < 400.
-                        && c.world
+                    self.grabbed = (pair.is_none() || !notarget) && distance < 400.
+                        && world
                             .sweep(
                                 self.tag(d, "tag_mandibles").translation,
-                                c.player.feet + Vec3::Z * 32.,
+                                player.feet + Vec3::Z * 32.,
                                 Vec3::ZERO,
                             )
                             .fraction
                             >= 0.99;
-                    self.grab_feet = c.player.feet;
+                    self.grab_feet = player.feet;
                     if self.grabbed {
                         self.set(Action::Shake);
                     } else {
@@ -602,16 +652,19 @@ impl Battle {
                     let goal = self
                         .grab_feet
                         .lerp(mandibles - gut, (self.time / 0.15).clamp(0., 1.));
-                    let t = c.world.body_trace(c.player.feet, goal);
-                    if !t.start_solid {
-                        c.player.feet = c.player.feet.lerp(goal, t.fraction);
-                        c.player.velocity = Vec3::ZERO;
-                        c.player.grounded = false;
+                    let t = world.body_trace(player.feet, goal);
+                    let at = player.feet.lerp(goal, t.fraction);
+                    let clear = pair.is_none_or(|targets| pair_clear(targets,
+                        self.coop.as_ref().and_then(|c| c.grab), player.feet, at));
+                    if !t.start_solid && clear {
+                        player.feet = at;
+                        player.velocity = Vec3::ZERO;
+                        player.grounded = false;
                     }
                 }
                 if cross(17.) && self.grabbed {
                     self.grabbed = false;
-                    c.player.velocity = self.pose.rotation * vec3(500., 50., 250.);
+                    player.velocity = self.pose.rotation * vec3(500., 50., 250.);
                 }
                 if self.time >= duration {
                     self.grabbed = false;
@@ -651,23 +704,50 @@ impl Battle {
             }
             Action::Dead => {}
         }
-        self.victim_feet = c.player.feet;
+        self.victim_feet = player.feet;
         // Player clipping is independent of damage boxes, so it cannot mask a weak-point trace.
-        if self.hits < 6
+        if pair.is_none() && self.hits < 6
             && !self.grabbed
             && distance < 120.
-            && (-64. ..452.).contains(&(c.player.feet.z - self.pose.translation.z))
+            && (-64. ..452.).contains(&(player.feet.z - self.pose.translation.z))
         {
             let goal =
                 self.pose.translation + delta.with_z(0.).try_normalize().unwrap_or(Vec3::X) * 120.;
-            let goal = goal.with_z(c.player.feet.z);
-            let t = c.world.body_trace(c.player.feet, goal);
+            let goal = goal.with_z(player.feet.z);
+            let t = world.body_trace(player.feet, goal);
             if !t.start_solid {
-                c.player.feet = c.player.feet.lerp(goal, t.fraction);
+                player.feet = player.feet.lerp(goal, t.fraction);
             }
         }
     }
 }
 fn self_time_cross(old: f32, dt: f32, t: f32) -> bool {
     old <= t && old + dt > t
+}
+
+fn bodies(pair: Option<[combat::PlayerTarget; 2]>, player: &Player) -> Vec<Target> {
+    if pair.is_some() { combat::Opponents { players: pair, ..Default::default() }.bodies(player.eye()) }
+    else { vec![Target { id: crate::dice::ALICE, center: player.feet + Vec3::Z*32., half: crate::collision::PLAYER_HALF }] }
+}
+fn pair_clear(targets: [combat::PlayerTarget; 2], actor: Option<usize>, from: Vec3, to: Vec3) -> bool {
+    targets.iter().enumerate().all(|(i,p)| actor == Some(i) || !p.alive
+        || combat::segment_box(from, to, p.eye - Vec3::Z*crate::movement::EYE_HEIGHT,
+            vec3(crate::coop::separation::DISTANCE, crate::coop::separation::DISTANCE, crate::collision::PLAYER_HALF.z*2.)).is_none())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn a_boss_drag_cannot_cross_or_end_inside_the_living_partner() {
+        for actor in 0..2 {
+            let mut targets=[combat::PlayerTarget{eye:Vec3::Z*crate::movement::EYE_HEIGHT,alive:true,hidden:false};2];
+            targets[actor].eye+=Vec3::X*100.;
+            assert!(!pair_clear(targets,Some(actor),Vec3::X*100.,-Vec3::X*100.));
+            assert!(!pair_clear(targets,Some(actor),Vec3::X*100.,Vec3::ZERO));
+            assert!(pair_clear(targets,Some(actor),Vec3::X*100.,Vec3::X*40.));
+            targets[1-actor].alive=false;
+            assert!(pair_clear(targets,Some(actor),Vec3::X*100.,-Vec3::X*100.));
+        }
+    }
 }

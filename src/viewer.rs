@@ -70,6 +70,7 @@ pub(crate) struct LevelArt {
 impl LevelArt {
     pub(crate) fn coop_view(&mut self, local: usize) {
         if let Some(art) = &mut self.duchess { art.local_player = Some(local); }
+        for art in self.levels.iter_mut().flatten() { art.coop_view(local); }
     }
     fn handoff_pose(&self) -> Option<&crate::cinematic::ActorPose> {
         self.village

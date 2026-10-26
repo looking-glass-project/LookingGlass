@@ -175,7 +175,8 @@ impl Arena {
             }
         }
         let held = std::array::from_fn(|i| self.stage.interactions.duchess.as_ref()
-            .is_some_and(|d| d.coop_controlled(i)));
+            .is_some_and(|d| d.coop_controlled(i))
+            || self.stage.interactions.levels.iter().any(|s| s.ctl.coop_controlled(i)));
         for (index, ((character, (movement, input)), body)) in self.characters.iter_mut().zip(&mut inputs).zip(&roster.players).enumerate() {
             if !self.stage.story.busy() {
                 movement.use_pressed |= input.rope_use(&body.player, world);
@@ -351,7 +352,10 @@ impl Arena {
             feedback.append(d.coop_combat(world_dt, world, &mut players, talking));
         }
         for slot in &mut self.stage.interactions.levels {
-            feedback.append(slot.ctl.coop_combat(world_dt, world, targets));
+            let mut players = roster.players.each_mut().map(|b| crate::level::CoopPlayer {
+                player: &mut b.player, stats: &mut b.stats,
+            });
+            feedback.append(slot.ctl.coop_combat_roster(world_dt, world, &mut players));
         }
         self.stage.sounds.feedback(roster.tick,&feedback);
         for (body, hit) in roster.players.iter_mut().zip(feedback.players) {

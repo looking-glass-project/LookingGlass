@@ -299,7 +299,7 @@ pub static RESERVATIONS: [Reservation; 39] = [
     },
     Reservation {
         flags: Some(VisitFlags {
-            contract: &["--centipede2-check", "--centipede2-save-write", "--centipede2-save-read"],
+            contract: &["--centipede2-check", "--centipede2-coop-check", "--centipede2-save-write", "--centipede2-save-read"],
             route: &["--centipede2-route-check"],
             skip: &["--centipede2-skip-route-check"],
             render: &["--centipede2-render-check"],

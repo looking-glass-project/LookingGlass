@@ -4,7 +4,7 @@ Development branch: `coop`, based on public main `0220970`.
 This is work in progress. A policy test or a connected pair of windows does not
 establish campaign support. Single-player behavior and saves must remain supported.
 
-Current milestone: **43.1% estimated overall; six campaign visits have combined
+Current milestone: **43.3% estimated overall; six campaign visits have combined
 verification evidence, 33 remain open.** Earlier contact-system repeats are still
 required as detailed in the campaign matrix. Pool of Tears has 38 passing native
 component cases plus public two-client opening and bank checkpoint segments.
@@ -30,7 +30,17 @@ states without image inspection. Its first four attempts (both initial input
 orders, watched/skipped scenes) fail near the first thermal climb when one
 player dies; see `private/coop-garden2-route-da5e242.log`. The cause still needs
 isolation. This adds diagnosis and repeatability, not a completed campaign visit
-or percentage credit. The estimate remains **43.1%**.
+or percentage credit. The Herbaceous work alone leaves the estimate at **43.1%**.
+
+Rolling Stones now advances its native marble, gates and collapsing scenery
+once for the shared world, with contact damage assigned to the correct living
+player. Eleven staged native checks pass on source `6df8431`, including complete
+marble-path clock parity with single-player, personal lethal contacts, pause/save
+and the original scene's paired reunion. Its three single-player check logs are
+identical before and after this adapter: fast routes pass, while older walking-
+pace fixtures still fail. This adds 0.25 points for verified shared progression,
+bringing the estimate to **43.3%**. Full paired traversal and internet checks are
+still open; no campaign row is completed. See [Rolling Stones details](GARDEN3.md).
 
 The overall percentage is a weighted estimate, not elapsed time or a live build
 indicator. An earlier Garden build passed 4/4 native paired routes. After adding
@@ -233,7 +243,7 @@ movement viewer both wait for helper shutdown before exiting.
 After tightening cancellation and the forged-message regression, all 21 focused
 co-op tests passed again. This final focused run includes the latest source changes.
 
-Overall estimate after completing the village, Pandemonium, both Fortress visits, Beyond and return-school verification rows, plus native-rope recovery and Herbaceous component integration: **about 43.1%**. Credited
+Overall estimate after completing the village, Pandemonium, both Fortress visits, Beyond and return-school verification rows, plus native-rope recovery, Herbaceous components and the Rolling Stones shared chase adapter: **about 43.3%**. Credited
 points are 8/10 for foundation/diagnostics, 7/15 for internet Host/Join,
 9.25/15 for two-player movement/presentation, paired school supports, dry/swimming arrival placement, complete delayed village/Pandemonium traversal in separate clients and rendered independent rope controls, and 7.75/20 for native targeting, host-owned
 weapons/damage, personal resources, timed respawns and full saved-state team wipes.
@@ -245,13 +255,16 @@ fulcrum and 0.25 combat points for its integrated Ant/Ladybug targeting, persona
 damage and preserved impact effects. These are component credits; no campaign
 row or independent-client credit is added by the staged checks.
 Credit also includes
-8/20 for shared world replication, ordered contacts, the verified theatre
+8.25/20 for shared world replication, ordered contacts, the verified theatre
 ownership/reunion slice, school boarding barriers, visit history and restart/backup
 restoration of shared checkpoints, and native traversal of all six village scenes
 and all four Pandemonium scenes with either player arriving first (also verified through public internet clients).
+The latest 0.25 points cover the verified native Rolling Stones shared chase
+clock, gate/collapse callbacks and arrival reunion. They do not credit a full
+paired route, internet play or a completed campaign row.
 Full-campaign verification now earns 120/39 points (about 3.08/20), for those six
-visits' complete combined evidence. Total credited points are about 43.08, reported
-as 43.1%, up from 42.58 before the Herbaceous adapter. Updates include
+visits' complete combined evidence. Total credited points are about 43.33, reported
+as 43.3%, up from 43.08 before the Rolling Stones adapter. Updates include
 completed milestones so rounding does not conceal progress. Standalone policy
 tests receive no campaign credit; 33 visits remain open. The first five historical
 passes still need the contact-system repeats described in the campaign matrix.

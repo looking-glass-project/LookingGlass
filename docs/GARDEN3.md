@@ -101,3 +101,46 @@ Five `garden3-live-` native save/render fixtures use those physically reached
 checkpoints, alongside the six original introduction fixtures. Their writer and
 reader run in separate processes. Exact original bounce spin, quake waveform
 and the stray Ladybug's actor navigation remain fidelity follow-ups.
+
+## Co-op chase update
+
+Rolling Stones now explicitly advances its native marble, gate latches and
+collapsing geometry once per host tick with both living players present. The
+marble's existing swept contact selects a stable player slot; only that player's
+health and velocity receive the hit. Dead players no longer block the marble
+from reaching the survivor. Shared callbacks and geometry use the same routines
+as single-player. The original arrival still runs with one Alice and reunites
+the pair afterward. No controller/save fields or format versions were added.
+
+`--garden3-coop-check` passes 11 staged native cases on source
+`6df84313f78ae427eea47d108cf006607c5b1c5658e13fa4073e2d796dae8827`:
+
+- Shared clock/geometry parity at 30, 60 and 144 Hz, including pause and a saved future.
+- The full 56-node marble path, gate latches, pillar and ice callbacks, with
+  exactly the same state/geometry as single-player. The player-triggered final
+  drop remains untriggered by this clock-only check.
+- Either victim slot with a living or dead partner, plus both players in the
+  marble's path; hits retain the native lethal damage and knockback.
+- Watched/skipped arrival, a frozen waiting partner, compressed saved-scene
+  restoration, separate safe reunion and exact personal resources.
+
+The headless run takes about 3.6 seconds; log
+`private/coop-garden3-components-6df8431.log`. All 808 active unit tests pass.
+These are staged component checks, not full co-op traversal or internet proof.
+Rendered guest effects, shared recovery/rejoin and the full paired route remain open.
+
+Current single-player regression evidence supersedes the older route claims
+above: both watched/skipped fast routes and their saved continuations pass,
+but the slower routes die near node 10. The short `--garden3-check` also stops
+at its old one-second movement-distance assertion. That fixture requests walking
+while expecting more than 150 units; the current walk speed is 104 units/second.
+The controller's scene/pause checks pass before that assertion. All three
+complete logs are text-identical to the pre-adapter executable `3c996ca`:
+`private/coop-garden3-single-6df8431.log`,
+`private/coop-garden3-route-watch-6df8431.log`, and
+`private/coop-garden3-route-skip-6df8431.log`, compared with
+`private/coop-garden3-baseline-3c996ca.log`,
+`private/coop-garden3-baseline-watch-3c996ca.log`, and
+`private/coop-garden3-baseline-skip-3c996ca.log`.
+The older walking-pace fixture assumptions still need correction; no passing
+whole-suite result is claimed for those commands.

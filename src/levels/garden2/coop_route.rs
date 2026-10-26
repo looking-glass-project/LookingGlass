@@ -164,8 +164,12 @@ async fn route(a: &mut Assets, first: PlayerId, skip: bool) -> Result<()> {
     arena.reset_characters(&roster.players);
     let mut replica_world=World::from_bsp(&scene.map)?;
     let mut replica=Arena::load(a,&scene.map,&mut replica_world,&visit,false)?;
-    let course=include_bytes!("route_steps.json");
-    let steps:Vec<Step>=serde_json::from_slice(course)?;
+    let course=if let Ok(path)=std::env::var("LOOKING_GLASS_GARDEN2_COOP_ROUTE") {
+        std::fs::read(path).context("Cannot read Herbaceous diagnostic course")?
+    } else {include_bytes!("route_steps.json").to_vec()};
+    let steps:Vec<Step>=serde_json::from_slice(&course)?;
+    ensure!(!steps.is_empty() && steps.iter().all(|s|s.pos.iter().all(|v|v.is_finite())
+        && s.frames<=120*90),"Invalid Herbaceous diagnostic course");
     std::fs::write(crate::preferences::path("garden2-coop-course.json"),course)?;
     let mut drivers:[Driver;2]=Default::default();
     let mut history=VecDeque::new();
@@ -270,9 +274,17 @@ async fn route(a: &mut Assets, first: PlayerId, skip: bool) -> Result<()> {
 pub(super) fn check(a: &mut Assets) -> super::super::BoxFuture<'_> {
     Box::pin(async move {
         std::fs::create_dir_all(crate::preferences::path(""))?;
+        let selected=std::env::var("LOOKING_GLASS_GARDEN2_COOP_FIRST").ok();
+        let scenes=std::env::var("LOOKING_GLASS_GARDEN2_COOP_SCENES").ok();
+        ensure!(selected.as_deref().is_none_or(|v|matches!(v,"Blue"|"Red")),
+            "LOOKING_GLASS_GARDEN2_COOP_FIRST must be Blue or Red");
+        ensure!(scenes.as_deref().is_none_or(|v|matches!(v,"watched"|"skipped")),
+            "LOOKING_GLASS_GARDEN2_COOP_SCENES must be watched or skipped");
         let mut failures=Vec::new();
         for first in PlayerId::ALL {
+            if selected.as_ref().is_some_and(|s|*s!=format!("{first:?}")) {continue;}
             for skip in [false,true] {
+                if scenes.as_deref().is_some_and(|s|(s=="skipped")!=skip) {continue;}
                 if let Err(e)=route(a,first,skip).await {
                     println!("FAIL Herbaceous {first:?} skip={skip}: {e:#}");
                     failures.push(format!("{first:?}/{skip}: {e:#}"));

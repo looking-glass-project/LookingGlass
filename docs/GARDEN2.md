@@ -138,3 +138,23 @@ Evidence: `private/coop-garden2-route-da5e242.log` and
 with 808 active unit tests, the locked release build and seven source-package
 checks passing. No images were inspected. No full-route or campaign credit is
 awarded; total estimated co-op progress remains 43.1%.
+
+For focused repeats, `LOOKING_GLASS_GARDEN2_COOP_FIRST=Blue|Red` and
+`LOOKING_GLASS_GARDEN2_COOP_SCENES=watched|skipped` select one variant; omitted
+selectors still run all four. `LOOKING_GLASS_GARDEN2_COOP_ROUTE` can supply an
+explicit diagnostic course, copied unchanged into the private result profile.
+The default remains the original authored route.
+
+The first thermal capture contains Blue being pulled toward the nearby live
+Mushroom, with large outward velocity and an active knockback timer while the
+driver suppresses attacks during the climb. A normal-input bank-fight experiment
+on source `3c996ca2c4df7458b3812aeed5621da4cf367e3c5d7cf19a064eb482415a721b`
+did not fix the route. Blue-start variants instead find a landing overlap at
+ticks 11,313 / 2,738 (watched/skipped), spacing vector
+`[34.128418,6.940918,-1.7967529]`; Red-start variants still lose Red near the
+thermal at ticks 14,325 / 5,750, steps `[24,24]`, with Blue at 19.59982 Sanity.
+All reports retain `full_route_passed=false`. The experimental 109-step course
+and state captures remain in `private/garden2-coop-bank-3c996ca/`, with log
+`private/coop-garden2-bank-3c996ca.log`. Its four variants finished in 22.9 seconds
+without image inspection. These failures remain open; the experiment is not
+the default course and is not credited as a gameplay fix.

@@ -54,6 +54,19 @@ fn clear(world: &World, body: &Body, to: Vec3) -> bool {
     true
 }
 
+fn contact_position(world: &World, body: &Body, to: Vec3) -> Option<Vec3> {
+    if clear(world, body, to) { return Some(to); }
+    let p = &body.player;
+    if !p.grounded || p.swimming { return None; }
+    let trace = world.body_trace(p.feet, to);
+    if trace.start_solid || trace.fraction >= 1. || trace.normal.z < 0.65 { return None; }
+    // A tangent sweep can touch the resting floor at fraction zero after
+    // rounding at native map coordinates. Give the destination one skin of
+    // clearance, then recheck the entire path, body and centre support.
+    let raised = to + Vec3::Z * (crate::collision::SKIN / trace.normal.z);
+    clear(world, body, raised).then_some(raised)
+}
+
 pub fn resolve(world: &World, bodies: &mut [Body; 2], previous: [Vec3; 2]) {
     if bodies.iter().any(|b| !b.stats.alive()) { return; }
     let end = bodies.each_ref().map(|b| b.player.feet);
@@ -117,7 +130,7 @@ pub fn resolve(world: &World, bodies: &mut [Body; 2], previous: [Vec3; 2]) {
             along.z = -outward.dot(p.ground_normal.truncate()) / p.ground_normal.z;
         }
         let candidate = end[index] + along * penetration * weights[index];
-        if clear(world, &bodies[index], candidate) {
+        if let Some(candidate) = contact_position(world, &bodies[index], candidate) {
             let p = &mut bodies[index].player;
             p.feet = candidate;
             let inward = p.velocity.truncate().dot(outward).min(0.);

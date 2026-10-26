@@ -303,11 +303,55 @@ fn scenes(a: &mut Assets,map: &Bsp)->Result<()> {
     }
     Ok(())
 }
+fn bank_contact(a: &mut Assets,map: &Bsp)->Result<()> {
+    let (_,world)=free(a,map)?;
+    let before=[vec3(2257.344970703125,-2632.409423828125,-1980.719970703125),
+        vec3(2220.603271484375,-2639.881591796875,-1978.78564453125)];
+    let end=vec3(2254.731689453125,-2632.940673828125,-1980.5823974609375);
+    let normal=vec3(0.04076966643333435,0.05775703117251396,0.9974978566169739);
+    for approaching in 0..2 {
+        let mut bodies=std::array::from_fn(|i| {
+            let mut player=Player::new(if i==approaching {end} else {before[1]});
+            player.grounded=true;player.ground_normal=normal;
+            if i==approaching {player.velocity=vec3(-313.5879211425781,-63.73851776123047,16.507526397705078);}
+            crate::coop::world::Body {player,stats:Stats::for_level("garden2",None),yaw:0.,pitch:0.,
+                running:i==approaching,spawned_at:0,warped_at:0}
+        });
+        let previous=if approaching==0 {before} else {[before[1],before[0]]};
+        let outward=(end-before[1]).truncate().normalize_or_zero();
+        let along=outward.extend(-outward.dot(normal.truncate())/normal.z);
+        let candidate=end+along*(crate::coop::separation::DISTANCE-(end-before[1]).truncate().length());
+        let trace=world.body_trace(end,candidate);
+        let ground=world.body_trace(candidate,candidate-Vec3::Z*2.);
+        let depth=ground.normal.truncate().abs().dot(PLAYER_HALF.truncate())/ground.normal.z;
+        let support=world.sweep(candidate+Vec3::Z,candidate-Vec3::Z*(2.+depth),Vec3::ZERO);
+        println!("Herbaceous bank contact slot{approaching}: path={trace:?}, clear={}, ground={ground:?}, centre={support:?}",world.body_clear(candidate));
+        let resources=bodies.each_ref().map(|b|serde_json::to_value(&b.stats).unwrap());
+        crate::coop::separation::resolve(&world,&mut bodies,previous);
+        for tick in 0..240 {
+            let delta=bodies[0].player.feet-bodies[1].player.feet;
+            ensure!(delta.truncate().length()>=crate::coop::separation::DISTANCE-0.05,
+                "Native bank contact overlapped at slot{approaching} tick{tick}: {delta:?}");
+            ensure!(bodies[1-approaching].player.feet.distance(before[1])<0.01,"Bank contact shoved stationary partner");
+            for (b,saved) in bodies.iter().zip(&resources) {
+                ensure!(world.body_clear(b.player.feet) && serde_json::to_value(&b.stats)?==*saved,"Bank contact embedded a player or changed resources");
+                b.player.validate_world(&world)?;
+            }
+            if tick==239 {break;}
+            let previous=bodies.each_ref().map(|b|b.player.feet);
+            let wish=(bodies[1-approaching].player.feet-bodies[approaching].player.feet).truncate().normalize_or_zero();
+            bodies[approaching].player.tick(&world,Controls{wish,run:true,..Default::default()});
+            crate::coop::separation::resolve(&world,&mut bodies,previous);
+        }
+        println!("PASS Herbaceous captured bank contact slot{approaching}: 240 clear separated ticks, stationary partner and personal resources preserved");
+    }
+    Ok(())
+}
 pub(super) fn check(a: &mut Assets)->Result<()> {
     let map=Bsp::parse(&a.read("maps/garden2.bsp")?)?;
     let selected=std::env::var("LOOKING_GLASS_GARDEN2_COOP_CASE").ok();
-    ensure!(selected.as_deref().is_none_or(|v|matches!(v,"platform"|"combat"|"scenes")),"Invalid Herbaceous check selection");
-    let checks:[(&str,fn(&mut Assets,&Bsp)->Result<()>);3]=[("platform",platform),("combat",combat),("scenes",scenes)];
+    ensure!(selected.as_deref().is_none_or(|v|matches!(v,"platform"|"combat"|"scenes"|"contact")),"Invalid Herbaceous check selection");
+    let checks:[(&str,fn(&mut Assets,&Bsp)->Result<()>);4]=[("platform",platform),("combat",combat),("scenes",scenes),("contact",bank_contact)];
     let mut failures=Vec::new();
     for (name,run) in checks {
         if selected.as_deref().is_some_and(|v|v!=name){continue;}

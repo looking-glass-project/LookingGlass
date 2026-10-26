@@ -42,6 +42,24 @@ pace fixtures still fail. This adds 0.25 points for verified shared progression,
 bringing the estimate to **43.3%**. Full paired traversal and internet checks are
 still open; no campaign row is completed. See [Rolling Stones details](GARDEN3.md).
 
+The captured Herbaceous bank overlap is now fixed on source `c6a4ddc`: a floor
+contact caused by rounding rejected a valid separation correction. The retry
+retains complete wall, body and support checks. Both player-slot regressions
+pass 240 movement/contact ticks each, and all 46 Herbaceous component cases
+and 808 active unit tests pass. Replaying the identical diagnostic course clears
+the former overlap, then fails later at the thermal (Blue dies at step 23 while
+Red reaches step 28). That remaining failure keeps the visit partial and the
+overall estimate at **43.3%**. See [captured bank evidence](GARDEN2.md#captured-bank-contact).
+
+On that same build, the focused Village entrance regression passes through two
+independent public-internet clients with 40 ms delay and 20 ms jitter per sender:
+both approaching-player roles stop at 36 units without pushing the partner,
+both Alice models remain marked visible, and each client produces ambient
+particles and draws effect batches without drops. All 579 matching sent/restored
+states agree; there is no death, respawn or wipe. Evidence:
+`private/coop/presence-test-05c85a8bdfd1407ab723b3832e2497eb/`. No images were
+viewed. This is an entrance contact/effect regression, not full-level validation.
+
 The overall percentage is a weighted estimate, not elapsed time or a live build
 indicator. An earlier Garden build passed 4/4 native paired routes. After adding
 rope contact, the current build passes **2/4 native paired routes** (both watched

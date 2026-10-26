@@ -85,7 +85,7 @@ with bounded count, position and age validation. Older saves omit this optional
 field and load with no pending bursts; the save-envelope version is unchanged.
 
 `--garden2-coop-check` provides staged headless checks, with optional group
-selection via `LOOKING_GLASS_GARDEN2_COOP_CASE=platform|combat|scenes`. On source
+selection via `LOOKING_GLASS_GARDEN2_COOP_CASE=platform|combat|scenes|contact`. On source
 `0601aeb39bc98a7828a398e3c59f6fc5ef637ab54ab5fe343994a079cc45f8a2`,
 44 cases pass: six platform cases, 20 cast/impact cases and 18 scene cases.
 These include 30/60/144 Hz paired carry, balancing, dead-partner single-player
@@ -158,3 +158,36 @@ and state captures remain in `private/garden2-coop-bank-3c996ca/`, with log
 `private/coop-garden2-bank-3c996ca.log`. Its four variants finished in 22.9 seconds
 without image inspection. These failures remain open; the experiment is not
 the default course and is not credited as a gameplay fix.
+
+## Captured bank contact
+
+The saved Blue/skipped bank overlap now has a headless native regression in
+the `contact` group. It uses the exact captured positions in both player slots,
+then repeats movement/contact for 240 ticks, checking body clearance, valid
+player state, stationary-partner position and unchanged personal resources.
+
+On source `39fbf21`, the original tangent correction fails at tick zero: the
+body sweep reports floor contact at fraction zero even though its destination
+and both ground-support probes are valid. The slope normal is approximately
+`[0.040770,0.057757,0.997498]`. This isolates a collision-skin/rounding issue,
+separate from the earlier centre-support probe fix.
+
+The correction now retries a grounded non-swimming body blocked by a walkable
+floor with one collision skin of vertical clearance. It then repeats the entire
+path, destination-body and centre-support checks. A wall, unsupported edge or
+embedded starting body still rejects the move. Rope handling and single-player
+movement are unchanged.
+
+Source `c6a4ddc5632c8f9dec60303122e6629c2ce5eaa0cfa982d231d55420349e32c9`
+passes both captured contact cases and all 44 earlier component cases (46 total),
+plus 808 active unit tests. The locked release build, seven source-package tests
+and worktree audit pass. Native evidence: `private/coop-bank-contact-native-c6a4ddc.log`.
+
+The unchanged experimental 109-step course, Blue first with scenes skipped,
+now passes the former tick-2,738 overlap. It later fails at tick 5,112 when Blue
+dies near the thermal, at steps `[23,28]` with health `[0,90]`. Nine compressed
+replica comparisons pass before that failure. Its final frame is tick 5,113;
+`full_route_passed` remains false. Evidence:
+`private/coop-bank-contact-route-c6a4ddc.log` and
+`private/garden2-coop-bank-contact-c6a4ddc/`. This fixes the captured bank contact;
+it does not fix the thermal traversal or complete the visit.

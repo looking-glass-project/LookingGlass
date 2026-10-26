@@ -23,11 +23,12 @@ resources, scene ownership/reunion, paired lily supports at three update rates,
 obstructed/dead riders, independent clocks and saved bridge timing. Full paired
 traversal, combat, recovery and internet transition/rejoin remain open.
 The ordinary-input route now completes Garden and loads Garden2 with both players
-alive in three variants: either leader with watched scenes, and Red leading with
-skipped scenes. Personal resources carry over exactly and arrivals are clear and
-separate. Blue leading with skipped scenes still stalls during combat at step 62.
-These are single-process paired routes; internet traversal and recovery remain
-open. The separate single-player automated course still fails at its launcher.
+alive in all four leader/scene variants. Personal resources carry over exactly
+and arrivals are clear and separate. Jump shots resolve the low-cover combat
+stall; separate landing goals and clearing the final platform before crossing
+keep the automated players alive. These are single-process paired routes;
+internet traversal and recovery remain open. The separate single-player
+automated course still fails at its launcher.
 
 The underwater temple now advances its guide and machinery for both swimmers.
 Thirteen native component cases pass for individual air, crushing, saved state
@@ -4859,3 +4860,53 @@ Blue-led skipped case repeats the same step-62 failure. Logs are
 runs watched then skipped scenes and stops on the first failure. No route-file
 override is needed. The final build passes all 796 active unit tests (one ignored),
 the locked release build, seven package tests and the 812-file worktree audit.
+
+
+### Garden four-route milestone
+
+The automated paired course now uses ordinary jump shots after ten seconds of
+stationary firing at the early combat clear. Projectile forecasts showed that
+low cover intercepted the original shots even though a thin visibility query
+found an exposed target point. The test now logs sparse hypothetical and
+in-flight projectile contacts to distinguish blocked shots from missing damage;
+these forecasts never change the live world.
+
+At the shared launcher landing, Red aims 80 units to the side of Blue's landing
+goal. The prior trace showed the second arrival colliding with the player pulling
+up and falling below the catchable ledge. Both still use normal movement and
+ledge controls. At the final platforms, the course clears nearby enemies before
+jumping into melee range; it can use jump shots after two seconds there.
+
+Trial build `c8ea5303e569f2a6275a564a07aab11acd18cd6ea90e5ada14e073cb68beafab`
+with the saved exit-platform course completes all four combinations:
+
+| First player | Scenes | Ticks | Matching replica samples | Final Blue/Red Sanity |
+| --- | --- | ---: | ---: | --- |
+| Blue | Watched | 31,311 | 53 | 57.735 / 18.440 |
+| Blue | Skipped | 24,427 | 41 | 35.549 / 70.000 |
+| Red | Watched | 29,541 | 50 | 22.646 / 61.004 |
+| Red | Skipped | 23,713 | 40 | 48.288 / 30.329 |
+
+Every pass retains the authored-exit, two-reunion, no-death/recovery/warp,
+real-Garden2-load, exact-personal-resource and separate-clear-arrival gates.
+Evidence is `private/garden1-coop-route-c8ea530-exitrose.log` and its isolated
+profile, including the exact course and terminal states. The course is now the
+public default in `coop_steps.json`.
+`LOOKING_GLASS_GARDEN_COOP_SCENES=watched|skipped` optionally selects one scene
+mode, independently of the existing first-player selector. Omitting both runs
+all four cases. Invalid selectors must fail explicitly.
+
+This is a single-process paired traversal milestone, not full independent-client
+internet validation. No gameplay movement, health, damage, enemy placement or
+single-player course changed. Internet traversal and the Garden recovery matrix
+remain open. Overall remains **42.1%**; report **4/4 native routes passed** beside
+that figure so this progress is visible. No screenshots were used.
+
+Final default-course build
+`74aa21ece12fd0e7262b9fcedbeacf6afa2cc32e1f557c7a63058459cd913aba`
+repeats all four passes with exactly the same ticks, sample counts and resources.
+No course or case selector override is needed. Its saved course matches the
+public file exactly. Evidence is `private/garden1-coop-route-74aa21e-all.log`
+and its isolated profile. The invalid scene-selector check also passes.
+Validation: locked release build, 796 active unit tests (one ignored), seven
+source-package tests and the source worktree audit pass.

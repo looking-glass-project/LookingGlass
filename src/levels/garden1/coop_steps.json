@@ -468,7 +468,8 @@
       0,
       0
     ],
-    "mode": "clear"
+    "mode": "clear",
+    "frames": 1200
   },
   {
     "pos": [
@@ -997,7 +998,12 @@
       192
     ],
     "mode": "hold",
-    "frames": 240
+    "frames": 240,
+    "red_pos": [
+      1528,
+      -80,
+      192
+    ]
   },
   {
     "pos": [
@@ -1291,12 +1297,12 @@
   },
   {
     "pos": [
-      0,
+      500,
       0,
       0
     ],
-    "mode": "wait",
-    "frames": 30
+    "mode": "clear",
+    "frames": 240
   },
   {
     "pos": [

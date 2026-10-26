@@ -18,9 +18,20 @@ use std::collections::VecDeque;
 struct Step {
     pos: [f32; 3],
     #[serde(default)]
+    red_pos: Option<[f32; 3]>,
+    #[serde(default)]
     mode: String,
     #[serde(default)]
     frames: usize,
+}
+impl Step {
+    fn goal(&self, id: PlayerId) -> Vec3 {
+        Vec3::from_array(if id == PlayerId::Red {
+            self.red_pos.unwrap_or(self.pos)
+        } else {
+            self.pos
+        })
+    }
 }
 #[derive(Default)]
 struct Driver {
@@ -96,7 +107,7 @@ impl Driver {
             let Some(step) = steps.get(self.index) else {
                 return Ok((control, input));
             };
-            let goal = Vec3::from_array(step.pos);
+            let goal = step.goal(id);
             let delta = goal - p.feet;
             // A timed swing without an explicit climb step assumes the grip
             // height of its approach. An obstacle jump can catch the same rope
@@ -138,6 +149,45 @@ impl Driver {
                             && fight::aim_point(&context, p.eye(), t).is_some()
                     });
                     self.quiet = if visible { 0 } else { self.quiet + 1 };
+                    if self.ticks > 0 && self.ticks % 600 == 0 {
+                        let mut blade =
+                            crate::weapons::Projectile::thrown_blade(p.eye(), attack.aim);
+                        let (hit, contact_normal) = blade.contact_step(1., &context);
+                        let point = attack
+                            .target
+                            .and_then(|id| targets.iter().find(|t| t.id == id))
+                            .and_then(|t| fight::aim_point(&context, p.eye(), t));
+                        let card_hit = point.and_then(|point| {
+                            let mut card = crate::weapons::Projectile::card(
+                                p.eye(),
+                                (point - p.eye()).normalize_or_zero(),
+                                None,
+                            );
+                            let first = card.contact_step(0.75, &context).0;
+                            first.or_else(|| card.contact_step(0.75, &context).0)
+                        });
+                        let saved = serde_json::to_value(arena.characters[id.index()].snapshot())?;
+                        let mut in_flight = Vec::new();
+                        for value in saved["projectiles"]["projectiles"].as_array().unwrap() {
+                            let mut projectile: crate::weapons::Projectile =
+                                serde_json::from_value(value.clone())?;
+                            let age = projectile.age;
+                            let (hit, normal) = projectile.contact_step(1., &context);
+                            in_flight.push((age, hit.map(|h| h.id), normal));
+                        }
+                        println!(
+                            "Garden clear {id:?} step{} ticks{} target={:?} eye={:?} aim={:?} blade_hit={:?} contact_normal={contact_normal:?} card_hit={:?} in_flight={in_flight:?}",
+                            self.index, self.ticks, attack.target, p.eye(), attack.aim, hit.map(|h| h.id), card_hit.map(|h| h.id)
+                        );
+                    }
+                    // A clear can opt into vertical jump shots after its first
+                    // stationary attempt, to see over low cover. This uses the
+                    // ordinary jump input without moving the firing position.
+                    control.jump = step.frames > 0
+                        && self.ticks >= step.frames
+                        && self.ticks % 240 == 0
+                        && visible
+                        && p.grounded;
                 }
                 "wait" => (),
                 "grab" if p.rope.is_some() => control.rise = delta.z.signum(),
@@ -162,7 +212,7 @@ impl Driver {
                             .rev()
                             .find(|s| s.mode == "grab")
                             .context("Garden rope climb has no approach")?;
-                        let approach = Vec3::from_array(grab.pos) - p.feet;
+                        let approach = grab.goal(id) - p.feet;
                         control = Controls {
                             wish: approach.truncate().normalize_or_zero(),
                             swim: approach.normalize_or_zero(),
@@ -300,9 +350,10 @@ async fn route(a: &mut Assets, first: PlayerId, skip: bool) -> Result<()> {
     let steps: Vec<Step> = serde_json::from_slice(&course)?;
     ensure!(
         !steps.is_empty()
-            && steps
-                .iter()
-                .all(|s| s.pos.iter().all(|v| v.is_finite()) && s.frames <= 120 * 90),
+            && steps.iter().all(|s| s.pos.iter().all(|v| v.is_finite())
+                && s.red_pos
+                    .is_none_or(|pos| pos.iter().all(|v| v.is_finite()))
+                && s.frames <= 120 * 90),
         "Invalid Garden co-op test course"
     );
     // Keep the exact controls course beside the state report, including any
@@ -379,7 +430,8 @@ async fn route(a: &mut Assets, first: PlayerId, skip: bool) -> Result<()> {
                     // first input tick after the launch/release step completed.
                     std::fs::write(
                         crate::preferences::path(&format!(
-                            "garden1-{first:?}-{skip}-{id:?}-{}-{step}.json", s.mode
+                            "garden1-{first:?}-{skip}-{id:?}-{}-{step}.json",
+                            s.mode
                         )),
                         serde_json::to_vec(&report(
                             &arena, &roster, &drivers, first, skip, samples,
@@ -627,11 +679,18 @@ async fn route(a: &mut Assets, first: PlayerId, skip: bool) -> Result<()> {
 pub(super) async fn check(a: &mut Assets) -> Result<()> {
     std::fs::create_dir_all(crate::preferences::path(""))?;
     let selected = std::env::var("LOOKING_GLASS_GARDEN_COOP_FIRST").ok();
+    let scenes = std::env::var("LOOKING_GLASS_GARDEN_COOP_SCENES").ok();
     ensure!(
         selected
             .as_deref()
             .is_none_or(|v| matches!(v, "Blue" | "Red")),
         "LOOKING_GLASS_GARDEN_COOP_FIRST must be Blue or Red"
+    );
+    ensure!(
+        scenes
+            .as_deref()
+            .is_none_or(|s| matches!(s, "watched" | "skipped")),
+        "LOOKING_GLASS_GARDEN_COOP_SCENES must be watched or skipped"
     );
     for first in PlayerId::ALL {
         if selected
@@ -641,6 +700,9 @@ pub(super) async fn check(a: &mut Assets) -> Result<()> {
             continue;
         }
         for skip in [false, true] {
+            if scenes.as_deref().is_some_and(|s| (s == "skipped") != skip) {
+                continue;
+            }
             route(a, first, skip).await?;
         }
     }

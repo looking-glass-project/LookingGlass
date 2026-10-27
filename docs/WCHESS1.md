@@ -279,7 +279,7 @@ Before adding jump recovery, source `df70c2f` reached default step **149 of 161*
 with Blue 65 health, Red 85 health, both puzzles completed, all five original
 scene owners recorded and raised water. The native capture shows a small static
 lip stopping walking at the water entrance; an isolated ordinary jump clears it.
-That probe is diagnosis, not traversal credit. The latest Blue/watched attempt
+That probe is diagnosis, not traversal credit. The Blue/watched attempt at that stage
 on `24e0520` changes earlier timing and catches another small horizontal overlap
 at platform-edge step **98**, tick 43,262. Both players remain alive. Preserve
 `private/coop-wchess1-route19-settings/wchess1-Blue-false-failed.json` for the next
@@ -287,3 +287,87 @@ contact regression; `private/coop-wchess1-route17.log` records the farther run.
 Neither run completed the route. Full traversal, independent internet/recovery
 and broader rendered combat effects remain open; the overall estimate remains
 **45.8%**. This batch used no screenshots or visual inspection.
+
+### Contact while already overhanging a platform
+
+The step-98 capture showed that ordinary movement had left both Alices supported
+by part of their collision footprints, with no floor directly under either
+centre. A safe separation correction was rejected by the extra centre-support
+check, allowing a small overlap to accumulate. The correction now accepts this
+existing overhang only when the old and new footprints have an intersection
+that itself rests on walkable floor. Swept clearance, body clearance and floor
+support remain required. A previously supported centre cannot become an
+overhang, and a correction cannot transfer support across disjoint footprints.
+
+Two exact native landing replays cover both player slots for 240 movement ticks,
+checking separation, support, personal resources and the unchanged waiting
+partner. Two unit tests additionally cover an already overhanging approach,
+rejection of a newly created overhang, loss of floor support and a support gap.
+Source `7895e86774ebba6b8e09f9b33f2fcbdd48518cde91968956c1fe7dfdf8ce23ff`
+passes **87 native world cases and 820 Rust tests** (one existing ignored test).
+All three single-player logs still match `2990c66`. Logs are
+`private/coop-wchess1-components23.log`, `private/coop-wchess1-unit23.log` and
+the three `*-7895e86.log` single-player checks. Its frozen executable is
+`private/coop-wchess1-world-7895e86.exe`, SHA-256
+`05bbfc600ef11dfae1fdf735395c88d42c71ca3d77989569c315d94003775345`.
+
+All four continuous routes on that source clear the edge contact and a low
+doorway, then enter the final water section with both players alive. Each stops
+at step 149 because the test follower aims at the leader's old jump arc above
+the water. This is captured in `private/coop-wchess1-route23.log` and its four
+failure reports. The driver now distinguishes airborne trail samples from
+grounded and swimming positions; it also steps aside or backward when carrying
+the leader below a low doorway. These changes do not alter gameplay physics,
+resources, the authored course or final waypoint height checks.
+
+The unchanged production contact code also passes the independent public-internet
+entrance regression on source `a2b939d`, with **40 ms delay and 20 ms jitter** per
+sender. Both approaching-player roles stop at 36 units without pushing their
+partner, both models remain marked visible, and both clients emit ambient
+particles and submit real effect batches without drops. All **601** matching
+sent/restored states agree, with no death, respawn or wipe. Evidence is
+`private/coop/presence-test-2f498f4b699d4afb835b00f4c5b86f6b/`. No images were
+inspected. This remains an entrance contact/effect check, not full Pale Realm
+internet traversal or broad combat-effects coverage.
+
+### Full native paired traversal verified
+
+Source `7fa6ff40caeb63cbaaff677790cbd7d4275ab061c9c584913eab8cb573688ca0`
+passes **all four default entrance-to-exit routes**. Each uses the unchanged
+161-step course, normal combat and personal resources, both original puzzles,
+all five scenes, swimming and the real Castling arrival. No player dies or
+respawns, no team wipe occurs, and no cheat or unscripted warp is allowed.
+
+| Leader | Scenes | Movement ticks | Matching compressed guest snapshots |
+| --- | --- | ---: | ---: |
+| Blue | Watched | 68,888 | 114 |
+| Blue | Skipped | 61,817 | 103 |
+| Red | Watched | 68,863 | 114 |
+| Red | Skipped | 61,792 | 102 |
+
+All four finish with both players alive at 100 health and unchanged personal
+resources across the chapter arrival. The Intro belongs to Blue at initial
+entry; the other scenes belong to the selected first-arriving player. The
+**433** snapshot comparisons cover the production Arena world. These are native
+paired routes within one process; separate-client internet traversal remains open.
+
+The driver now records whether a trail sample was airborne, preventing a swimmer
+from aiming back into an old jump arc. When an arrived leader occupies the
+follower's bank landing, it walks onto checked floor and waits for the real
+pull-up to finish, then satisfies the original waypoint arrival checks. It does
+not move either body directly or relax collision/depth assertions.
+
+The final locked release build, **820 Rust tests** (one existing ignored test),
+**87 native world cases** and all three complete single-player baseline log
+comparisons pass on this exact source. The default course SHA-256 is
+`a1011d08ec00c817dbe4599ca0bfdc32c967d5eec4402e6a8c0a43c3055174bd`.
+Frozen executable: `private/coop-wchess1-world-7fa6ff4.exe`, SHA-256
+`88d5df04578e4afb2b42048eac24cb384269eb002d1b40caff883594b20bf342`.
+Logs are `private/coop-wchess1-route26.log`, the three
+`private/coop-wchess1-route26-{Blue-skipped,Red-watched,Red-skipped}.log` files,
+`private/coop-wchess1-components26.log`, `private/coop-wchess1-unit26.log` and the
+three `*-7fa6ff4.log` single-player checks. The four success reports and
+`private/coop-wchess1-route26-summary.json` verify source/course identity, scene
+ownership, all 161 steps and survival. Full internet routes, broader rendered
+combat effects, team-wipe/checkpoint reload and reconnect coverage remain open.
+Overall progress stays **45.8%**; no combined campaign row is completed here.

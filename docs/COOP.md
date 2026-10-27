@@ -162,15 +162,19 @@ ordinary inputs, funded combat and compressed guest snapshots. It exposed an
 angled open-door contact where the players could overlap slightly. Source
 `24a8a6f` fixes that contact and passes **81 native world cases**, including both
 captured player roles. All three single-player check logs still match baseline.
-The next batch fixes descending-player contact and follower navigation through
-the supply passage and narrow stairs. Source `24e0520` passes **85 native world
-cases and 818 active Rust tests**; all three single-player logs still match
-baseline. A Blue-first watched route reached step 149/161 with both players alive,
-both puzzles complete and all five scenes recorded, before stopping at the water
-entrance. The latest driver's ordinary jump recovery exposes another small
-platform-edge overlap at step 98; its exact state and inputs are saved for repair.
-No complete paired route has passed yet. This adds no campaign completion credit;
-the estimate reviewed on **27 October 2026** stays **45.8% (about 46%)**. See
+The latest batch fixes contact while already overhanging a supported platform,
+and advances the automated follower through narrow passages, swimming and bank
+pull-ups. Source `7fa6ff4` passes **all four complete native paired routes** with
+either leader and watched/skipped scenes: both puzzles, all five scenes, the full
+water section and the actual Castling arrival. Both players survive every run;
+433 compressed guest snapshots match. **87 native world cases and 820 active
+Rust tests pass**, and all three single-player logs still match baseline.
+The same production contact code also passes the separate-client public-internet
+entrance test with 40/20 ms delay/jitter, both models visible, rendered ambient
+particles without dropped batches and 601 matching sent/restored states.
+Full Pale Realm internet traversal, combat effects and recovery/rejoining remain
+open. No combined campaign row is completed by these checks; the estimate
+reviewed on **27 October 2026** stays **45.8% (about 46%)**. See
 [route and contact evidence](WCHESS1.md#continuous-co-op-route-and-captured-door-contact).
 
 The overall percentage is a weighted estimate, not elapsed time or a live build

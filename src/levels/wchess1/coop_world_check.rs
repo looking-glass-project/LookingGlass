@@ -363,9 +363,43 @@ fn falling_contact(map:&Bsp)->Result<()> {
         println!("PASS captured native descending contact {name} slot{moving}: 240 physics ticks, no overlap or partner shove");
     }}Ok(())
 }
+fn overhanging_contact(map:&Bsp)->Result<()> {
+    let w=World::from_bsp(map)?;
+    let before=[vec3(3722.08813,3084.90088,0.031249762),vec3(3699.91260,3056.54175,3.9199333)];
+    let after=[before[0],vec3(3699.93066,3056.56470,0.031249762)];
+    for moving in 0..2 {
+        let mut roster=Roster::new(&w,after[0]+Vec3::Z*crate::movement::EYE_HEIGHT,0.,Stats::default())?;
+        for (b,at) in roster.players.iter_mut().zip(after) {
+            b.player=Player::new(at);b.player.grounded=true;
+            ensure!(w.body_trace(at,at-Vec3::Z*2.).fraction<1.
+                && w.sweep(at+Vec3::Z,at-Vec3::Z*2.,Vec3::ZERO).fraction==1.,
+                "Captured edge no longer has footprint-only support");
+        }
+        let mut previous=before;
+        if moving==0 {roster.players.swap(0,1);previous.swap(0,1);}
+        let still=roster.players[1-moving].player.feet;
+        let resources=roster.players.each_ref().map(|b|serde_json::to_value(&b.stats).unwrap());
+        crate::coop::separation::resolve(&w,&mut roster.players,previous);
+        for tick in 0..240 {
+            let d=roster.players[0].player.feet-roster.players[1].player.feet;
+            ensure!(d.truncate().length()>=crate::coop::separation::DISTANCE-0.001,
+                "Captured overhang overlap slot{moving} tick{tick}");
+            ensure!(roster.players[1-moving].player.feet==still,"Edge correction shoved the waiting partner");
+            for (i,b) in roster.players.iter().enumerate() {
+                ensure!(w.body_clear(b.player.feet) && b.player.grounded
+                    && w.body_trace(b.player.feet,b.player.feet-Vec3::Z*2.).fraction<1.
+                    && serde_json::to_value(&b.stats)?==resources[i],"Edge correction lost support or resources");
+            }
+            let mut input=[(Controls::default(),Input::default());2];
+            input[moving].0=Controls{wish:(still-roster.players[moving].player.feet).truncate().normalize_or_zero(),run:true,..Default::default()};
+            roster.move_players(&w,input);
+        }
+        println!("PASS captured native overhang contact slot{moving}: 240 physics ticks, separation/shared support/resources and stationary partner");
+    }Ok(())
+}
 pub(super) fn check(a:&mut Assets)->Result<()> {
     let map=Bsp::parse(&a.read("maps/wchess1.bsp")?)?;
-    wall_contact(a,&map)?;falling_contact(&map)?;
+    wall_contact(a,&map)?;falling_contact(&map)?;overhanging_contact(&map)?;
     clocks(a,&map)?;lift(a,&map)?;hazards(a,&map)?;
     for kind in [scene::Kind::Intro,scene::Kind::Bishop,scene::Kind::Knight,scene::Kind::Bell,scene::Kind::Water] {
         for first in PlayerId::ALL {for skip in [false,true] {for dead in [false,true] {scene(a,&map,kind,first,skip,dead)?;}}}

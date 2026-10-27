@@ -14,7 +14,7 @@ fn arrival_radius()->f32 {24.}
 struct Replay {
     arena:Arena,scene:RenderScene,roster:Roster,guest:Arena,guest_world:World,
     first:PlayerId,skip:bool,index:usize,trackers:[fight::Tracker;2],samples:usize,
-    owners:BTreeMap<String,PlayerId>,history:VecDeque<serde_json::Value>,trail:VecDeque<Vec3>,
+    owners:BTreeMap<String,PlayerId>,history:VecDeque<serde_json::Value>,trail:VecDeque<(Vec3,bool)>,
     course_sha256:String,default_course:bool,goal:Option<Vec3>,
 }
 impl Replay {
@@ -93,8 +93,11 @@ impl Replay {
             || self.roster.players.each_ref().map(|b|b.warped_at)==old_warps,"Unscripted chess route warp");
         if !self.arena.stage.busy() && self.arena.stage.interactive_actor().is_none() {
             if old_owner.is_some() || old_focus.is_some() {self.trail.clear();}
-            let at=self.roster.players[self.first.index()].player.feet;
-            if self.trail.back().is_none_or(|p|p.distance(at)>12.) {self.trail.push_back(at);}
+            let leader=&self.roster.players[self.first.index()].player;
+            let at=leader.feet;
+            if self.trail.back().is_none_or(|(p,_)|p.distance(at)>12.) {
+                self.trail.push_back((at,!leader.grounded && !leader.swimming));
+            }
             ensure!(self.trail.len()<2000,"Chess follower lost the leader's path");
             let d=self.roster.players[0].player.feet-self.roster.players[1].player.feet;
             ensure!(d.truncate().length()>=crate::coop::separation::DISTANCE-0.05 || d.z.abs()>=PLAYER_HALF.z*2.-0.05,"Chess bodies overlapped");
@@ -129,6 +132,7 @@ impl Replay {
         self.goal=Some(goals[self.first.index()]);
         let mut plans:[VecDeque<(Controls,Vec3)>;2]=Default::default();let mut ages=[0;2];
         let mut last=self.roster.players.each_ref().map(|b|b.player.feet);let mut stuck=[0;2];
+        let mut clearing_landing=false;
         for t in 0..120*90 {
             // The precise pair of goals belongs to the lift deck, whose height
             // can change as soon as both players have stepped aboard.
@@ -150,15 +154,42 @@ impl Replay {
                     && (p.grounded || p.swimming || on_leader)
             });
             if ready.iter().all(|v|*v){if precise{self.trail.clear();}return Ok(());}
+            clearing_landing=!precise && self.roster.players[self.first.partner().index()].player.climbing()
+                && (clearing_landing || ready[self.first.index()] && self.roster.players[self.first.index()].player.grounded);
             let mut c=[Controls::default();2];
             for id in [self.first,self.first.partner()] {
                 let i=id.index();let p=&self.roster.players[i].player;
+                if id==self.first && clearing_landing {
+                    // Once the leader has reached a bank, give the follower's
+                    // checked pull-up room to finish. Walk clear, then wait;
+                    // both original arrival checks still have to pass afterward.
+                    let gap=p.feet-self.roster.players[id.partner().index()].player.feet;
+                    if gap.truncate().length()<80. {
+                        let away=gap.truncate().try_normalize().unwrap_or(Vec2::X);
+                        let side=vec2(-away.y,away.x);
+                        for wish in [away,side,-side] {
+                            let at=p.feet+wish.extend(0.)*12.;
+                            let path=self.scene.world.body_trace(p.feet,at);
+                            let floor=self.scene.world.body_trace(at,at-Vec3::Z*32.);
+                            if !path.start_solid && path.fraction==1. && !floor.start_solid && floor.fraction<1.
+                                && floor.normal.z>0.65 && !self.arena.stage.interactions.hazardous(at) {
+                                c[i].wish=wish;break;
+                            }
+                        }
+                    }
+                    continue;
+                }
                 if id!=self.first && !precise {
-                    while self.trail.front().is_some_and(|at| {
-                        let d=*at-p.feet;d.truncate().length()<8. && d.z.abs()<45.
+                    while self.trail.front().is_some_and(|(at,airborne)| {
+                        let d=*at-p.feet;
+                        // After splashing down, follow the leader's next water
+                        // or landing position, not its jump arc above the pool.
+                        // Grounded shore samples and the final depth remain required.
+                        p.swimming && *airborne && d.z>45.
+                            || d.truncate().length()<8. && d.z.abs()<45.
                     }) {self.trail.pop_front();}
                 }
-                let goal=if id!=self.first && !precise {self.trail.front().copied().unwrap_or(goals[i])}else{goals[i]};
+                let goal=if id!=self.first && !precise {self.trail.front().map(|(at,_)|*at).unwrap_or(goals[i])}else{goals[i]};
                 let d=goal-p.feet;
                 if self.arena.characters[i].attack_movement_locked(){continue;}
                 let gap=p.feet-self.roster.players[self.first.index()].player.feet;
@@ -166,14 +197,20 @@ impl Replay {
                     // A scene reunion can put the follower ahead of the chosen
                     // leader. Yield sideways with ordinary input so neither
                     // player pins the other against the personal-space boundary.
-                    let forward=(goals[self.first.index()]-self.roster.players[self.first.index()].player.feet).truncate().normalize_or_zero();
-                    if gap.truncate().dot(forward)>-4. {
+                    let forward=(goals[self.first.index()]-self.roster.players[self.first.index()].player.feet).truncate().try_normalize().unwrap_or(Vec2::X);
+                    // Step aside when the leader has landed on this follower,
+                    // even if the follower is behind. Otherwise a low doorway
+                    // can hold the upper body while the lower one waits forever.
+                    let carries_leader=gap.z < -(PLAYER_HALF.z*2.-0.1)
+                        && gap.truncate().length()<crate::coop::separation::DISTANCE;
+                    if gap.truncate().dot(forward)>-4. || carries_leader {
                         let side=vec2(-forward.y,forward.x);
                         // Reversing out of a narrow supply passage can leave
                         // the follower standing on the leader's next goal.
                         // Even an arrived follower must yield; if neither side
-                        // fits, continue ahead along the clear corridor.
-                        for wish in [side,-side,forward] {
+                        // fits, try ahead or backward along the clear corridor.
+                        // Every candidate must move away from the leader.
+                        for wish in [side,-side,forward,-forward] {
                             // Check a short walking segment each tick. A full
                             // body-width lookahead wrongly rejects room to
                             // yield beside the open supply door's hinge.
@@ -294,7 +331,7 @@ impl Replay {
     fn record(&self,suffix:&str)->Result<()> {
         let value=serde_json::json!({"build":env!("LOOKING_GLASS_BUILD"),"first":self.first,"skip":self.skip,
             "step":self.index,"samples":self.samples,"owners":self.owners,"frame":self.roster.frame(1,0),
-            "world":self.arena.snapshot(),"recent_inputs":self.history,"goal":self.goal,
+            "world":self.arena.snapshot(),"recent_inputs":self.history,"goal":self.goal,"trail":self.trail,
             "course_sha256":self.course_sha256,"default_course":self.default_course,
             "course_passed":suffix=="passed","full_route_passed":suffix=="passed" && self.default_course});
         std::fs::write(crate::preferences::path(&format!("wchess1-{:?}-{}-{suffix}.json",self.first,self.skip)),serde_json::to_vec(&value)?)?;Ok(())
@@ -374,6 +411,19 @@ pub(super) fn probe(a:&mut Assets)->Result<()> {
     println!("PROBE captured {:?} -> {goal:?}, trace {:?}, geometry {:?}",saved.feet,
         world.body_trace(saved.feet,goal),world.sweep_geometry(saved.feet+PLAYER_CENTER,goal+PLAYER_CENTER,PLAYER_HALF));
     println!("PROBE static trace {:?}, saved player {saved:?}",bare.body_trace(saved.feet,goal));
+    let pair=frame.players.each_ref().map(|b|b.player.feet);
+    let normal=(pair[0]-pair[1]).truncate().normalize_or_zero();
+    let overlap=crate::coop::separation::DISTANCE-(pair[0]-pair[1]).truncate().length();
+    for (i,b) in frame.players.iter().enumerate() {
+        let at=b.player.feet;
+        let corrected=at+normal.extend(0.)*overlap*if i==0{1.}else{-1.};
+        for (name,to) in [("current",at),("corrected",corrected),("skin",corrected+Vec3::Z*crate::collision::SKIN)] {
+            let ground=world.body_trace(to,to-Vec3::Z*2.);
+            let depth=ground.normal.truncate().abs().dot(PLAYER_HALF.truncate())/ground.normal.z.max(0.001);
+            println!("PROBE contact slot{i} {name} {to:?}: path{:?} clear{} ground{ground:?} centre{:?}",
+                world.body_trace(at,to),world.body_clear(to),world.sweep(to+Vec3::Z,to-Vec3::Z*(2.+depth),Vec3::ZERO));
+        }
+    }
     for (id,e) in map.entities.iter().enumerate() {
         if let Some(model)=e.get("model").and_then(|s|s.strip_prefix('*')).and_then(|s|s.parse::<usize>().ok()) {
             let c=Collider::model(&map,model,data::at(e).translation,Quat::IDENTITY,true)?;

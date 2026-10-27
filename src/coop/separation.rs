@@ -49,7 +49,25 @@ fn clear(world: &World, body: &Body, to: Vec3) -> bool {
         // beyond the support's edge. Flat supports retain the two-unit probe.
         let slope_depth = ground.normal.truncate().abs().dot(PLAYER_HALF.truncate()) / ground.normal.z;
         let support = world.sweep(to + Vec3::Z, to - Vec3::Z * (2.+slope_depth), Vec3::ZERO);
-        if support.start_solid || support.fraction >= 1. || support.normal.z < 0.65 { return false; }
+        if support.start_solid || support.fraction >= 1. || support.normal.z < 0.65 {
+            // Ordinary movement can already be resting on the edge of its
+            // footprint, with no floor directly under the centre. Do not make
+            // such a body uncorrectable, or contact accumulates every tick.
+            // Retain the centre rule when it was supported before correction.
+            let old_ground=world.body_trace(p.feet,p.feet-Vec3::Z*2.);
+            if old_ground.start_solid || old_ground.fraction>=1. || old_ground.normal.z<0.65 {return false;}
+            let old_depth=old_ground.normal.truncate().abs().dot(PLAYER_HALF.truncate())/old_ground.normal.z;
+            let old_centre=world.sweep(p.feet+Vec3::Z,p.feet-Vec3::Z*(2.+old_depth),Vec3::ZERO);
+            if old_centre.start_solid || old_centre.fraction<1. && old_centre.normal.z>=0.65 {return false;}
+            // The intersection of the old and new footprints must itself rest
+            // on walkable floor. This cannot transfer support across a gap or
+            // move the body beyond the edge that was holding it up.
+            let half=PLAYER_HALF.truncate()-(to-p.feet).truncate().abs()*0.5;
+            if half.min_element()<=0. {return false;}
+            let centre=((to+p.feet).truncate()*0.5).extend(to.z)+crate::collision::PLAYER_CENTER;
+            let shared=world.sweep(centre,centre-Vec3::Z*2.,half.extend(PLAYER_HALF.z));
+            if shared.start_solid || shared.fraction>=1. || shared.normal.z<0.65 {return false;}
+        }
     }
     true
 }
@@ -569,6 +587,40 @@ mod tests {
         let old = r.players.each_ref().map(|b|b.player.feet);
         resolve(&world,&mut r.players,old);
         assert_eq!(old,r.players.each_ref().map(|b|b.player.feet));
+    }
+    #[test]
+    fn already_overhanging_approach_separates_without_shoving_the_partner() {
+        let world=World::fixture(&[(vec3(-6.,-200.,-100.),vec3(6.,200.,0.))]);
+        for moving in 0..2 {
+            let mut bodies=std::array::from_fn(|_|Body{player:Player::new(vec3(8.,0.,0.03125)),
+                stats:Stats::default(),yaw:0.,pitch:0.,running:false,spawned_at:0,warped_at:0});
+            for b in &mut bodies {b.player.grounded=true;}
+            bodies[moving].player.feet.y=-DISTANCE;
+            let still=serde_json::to_value(&bodies[1-moving]).unwrap();
+            for _ in 0..240 {
+                let previous=bodies.each_ref().map(|b|b.player.feet);
+                bodies[moving].player.tick(&world,Controls{wish:Vec2::Y,run:true,..Default::default()});
+                resolve(&world,&mut bodies,previous);
+                assert!(separate(&bodies));
+                assert_eq!(serde_json::to_value(&bodies[1-moving]).unwrap(),still);
+                assert!(bodies[moving].player.grounded && world.body_clear(bodies[moving].player.feet));
+                assert!(world.body_trace(bodies[moving].player.feet,bodies[moving].player.feet-Vec3::Z*2.).fraction<1.);
+            }
+        }
+    }
+    #[test]
+    fn overhang_correction_cannot_create_an_overhang_or_cross_a_support_gap() {
+        let world=World::fixture(&[(vec3(-6.,-200.,-100.),vec3(6.,200.,0.))]);
+        let mut body=Body{player:Player::new(vec3(0.,0.,0.03125)),stats:Stats::default(),
+            yaw:0.,pitch:0.,running:false,spawned_at:0,warped_at:0};
+        body.player.grounded=true;
+        assert!(!clear(&world,&body,vec3(8.,0.,0.03125)));
+        body.player.feet.x=8.;
+        assert!(!clear(&world,&body,vec3(22.,0.,0.03125)));
+        let gap=World::fixture(&[(vec3(-20.,-100.,-100.),vec3(-10.,100.,0.)),
+            (vec3(10.,-100.,-100.),vec3(20.,100.,0.))]);
+        body.player.feet.x=-24.;
+        assert!(!clear(&gap,&body,vec3(24.,0.,0.03125)));
     }
     #[test]
     fn overlap_near_wall_or_edge_never_moves_a_body_into_solid_or_off_support() {

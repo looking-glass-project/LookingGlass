@@ -6,7 +6,7 @@ from test_coop_chess import ChessPair
 
 
 def row(board=None):
-    return dict(owner=None, camera_player='Blue',
+    return dict(owner=None, camera_player='Blue', driver=dict(chess_course=dict(step=0)),
                 chess=dict(board=board, coop=dict(actor=0, reunion=False)),
                 players=[dict(feet=[0, 0, 0], warped_at=0),
                          dict(feet=[48, 0, 0], warped_at=0)])
@@ -15,6 +15,7 @@ def row(board=None):
 class PresenceGuards(unittest.TestCase):
     def setUp(self):
         self.pair = object.__new__(ChessPair)
+        self.pair.steps = [dict(mode='walk')]
 
     def test_saved_actor_does_not_exempt_free_play_overlap(self):
         sample = row()

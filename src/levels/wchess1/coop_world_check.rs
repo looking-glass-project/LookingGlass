@@ -442,6 +442,53 @@ fn landing_contact(map:&Bsp)->Result<()> {
         println!("PASS captured native landing contact slot{moving}: 240 physics ticks, separation/support/resources and stationary partner");
     }Ok(())
 }
+fn sloped_stair_contact(map:&Bsp)->Result<()> {
+    let w=World::from_bsp(map)?;
+    let (eye,yaw)=crate::interaction::spawn(map,Some("wchess1_start1"));
+    // Last separate guest observation before the step-141 overlap, tick 53623.
+    let at=[vec3(3908.25439453125,2414.7138671875,57.66217041015625),
+        vec3(3871.03125,2406.910888671875,39.05052947998047)];
+    let velocity=[vec3(-16.703155517578125,87.4185562133789,-8.351577758789062),
+        vec3(0.,60.32575607299805,0.)];
+    for swap in [false,true] {
+        let mut roster=Roster::new(&w,eye,yaw,Stats::default())?;
+        for (i,b) in roster.players.iter_mut().enumerate() {
+            b.player=Player::new(at[i]);b.player.velocity=velocity[i];
+            let ground=w.body_trace(at[i],at[i]-Vec3::Z*2.);
+            ensure!(w.body_clear(at[i]) && !ground.start_solid && ground.fraction<1.
+                && ground.normal.z>=0.65,"Captured stair approach lost native support");
+            b.player.grounded=true;b.player.ground_normal=ground.normal;
+        }
+        let mut inputs=[(Controls{wish:vec2(-0.2307255,0.9730189),..Default::default()},Input::default()),
+            (Controls{wish:vec2(-0.18520653,0.32272759),run:true,..Default::default()},Input::default())];
+        if swap {roster.players.swap(0,1);inputs.swap(0,1);}
+        let resources=roster.players.each_ref().map(|b|serde_json::to_value(&b.stats).unwrap());
+        for tick in 0..120 {
+            let before=roster.players.clone();
+            roster.move_players(&w,inputs);
+            let d=roster.players[0].player.feet-roster.players[1].player.feet;
+            if d.truncate().length()<crate::coop::separation::DISTANCE-0.05 && d.z.abs()<PLAYER_HALF.z*2.-0.05 {
+                for (i,b) in roster.players.iter().enumerate() {
+                    let p=&b.player;let to=before[i].player.feet;
+                    let ground=w.body_trace(to,to-Vec3::Z*2.);
+                    let depth=ground.normal.truncate().abs().dot(PLAYER_HALF.truncate())/ground.normal.z;
+                    println!("Stair retreat slot{i}: sweep {:?}, clear {}, support {:?}, centre {:?}",
+                        w.body_trace(p.feet,to),w.body_clear(to),ground,
+                        w.sweep(to+Vec3::Z,to-Vec3::Z*(2.+depth),Vec3::ZERO));
+                }
+                std::fs::write("private/coop-wchess1-stair-contact-failure.json",serde_json::to_vec_pretty(
+                    &serde_json::json!({"tick":tick,"swap":swap,"before":before,"after":roster.players}))?)?;
+                anyhow::bail!("Captured sloped stair overlap swap{swap} tick{tick}: {:?}",roster.players.each_ref().map(|b|b.player.feet));
+            }
+            for (i,b) in roster.players.iter().enumerate() {
+                ensure!(w.body_clear(b.player.feet) && (!b.player.grounded
+                    || w.body_trace(b.player.feet,b.player.feet-Vec3::Z*2.).fraction<1.)
+                    && serde_json::to_value(&b.stats)?==resources[i],"Stair contact lost support or personal resources");
+            }
+        }
+        println!("PASS captured native sloped stair contact swap{swap}: 120 ordinary movement ticks, separation, support and personal resources");
+    }Ok(())
+}
 fn descending_trail(a:&mut Assets,map:&Bsp)->Result<()> {
     let (r,w,_,_)=free(a,map)?;
     let mut p=Player::new(vec3(591.044189453125,1185.6131591796875,48.02117919921875));
@@ -519,6 +566,7 @@ fn gated_knight_arrival(a:&mut Assets,map:&Bsp)->Result<()> {
 }
 pub(super) fn check(a:&mut Assets)->Result<()> {
     let map=Bsp::parse(&a.read("maps/wchess1.bsp")?)?;
+    sloped_stair_contact(&map)?;
     wall_contact(a,&map)?;falling_contact(&map)?;overhanging_contact(&map)?;landing_contact(&map)?;
     descending_trail(a,&map)?;
     gated_knight_arrival(a,&map)?;

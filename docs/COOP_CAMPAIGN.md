@@ -39,6 +39,15 @@ approach/puzzle/exit segment passes through independent internet clients with
 677 matching states. The strict owner check remains intact. These component
 and segment results do not replace the full-route matrix below.
 
+Source `59dc7e0` repairs contact at a stair support boundary: the final retreat
+may return to the actual previous supported position after full clearance and
+support checks. The captured native approach passes in both slot orders, all
+834 active Rust tests pass, and the 119 Pale Realm, 82 shared-world and 39
+entrance/four underwater-recovery checks pass again. Public-client 129–145
+segments pass with either leader (668/890 matching states). The preceding fresh
+run reached the next level but failed its overlap assertion; it remains failed.
+Fresh full repeats and the remaining campaign matrix are still required.
+
 Each visit requires both host/guest roles and both first-arrival orders, coherent enemies
 and individual consumables, single-player cutscenes with safe reunion, shared-transport
 boarding, a real gameplay death followed by timed spectating/respawn, a simultaneous wipe

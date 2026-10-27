@@ -91,6 +91,20 @@ fn contact_position(world: &World, body: &Body, to: Vec3) -> Option<Vec3> {
     clear(world, body, candidate).then_some(candidate)
 }
 
+fn previous_footing(world: &World, body: &Body, previous: Vec3) -> Option<Vec3> {
+    let p=&body.player;
+    if !p.grounded || p.swimming {return None;}
+    // A tick can move from footprint-only support onto centre support just as
+    // another player blocks it. Returning to that actual previous position is
+    // not creating a new overhang. Only the final retreat may use this exception;
+    // normal separation and intermediate candidates retain the centre check.
+    let trace=world.body_trace(p.feet,previous);
+    let ground=world.body_trace(previous,previous-Vec3::Z*2.);
+    (!trace.start_solid && trace.fraction>=1. && world.body_clear(previous)
+        && !ground.start_solid && ground.fraction<1. && ground.normal.z>=0.65)
+        .then_some(previous)
+}
+
 fn contact(start: Vec3, finish: Vec3) -> Option<(f32, Vec3)> {
     let delta = finish - start;
     let xy = start.truncate();
@@ -225,7 +239,7 @@ pub fn resolve(world: &World, bodies: &mut [Body; 2], previous: [Vec3; 2]) {
                 // have to pass before either body's position changes.
                 (p.grounded && !p.swimming && to.z>p.feet.z)
                     .then(||contact_position(world,&bodies[i],vec3(to.x,to.y,p.feet.z))).flatten()
-            });
+            }).or_else(|| (fraction==0.).then(||previous_footing(world,&bodies[i],previous[i])).flatten());
             if let Some(at)=position {candidates[i]=at;}
             else {valid=false;break;}
         }
@@ -667,6 +681,55 @@ mod tests {
             (vec3(10.,-100.,-100.),vec3(20.,100.,0.))]);
         body.player.feet.x=-24.;
         assert!(!clear(&gap,&body,vec3(24.,0.,0.03125)));
+    }
+    #[test]
+    fn contact_at_a_support_boundary_can_retreat_to_the_actual_previous_footing() {
+        let world=World::fixture(&[
+            (vec3(-6.,-200.,-100.),vec3(6.,200.,0.)),
+            (vec3(-100.,0.2,-100.),vec3(100.,200.,0.)),
+            (vec3(-100.,-200.,0.),vec3(-7.,200.,200.)),
+        ]);
+        for swap in [false,true] {
+            let mut bodies=std::array::from_fn(|_|Body{player:Player::new(Vec3::ZERO),
+                stats:Stats::default(),yaw:0.,pitch:0.,running:false,spawned_at:0,warped_at:0});
+            let mut previous=[vec3(43.057129,8.355615,0.03125),vec3(8.03125,-0.4,0.03125)];
+            for (b,at) in bodies.iter_mut().zip([vec3(42.857178,9.198877,0.03125),vec3(8.03125,0.44765625,0.03125)]) {
+                b.player.feet=at;b.player.grounded=true;
+            }
+            assert!(!clear(&world,&bodies[1],previous[1]),"Normal correction must not create an overhang");
+            assert_eq!(previous_footing(&world,&bodies[1],previous[1]),Some(previous[1]));
+            if swap {bodies.swap(0,1);previous.swap(0,1);}
+            let departing=usize::from(swap);
+            let unchanged=serde_json::to_value(&bodies[departing]).unwrap();
+            let resources=bodies.each_ref().map(|b|serde_json::to_value(&b.stats).unwrap());
+            resolve(&world,&mut bodies,previous);
+            assert!(separate(&bodies));
+            assert_eq!(serde_json::to_value(&bodies[departing]).unwrap(),unchanged);
+            assert_eq!(bodies[1-departing].player.feet,previous[1-departing]);
+            for (i,b) in bodies.iter().enumerate() {
+                assert!(world.body_clear(b.player.feet));
+                assert!(world.body_trace(b.player.feet,b.player.feet-Vec3::Z*2.).fraction<1.);
+                assert_eq!(serde_json::to_value(&b.stats).unwrap(),resources[i]);
+            }
+        }
+    }
+    #[test]
+    fn previous_footing_still_requires_a_clear_supported_dry_retreat() {
+        let world=World::fixture(&[
+            (vec3(-100.,-100.,-100.),vec3(100.,100.,0.)),
+            (vec3(-5.,-100.,0.),vec3(5.,100.,100.)),
+        ]);
+        let mut body=Body{player:Player::new(vec3(40.,0.,0.03125)),stats:Stats::default(),
+            yaw:0.,pitch:0.,running:false,spawned_at:0,warped_at:0};
+        body.player.grounded=true;
+        assert_eq!(previous_footing(&world,&body,vec3(50.,0.,0.03125)),Some(vec3(50.,0.,0.03125)));
+        for at in [vec3(-40.,0.,0.03125),vec3(120.,0.,0.03125),vec3(40.,0.,10.),vec3(0.,0.,0.03125)] {
+            assert!(previous_footing(&world,&body,at).is_none());
+        }
+        body.player.swimming=true;
+        assert!(previous_footing(&world,&body,body.player.feet).is_none());
+        body.player.swimming=false;body.player.grounded=false;
+        assert!(previous_footing(&world,&body,body.player.feet).is_none());
     }
     #[test]
     fn overlap_near_wall_or_edge_never_moves_a_body_into_solid_or_off_support() {

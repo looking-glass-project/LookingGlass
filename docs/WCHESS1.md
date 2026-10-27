@@ -1055,3 +1055,48 @@ The preceding attempt failed before gameplay because the guest could not resolve
 the fresh invite address. Its separate evidence is retained in
 `private/coop/chess-route-658d19c8f20544378eaf4f11d8a58003/`. Joining reliability
 remains open; the successful connection on the retry does not fix that failure.
+
+### Retreat at a stair support boundary
+
+A focused Red-led replay of 129–145 on the unchanged `b945e0e` build passes with
+614 matching states, so a successful segment alone does not demonstrate a fix.
+The direct native regression instead starts from the failing route's last
+separate guest observation, tick 53623, with its recorded positions/velocities
+and ordinary walking inputs on the actual map. It reproduces overlap at tick 11
+without networking on baseline `c56eb1e`. Both bodies are grounded on the slope.
+The approaching body cannot separate sideways through a wall, and its retreat
+is rejected because its previous footing has footprint support but no floor
+under the centre. That rejects a position the body actually occupied safely.
+
+Source `59dc7e0` permits the final retreat to that exact previous position only
+when the body is grounded, dry, fully clear, has an unobstructed reverse sweep
+and still has walkable support. Normal corrections and intermediate retreat
+candidates retain the stricter centre-support rule. Pair separation must still
+pass before either position changes, and a departing or stationary partner is
+not moved by the retreat.
+
+The native case now passes 120 ordinary movement ticks in both slot orders,
+including body clearance, ground support and unchanged personal resources.
+Two unit regressions cover the support boundary and reject wall crossings,
+unsupported destinations, airborne returns and swimming returns. All **834**
+active Rust tests pass (one existing ignored). The full native Pale Realm suite
+passes **119** cases, shared-world checks pass **82**, and **39 entrance/four
+underwater-recovery** checks pass. All three complete single-player Pale Realm
+logs match the existing baseline. Evidence: `private/coop-wchess1-world31-baseline.log`,
+`private/coop-wchess1-stair-debug-check.log` and
+`private/coop-wchess1-coop-world-check-59dc7e0.log`.
+
+The network fixture now retains the first complete overlapping report, its
+preceding report and the latest peer reports for direct reproduction. It does
+not alter the final presence assertion. All 24 Python route-evidence guard
+tests pass after restoring the course metadata in the older presence fixtures.
+
+On the repaired build, the two public-client replays of **129–145** pass with
+either leader and 40 ms delay/20 ms jitter per sender. Red records **668**
+matching player/world/resident states; Blue records **890**. Both verify exact
+native checkpoint restoration before physics, no deaths or unexpected lifecycle
+changes, and no overlap observations. Evidence:
+`private/coop/chess-resume-bb0f6473e35b4525b53170ad989c25bf/` and
+`private/coop/chess-resume-77fbe680134d4e348bbceb23173060cd/`.
+The fresh full-route repeat remains pending. These segments and the captured
+physics regression do not complete the campaign row or increase its credit.

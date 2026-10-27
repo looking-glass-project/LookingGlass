@@ -36,8 +36,11 @@ checks and the Red-led internet replay passes 92–97 with 677 matching states.
 The strict ownership assertion is unchanged. The next fresh Red-led run reaches
 the next level through all 161 steps, but fails final presence checks: two guest
 observations overlap during step 141. All 8,602 matching player/world/resident
-states agree. This remains a failed route, with no full-level credit; the captured
-overlap and fresh full repeats remain open.
+states agree. This remains a failed route, with no full-level credit. A native
+replay of the captured stair approach now isolates and fixes a rejected retreat
+to the previous supported footing; both player slots pass 120 ordinary movement
+ticks with separation, support and resources retained. Fresh full repeats remain
+open. See [stair contact repair](WCHESS1.md#retreat-at-a-stair-support-boundary).
 See [descent recovery](WCHESS1.md#rejoining-a-recorded-descent).
 The earlier Pale Realm combat stall is resolved by a supported sidestep after repeated
 misses. A public two-client replay passes all 26 approach steps (100–125), then
@@ -66,7 +69,7 @@ its diagonal yield choices are blocked. See [focused checks](WCHESS1.md#jump-tak
 A graceful guest leave/rejoin followed by the swimming exit also passes, with
 624 matching states recorded after the new guest process joins. The original
 puzzles, native resident health and personal resources remain intact.
-The release build and all 832 active Rust tests pass. Full fresh
+The release build and all 834 active Rust tests pass. Full fresh
 routes in both arrival orders, the complete recovery/rejoin matrix and broader
 combat-effect checks remain open; this segment adds no full-level credit.
 See [recovery details](WCHESS1.md#independent-client-revival-fixture).

@@ -112,8 +112,29 @@ class ChessPair(Pair):
                 path.write_text(json.dumps(dict(before=previous, after=report)))
 
     def validate_report(self, role, report):
+        self.record_overlap(role, report)
         self.record_damage(role, report)
         super().validate_report(role, report)
+
+    def record_overlap(self, role, report):
+        """Keep the first complete contact failure for a native replay."""
+        stage = report['combat']['stage']
+        saved = stage['world']['levels'].get(self.map_name)
+        if (report['visit']['map'] != self.map_name or report['visit']['epoch'] != 1
+                or saved is None or stage['owner'] is not None
+                or self.interactive_owner({'chess': saved}) is not None):
+            return
+        bodies = report['frame']['players']
+        if any(b['stats']['sanity'] <= 0 for b in bodies):
+            return
+        a, b = [body['player']['feet'] for body in bodies]
+        if distance(a[:2], b[:2]) >= 35.95 or abs(a[2] - b[2]) >= 55.95:
+            return
+        path = self.folder / f'first-overlap-{role}.json'
+        if not path.exists():
+            path.write_text(json.dumps(dict(before=self.last_valid.get(role),
+                after=report, peers=self.reports)))
+        # The unchanged final presence assertion decides the test result.
 
     def close(self):
         # Keep native enemy outcomes on successful runs too; reaching a course

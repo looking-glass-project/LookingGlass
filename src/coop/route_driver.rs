@@ -662,7 +662,12 @@ impl Driver {
         let Some(command) = self.command.as_ref().filter(|c| c.epoch == frame.epoch && self.fresh(now)) else {
             self.report.phase = "waiting for command"; return;
         };
-        if !body.stats.alive() { self.report.phase = "spectating"; return; }
+        if !body.stats.alive() {
+            if let Some(course)=&mut self.chess_course {
+                course.spectate(frame.tick);self.report.chess_course=Some(course.report());
+            }
+            self.report.phase = "spectating"; return;
+        }
         if command.checkpoint { self.report.phase = "saving checkpoint"; return; }
         if !command.watch_dialogue && arena.stage.story.busy() && arena.stage.owner == Some(local)
             && now.duration_since(self.used) >= Duration::from_millis(250) {

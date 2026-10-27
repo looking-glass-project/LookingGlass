@@ -13,6 +13,15 @@ personal fish deaths, guards and moving pickups. Full two-client traversal and
 recovery remain open for both visits. Report these smaller milestones alongside
 the total; a successful component or segment is not a completed campaign visit.
 
+Status checked on **27 October 2026**: the older approximately 42% figure is
+historical; the current weighted estimate is **45.8% (about 46%)**. The latest
+Pale Realm recovery attempt passes 17 approach steps and 3,649 matching network
+states, then correctly fails when its automated combat controls stall at step
+117. Both players remain alive, so it supplies no revival or full-level credit.
+The release build and all 820 active Rust tests pass. The next concrete task is
+to resolve that combat-control stall and complete the independent-client
+revival check. See [recovery attempt details](WCHESS1.md#independent-client-revival-fixture).
+
 Herbaceous Border now has an explicit paired platform/enemy adapter and **44
 passing native component cases**: shared fulcrum carrying/counterbalance, both
 dead-partner roles, resident targeting/personal damage, delayed spawns and ambush,

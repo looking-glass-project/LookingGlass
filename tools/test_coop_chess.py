@@ -87,13 +87,16 @@ class ChessPair(Pair):
                     for role, r in self.reports.items()}))
             self.pump()
 
-    def validate_report(self, role, report):
+    def record_damage(self, role, report):
         previous = self.last_valid.get(role)
         if previous and any(b['stats']['sanity'] < old['stats']['sanity']
                             for old, b in zip(previous['frame']['players'], report['frame']['players'])):
             path = self.folder / f'damage-{role}-{report["frame"]["tick"]}.json'
             if not path.exists():
                 path.write_text(json.dumps(dict(before=previous, after=report)))
+
+    def validate_report(self, role, report):
+        self.record_damage(role, report)
         super().validate_report(role, report)
 
     @staticmethod

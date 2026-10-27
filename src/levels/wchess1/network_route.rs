@@ -30,6 +30,14 @@ impl NetworkDriver {
             board_moving:false,jump_at:None,use_at:None,tracker:Default::default(),closing:None,cached:Default::default()})
     }
     pub(crate) fn reached(&self)->bool {self.done}
+    pub(crate) fn spectate(&mut self,tick:u64) {
+        // The ten-second countdown is real simulation time. Observe it while
+        // controls are neutral so revival is not mistaken for a stale client.
+        // Restart only the current authored step from the actual revived body.
+        self.last_tick=Some(tick);self.index=None;self.done=false;
+        self.cached=Default::default();self.trail.clear();self.worker=None;
+        self.tracker=Default::default();self.jump_at=None;self.use_at=None;
+    }
     pub(crate) fn report(&self)->serde_json::Value {
         serde_json::json!({"step":self.index,"mode":self.index.map(|i|&self.steps[i].mode),
             "phase":self.phase,"ticks":self.ticks,"quiet":self.quiet,"reached":self.done,

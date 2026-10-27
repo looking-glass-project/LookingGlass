@@ -551,3 +551,39 @@ comparisons pass. Logs are `private/coop-wchess1-network-{build11,unit11}.log` a
 Overall progress remains **45.8%**. Full fresh routes in both arrival orders,
 the rest of the water section, combat effects and recovery/rejoin remain open;
 combining successful fragments from different builds does not complete a row.
+
+## Independent-client revival fixture
+
+`tools/test_coop_chess_recovery.py` starts from an unchanged normal checkpoint,
+uses the ordinary course controls, and allows a real combat death in its target
+encounter. The survivor then retreats along visited waypoints while the dead
+client keeps its course selected. The verifier checks the 1,200-tick countdown,
+moving spectator camera, return to the revived player's camera, 25 health,
+nearby safe placement, retained personal inventory and matching client states.
+It grants neither team-wipe nor full-route credit. Five guard tests reject
+incorrect countdowns, health, cameras, inventory and missing lifecycle evidence.
+
+The course driver now observes the simulation clock while spectating and drops
+its old movement plan. Revival can restart the current authored step from the
+actual new body rather than treating the ten-second countdown as a stale-client
+gap. This changes the diagnostic controls, not damage, health or revival rules.
+
+The first public-connection attempt with 40/20 ms delay/jitter on source
+`bad8f7613700380354a72c815c4cff35dcbbbe538a1c601afc2c7bb97872a5d2`
+passes **17 approach steps (100–116)**, then fails at the automated combat clear
+at step **117**. Both players remain alive at 68/50 health; a nearby Knight
+remains alive at about 8.8 health. No death or revival occurs, so the recovery
+checks remain unexercised in this visit. The captured history passes presence
+checks over 1,109 host and 1,070 guest observations, with **3,649** matching
+player/world/native-resident states. The failure is retained in
+`private/coop/chess-recovery-d7eefa49900d48ae907795d95c97da64/` and
+`private/coop-wchess1-recovery1.log`. The next step is to diagnose the combat
+controls from that retained state before repeating the revival attempt.
+
+The frozen executable is `private/coop-wchess1-world-bad8f76.exe`, SHA-256
+`c45a2f454dd7b28ade379facf93504d33fc43c977d2aef6f42fdac2ee22bee57`.
+The locked release build, **820 active Rust tests** (one existing ignored),
+five recovery guards, four presence guards and seven source-package tests pass.
+Build/test logs are `private/coop-wchess1-network-{build12,unit12}.log`.
+No images were inspected; overall progress remains **45.8%** with no new
+completed campaign visit.

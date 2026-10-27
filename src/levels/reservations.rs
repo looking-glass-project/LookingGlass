@@ -321,7 +321,7 @@ pub static RESERVATIONS: [Reservation; 39] = [
         ..visit(19, "wchess1")
     },
     Reservation { flags: Some(VisitFlags {
-        contract: &["--wchess2-check", "--wchess2-floor-survey"], route: &["--wchess2-route-check"],
+        contract: &["--wchess2-check", "--wchess2-floor-survey", "--wchess2-coop-cast-check"], route: &["--wchess2-route-check"],
         skip: &["--wchess2-skip-route-check", "--wchess2-route-skip-check"], render: &["--wchess2-render-check"],
     }), ..visit(20, "wchess2") },
     visit(21, "rchess1"),

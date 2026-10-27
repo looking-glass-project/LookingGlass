@@ -1999,6 +1999,11 @@ full paired traversal or independent-client networking.
 Plot visits: shared machinery, individual healing, Staff arrival and original
 scene ownership/reunion. Full traversal and internet coverage remain separate.
 
+`--wchess2-coop-cast-check` reserves isolated paired Castling cast checks:
+closest visible living player selection, personal attacks, saved attack ownership,
+scripted faction duels and legacy save compatibility. It does not replace the
+Castling world, route, scene, recovery or independent-client checks.
+
 `--wchess1-coop-combat-check` reserves isolated paired Pale Realm cast checks:
 targeting, personal attacks, scripted faction fights and gate death callbacks.
 It uses the native roster and timings; paired puzzles, machinery, traversal and

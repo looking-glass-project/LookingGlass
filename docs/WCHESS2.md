@@ -24,6 +24,31 @@ Pre-controller saves restart this visit at its entrance with carried resources r
 
 ## Verification
 
+### Paired combat components
+
+Source `025b004a49b70f3b5e6fd03aeae9bd0946e60e0b4dd489df4105f455b185999d`
+adds two personal targets to this visit's native chess cast. Ordinary red pieces
+choose the closest visible living Alice; explicit faction duels keep their
+scripted opponents. Attack damage, impulses and will drain return to the selected
+player. Saved target ownership keeps an in-progress attack aimed at the same
+player after restoration. Older single-player actor saves omit the optional
+target field, and invalid targets fail validation before modifying state.
+
+`--wchess2-coop-cast-check` passes **48 component cases** using the real roster
+and animation timing with controlled collision fixtures: all four enemy families
+and both player roles, hidden/dead/occluded targets, paused combat, personal
+attacks and sounds, saved committed bishop beams, faction duels, knight shields,
+royal health floors, one-shot battle groups and cinematic combat freeze.
+All **834 active unit tests** pass, with one existing ignored test. The complete
+single-player component, watched-route and skipped-route logs match the
+pre-change `d7bbc99` baselines. Evidence is retained in the private Castling build
+manifest and `coop-wchess2-*-025b004.log` files.
+
+This verifies combat components only. Paired doors, portal boarding/carry, royal
+scene handoffs, full internet traversal and recovery/rejoin remain open. Scripted
+cast movement currently advances once from paired combat; the future shared
+world adapter must take over that clock without advancing it a second time.
+
 `--wchess2-check` exercises real approach triggers, both royal outcomes, dialogue, pause, save futures, moving-platform support, bound exits, ambush alternatives and migration. `--wchess2-route-check` and `--wchess2-route-skip-check` traverse from the real entrance with Normal combat into a loaded Checkmate visit. Route checkpoints are private diagnostics; they do not change player saves. `--wchess2-render-check` captures eight staged views. Native save fixtures are `wchess2-queen-mid`, `wchess2-king-mid`, and `wchess2-exit-open`.
 
 Use `tools/launchers/Launch-Castling.cmd` for a fresh visit with separate playtest saves. Release identity, exact test results and limits are recorded in `private/wchess2/WORKLOG.md`.

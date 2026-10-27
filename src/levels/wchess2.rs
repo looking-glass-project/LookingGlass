@@ -1,6 +1,7 @@
 //! Castling: one owner for the royal scenes, door access, duels and bound exit.
 mod art;
 mod cast;
+mod coop_check;
 mod check;
 pub(crate) use check::drive as drive_route;
 mod data;
@@ -433,6 +434,15 @@ impl LevelController for Castle {
     fn combat(&mut self, c: &mut crate::level::Combat<'_>) -> crate::combat::Feedback {
         self.fight(c)
     }
+    fn coop_combat(&mut self, dt:f32, world:&World,
+        players:[crate::combat::PlayerTarget;2]) -> crate::combat::Feedback {
+        self.fight_pair(dt,world,players)
+    }
+    fn coop_threats(&mut self, threatens:&dyn Fn(&crate::combat::Target)->bool) {
+        if !self.scripted() {
+            for a in &mut self.saved.cast {a.piece.threatened(threatens(&a.piece.target(a.id())));}
+        }
+    }
     fn loot_sources(&self) -> Vec<crate::loot::Source> {
         self.cast_loot()
     }
@@ -567,6 +577,11 @@ pub static REGISTRATION: Registration = Registration {
         },
     ],
     checks: &[
+        Check {
+            flag: "--wchess2-coop-cast-check",
+            help: "Verify Castling paired enemy targeting, damage, duels and saved attacks.",
+            run: Run::Headless(coop_check::check),
+        },
         Check {
             flag: "--wchess2-floor-survey",
             help: "Record supported Castling route points.",

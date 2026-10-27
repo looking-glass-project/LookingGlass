@@ -1098,5 +1098,15 @@ native checkpoint restoration before physics, no deaths or unexpected lifecycle
 changes, and no overlap observations. Evidence:
 `private/coop/chess-resume-bb0f6473e35b4525b53170ad989c25bf/` and
 `private/coop/chess-resume-77fbe680134d4e348bbceb23173060cd/`.
-The fresh full-route repeat remains pending. These segments and the captured
-physics regression do not complete the campaign row or increase its credit.
+The fresh Red-led repeat on `59dc7e0` passes steps **0–80**, then stalls in the
+combat clear at step **81**, with both players alive at **52/57 health**. Its
+prefix contains **7,192** matching player/world/resident states and no sampled
+overlap (2,154 host and 2,135 guest presence observations). The remaining nearby
+red knight is alive on lower ground; the combat driver stops making progress.
+The cause still needs diagnosis. An exact normal checkpoint from before that
+step is retained for focused reproduction; no enemy or progression rule was
+weakened. Evidence: `private/coop/chess-route-428c58e515a640328743871b9385417b/`
+and `private/coop-wchess1-clear81-export32/coop-checkpoint.json`.
+This is a failed full route. The Blue-led full repeat remains in progress.
+These segments and the captured physics regression do not complete the campaign
+row or increase its credit.

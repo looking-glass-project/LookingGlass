@@ -935,3 +935,16 @@ and the native paired world suite pass. The preceding build also repeats all
 39 entrance/four underwater recovery, 82 shared-world, five Fortress and 15
 Beyond component checks; details are in `COOP_CAMPAIGN.md`. This change concerns
 the opt-in route driver. No full-level or overall percentage credit is added.
+
+The next fresh Red-led attempt on `d7bbc99` passes **0–67**, including the
+repaired lift, timed spikes and first lever sequence. At 68, Blue has landed
+safely on the descending ground but still follows an old airborne sample about
+346 units above her. The follower repeatedly jumps below that obsolete target
+while Red waits at the next goal. Both remain alive at **54/66 health**.
+The failed run has **6,729** matching states and passes **1,954 host / 1,923
+guest** presence observations. Evidence:
+`private/coop/chess-route-4408925c9d4747acae572d74662ed3cb/`, including
+`before-step-067.json`, `before-step-068.json` and `descending-trail-stall.json`.
+This is a newly isolated test-driver failure, not a completed fresh traversal.
+Reconnecting to a nearby supported recorded landing without discarding required
+jump takeoffs or crossing hazards remains to be implemented and verified.

@@ -24,6 +24,10 @@ These add no full-level credit; see [timed corridor checks](WCHESS1.md#timed-cor
 A missed readiness frame in the lift test is also fixed: both leader roles now
 pass the captured lift-to-corridor segment using persistent boarding/arrival
 facts. See [lift handoff checks](WCHESS1.md#delayed-lift-handoff).
+The latest fresh Red-led run passes 0–67, including the repaired lift and timed
+corridor, then stalls when the follower pursues an old airborne sample after
+landing below it. Both players remain alive; safe recovery of that recorded
+path is the next route-driver case to fix.
 The earlier Pale Realm combat stall is resolved by a supported sidestep after repeated
 misses. A public two-client replay passes all 26 approach steps (100–125), then
 verifies Blue's real combat death, moving spectator camera and exact ten-second

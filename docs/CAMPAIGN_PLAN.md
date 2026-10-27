@@ -1999,6 +1999,11 @@ full paired traversal or independent-client networking.
 Plot visits: shared machinery, individual healing, Staff arrival and original
 scene ownership/reunion. Full traversal and internet coverage remain separate.
 
+`--wchess1-coop-combat-check` reserves isolated paired Pale Realm cast checks:
+targeting, personal attacks, scripted faction fights and gate death callbacks.
+It uses the native roster and timings; paired puzzles, machinery, traversal and
+internet coverage remain separate.
+
 Majestic Maze additionally reserves `--hedge1-save-write` and `--hedge1-save-read` for fresh-process native save checks. Its route requires a native window for the existing NPC cast; it has no active cinematic to skip.
 
 Clockwork and Ascension additionally reserve `--hatter1-route-native-check` and

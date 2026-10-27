@@ -105,3 +105,35 @@ Private evidence, exact build identity and remaining fidelity limits are recorde
 in `private/wchess1/WORKLOG.md`. Precise native navigation, randomized polling,
 sub-frame camera timing and the transformation puff remain fidelity comparisons;
 static and silent native checks do not constitute an audio listening comparison.
+
+## Co-op cast components
+
+The paired combat step advances the shared resident cast once. Red pieces choose
+a visible living Alice, with personal melee/beam damage, while explicit scripted
+duels retain their NPC target. Ordinary faction choices also require sight in
+co-op. Either player's incoming projectiles can raise a knight's native shield;
+the original damage rules, protected actors and death callbacks remain shared.
+Optional per-actor player identities preserve committed attacks across saved
+states and compressed guest snapshots. Single-player snapshots omit these fields.
+
+`--wchess1-coop-combat-check` stages isolated encounters using the real map roster
+and animation timings. It checks target visibility/death/invisibility in both
+slots, personal attacks and sounds, saved bishop beam ownership, faction duels,
+shield vulnerability, invalid/legacy saves, cinematic freezing, delayed cast
+walks/spawns, four/eight knight-gate death thresholds and the gallery callback.
+The combat fixtures use a simple floor and deliberate cover; they do not prove
+native-map navigation or rendered effects.
+
+This is a partial adapter. Paired chess disguises/puzzles, per-player hazards,
+shared world clocks, lift boarding/carry, levers, water, scene handoffs, full
+traversal, internet clients and recovery remain unverified. Scripted cast walks
+currently advance in paired combat; move that call into the future shared-world
+step when it is implemented, keeping exactly one update per world tick.
+
+Verification: source `15daa28e441dcbb6efb60710485229df6426ea5c4ce358d56e33a6713037c456`
+passes all **40 cases** in about two seconds without a window or images
+(`private/coop-wchess1-combat-components2.log`). The single-player component check
+and both full watched/skipped routes exit successfully and their complete
+normalized logs match the pre-change `2990c66` baseline. The frozen executable is
+`private/coop-wchess1-combat-15daa28.exe`, SHA-256
+`5764d6359878daf2d0de3bf2b069b0fcfcd1ac395f96f7e598449705d2be5b9a`.

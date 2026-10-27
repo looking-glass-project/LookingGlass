@@ -352,6 +352,10 @@ impl Arena {
             feedback.append(d.coop_combat(world_dt, world, &mut players, talking));
         }
         for slot in &mut self.stage.interactions.levels {
+            if world_dt > 0. {
+                slot.ctl.coop_threats(&|target| self.characters.iter()
+                    .any(|c| c.threatens(world, *target)));
+            }
             let mut players = roster.players.each_mut().map(|b| crate::level::CoopPlayer {
                 player: &mut b.player, stats: &mut b.stats,
             });

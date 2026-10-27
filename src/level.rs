@@ -417,6 +417,9 @@ pub trait LevelController: Any {
     }
     fn coop_combat(&mut self, _dt: f32, _world: &World,
         _players: [crate::combat::PlayerTarget; 2]) -> Feedback { Feedback::default() }
+    /// Incoming projectiles from either player, before the shared combat step.
+    /// The caller supplies this only while world time is advancing.
+    fn coop_threats(&mut self, _threatens: &dyn Fn(&Target) -> bool) {}
     fn coop_combat_roster(&mut self, dt: f32, world: &World,
         players: &mut [CoopPlayer<'_>; 2]) -> Feedback {
         self.coop_combat(dt, world, players.each_ref().map(|p| crate::combat::PlayerTarget {

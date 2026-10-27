@@ -1,6 +1,7 @@
 //! Pale Realm. One owner for chess lessons, factions, gates and water machinery.
 mod art;
 mod cast;
+mod coop_check;
 mod check;
 pub(crate) use check::drive as drive_route;
 mod data;
@@ -716,6 +717,17 @@ impl LevelController for Realm {
     fn combat(&mut self, c: &mut crate::level::Combat<'_>) -> crate::combat::Feedback {
         self.fight(c)
     }
+    fn coop_combat(&mut self, dt: f32, world: &World,
+        players: [crate::combat::PlayerTarget; 2]) -> crate::combat::Feedback {
+        self.fight_pair(dt, world, players)
+    }
+    fn coop_threats(&mut self, threatens: &dyn Fn(&crate::combat::Target) -> bool) {
+        if !self.scripted() {
+            for a in &mut self.saved.cast {
+                a.piece.threatened(threatens(&a.piece.target(a.id())));
+            }
+        }
+    }
     fn loot_sources(&self) -> Vec<crate::loot::Source> {
         self.cast_loot()
     }
@@ -843,6 +855,11 @@ pub static REGISTRATION: Registration = Registration {
     target_base: Some(BASE),
     story_beats: &[],
     checks: &[
+        Check {
+            flag: "--wchess1-coop-combat-check",
+            help: "Verify paired Pale Realm cast targeting, attacks, duels and death callbacks.",
+            run: Run::Headless(coop_check::check),
+        },
         Check {
             flag: "--wchess1-check",
             help: "Verify Pale Realm puzzles, factions, gates and persistence.",

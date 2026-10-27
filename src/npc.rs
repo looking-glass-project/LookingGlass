@@ -750,12 +750,21 @@ impl Puppet {
         clips: &[&str],
         specs: &BTreeMap<String, texture::MaterialSpec>,
     ) -> Result<Self> {
+        Self::load_colored(assets,name,clips,specs,false)
+    }
+    pub fn load_coop_alice(assets: &mut Assets, clips: &[&str],
+        specs: &BTreeMap<String, texture::MaterialSpec>, player: crate::coop::PlayerId) -> Result<Self> {
+        Self::load_colored(assets,"alice",clips,specs,player == crate::coop::PlayerId::Red)
+    }
+    fn load_colored(assets: &mut Assets, name: &str, clips: &[&str],
+        specs: &BTreeMap<String, texture::MaterialSpec>, red: bool) -> Result<Self> {
         Ok(Self(
-            Model::load(
+            Model::load_colored(
                 assets,
                 name,
                 &clips.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
                 specs,
+                red,
             )?,
             true,
             0.,
@@ -1386,6 +1395,10 @@ impl Model {
         extra: &[String],
         specs: &BTreeMap<String, texture::MaterialSpec>,
     ) -> Result<Self> {
+        Self::load_colored(assets,name,extra,specs,false)
+    }
+    fn load_colored(assets: &mut Assets, name: &str, extra: &[String],
+        specs: &BTreeMap<String, texture::MaterialSpec>, red: bool) -> Result<Self> {
         let data = Data::load(assets, name, extra)?;
         let mut meshes = Vec::new();
         let mut material_layers = Vec::new();
@@ -1421,7 +1434,8 @@ impl Model {
             let tex = if let Some(t) = textures.get(&path) {
                 t.clone()
             } else {
-                let image = texture::decode(assets, &path)?;
+                let mut image = texture::decode(assets, &path)?;
+                if red && name == "alice" { crate::coop::palette::red_clothing(&path, &mut image.pixels); }
                 let t = Texture2D::from_rgba8(image.width, image.height, &image.pixels);
                 t.set_filter(FilterMode::Linear);
                 textures.insert(path, t.clone());

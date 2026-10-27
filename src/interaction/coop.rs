@@ -268,6 +268,9 @@ impl Interactions {
         }
         for (index, input) in players.iter().enumerate() {
             if let Some((player, aim, true)) = input {
+                for slot in &mut self.levels {
+                    events[index].merge(slot.ctl.coop_update(index, world, player, *aim, true));
+                }
                 if let Some(event) = self.beyond.as_mut().and_then(|b| b.activate(world, player.eye(), *aim)) {
                     events[index].merge(event);
                     self.used += 1;

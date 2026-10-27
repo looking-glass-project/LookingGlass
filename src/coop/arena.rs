@@ -178,6 +178,14 @@ impl Arena {
             .is_some_and(|d| d.coop_controlled(i))
             || self.stage.interactions.levels.iter().any(|s| s.ctl.coop_controlled(i)));
         for (index, ((character, (movement, input)), body)) in self.characters.iter_mut().zip(&mut inputs).zip(&roster.players).enumerate() {
+            for slot in &self.stage.interactions.levels {
+                slot.ctl.coop_filter_controls(index, movement);
+                if slot.ctl.coop_blocks_weapons(index) {
+                    input.primary = false;
+                    input.alternate = false;
+                    character.cancel_weapon_action();
+                }
+            }
             if !self.stage.story.busy() {
                 movement.use_pressed |= input.rope_use(&body.player, world);
             }
@@ -326,11 +334,12 @@ impl Arena {
             }
             if self.stage.busy() { return self.finish(roster, map, world, true); }
         }
-        let targets = roster.players.each_ref().map(|body| combat::PlayerTarget {
+        let interactive_actor = self.stage.interactive_actor();
+        let targets = std::array::from_fn(|index| { let body = &roster.players[index]; combat::PlayerTarget {
             eye: body.player.eye(),
             alive: body.stats.alive(),
-            hidden: body.stats.ignores_alice(),
-        });
+            hidden: body.stats.ignores_alice() || interactive_actor.is_some_and(|a| a.index() != index),
+        }});
         let mut feedback = self.npcs.update_players(world_dt, world, targets);
         if let Some(encounters) = &mut self.stage.interactions.encounters {
             feedback.append(encounters.update_players(world_dt, world, targets));
@@ -407,7 +416,11 @@ impl Arena {
             self.stage.reset(map, world)?;
             self.npcs.restore(&self.initial)?;
         }
-        roster.finish_tick_with(world, cinematic, |at| !self.stage.interactions.hazardous(at))?;
+        // Keep a pending revival out of a single-character puzzle, just as
+        // during its cutscene. The ten-second clock still runs; place the
+        // partner at the safe handoff as soon as the sequence releases control.
+        roster.finish_tick_with_spawn_hold(world, cinematic, self.stage.interactive_actor().is_some(),
+            |at| !self.stage.interactions.hazardous(at))?;
         self.stage.sync_school_return_items(roster);
         if generation != roster.checkpoint_generation {
             self.stage.sounds.clear();

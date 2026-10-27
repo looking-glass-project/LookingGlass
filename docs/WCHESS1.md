@@ -124,11 +124,9 @@ walks/spawns, four/eight knight-gate death thresholds and the gallery callback.
 The combat fixtures use a simple floor and deliberate cover; they do not prove
 native-map navigation or rendered effects.
 
-This is a partial adapter. Paired chess disguises/puzzles, per-player hazards,
-shared world clocks, lift boarding/carry, levers, water, scene handoffs, full
-traversal, internet clients and recovery remain unverified. Scripted cast walks
-currently advance in paired combat; move that call into the future shared-world
-step when it is implemented, keeping exactly one update per world tick.
+The later paired-world adapter below now owns scripted cast walks, keeping one
+update per shared world tick. Isolated cast fixtures retain their own clock.
+Full paired traversal and independent internet clients remain unverified.
 
 Verification: source `15daa28e441dcbb6efb60710485229df6426ea5c4ce358d56e33a6713037c456`
 passes all **40 cases** in about two seconds without a window or images
@@ -137,3 +135,66 @@ and both full watched/skipped routes exit successfully and their complete
 normalized logs match the pre-change `2990c66` baseline. The frozen executable is
 `private/coop-wchess1-combat-15daa28.exe`, SHA-256
 `5764d6359878daf2d0de3bf2b069b0fcfcd1ac395f96f7e598449705d2be5b9a`.
+
+## Co-op world and puzzles
+
+The host now advances shared water, gates, spikes, cast walks and lift machinery
+once. The lift waits for every living rider before departing and carries both
+bodies atomically, retaining the original obstruction checks. Crusher damage
+belongs only to the player touching it. Either Alice can use a lever; its saved
+pull, delayed scene and original water/bell clock retain that actor. A death
+during an unfinished pull allows the survivor to retry it.
+
+The first scene actor controls the original Bishop/Knight disguise and puzzle.
+Their partner waits, is hidden and watches that actor until the original goal
+releases both at safe positions. The disguise retains its original movement
+restrictions. An actor death releases the partner and preserves the puzzle's
+retry. The ten-second death countdown runs during interactive puzzle control;
+an expired revival waits until the safe handoff. Existing cinematic countdown
+pausing is unchanged. Health and other resources remain personal.
+
+The scene and lever art use the actual actor's Blue/Red clothing. Transformation
+particles restart their world-space birth positions when the scene or actor
+changes, including a guest first receiving the new effect midway through it.
+The automated renderer caught the Knight transformation retaining Bishop birth
+positions. A separate native test caught a bell-lever scene ending on a narrow
+ledge; only completed lever handoffs opt into a bounded adjacent-floor search,
+with full path, support and hazard checks. Ordinary revival placement is unchanged.
+
+`--wchess1-coop-world-check` passes **79 distinct native-data cases**:
+
+| Coverage | Cases |
+| --- | ---: |
+| Shared state/transforms at 30/60/144 Hz, pause and compressed restore | 3 |
+| Native lift boarding, ascent, mid-ride save, top wait and living/dead underside obstruction | 6 |
+| Personal Bishop/Knight crusher damage, both player slots | 4 |
+| Five original scenes, either actor, watched/skipped, living/dead partner | 40 |
+| Both complete puzzles through ordinary touch-strip inputs, either actor, watched/skipped lesson, living/dead partner | 16 |
+| Both levers, either actor, saved uninterrupted/interrupted pulls and original scenes | 8 |
+| Puzzle actor death, released survivor, saved retry and ten-second 25-health recovery | 2 |
+
+Setup repeats its scene checks inside some puzzle cases; those log lines are not
+counted as additional cases. These are focused native-map fixtures, not a combined
+entrance-to-exit combat route.
+
+`--wchess1-coop-render-check` passes four Bishop/Knight × Blue/Red cases in Anode.
+Each submits the Alice model/materials and compares the real transformation
+particle pass with compressed guest state: **1,200 batches per side per case,
+zero dropped batches**. No screenshots are captured or inspected. This checks
+render execution and effect submissions, not pixel-perfect appearance or a
+two-process internet session.
+
+Verified source: `cbeb7342c21921b3fd9e34d0e2a9f0c923b0ce495d49020d349a9c3296d64183`.
+Frozen executable: `private/coop-wchess1-world-cbeb734.exe`, SHA-256
+`bf74b27ea0eb7c693b4e79930e21fb451641df169deeba63dac081abcd998d6e`.
+Native and renderer logs: `private/coop-wchess1-world-components5.log` and
+`private/coop-wchess1-render5.log`.
+
+On that same source, the 40 cast cases pass again, and the complete normalized
+single-player component/watched-route/skipped-route logs match the `2990c66`
+baseline exactly. The locked release build and **815 Rust tests** pass (one
+existing test remains ignored); the seven source-package tests also pass.
+
+This visit remains partial. Full paired traversal/combat, independent internet
+play, rendered combat effects, visit-level team wipes/checkpoint reload and
+disconnect/rejoin still require combined evidence.

@@ -152,6 +152,10 @@ impl Stage {
         self.owner.is_some() || self.transition.is_some()
     }
     pub fn speaker(&self) -> PlayerId { self.owner.unwrap_or(self.last_owner) }
+    pub fn interactive_actor(&self) -> Option<PlayerId> {
+        self.interactions.levels.iter().find_map(|s| s.ctl.coop_focus_player())
+            .and_then(|i| PlayerId::ALL.get(i).copied())
+    }
     pub fn respawned(&mut self, id: PlayerId) {
         self.contacts.reset_player(id);
         if let Some(d) = &mut self.interactions.duchess { d.coop_respawned(id.index()); }
@@ -337,6 +341,7 @@ impl Stage {
                 if self.busy() { return Ok(()); }
             }
         }
+        let interactive_actor = self.interactive_actor();
         let (events, scene_owner) = self.interactions.doors_pair(
             dt,
             map,
@@ -346,7 +351,8 @@ impl Stage {
                 body.stats.alive().then_some((
                     &body.player,
                     direction(inputs[i].1.yaw, inputs[i].1.pitch),
-                    inputs[i].0.use_pressed && body.player.rope_prompt(world).is_none(),
+                    inputs[i].0.use_pressed && body.player.rope_prompt(world).is_none()
+                        && interactive_actor.is_none_or(|actor| actor.index() == i),
                 ))
             }),
         )?;
@@ -410,8 +416,9 @@ impl Stage {
         world: &World,
         before: [Vec3; 2],
     ) -> Result<()> {
+        let actor = self.interactive_actor();
         let paths = std::array::from_fn(|i| {
-            roster.players[i].stats.alive().then_some(Motion {
+            (roster.players[i].stats.alive() && actor.is_none_or(|a| a.index() == i)).then_some(Motion {
                 before: before[i],
                 after: roster.players[i].player.feet,
             })
@@ -501,6 +508,16 @@ impl Stage {
         self.speech_step(roster, world, inputs[owner.index()].0.use_pressed);
         self.interactions.sync_coop(world);
         if self.transition.is_none() && !controls_scene(&self.interactions) && !self.story.busy() {
+            if self.interactions.levels.iter().any(|s| s.ctl.coop_defer_reunion()) {
+                // The lesson has ended, but its actor must play the original
+                // puzzle before bringing the partner onto the finish platform.
+                for id in PlayerId::ALL {
+                    self.contacts.reset_player(id);
+                    roster.players[id.index()].warped_at = roster.tick;
+                }
+                self.owner = None;
+                return Ok(());
+            }
             // A lethal personal scene returns to the ordinary spectator/respawn
             // system. Leave the survivor at their safe waiting position.
             if !roster.players[owner.index()].stats.alive() {

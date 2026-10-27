@@ -357,13 +357,14 @@ impl Realm {
         out.damage += std::mem::take(&mut self.saved.damage);
         out
     }
-    pub(super) fn fight_pair(&mut self, dt: f32, world: &World, players: [PlayerTarget; 2]) -> Feedback {
+    pub(super) fn fight_pair(&mut self, dt: f32, world: &World, mut players: [PlayerTarget; 2]) -> Feedback {
         if !dt.is_finite() || dt <= 0. || self.scripted() {
             return Feedback::default();
         }
-        // Until the paired machinery adapter owns this clock, advance scripted
-        // cast walks here once, before their combat (the same order as SP).
-        self.move_cast(dt.min(0.1));
+        // Cast-only fixtures have no world step. In play the paired machinery
+        // adapter advances walks exactly once before combat.
+        if self.saved.coop.is_none() { self.move_cast(dt.min(0.1)); }
+        if let Some(actor) = self.coop_focus_player() { players[1-actor].hidden = true; }
         self.fight_cast(dt, world, players[0].eye, false, None, Some(players), &|_| false)
     }
     fn fight_cast(&mut self, dt: f32, world: &World, eye: Vec3, notarget: bool,

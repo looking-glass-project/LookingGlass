@@ -5,11 +5,14 @@ pub(super) struct Art {
     beams: std::rc::Rc<crate::npc::attack_fx::Art>,
     actors: BTreeMap<String, Puppet>,
     alice: Puppet,
+    alice_red: Puppet,
+    red_actor: bool,
     bishop: Prop,
     knight: Prop,
     lever: Prop,
     lever_pull: Prop,
     sparkles: crate::particles::Attached,
+    sparkle_scene: Option<(scene::Kind, Option<usize>, Vec3)>,
 }
 impl Art {
     pub fn load(a: &mut Assets, r: &Realm) -> Result<Self> {
@@ -28,6 +31,8 @@ impl Art {
             beams: crate::npc::attack_fx::Art::load(a, &specs)?,
             actors,
             alice: Puppet::load(a, "alice", &["idle", "walk", "run", "use_lever"], &specs)?,
+            alice_red: Puppet::load_coop_alice(a, &["idle", "walk", "run", "use_lever"], &specs, crate::coop::PlayerId::Red)?,
+            red_actor: false,
             bishop: Prop::load(a, "bishop", &specs)?,
             knight: Prop::load(a, "knight", &specs)?,
             lever: Prop::load_animation(a, "lever", "start", &specs)?,
@@ -40,6 +45,7 @@ impl Art {
                 &specs,
             )?
             .context("Missing chess transformation emitter")?,
+            sparkle_scene: None,
         })
     }
 }
@@ -106,9 +112,11 @@ impl LevelArt for Art {
                 self.beams.lightning(b.from, b.to, camera, b.age, 500., true, atmo);
             }
         }
+        self.red_actor = r.saved.coop.as_ref().is_some_and(|c| c.actor == Some(1));
+        let alice = if self.red_actor { &mut self.alice_red } else { &mut self.alice };
         if let Some((pose, scale, walk)) = r.alice_scene_pose() {
-            self.alice.atmosphere(atmo, camera);
-            self.alice.draw(
+            alice.atmosphere(atmo, camera);
+            alice.draw(
                 if walk { "walk" } else { "idle" },
                 r.saved.scene.as_ref().unwrap().clock.time,
                 true,
@@ -118,9 +126,9 @@ impl LevelArt for Art {
             );
         }
         if let Some((_, t)) = r.saved.pull {
-            self.alice.atmosphere(atmo, camera);
-            self.alice
-                .draw("use_lever", t, false, r.player_pose, 1., bright);
+            alice.atmosphere(atmo, camera);
+            alice
+                .draw("use_lever", t, false, r.paired_pose(), 1., bright);
         }
         if let Some(b) = &r.saved.board {
             let prop = if b.piece == Piece::Bishop {
@@ -130,9 +138,8 @@ impl LevelArt for Art {
             };
             // These TANs are authored below local Z zero. The original attaches
             // them to Alice's rotated origin bone, not directly to world feet.
-            let pose = self
-                .alice
-                .tag("ORIGIN", "idle", 0., r.player_pose, 1.)
+            let pose = alice
+                .tag("ORIGIN", "idle", 0., r.paired_pose(), 1.)
                 .expect("Validated Alice origin");
             prop.draw(pose, 1., bright);
         }
@@ -176,10 +183,17 @@ impl LevelArt for Art {
     ) {
         let r = l.downcast_ref::<Realm>().unwrap();
         let Some(s) = &r.saved.scene else {
+            self.sparkle_scene = None;
             return;
         };
         if !matches!(s.kind, scene::Kind::Bishop | scene::Kind::Knight) {
+            self.sparkle_scene = None;
             return;
+        }
+        let identity = (s.kind, r.saved.coop.as_ref().and_then(|c| c.actor), s.clock.home.unwrap().translation);
+        if self.sparkle_scene != Some(identity) {
+            self.sparkles.restart();
+            self.sparkle_scene = Some(identity);
         }
         let t = s.clock.time - r.scene_times(s)[3];
         if !(0. ..3.).contains(&t) {
@@ -190,7 +204,7 @@ impl LevelArt for Art {
             .draw(t, 2., |_, _| pose, |_, age, _| age < 1., camera, atmo);
     }
     fn handoff_pose(&self) -> Option<&crate::cinematic::ActorPose> {
-        self.alice.handoff_pose()
+        if self.red_actor { self.alice_red.handoff_pose() } else { self.alice.handoff_pose() }
     }
     fn as_any(&self) -> &dyn Any {
         self

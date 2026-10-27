@@ -534,7 +534,8 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                         }
                     }
                 }
-                let watched = arena.stage.owner.unwrap_or_else(|| world::camera_player(&visual, local));
+                let watched = arena.stage.owner.or_else(|| arena.stage.interactive_actor())
+                    .unwrap_or_else(|| world::camera_player(&visual, local));
                 let watched_body = &visual.players[watched.index()];
                 let camera_subject_feet = watched_body.player.feet;
                 let subject = (watched, watched_body.spawned_at, watched_body.warped_at);
@@ -574,6 +575,8 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                         && (index != watched.index() || show_local)
                         && camera_eye.distance(body.player.feet + Vec3::Z * 32.) > 48.
                     };
+                    let show_body = show_body && !arena.stage.interactions.levels.iter()
+                        .any(|s| s.ctl.coop_hides_player(index));
                     visible_players[index] = show_body;
                     if show_body {
                         character.draw_replica(body.player.feet, frame.players[index].player.feet, false);

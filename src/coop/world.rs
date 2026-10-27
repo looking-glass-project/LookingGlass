@@ -195,6 +195,12 @@ impl Roster {
         self.finish_tick_with(world, false, |_| true)
     }
     pub fn finish_tick_with(&mut self, world: &World, cinematic: bool, safe: impl Fn(Vec3) -> bool) -> Result<()> {
+        self.finish_tick_with_spawn_hold(world, cinematic, false, safe)
+    }
+    /// Interactive solo puzzles keep counting down, but cannot insert a second
+    /// body until their safe handoff. Cinematics retain their existing pause.
+    pub fn finish_tick_with_spawn_hold(&mut self, world: &World, cinematic: bool,
+        hold_spawn: bool, safe: impl Fn(Vec3) -> bool) -> Result<()> {
         let events = self
             .lives
             .tick(self.players.each_ref().map(|p| p.stats.alive()), cinematic);
@@ -207,7 +213,7 @@ impl Roster {
                 "Co-op checkpoint is obstructed."
             );
             self.lives.checkpoint_restored([true; 2]);
-        } else if let Some((dead, survivor)) = self.lives.pending_spawn().filter(|_| !cinematic) {
+        } else if let Some((dead, survivor)) = self.lives.pending_spawn().filter(|_| !cinematic && !hold_spawn) {
             if let Some(player) = super::placement::revival(world, &self.players[survivor.index()].player, safe) {
                 let body = &mut self.players[dead.index()];
                 body.player = player;
@@ -460,6 +466,23 @@ mod tests {
         roster.players[1].stats.damage(10.);
         assert_eq!(roster.players[0].stats.sanity(), 100.);
         assert_eq!(roster.players[1].stats.sanity(), 90.);
+    }
+    #[test]
+    fn interactive_spawn_hold_keeps_counting_and_releases_one_safe_revival() {
+        let world = floor();
+        for dead in PlayerId::ALL {
+            let mut roster = Roster::new(&world, Vec3::Z*(EYE_HEIGHT+0.04), 0., Stats::default()).unwrap();
+            roster.players[dead.index()].stats.damage(1000.);
+            for _ in 0..=super::super::rules::RESPAWN_TICKS {
+                roster.finish_tick_with_spawn_hold(&world, false, true, |_| true).unwrap();
+                assert!(!roster.players[dead.index()].stats.alive());
+            }
+            assert_eq!(roster.lives.state(dead), super::super::rules::Life::AwaitingSafeSpawn);
+            roster.finish_tick_with_spawn_hold(&world, false, false, |_| true).unwrap();
+            assert_eq!(roster.players[dead.index()].stats.sanity(), RESPAWN_HEALTH);
+            assert_eq!(roster.lives.state(dead), super::super::rules::Life::Alive);
+            assert_eq!(roster.checkpoint_generation, 0);
+        }
     }
     #[test]
     fn death_spectates_then_respawns_and_a_double_death_restores_both() {

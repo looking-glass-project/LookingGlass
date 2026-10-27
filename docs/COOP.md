@@ -4,7 +4,7 @@ Development branch: `coop`, based on public main `0220970`.
 This is work in progress. A policy test or a connected pair of windows does not
 establish campaign support. Single-player behavior and saves must remain supported.
 
-Current milestone: **45.3% estimated overall; six campaign visits have combined
+Current milestone: **45.8% estimated overall; six campaign visits have combined
 verification evidence, 33 remain open.** Earlier contact-system repeats are still
 required as detailed in the campaign matrix. Pool of Tears has 38 passing native
 component cases plus public two-client opening and bank checkpoint segments.
@@ -139,9 +139,23 @@ single-player component/watched-route/skipped-route logs match the `2990c66`
 baseline exactly. This adds 0.25 combat points, bringing the estimate to **45.3%**.
 These fixtures use native actors/timings with staged combat geometry; they do not
 establish native-map navigation, rendered effects or full co-op support. The
-chess puzzles, shared machinery, original scene handoffs, full paired traversal,
-internet and recovery remain open. No campaign row is completed.
+chess puzzles, shared machinery and original scene handoffs are covered by the
+subsequent milestone below. Full paired traversal and internet recovery remain
+open. No campaign row is completed.
 See [Pale Realm details](WCHESS1.md#co-op-cast-components).
+
+Pale Realm's paired world adapter now passes **79 native gameplay cases** on
+source `cbeb734`: shared clocks, two-rider lift boarding/carry, individual crusher
+damage, all five original scenes with either actor, both complete chess puzzles,
+lever ownership and interrupted-puzzle recovery. The waiting player watches the
+original puzzle actor; a dead partner's countdown runs during interactive play,
+with a ready revival held until the safe handoff. Four automated renderer cases
+also pass for Blue/Red Bishop/Knight transformations and compressed guest state.
+They caught and fixed old particle positions carrying into the next transformation.
+This adds 0.25 movement and 0.25 shared-progression points, bringing the estimate
+to **45.8%**. Full paired traversal, independent internet clients, combat effects,
+team wipes and reconnects still need this visit's combined coverage. See
+[world and puzzle evidence](WCHESS1.md#co-op-world-and-puzzles).
 
 The overall percentage is a weighted estimate, not elapsed time or a live build
 indicator. An earlier Garden build passed 4/4 native paired routes. After adding
@@ -344,9 +358,9 @@ movement viewer both wait for helper shutdown before exiting.
 After tightening cancellation and the forged-message regression, all 21 focused
 co-op tests passed again. This final focused run includes the latest source changes.
 
-Overall estimate after completing the village, Pandemonium, both Fortress visits, Beyond and return-school verification rows, plus native-rope recovery, Herbaceous components, the Rolling Stones/Icy Reception/Flora/Sanctum/both Caterpillar's Plot shared-world adapters and Pale Realm cast combat: **about 45.3%**. Credited
+Overall estimate after completing the village, Pandemonium, both Fortress visits, Beyond and return-school verification rows, plus native-rope recovery, Herbaceous components, the Rolling Stones/Icy Reception/Flora/Sanctum/both Caterpillar's Plot shared-world adapters and Pale Realm cast/world components: **about 45.8%**. Credited
 points are 8/10 for foundation/diagnostics, 7/15 for internet Host/Join,
-9.25/15 for two-player movement/presentation, paired school supports, dry/swimming arrival placement, complete delayed village/Pandemonium traversal in separate clients and rendered independent rope controls, and 8.5/20 for native targeting, host-owned
+9.5/15 for two-player movement/presentation, paired school supports, dry/swimming arrival placement, complete delayed village/Pandemonium traversal in separate clients, rendered independent rope controls and Pale Realm's native paired lift, and 8.5/20 for native targeting, host-owned
 weapons/damage, personal resources, timed respawns and full saved-state team wipes.
 The additional 0.5 points credit tested recovery beside a survivor hanging on an
 active native rope: both-role unit coverage plus a captured fall/revival through
@@ -360,13 +374,15 @@ hits, paired spawn visibility and visit-specific health-floor handling.
 Sanctum adds 0.25 combat points for its verified native paired boss attacks,
 owned grabs/throws and personal healing. Pale Realm adds 0.25 combat points for
 its verified paired resident targeting/personal attacks, saved attack ownership,
-native shields and preserved scripted NPC duels. This is isolated cast coverage,
-not a paired puzzle/machinery adapter or complete level. Credit also includes
-9.5/20 for shared world replication, ordered contacts, the verified theatre
+native shields and preserved scripted NPC duels. That remains isolated cast
+coverage; the later world milestone does not add further combat credit. Credit also includes
+9.75/20 for shared world replication, ordered contacts, the verified theatre
 ownership/reunion slice, school boarding barriers, visit history and restart/backup
 restoration of shared checkpoints, and native traversal of all six village scenes
 and all four Pandemonium scenes with either player arriving first (also verified through public internet clients).
-The latest 0.5 points cover both Caterpillar's Plot visits' verified shared gates,
+The latest 0.25 shared-progression points cover Pale Realm's original puzzles,
+scenes, levers and shared machinery, alongside its 0.25 movement credit for
+two-rider lift boarding/carry. The preceding 0.5 points cover both Caterpillar's Plot visits' verified shared gates,
 wall/secret progression and original scene handoffs (0.25 per visit). The preceding
 0.25 points cover Sanctum's shared boss-defeat/spike/mushroom progression
 and personal slide arrival; the preceding 0.25 cover Flora's shared wave/departure clock and
@@ -374,8 +390,8 @@ original ambush ownership/reunion, following 0.25 points each for Icy Reception'
 hazards/portal and the Rolling Stones chase adapter. They do not credit a full
 paired route, internet play or a completed campaign row.
 Full-campaign verification now earns 120/39 points (about 3.08/20), for those six
-visits' complete combined evidence. Total credited points are about 45.33, reported
-as 45.3%, up from 45.08 before the Pale Realm cast adapter. Updates include
+visits' complete combined evidence. Total credited points are about 45.83, reported
+as 45.8%, up from 45.33 before the Pale Realm world adapter. Updates include
 completed milestones so rounding does not conceal progress. Standalone policy
 tests receive no campaign credit; 33 visits remain open. The first five historical
 passes still need the contact-system repeats described in the campaign matrix.

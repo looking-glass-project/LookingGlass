@@ -301,6 +301,16 @@ pub trait LevelController: Any {
     fn coop_respawned(&mut self, _player: usize) {}
     /// A personal boss hold must leave the other player's controls available.
     fn coop_controlled(&self, _player: usize) -> bool { false }
+    /// A single-player interactive sequence, such as a chess disguise. The
+    /// partner waits and watches this actor until the normal scene reunion.
+    fn coop_focus_player(&self) -> Option<usize> { None }
+    fn coop_defer_reunion(&self) -> bool { false }
+    fn coop_filter_controls(&self, _player: usize, _controls: &mut crate::movement::Controls) {}
+    fn coop_hides_player(&self, _player: usize) -> bool { false }
+    fn coop_blocks_weapons(&self, _player: usize) -> bool { false }
+    /// Explicit personal use input; unsupported controllers remain untouched.
+    fn coop_update(&mut self, _index: usize, _world: &mut World, _player: &Player,
+        _aim: Vec3, _use_pressed: bool) -> Events { Events::default() }
     /// Apply a scene's personal consequences only to its bound actor.
     fn coop_scene_step(&mut self, _owner: usize, player: &mut Player, stats: &mut Stats) {
         self.prepare_player(stats, player);

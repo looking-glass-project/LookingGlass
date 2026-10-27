@@ -33,7 +33,11 @@ bug when the Knight trigger becomes eligible with both players already inside.
 Red arrived earlier, but the inactive trigger forgot that order. Saved waiting
 order now fixes this for shared contacts; both roles pass native captured-approach
 checks and the Red-led internet replay passes 92–97 with 677 matching states.
-The strict ownership assertion is unchanged. Fresh full repeats remain pending.
+The strict ownership assertion is unchanged. The next fresh Red-led run reaches
+the next level through all 161 steps, but fails final presence checks: two guest
+observations overlap during step 141. All 8,602 matching player/world/resident
+states agree. This remains a failed route, with no full-level credit; the captured
+overlap and fresh full repeats remain open.
 See [descent recovery](WCHESS1.md#rejoining-a-recorded-descent).
 The earlier Pale Realm combat stall is resolved by a supported sidestep after repeated
 misses. A public two-client replay passes all 26 approach steps (100–125), then

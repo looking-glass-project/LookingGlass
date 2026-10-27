@@ -1031,3 +1031,27 @@ Exact restore, presence, no-death and lifecycle checks pass. Evidence:
 `private/coop-wchess1-coop-world-check-b945e0e.log`. Broad logs are
 `private/coop-coop-{world,campaign}-check-b945e0e.log`. Fresh full routes remain
 open; these regressions add no full-level or overall percentage credit.
+
+### Fresh traversal reaches the exit but fails presence checks
+
+The next fresh Red-led internet run on `b945e0e`, with 40 ms delay and 20 ms
+jitter per sender, completes all **161 steps (0–160)** and both clients enter
+`wchess2_start1` at epoch 2. It then fails the unchanged final presence assertion.
+The guest has two overlapping observations during step **141**, at ticks
+**53649/53673**: horizontal separation is approximately **32.90/28.51** and
+vertical separation **16.01/13.60**, below the required clearance. No sampled
+host observation overlaps. This difference does not establish the cause; retain
+both histories and reproduce the full captured approach before changing physics
+or the assertion.
+
+All **8,602** common player/world/resident state records match, but that does not
+override the presence failure. The process exits with code 1 after 520 seconds;
+this is not a passing full route and earns no additional campaign credit.
+Evidence: `private/coop/chess-route-e8cce7e9090a4db5a38ff9b4881c4718/`, including
+`overlap-analysis.json` and both per-client overlap extracts. Ordinary checkpoints
+before 129 and 151 remain available; use the earlier one to reproduce step 141.
+
+The preceding attempt failed before gameplay because the guest could not resolve
+the fresh invite address. Its separate evidence is retained in
+`private/coop/chess-route-658d19c8f20544378eaf4f11d8a58003/`. Joining reliability
+remains open; the successful connection on the retry does not fix that failure.

@@ -33,7 +33,13 @@ Six native pixel comparisons cover both Alices, and a public two-client combat
 check observes all three effect types and both emitting players, with 59 matching
 states. This adds 0.25 movement/presentation points; it does not complete any
 campaign row or certify every weapon effect. See [effect checks](COOP-EFFECTS.md).
-The release build and all 822 active Rust tests pass. Full fresh
+The landing-contact case in a narrow Pale Realm corridor is also fixed: the
+approaching Alice retains her landing height while backing out of contact, with
+the waiting partner unmoved. Both player slots pass native regressions; the
+captured replay improves from 15.26 to 36.00 units of separation. The automated
+follower also retains jump takeoffs and can make room along the corridor when
+its diagonal yield choices are blocked. See [focused checks](WCHESS1.md#jump-takeoff-and-narrow-corridor-contact).
+The release build and all 823 active Rust tests pass. Full fresh
 routes in both arrival orders, the complete recovery/rejoin matrix and broader
 combat-effect checks remain open; this segment adds no full-level credit.
 See [recovery details](WCHESS1.md#independent-client-revival-fixture).

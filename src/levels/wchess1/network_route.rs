@@ -345,6 +345,10 @@ impl NetworkDriver {
         if arena.characters[i].attack_movement_locked() {return Ok((c,false));}
         let gap=p.feet-leader.feet;
         if !precise && local!=first && !ready[first.index()] && gap.truncate().length()<80. && gap.z.abs()<70. {
+            // Yield without discarding the recorded approach. In particular,
+            // the leader may jump while this input is in transit: losing its
+            // last grounded point makes the follower jump from farther down
+            // a slope toward an airborne sample instead of the takeoff.
             let forward=(goals[first.index()]-leader.feet).truncate().try_normalize().unwrap_or(Vec2::X);
             let carries=gap.z < -(PLAYER_HALF.z*2.-0.1) && gap.truncate().length()<crate::coop::separation::DISTANCE;
             if p.grounded && leader.ledge.as_ref().is_some_and(|h|!h.pulling) {
@@ -354,10 +358,11 @@ impl NetworkDriver {
                 let away=gap.truncate().try_normalize().unwrap_or(-forward);
                 let side=vec2(-away.y,away.x);
                 c.wish=clear_wish(&[away,side,-side],Some(gap.truncate()));
-                if c.wish!=Vec2::ZERO {self.trail.clear();}
             } else if gap.truncate().dot(forward)>-4. || carries {let side=vec2(-forward.y,forward.x);
-                c.wish=clear_wish(&[side,-side,forward,-forward],Some(gap.truncate()));
-                if c.wish!=Vec2::ZERO {self.trail.clear();}
+                // A diagonal approach can make all four relative directions
+                // hit the sides of a narrow hall. Also try along its axes,
+                // retaining the same floor, hazard and away-from-partner checks.
+                c.wish=clear_wish(&[side,-side,forward,-forward,Vec2::X,-Vec2::X,Vec2::Y,-Vec2::Y],Some(gap.truncate()));
             } else if p.grounded && gap.truncate().length()<56. {
                 // Leave room for a sideways doorway detour. Waiting at the
                 // exact contact distance can block the leader's first planned
@@ -365,7 +370,6 @@ impl NetworkDriver {
                 let away=gap.truncate().try_normalize().unwrap_or(-forward);
                 let side=vec2(-away.y,away.x);
                 c.wish=clear_wish(&[away,side,-side],Some(gap.truncate()));
-                if c.wish!=Vec2::ZERO {self.trail.clear();}
             }return Ok((c,false));
         }
         if ready[i] {return Ok((c,false));}

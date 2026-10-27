@@ -216,7 +216,17 @@ pub fn resolve(world: &World, bodies: &mut [Body; 2], previous: [Vec3; 2]) {
             if approach[i]<=0. {continue;}
             if !movable(&bodies[i]) {valid=false;break;}
             let to=previous[i].lerp(end[i],fraction);
-            if let Some(at)=contact_position(world,&bodies[i],to) {candidates[i]=at;}
+            let position=contact_position(world,&bodies[i],to).or_else(|| {
+                let p=&bodies[i].player;
+                // A just-landed body can have an airborne previous position.
+                // Keep its landing height when retreating horizontally: the
+                // old height may no longer pass the grounded support check.
+                // The swept path, floor support and pair separation still
+                // have to pass before either body's position changes.
+                (p.grounded && !p.swimming && to.z>p.feet.z)
+                    .then(||contact_position(world,&bodies[i],vec3(to.x,to.y,p.feet.z))).flatten()
+            });
+            if let Some(at)=position {candidates[i]=at;}
             else {valid=false;break;}
         }
         let separated=candidates[0]-candidates[1];
@@ -486,6 +496,42 @@ mod tests {
             input[moving].0.wish=-Vec2::Y;
             for _ in 0..60 {r.move_players(&world,input);}
             assert!(r.players[moving].player.feet.y < -50.);
+        }
+    }
+    #[test]
+    fn landing_beside_a_wall_retreats_at_floor_height_without_shoving() {
+        let world=World::fixture(&[
+            (vec3(3700.,2600.,-100.),vec3(4000.,3000.,0.)),
+            (vec3(3700.,2600.,0.),vec3(3808.,3000.,200.)),
+            (vec3(3868.,2600.,0.),vec3(4000.,3000.,200.)),
+        ]);
+        for moving in 0..2 {
+            // Set up the roster independently of entrance-placement searches;
+            // this corridor fixture exercises an already-running encounter.
+            let mut r=pair(&floor(),[vec3(-80.,0.,0.03125),vec3(80.,0.,0.03125)]);
+            for (b,at) in r.players.iter_mut().zip([vec3(3849.4208984,2801.5256348,0.03125),
+                vec3(3823.0561523,2826.0388184,0.03125)]) {
+                b.player=Player::new(at);b.player.grounded=true;b.player.ground_normal=Vec3::Z;
+            }
+            r.players[1].player.feet.z=2.9198363;
+            r.players[1].player.grounded=false;
+            r.players[1].player.velocity=vec3(-5.19008875,-5.58211374,-100.000305);
+            if moving==0 {r.players.swap(0,1);}
+            let stationary=r.players[1-moving].player.feet;
+            let resources=r.players.each_ref().map(|b|serde_json::to_value(&b.stats).unwrap());
+            for tick in 0..240 {
+                let d=vec3(3840.,2784.,0.)-r.players[moving].player.feet;
+                let mut input=[(Controls::default(),Default::default());2];
+                input[moving].0=Controls{wish:d.truncate().normalize_or_zero()*(d.truncate().length()/48.).min(1.),run:true,..Default::default()};
+                r.move_players(&world,input);
+                assert!(separate(&r.players),"Landing contact overlaps slot{moving} tick{tick}");
+                assert_eq!(r.players[1-moving].player.feet,stationary);
+                for (i,b) in r.players.iter().enumerate() {
+                    assert!(clear(&world,b,b.player.feet));
+                    assert_eq!(serde_json::to_value(&b.stats).unwrap(),resources[i]);
+                }
+            }
+            assert!(r.players[moving].player.grounded);
         }
     }
     #[test]

@@ -397,9 +397,43 @@ fn overhanging_contact(map:&Bsp)->Result<()> {
         println!("PASS captured native overhang contact slot{moving}: 240 physics ticks, separation/shared support/resources and stationary partner");
     }Ok(())
 }
+fn landing_contact(map:&Bsp)->Result<()> {
+    let w=World::from_bsp(map)?;
+    let (eye,yaw)=crate::interaction::spawn(map,Some("wchess1_start1"));
+    // Recorded just before the red-led route overlapped in the narrow hall.
+    // Reproduce its landing with ordinary movement in both player slots.
+    let before=[vec3(3849.4208984,2801.5256348,0.031249285),
+        vec3(3823.0561523,2826.0388184,2.9198363)];
+    for moving in 0..2 {
+        let mut roster=Roster::new(&w,eye,yaw,Stats::default())?;
+        for (b,at) in roster.players.iter_mut().zip(before) {b.player=Player::new(at);}
+        roster.players[0].player.grounded=true;
+        roster.players[0].player.ground_normal=Vec3::Z;
+        roster.players[1].player.velocity=vec3(-5.19008875,-5.58211374,-100.000305);
+        if moving==0 {roster.players.swap(0,1);}
+        let still=roster.players[1-moving].player.feet;
+        let resources=roster.players.each_ref().map(|b|serde_json::to_value(&b.stats).unwrap());
+        for tick in 0..240 {
+            let d=vec3(3840.,2784.,0.)-roster.players[moving].player.feet;
+            let mut input=[(Controls::default(),Input::default());2];
+            input[moving].0=Controls{wish:d.truncate().normalize_or_zero()*(d.truncate().length()/48.).min(1.),run:true,..Default::default()};
+            roster.move_players(&w,input);
+            let d=roster.players[0].player.feet-roster.players[1].player.feet;
+            ensure!(d.truncate().length()>=crate::coop::separation::DISTANCE-0.05 || d.z.abs()>=PLAYER_HALF.z*2.-0.05,
+                "Captured landing overlap slot{moving} tick{tick}");
+            ensure!(roster.players[1-moving].player.feet==still,"Landing correction shoved the waiting partner");
+            for (i,b) in roster.players.iter().enumerate() {
+                ensure!(w.body_clear(b.player.feet) && (!b.player.grounded || w.body_trace(b.player.feet,b.player.feet-Vec3::Z*2.).fraction<1.)
+                    && serde_json::to_value(&b.stats)?==resources[i],"Landing correction lost support or resources");
+            }
+        }
+        ensure!(roster.players[moving].player.grounded,"Contact prevented landing");
+        println!("PASS captured native landing contact slot{moving}: 240 physics ticks, separation/support/resources and stationary partner");
+    }Ok(())
+}
 pub(super) fn check(a:&mut Assets)->Result<()> {
     let map=Bsp::parse(&a.read("maps/wchess1.bsp")?)?;
-    wall_contact(a,&map)?;falling_contact(&map)?;overhanging_contact(&map)?;
+    wall_contact(a,&map)?;falling_contact(&map)?;overhanging_contact(&map)?;landing_contact(&map)?;
     clocks(a,&map)?;lift(a,&map)?;hazards(a,&map)?;
     for kind in [scene::Kind::Intro,scene::Kind::Bishop,scene::Kind::Knight,scene::Kind::Bell,scene::Kind::Water] {
         for first in PlayerId::ALL {for skip in [false,true] {for dead in [false,true] {scene(a,&map,kind,first,skip,dead)?;}}}

@@ -736,3 +736,56 @@ Evidence: `private/coop/chess-route-db85869cf3e541298054be40393ff76b/` and
 `private/coop-wchess1-fresh17-blue.log`. Normal checkpoints before steps 71, 97
 and 100, the step-start reports, and an unchanged captured fall state at
 `private/coop-wchess1-fall107-probe.json` support a focused replay.
+
+### Jump takeoff and narrow-corridor contact
+
+The automated follower now retains the leader's recorded grounded approach while
+yielding at close range. Previously, clearing that history during a delayed jump
+made it aim at an airborne sample from too far down the ramp. The unchanged
+normal checkpoint before step 100 passes steps **100–108** Blue-first on source
+`aa03849`, with **355** matching network states. Evidence:
+`private/coop/chess-resume-6a4a282ba26a4093a8e65ac8b0b04d8e/`.
+The Red-first repeat reaches all steps but fails the strict presence check at
+step 102; it is retained as a failure, not a passing traversal.
+
+That failure exposes a gameplay collision bug. A player landing beside a wall
+can no longer retreat to her previous airborne height because grounded support
+validation rejects it. When the normal correction is also wall-blocked, the
+players overlap. The contact resolver now tries the same horizontal retreat at
+the actual landing height, retaining swept collision, floor support and pair
+separation checks. It does not shove the waiting partner.
+
+An isolated captured-state replay measures **15.26 units** of separation before
+the fix and **36.00 units** afterward. Native map regressions exercise 240 ordinary
+physics ticks in each player slot, preserving support and personal resources.
+Both pass on source `a033218`, alongside the full paired world/scene/puzzle suite
+and **823 active unit tests** (one existing ignored). Evidence:
+`private/coop-wchess1-landing-{before19,after20}/coop-encounter-result.json`
+and `private/coop-wchess1-native21.log`.
+
+The first corrected public replay retains **3,131** matching states and passes
+all **919 host / 904 guest** presence observations. It still fails at step 102:
+the test follower's four diagonal yield choices hit the corridor walls.
+Evidence: `private/coop/chess-resume-18f059e5e09a41cb8aa031e77e90b9cb/`.
+The controller additionally considers axis-aligned movement under the same floor,
+hazard and away-from-partner checks. These focused checks do not complete the
+campaign row; fresh full routes and recovery/rejoin coverage remain open.
+
+With that yield correction, the public **100–108** segment passes in both arrival
+orders on source `efc29e77b1ea6d7374c3f9832c022667eba25501a1ba4c17fc9d11aebd1083f1`.
+All ordinary presence, personal-resource and three-state agreement checks remain
+enabled. Red-first retains **267** matching states in
+`private/coop/chess-resume-68cb093aea3849de911d0eddc897c567/`; Blue-first retains
+**318** in `private/coop/chess-resume-6f0c2cf0691f4720b9dbb6b0fe2d6215/`.
+Both use 40/20 ms added delay/jitter and the same unchanged normal checkpoint.
+The release build and all 823 active Rust tests pass. The three single-player
+check logs on the same production-contact implementation (`a033218`) match the
+pre-change baseline exactly after newline/encoding normalization.
+
+The same build also passes the Blue-first **129–160** regression through the
+doorway, water lever, swimming bank and actual next-level arrival, with **2,300**
+matching player/world/native states. Both clients observe both swimmers, retain
+personal resources and arrive separately at `wchess2_start1` in epoch 2.
+Evidence: `private/coop/chess-resume-3dd2168214af4c818b5826973b8ee63e/`, including
+`tail-arrival-analysis.json`. This remains a resumed segment; overall credit stays
+**46.1%**.

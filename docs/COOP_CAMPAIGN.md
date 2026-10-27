@@ -26,9 +26,18 @@ A later repeat on source `8499731` passes the same **39 entrances plus four
 underwater recovery cases, 82 shared-world cases, five Fortress cases and 15
 Beyond cases**, including the newer landing-contact behavior. Logs are
 `private/coop-broad-{campaign,world,fortress,beyond}-8499731.log`. A fresh
-Blue-led Pale Realm internet run passes 0–29, then exposes a test-driver lift
+Blue-led Pale Realm internet run passes 0â€“29, then exposes a test-driver lift
 handoff stall; its 5,281 matching states and 1,570 host / 1,556 guest presence
 observations pass. These results add no full-campaign credit.
+
+Source `b945e0e` fixes first-arrival ownership when a shared trigger becomes
+eligible after both players have entered it. Waiting order survives saves and
+is removed when a player leaves, dies or relocates. All 82 shared-world and
+39 entrance/four underwater-recovery cases pass again, as do 117 Pale Realm
+world/scene/puzzle cases and 832 active Rust tests. The captured Red-led Knight
+approach/puzzle/exit segment passes through independent internet clients with
+677 matching states. The strict owner check remains intact. These component
+and segment results do not replace the full-route matrix below.
 
 Each visit requires both host/guest roles and both first-arrival orders, coherent enemies
 and individual consumables, single-player cutscenes with safe reunion, shared-transport

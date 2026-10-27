@@ -466,10 +466,62 @@ fn descending_trail(a:&mut Assets,map:&Bsp)->Result<()> {
     println!("PASS captured descending trail: supported reattachment, unchanged body, 240 ordinary grounded ticks without jumping");
     Ok(())
 }
+fn gated_knight_arrival(a:&mut Assets,map:&Bsp)->Result<()> {
+    for first in PlayerId::ALL {
+        let (mut stage,mut roster,mut w)=setup(a,map)?;
+        stage.owner=None;
+        let r=ctl(&mut stage);r.saved.intro=true;r.saved.pending=None;r.saved.bishop_done=true;
+        r.saved.knight_gate=false;r.saved.knight_opened=None;r.rebuild(map)?;
+        w.set_dynamic(r.colliders());
+        // Captured before step92, then at the first observed Red entry and
+        // later Blue entry. Swap slots to verify both actual arrival orders.
+        let before=[vec3(3461.484375,1594.4703369140625,-127.96875),
+            vec3(3475.42041015625,1542.65478515625,-127.96875)];
+        let entered=[vec3(3427.647705078125,1675.0743408203125,-127.96875),
+            vec3(3435.56591796875,1657.177001953125,-127.96875)];
+        let volume=&r.data.volumes["cinema_knight_start_trigger"];
+        for at in before {ensure!(!volume.touches(at+PLAYER_CENTER,at+PLAYER_CENTER,PLAYER_HALF),"Captured approach starts inside Knight trigger");}
+        for at in entered {ensure!(volume.touches(at+PLAYER_CENTER,at+PLAYER_CENTER,PLAYER_HALF),"Captured entry misses Knight trigger");}
+        for (id,at) in [(first,before[0]),(first.partner(),before[1])] {
+            ensure!(w.body_clear(at),"Captured gated approach embedded");
+            roster.players[id.index()].player=Player::new(at);
+        }
+        let from=roster.players.each_ref().map(|b|b.player.feet);
+        roster.players[first.index()].player.feet=entered[0];
+        roster.players[first.partner().index()].player.feet=vec3(3472.9091796875,1556.226806640625,-127.96875);
+        stage.contacts(&mut roster,&w,from)?;
+        ensure!(!stage.busy(),"Closed Knight gate started scene");
+        let from=roster.players.each_ref().map(|b|b.player.feet);
+        roster.players[first.index()].player.feet=vec3(3394.7412109375,1753.4669189453125,-127.96875);
+        roster.players[first.partner().index()].player.feet=entered[1];
+        ensure!(roster.players.iter().all(|b|w.body_clear(b.player.feet))
+            && roster.players[0].player.feet.distance(roster.players[1].player.feet)>36.,
+            "Captured waiting pair is obstructed or overlaps");
+        stage.contacts(&mut roster,&w,from)?;
+        stage_save(&mut stage,map,&mut w)?;
+        let resources=roster.players.each_ref().map(|b|(b.stats.sanity(),b.stats.will(),
+            serde_json::to_value(&b.stats).unwrap()["owned"].clone(),
+            serde_json::to_value(&b.stats).unwrap()["collected"].clone()));
+        let r=ctl(&mut stage);r.saved.knight_gate=true;r.saved.knight_opened=Some(r.saved.age);
+        let from=roster.players.each_ref().map(|b|b.player.feet);
+        stage.contacts(&mut roster,&w,from)?;
+        ensure!(stage.owner==Some(first) && ctl(&mut stage).saved.pending==Some(scene::Kind::Knight),
+            "Opening the Knight gate lost its first waiting player {first:?}");
+        let waiting=roster.players[first.partner().index()].player.feet;
+        stage.scene_step(&mut roster,map,&mut w,&Default::default())?;
+        ensure!(roster.players[first.partner().index()].player.feet==waiting
+            && roster.players.each_ref().map(|b|(b.stats.sanity(),b.stats.will(),
+                serde_json::to_value(&b.stats).unwrap()["owned"].clone(),
+                serde_json::to_value(&b.stats).unwrap()["collected"].clone()))==resources,
+            "Gated Knight ownership changed waiter or personal resources");
+        println!("PASS captured gated Knight first{first:?}: real trigger entry order, closed prerequisite, saved waiting order, original scene owner");
+    }Ok(())
+}
 pub(super) fn check(a:&mut Assets)->Result<()> {
     let map=Bsp::parse(&a.read("maps/wchess1.bsp")?)?;
     wall_contact(a,&map)?;falling_contact(&map)?;overhanging_contact(&map)?;landing_contact(&map)?;
     descending_trail(a,&map)?;
+    gated_knight_arrival(a,&map)?;
     clocks(a,&map)?;lift(a,&map)?;hazards(a,&map)?;
     spike_forecast(a,&map)?;spike_crossing(a,&map)?;
     for kind in [scene::Kind::Intro,scene::Kind::Bishop,scene::Kind::Knight,scene::Kind::Bell,scene::Kind::Water] {

@@ -19,6 +19,10 @@ struct TriggerContacts {
     id: Id,
     players: [Contact; 2],
     waiting: Option<PlayerId>,
+    /// Arrival order while a shared rule's prerequisites are still closed.
+    /// These bodies must remain at the trigger; this never queues personal hits.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    deferred: Vec<PlayerId>,
 }
 
 /// Save/restore this together with the shared interaction snapshot. A respawn
@@ -38,6 +42,7 @@ impl Contacts {
                     id: t.id,
                     players: [Contact::default(); 2],
                     waiting: None,
+                    deferred: Vec::new(),
                 })
                 .collect(),
         }
@@ -45,6 +50,7 @@ impl Contacts {
     pub fn reset_player(&mut self, id: PlayerId) {
         for trigger in &mut self.triggers {
             trigger.players[id.index()] = Contact::default();
+            trigger.deferred.retain(|p| *p != id);
             if trigger.waiting == Some(id) {
                 trigger.waiting = None;
             }
@@ -53,6 +59,7 @@ impl Contacts {
     fn relocate_player(&mut self, id: PlayerId) {
         for trigger in &mut self.triggers {
             trigger.players[id.index()].inside = false;
+            trigger.deferred.retain(|p| *p != id);
             if trigger.waiting == Some(id) {
                 trigger.waiting = None;
             }
@@ -66,6 +73,10 @@ impl Contacts {
         for (saved, trigger) in self.triggers.iter().zip(&world.triggers) {
             ensure!(
                 saved.id == trigger.id
+                    && saved.deferred.len() <= 2
+                    && saved.deferred.iter().collect::<BTreeSet<_>>().len() == saved.deferred.len()
+                    && (saved.deferred.is_empty() || !matches!(trigger.kind,
+                        TriggerKind::Hurt(_) | TriggerKind::Fall | TriggerKind::Teleport(..)))
                     && saved
                         .players
                         .iter()
@@ -346,16 +357,23 @@ impl Interactions {
         let mut arrivals = Vec::new();
         for index in 0..self.triggers.len() {
             if !self.contact_trigger(index) {
+                contacts.triggers[index].deferred.clear();
                 continue;
             }
             let trigger = &self.triggers[index];
+            let personal = matches!(trigger.kind,
+                TriggerKind::Hurt(_) | TriggerKind::Fall | TriggerKind::Teleport(..));
             let enabled = self.event_world.allowed(
                 &Event::Entity(trigger.id, Input::Activate),
                 &self.event_facts(),
             );
+            let mut present = [false; 2];
+            let mut blocked = Vec::new();
+            let mut eligible = Vec::new();
             for id in PlayerId::ALL {
+                let deferred = contacts.triggers[index].deferred.contains(&id);
                 let contact = &mut contacts.triggers[index].players[id.index()];
-                let Some(path) = paths[id.index()].filter(|_| enabled) else {
+                let Some(path) = paths[id.index()] else {
                     contact.inside = false;
                     contact.cooldown = (contact.cooldown - dt).max(0.);
                     continue;
@@ -367,23 +385,45 @@ impl Interactions {
                     PLAYER_HALF,
                 );
                 let crossed = hit.start_solid || hit.fraction < 1.;
-                if crossed
-                    && (!contact.inside || matches!(trigger.kind, TriggerKind::Hurt(_)))
-                    && contact.cooldown == 0.
-                {
-                    arrivals.push((if hit.start_solid { 0. } else { hit.fraction }, index, id));
-                }
-                contact.inside = trigger.volume.touches(
+                let inside = trigger.volume.touches(
                     path.after + PLAYER_CENTER,
                     path.after + PLAYER_CENTER,
                     PLAYER_HALF,
                 );
+                let fraction = if hit.start_solid { 0. } else { hit.fraction };
+                // Remember a waiting shared activator even while the condition
+                // is false. Rechecking both stationary bodies on the opening
+                // frame would otherwise replace their order with a Blue tie.
+                present[id.index()] = if enabled { crossed } else { inside };
+                if !enabled {
+                    contact.inside = false;
+                    if !personal && inside { blocked.push((fraction, id)); }
+                    continue;
+                }
+                if crossed
+                    && (!contact.inside || deferred || matches!(trigger.kind, TriggerKind::Hurt(_)))
+                    && contact.cooldown == 0.
+                {
+                    eligible.push((fraction, id));
+                }
+                contact.inside = inside;
+            }
+            let deferred = &mut contacts.triggers[index].deferred;
+            deferred.retain(|id| present[id.index()]);
+            blocked.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
+            for (_, id) in blocked {
+                if !deferred.contains(&id) { deferred.push(id); }
+            }
+            for (fraction, id) in eligible {
+                let order = deferred.iter().position(|p| *p == id).unwrap_or(2);
+                arrivals.push((fraction, index, order, id));
             }
         }
-        arrivals.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)).then(a.2.cmp(&b.2)));
+        arrivals.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1))
+            .then(a.2.cmp(&b.2)).then(a.3.cmp(&b.3)));
         let mut shared_fired = BTreeSet::new();
         let mut stopped = [false; 2];
-        for (_, index, mut id) in arrivals {
+        for (_, index, _, mut id) in arrivals {
             if stopped[id.index()] || !self.contact_trigger(index) {
                 continue;
             }
@@ -427,6 +467,7 @@ impl Interactions {
             }
             if !personal {
                 shared_fired.insert(index);
+                contacts.triggers[index].deferred.clear();
             }
             // The shared callback still owns authored consequences. Its old
             // single-body cooldown is copied to the triggering body's slot,
@@ -607,6 +648,101 @@ mod tests {
             .filter(|e| e.player == id)
             .map(|e| e.events.damage)
             .sum()
+    }
+
+    fn gated_trigger() -> (Interactions, Contacts) {
+        let (map, mut world, contacts) = trigger("trigger_once");
+        let mut initial = Facts::default();initial.flag("ready", false);
+        world.event_world = Runtime::new(Registry::new(&map.entities), vec![Rule {
+            key: "trigger/0".into(),event: Event::Entity(Id(0),Input::Activate),
+            condition: Condition::flag("ready"),once: true,cooldown: 0.,actions: vec![],
+        }], initial, Facts::default()).unwrap();
+        (world, contacts)
+    }
+
+    #[test]
+    fn gated_shared_arrival_survives_pause_and_save_in_either_player_order() {
+        for first in PlayerId::ALL {
+            let (mut world, mut contacts) = gated_trigger();
+            let paths = std::array::from_fn(|i| if i==first.index() {motion(40.,100.)} else {motion(40.,40.)});
+            assert!(world.triggers_pair(0.1,&mut contacts,paths).unwrap().activations.is_empty());
+            assert_eq!(contacts.triggers[0].deferred,vec![first]);
+            let saved=serde_json::to_value(&contacts).unwrap();
+            world.triggers_pair(0.,&mut contacts,[motion(100.,100.);2]).unwrap();
+            assert_eq!(saved,serde_json::to_value(&contacts).unwrap());
+            let paths=std::array::from_fn(|i| if i==first.index() {motion(100.,100.)} else {motion(40.,100.)});
+            world.triggers_pair(0.1,&mut contacts,paths).unwrap();
+            contacts=serde_json::from_value(serde_json::to_value(&contacts).unwrap()).unwrap();
+            contacts.validate(&world).unwrap();
+            let snapshot=world.event_world.snapshot();world.event_world.restore(&snapshot).unwrap();
+            world.event_world.import_flag("ready",true);
+            let events=world.triggers_pair(0.1,&mut contacts,[motion(100.,100.);2]).unwrap();
+            assert_eq!(events.activations.len(),1);
+            assert_eq!(events.activations[0].player,first);
+            assert!(contacts.triggers[0].deferred.is_empty());
+            assert!(world.triggers_pair(1.,&mut contacts,[motion(100.,100.);2]).unwrap().activations.is_empty());
+            assert_eq!(world.event_world.snapshot().usage["trigger/0"].count,1);
+        }
+    }
+
+    #[test]
+    fn gated_arrival_releases_a_departed_dead_or_relocated_waiter() {
+        for first in PlayerId::ALL {for withdrawal in 0..3 {
+            let (mut world, mut contacts)=gated_trigger();
+            let paths=std::array::from_fn(|i| if i==first.index() {motion(40.,100.)} else {motion(40.,40.)});
+            world.triggers_pair(0.1,&mut contacts,paths).unwrap();
+            world.triggers_pair(0.1,&mut contacts,[motion(100.,100.);2]).unwrap();
+            let paths=std::array::from_fn(|i| if i!=first.index() {motion(100.,100.)}
+                else if withdrawal==1 {None} else {motion(100.,40.)});
+            if withdrawal==2 {contacts.relocate_player(first);}
+            world.triggers_pair(0.1,&mut contacts,paths).unwrap();
+            if withdrawal==1 {contacts.reset_player(first);}
+            // Returning before the condition opens puts this player behind
+            // the partner who kept waiting; it must not restore old priority.
+            let paths=std::array::from_fn(|i| if i==first.index() {motion(40.,100.)} else {motion(100.,100.)});
+            world.triggers_pair(0.1,&mut contacts,paths).unwrap();
+            assert_eq!(contacts.triggers[0].deferred,vec![first.partner(),first]);
+            world.event_world.import_flag("ready",true);
+            let events=world.triggers_pair(0.1,&mut contacts,[motion(100.,100.);2]).unwrap();
+            assert_eq!(events.activations.len(),1);assert_eq!(events.activations[0].player,first.partner());
+        }}
+    }
+
+    #[test]
+    fn gated_same_frame_contacts_keep_swept_order_and_personal_effects_stay_separate() {
+        for first in PlayerId::ALL {
+            let (mut world,mut contacts)=gated_trigger();
+            let paths=std::array::from_fn(|i| if i==first.index() {motion(60.,100.)} else {motion(0.,100.)});
+            world.triggers_pair(0.1,&mut contacts,paths).unwrap();
+            world.event_world.import_flag("ready",true);
+            let events=world.triggers_pair(0.1,&mut contacts,[motion(100.,100.);2]).unwrap();
+            assert_eq!(events.activations[0].player,first);
+        }
+        for class in ["trigger_hurt","trigger_teleport"] {
+            let (_,mut world,mut contacts)=trigger(class);
+            world.event_world.set_enabled(Id(0),false).unwrap();
+            world.triggers_pair(0.1,&mut contacts,[motion(40.,100.);2]).unwrap();
+            assert!(contacts.triggers[0].deferred.is_empty());
+            world.event_world.set_enabled(Id(0),true).unwrap();
+            let events=world.triggers_pair(0.1,&mut contacts,[motion(100.,100.);2]).unwrap();
+            assert_eq!(events.activations.len(),2);
+            assert_eq!(events.activations[0].player,PlayerId::Blue);
+            assert_eq!(events.activations[1].player,PlayerId::Red);
+        }
+    }
+
+    #[test]
+    fn contact_saves_accept_legacy_state_and_reject_invalid_deferred_owners() {
+        let (world,contacts)=gated_trigger();
+        let old=serde_json::to_value(&contacts).unwrap();
+        assert!(old["triggers"][0].get("deferred").is_none());
+        let restored:Contacts=serde_json::from_value(old.clone()).unwrap();
+        restored.validate(&world).unwrap();assert!(restored.triggers[0].deferred.is_empty());
+        let mut bad=old.clone();bad["triggers"][0]["deferred"]=serde_json::json!(["Red","Red"]);
+        assert!(serde_json::from_value::<Contacts>(bad).unwrap().validate(&world).is_err());
+        let (_,personal,_)=trigger("trigger_hurt");
+        let mut bad=old;bad["triggers"][0]["deferred"]=serde_json::json!(["Red"]);
+        assert!(serde_json::from_value::<Contacts>(bad).unwrap().validate(&personal).is_err());
     }
 
     #[test]

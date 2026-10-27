@@ -29,9 +29,11 @@ an old airborne sample after landing. Supported path reattachment now passes a
 native captured-position check and the Red-led internet replay through 67–70,
 with 339 matching states. The required-jump section 100–108 also passes with
 312 matching states. The next fresh run completes 0–92, then exposes an ownership
-case when the Knight trigger becomes eligible with both players already inside.
-The test expects Red but Blue owns the puzzle; earlier arrival ordering must be
-checked before changing that expectation. Fresh full repeats remain pending.
+bug when the Knight trigger becomes eligible with both players already inside.
+Red arrived earlier, but the inactive trigger forgot that order. Saved waiting
+order now fixes this for shared contacts; both roles pass native captured-approach
+checks and the Red-led internet replay passes 92–97 with 677 matching states.
+The strict ownership assertion is unchanged. Fresh full repeats remain pending.
 See [descent recovery](WCHESS1.md#rejoining-a-recorded-descent).
 The earlier Pale Realm combat stall is resolved by a supported sidestep after repeated
 misses. A public two-client replay passes all 26 approach steps (100–125), then
@@ -60,7 +62,7 @@ its diagonal yield choices are blocked. See [focused checks](WCHESS1.md#jump-tak
 A graceful guest leave/rejoin followed by the swimming exit also passes, with
 624 matching states recorded after the new guest process joins. The original
 puzzles, native resident health and personal resources remain intact.
-The release build and all 828 active Rust tests pass. Full fresh
+The release build and all 832 active Rust tests pass. Full fresh
 routes in both arrival orders, the complete recovery/rejoin matrix and broader
 combat-effect checks remain open; this segment adds no full-level credit.
 See [recovery details](WCHESS1.md#independent-client-revival-fixture).

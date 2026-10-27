@@ -995,3 +995,39 @@ checkpoint store to `private/coop-wchess1-knight92-export29/coop-checkpoint.json
 exact export and a deterministic one-tick idle repeat pass with the original
 67/66 health. This isolates the next ownership investigation without replaying
 the opening or modifying personal resources.
+
+### First arrival while a scene is gated
+
+The source29 history and original trigger geometry show Red inside trigger 30
+at tick **32412**, with Blue outside. Blue enters later, at host tick **32484**
+(guest observation 32487). The Knight gate is still closed then. Once it opens,
+the old resolver treats both contacts as new simultaneous arrivals and chooses
+Blue. This is a production ownership bug; the strict test expectation remains.
+
+Source `b945e0e` retains a bounded ordered list of living waiters for an
+ineligible shared trigger. On eligibility, that list resolves simultaneous
+inside contacts. Leaving, dying or relocating removes a waiter; returning joins
+behind a partner who stayed. Dispatch consumes the list without rearming a
+one-shot rule. Personal damage and teleports do not acquire shared ownership.
+The optional saved field preserves this order across restoration; older saves
+load with no previously recorded order. Normal swept arrivals and shared-lift
+boarding still use their existing checks.
+
+Four new unit regressions cover both arrival orders, paused time, saved order,
+withdrawal/death/relocation/reentry, same-frame swept priority, independent
+personal effects, legacy saves and invalid saved owners. All **832** active Rust
+tests pass (one existing ignored). Native captured coordinates against the real
+Knight trigger pass for both player slots, including save/restore while gated,
+the correct original scene owner, a frozen partner and retained resources.
+The complete paired Pale Realm suite passes **117** cases; **82** shared-world
+cases and all **39 entrance/four underwater-recovery** cases also pass. The three
+complete single-player Pale Realm check logs remain identical to the baseline.
+
+The captured Red-led internet replay passes **92–97**, including the original
+Knight puzzle, with **677** matching player/world/resident states, 40 ms delay
+and 20 ms jitter per sender. Both clients record Red owning the Knight scene.
+Exact restore, presence, no-death and lifecycle checks pass. Evidence:
+`private/coop/chess-resume-eca805c106d14bea91737c7f50ddc154/` and
+`private/coop-wchess1-coop-world-check-b945e0e.log`. Broad logs are
+`private/coop-coop-{world,campaign}-check-b945e0e.log`. Fresh full routes remain
+open; these regressions add no full-level or overall percentage credit.

@@ -239,7 +239,7 @@ All three complete normalized single-player check logs still match `2990c66`.
 The locked release build, **816 Rust tests** (one existing ignored test), seven
 source-package tests and source worktree audit pass on this source.
 
-The four default full-route attempts remain **0/4**. They now retain separation
+On that source, the four default full-route attempts were **0/4**. They retained separation
 through the formerly failing contact, but stop at supply-return step 22 because
 the automated follower blocks the next waypoint. See
 `private/coop-wchess1-route12-all.log` and its per-case captured reports under
@@ -247,3 +247,43 @@ the automated follower blocks the next waypoint. See
 repeatable route diagnosis, not a completed campaign visit. Overall progress
 remains **45.8%**; full traversal and the independent internet/recovery matrix
 remain open. No images were captured or inspected.
+
+### Descending contact and route progress, 27 October 2026
+
+The continuous route subsequently exposed two descending-body contacts: an
+upper gallery with a stationary partner on a slope, and a narrow stair passage
+without room for a sideways correction. Separation now assigns vertical entry
+to the approaching body. If a safe lateral correction cannot fit, it can stop
+that body at the original vertical contact after checking the swept path and
+clearance. Meaningful landing damage belongs to the falling player; resting
+gravity does not repeatedly emit landing events or charge damage. The stationary
+partner remains unchanged. Four captured native cases cover both player slots
+for 240 ticks each; two unit tests cover vertical entry and a confined high-speed
+landing with 120 resting ticks.
+
+The route driver now checks short, outward follower-yield segments, allows a
+follower safely supported on its leader to finish a stair waypoint, records an
+immediately skipped Intro's owner, and tries ordinary jumps before a detour search.
+It still uses ordinary movement, combat, resource and scene rules throughout.
+
+Source `24e052098b1c4d305d2e34af768f7acf2a6dca05ae5faabb04399ce12f12501a`
+passes **85 native world cases**, **818 Rust tests** (one existing ignored test),
+the locked release build and seven source-package tests. All three complete
+normalized single-player check logs match the `2990c66` baseline. Frozen binary:
+`private/coop-wchess1-world-24e0520.exe`, SHA-256
+`3901756fd67de2a2ce259e41fc9a0d8238c3f7917943f9ed455a805417a8733e`.
+Evidence is in `private/coop-wchess1-components19.log`,
+`private/coop-wchess1-unit19.log` and the three `*-24e0520.log` single-player logs.
+
+Before adding jump recovery, source `df70c2f` reached default step **149 of 161**
+with Blue 65 health, Red 85 health, both puzzles completed, all five original
+scene owners recorded and raised water. The native capture shows a small static
+lip stopping walking at the water entrance; an isolated ordinary jump clears it.
+That probe is diagnosis, not traversal credit. The latest Blue/watched attempt
+on `24e0520` changes earlier timing and catches another small horizontal overlap
+at platform-edge step **98**, tick 43,262. Both players remain alive. Preserve
+`private/coop-wchess1-route19-settings/wchess1-Blue-false-failed.json` for the next
+contact regression; `private/coop-wchess1-route17.log` records the farther run.
+Neither run completed the route. Full traversal, independent internet/recovery
+and broader rendered combat effects remain open; the overall estimate remains
+**45.8%**. This batch used no screenshots or visual inspection.

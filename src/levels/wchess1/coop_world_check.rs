@@ -337,9 +337,35 @@ fn wall_contact(a:&mut Assets,map:&Bsp)->Result<()> {
         println!("PASS captured native chess wall contact slot{moving}: 240 ordinary movement ticks, separation/support/resources and stationary partner");
     }Ok(())
 }
+fn falling_contact(map:&Bsp)->Result<()> {
+    let w=World::from_bsp(map)?;
+    for (name,before,normal,velocity) in [
+        ("gallery",[vec3(527.38501,1186.87915,63.935966),vec3(543.67627,1162.8291,121.33673)],
+            vec3(0.24253564,0.,0.97014254),vec3(1.5649414,-3.0802407,-686.6662)),
+        ("narrow stairs",[vec3(3743.95288,2299.99707,197.53348),vec3(3743.62769,2304.29248,254.00348)],
+            vec3(0.,-0.44721362,0.89442724),vec3(2.1972656,-1.7285156,-126.66669)),
+    ] {for moving in 0..2 {
+        let mut roster=Roster::new(&w,before[0]+Vec3::Z*crate::movement::EYE_HEIGHT,0.,Stats::default())?;
+        for (b,at) in roster.players.iter_mut().zip(before) {b.player=Player::new(at);}
+        roster.players[0].player.grounded=true;
+        roster.players[0].player.ground_normal=normal;
+        roster.players[1].player.velocity=velocity;
+        if moving==0 {roster.players.swap(0,1);}
+        let still=roster.players[1-moving].player.feet;
+        for tick in 0..240 {
+            roster.move_players(&w,Default::default());
+            let d=roster.players[0].player.feet-roster.players[1].player.feet;
+            ensure!(d.truncate().length()>=crate::coop::separation::DISTANCE-0.05 || d.z.abs()>=PLAYER_HALF.z*2.-0.05,
+                "Captured descending chess overlap {name} slot{moving} tick{tick}");
+            ensure!(roster.players[1-moving].player.feet.distance(still)<0.01,"Falling Alice shoved her stationary partner");
+            ensure!(roster.players.iter().all(|b|w.body_clear(b.player.feet)),"Descending contact embedded a body");
+        }
+        println!("PASS captured native descending contact {name} slot{moving}: 240 physics ticks, no overlap or partner shove");
+    }}Ok(())
+}
 pub(super) fn check(a:&mut Assets)->Result<()> {
     let map=Bsp::parse(&a.read("maps/wchess1.bsp")?)?;
-    wall_contact(a,&map)?;
+    wall_contact(a,&map)?;falling_contact(&map)?;
     clocks(a,&map)?;lift(a,&map)?;hazards(a,&map)?;
     for kind in [scene::Kind::Intro,scene::Kind::Bishop,scene::Kind::Knight,scene::Kind::Bell,scene::Kind::Water] {
         for first in PlayerId::ALL {for skip in [false,true] {for dead in [false,true] {scene(a,&map,kind,first,skip,dead)?;}}}

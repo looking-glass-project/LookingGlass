@@ -141,7 +141,7 @@ pub fn resolve(world: &World, bodies: &mut [Body; 2], previous: [Vec3; 2]) {
     let end = bodies.each_ref().map(|b| b.player.feet);
     let start = previous[0] - previous[1];
     let finish = end[0] - end[1];
-    let Some((contact, _)) = contact(start, finish) else { return; };
+    let Some((contact, contact_normal)) = contact(start, finish) else { return; };
     let xy = start.truncate();
     let travel = (finish - start).truncate();
     let normal = (xy + travel * contact).try_normalize()
@@ -151,7 +151,11 @@ pub fn resolve(world: &World, bodies: &mut [Body; 2], previous: [Vec3; 2]) {
     let motion = [end[0]-previous[0], end[1]-previous[1]];
     let mut approach = [(-motion[0].truncate().dot(normal)).max(0.),
                     motion[1].truncate().dot(normal).max(0.)];
-    if approach[0]+approach[1] <= 0.0001 && bodies.iter().any(|b|b.player.rope.is_some()) {
+    // A descending/jumping body can enter vertically while its horizontal
+    // motion is stationary or already moving away. Only that approaching body
+    // yields; splitting the correction would shove the stationary partner.
+    if contact_normal.z != 0.
+        || approach[0]+approach[1] <= 0.0001 && bodies.iter().any(|b|b.player.rope.is_some()) {
         let vertical = start.z.signum();
         approach = [(-motion[0].z*vertical).max(0.), (motion[1].z*vertical).max(0.)];
     }
@@ -197,12 +201,31 @@ pub fn resolve(world: &World, bodies: &mut [Body; 2], previous: [Vec3; 2]) {
             if let Some(at)=contact_position(world,&bodies[i],to) {candidates[i]=at;}
             else {valid=false;break;}
         }
-        if !valid || (candidates[0]-candidates[1]).truncate().dot(normal)<DISTANCE-0.001 {continue;}
+        let separated=candidates[0]-candidates[1];
+        let vertical_stop=contact_normal.z!=0. && separated.z*start.z.signum()>=PLAYER_HALF.z*2.;
+        if !valid || !vertical_stop && separated.truncate().dot(normal)<DISTANCE-0.001 {continue;}
         for i in 0..2 {
             if approach[i]<=0. {continue;}
             let outward=if i==0 {normal}else{-normal};
             let p=&mut bodies[i].player;
             p.feet=candidates[i];
+            if vertical_stop {
+                // A narrow passage may have no safe sideways correction. Stop
+                // at the original vertical contact instead of falling through
+                // the partner. Record the falling player's impact, without
+                // repeating landing events for one-tick gravity at resting contact.
+                let up=if i==0 {start.z.signum()}else{-start.z.signum()};
+                let inward=(p.velocity.z*up).min(0.);
+                let impact=up>0. && inward < -crate::movement::GRAVITY*crate::movement::FIXED_DT*2. && !p.grounded;
+                if impact {
+                    p.landings+=1;
+                    p.landing_speed=-p.velocity.z*if p.immersion.level>0 {0.5}else{1.};
+                }
+                let landing=impact.then_some(p.landing_speed);
+                p.velocity.z-=up*inward;
+                if let Some(speed)=landing {bodies[i].stats.fall(speed);}
+                continue;
+            }
             let mut along=outward.extend(0.);
             if p.grounded && p.ground_normal.z>=0.65 {
                 along.z=-outward.dot(p.ground_normal.truncate())/p.ground_normal.z;
@@ -445,6 +468,59 @@ mod tests {
             input[moving].0.wish=-Vec2::Y;
             for _ in 0..60 {r.move_players(&world,input);}
             assert!(r.players[moving].player.feet.y < -50.);
+        }
+    }
+    #[test]
+    fn vertical_entry_moves_only_the_approaching_body_in_either_slot() {
+        for moving in 0..2 {for direction in [-1.,1.] {
+            let world=World::fixture(&[]);
+            let mut bodies=std::array::from_fn(|_|Body{player:Player::new(Vec3::ZERO),
+                stats:Stats::default(),yaw:0.,pitch:0.,running:false,spawned_at:0,warped_at:0});
+            bodies[moving].player.feet=vec3(20.,0.,-direction*58.);
+            let previous=bodies.each_ref().map(|b|b.player.feet);
+            let still=serde_json::to_value(&bodies[1-moving]).unwrap();
+            bodies[moving].player.feet+=vec3(0.01,0.,direction*6.);
+            bodies[moving].player.velocity=vec3(1.2,0.,direction*720.);
+            resolve(&world,&mut bodies,previous);
+            assert!(separate(&bodies));
+            assert_eq!(serde_json::to_value(&bodies[1-moving]).unwrap(),still);
+            assert!(world.body_clear(bodies[moving].player.feet));
+        }}
+    }
+    #[test]
+    fn narrow_vertical_contact_preserves_partner_and_charges_personal_landing() {
+        let world=World::fixture(&[
+            (vec3(-100.,-100.,-100.),vec3(100.,100.,0.)),
+            (vec3(-100.,-100.,0.),vec3(-20.,100.,200.)),
+            (vec3(20.,-100.,0.),vec3(100.,100.,200.)),
+            (vec3(-100.,-100.,0.),vec3(100.,-20.,200.)),
+            (vec3(-100.,20.,0.),vec3(100.,100.,200.)),
+        ]);
+        for moving in 0..2 {
+            let mut bodies=std::array::from_fn(|_|Body{player:Player::new(Vec3::Z*0.03125),
+                stats:Stats::default(),yaw:0.,pitch:0.,running:false,spawned_at:0,warped_at:0});
+            bodies[1-moving].player.grounded=true;
+            bodies[moving].player.feet.z=58.;
+            let previous=bodies.each_ref().map(|b|b.player.feet);
+            let still=serde_json::to_value(&bodies[1-moving]).unwrap();
+            bodies[moving].player.feet.z=52.;bodies[moving].player.velocity.z=-800.;
+            resolve(&world,&mut bodies,previous);
+            assert!(separate(&bodies));
+            assert_eq!(serde_json::to_value(&bodies[1-moving]).unwrap(),still);
+            assert!(bodies[moving].stats.sanity()<100. && bodies[moving].stats.alive());
+            assert_eq!(bodies[moving].player.velocity.z,0.);
+            assert_eq!(bodies[moving].player.landings,1);
+            for b in &bodies {assert!(world.body_clear(b.player.feet));}
+            let health=bodies[moving].stats.sanity();
+            for _ in 0..120 {
+                let previous=bodies.each_ref().map(|b|b.player.feet);
+                for b in &mut bodies {b.player.tick(&world,Controls::default());}
+                resolve(&world,&mut bodies,previous);
+                assert!(separate(&bodies));
+                assert_eq!(serde_json::to_value(&bodies[1-moving]).unwrap(),still);
+                assert_eq!(bodies[moving].player.landings,1);
+                assert_eq!(bodies[moving].stats.sanity(),health);
+            }
         }
     }
     #[test]

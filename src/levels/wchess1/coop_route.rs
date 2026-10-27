@@ -19,6 +19,14 @@ struct Replay {
 }
 impl Replay {
     fn realm(&self)->&Realm {self.arena.stage.interactions.levels.iter().find_map(|s|s.ctl.downcast_ref()).unwrap()}
+    fn observe_scene(&mut self)->Result<()> {
+        if let Some(id)=self.arena.stage.owner {
+            if let Some(name)=self.realm().scene_id() {
+                if name!="cinema_wchess1_intro_thread" {ensure!(id==self.first,"Wrong first chess actor {name}: {id:?}");}
+                if let Some(previous)=self.owners.insert(name.into(),id) {ensure!(previous==id,"Chess scene changed actor");}
+            }
+        }Ok(())
+    }
     fn inputs(&mut self,controls:[Controls;2],fight:bool)->[(Controls,Input);2] {
         let mut targets=self.arena.npcs.targets();targets.extend(self.arena.stage.interactions.levels_targets());
         let foes=targets.iter().filter(|t|self.realm().hostile_target(t.id)).copied().collect::<Vec<_>>();
@@ -60,6 +68,9 @@ impl Replay {
         let before=self.roster.players.each_ref().map(|b|b.player.feet);
         let old_owner=self.arena.stage.owner;let old_focus=self.arena.stage.interactive_actor();
         let old_warps=self.roster.players.each_ref().map(|b|b.warped_at);
+        // The initial pending scene can be skipped before the first Arena step.
+        // Observe its real owner before that input, as well as new scenes afterward.
+        self.observe_scene()?;
         if self.skip && self.arena.stage.busy() {
             let i=self.arena.stage.owner.context("Missing chess scene actor")?.index();
             self.arena.stage.interactions.skip_cinematic(&self.scene.map,&mut self.scene.world,
@@ -72,11 +83,8 @@ impl Replay {
         self.arena.step(&mut self.roster,&self.scene.map,&mut self.scene.world,inputs)?;
         if let Some(id)=self.arena.stage.owner {
             if old_owner==Some(id) {ensure!(self.roster.players[id.partner().index()].player.feet==before[id.partner().index()],"Waiting chess partner moved");}
-            if let Some(name)=self.realm().scene_id() {
-                if name!="cinema_wchess1_intro_thread" {ensure!(id==self.first,"Wrong first chess actor {name}: {id:?}");}
-                if let Some(previous)=self.owners.insert(name.into(),id) {ensure!(previous==id,"Chess scene changed actor");}
-            }
         }
+        self.observe_scene()?;
         ensure!(self.roster.checkpoint_generation==0 && self.roster.players.iter().all(|b|
             b.stats.alive() && b.spawned_at==0 && !b.stats.god && !b.stats.notarget),
             "Chess route death/wipe step{} tick{}: {:?}",self.index,self.roster.tick,
@@ -130,8 +138,16 @@ impl Replay {
             if self.arena.stage.interactive_actor().is_some(){return Ok(());}
             let ready=std::array::from_fn::<_,2,_>(|i|{
                 let p=&self.roster.players[i].player;let d=goals[i]-p.feet;
+                // A follower stopped safely on the leader must let the leader
+                // continue down the stairs; waiting for both to touch that
+                // same patch of floor would hold them at contact forever.
+                let gap=p.feet-self.roster.players[self.first.index()].player.feet;
+                let on_leader=!precise && i!=self.first.index() && p.velocity.z.abs()<0.1
+                    && (gap.z-PLAYER_HALF.z*2.).abs()<0.05
+                    && gap.truncate().length()<crate::coop::separation::DISTANCE;
                 d.truncate().length()<if precise {12.}else if i==self.first.index(){radius}else{80.}
-                    && d.z.abs()<if precise{24.}else{45.} && (p.grounded || p.swimming)
+                    && d.z.abs()<if precise{24.}else if on_leader{80.}else{45.}
+                    && (p.grounded || p.swimming || on_leader)
             });
             if ready.iter().all(|v|*v){if precise{self.trail.clear();}return Ok(());}
             let mut c=[Controls::default();2];
@@ -158,7 +174,13 @@ impl Replay {
                         // Even an arrived follower must yield; if neither side
                         // fits, continue ahead along the clear corridor.
                         for wish in [side,-side,forward] {
-                            let at=p.feet+wish.extend(0.)*48.;
+                            // Check a short walking segment each tick. A full
+                            // body-width lookahead wrongly rejects room to
+                            // yield beside the open supply door's hinge.
+                            let at=p.feet+wish.extend(0.)*12.;
+                            // Pick the side away from the leader. A clear wall
+                            // trace alone can still steer into the other Alice.
+                            if gap.truncate().dot(wish)<0. {continue;}
                             let path=self.scene.world.body_trace(p.feet,at);
                             let floor=self.scene.world.body_trace(at,at-Vec3::Z*32.);
                             if !path.start_solid && path.fraction==1. && !floor.start_solid && floor.fraction<1.
@@ -172,7 +194,15 @@ impl Replay {
                 if ready[i] {continue;}
                 if t%120==119 {
                     stuck[i]=if p.feet.distance(last[i])<16.{stuck[i]+1}else{0};last[i]=p.feet;
-                    if stuck[i]>=2 && plans[i].is_empty() {
+                    // Try an ordinary jump over a low obstruction before
+                    // planning a detour. The final water entrance has a lip;
+                    // the single-player route also hops here before swimming.
+                    if (2..4).contains(&stuck[i]) && p.grounded && plans[i].is_empty() {
+                        c[i]=Controls{wish:d.truncate().normalize_or_zero(),swim:d.normalize_or_zero(),
+                            jump:true,run:true,..Default::default()};
+                        continue;
+                    }
+                    if stuck[i]>=4 && plans[i].is_empty() {
                         println!("Chess search step{} {id:?} {:?} -> {goal:?}",self.index,p.feet);
                         plans[i]=Route::plan(&self.scene.world,p,goal,22.)
                             .map_err(|n|anyhow::anyhow!("Chess path step{} {id:?} exhausted {n} states",self.index))?.into();ages[i]=0;

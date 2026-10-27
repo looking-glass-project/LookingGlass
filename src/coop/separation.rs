@@ -57,14 +57,20 @@ fn clear(world: &World, body: &Body, to: Vec3) -> bool {
 fn contact_position(world: &World, body: &Body, to: Vec3) -> Option<Vec3> {
     if clear(world, body, to) { return Some(to); }
     let p = &body.player;
-    if !p.grounded || p.swimming { return None; }
     let trace = world.body_trace(p.feet, to);
-    if trace.start_solid || trace.fraction >= 1. || trace.normal.z < 0.65 { return None; }
+    if trace.start_solid || trace.fraction >= 1. { return None; }
     // A tangent sweep can touch the resting floor at fraction zero after
     // rounding at native map coordinates. Give the destination one skin of
     // clearance, then recheck the entire path, body and centre support.
-    let raised = to + Vec3::Z * (crate::collision::SKIN / trace.normal.z);
-    clear(world, body, raised).then_some(raised)
+    let offset = if p.grounded && !p.swimming && trace.normal.z >= 0.65 {
+        Vec3::Z * (crate::collision::SKIN / trace.normal.z)
+    } else if trace.normal.z.abs() < 0.65 {
+        // Rotated doors have the same rounding at a glancing wall contact.
+        // Move outward by one skin, retaining the full swept/body/support tests.
+        trace.normal * crate::collision::SKIN
+    } else {return None;};
+    let candidate=to+offset;
+    clear(world, body, candidate).then_some(candidate)
 }
 
 fn contact(start: Vec3, finish: Vec3) -> Option<(f32, Vec3)> {
@@ -173,6 +179,37 @@ pub fn resolve(world: &World, bodies: &mut [Body; 2], previous: [Vec3; 2]) {
             // component after stopping uphill motion would launch Alice.
             p.velocity -= along * inward;
         }
+    }
+    if (bodies[0].player.feet-bodies[1].player.feet).truncate().dot(normal) >= DISTANCE-0.001 {
+        return;
+    }
+    // Sliding along a wall can make the normal correction point into that
+    // wall. Retreat approaching bodies along their actual movement instead.
+    // Check the pair before applying either result; a stationary or departing
+    // partner retains its position, and no correction may lose floor support.
+    for fraction in [(contact-0.001).max(0.),0.] {
+        let mut candidates=bodies.each_ref().map(|b|b.player.feet);
+        let mut valid=true;
+        for i in 0..2 {
+            if approach[i]<=0. {continue;}
+            if !movable(&bodies[i]) {valid=false;break;}
+            let to=previous[i].lerp(end[i],fraction);
+            if let Some(at)=contact_position(world,&bodies[i],to) {candidates[i]=at;}
+            else {valid=false;break;}
+        }
+        if !valid || (candidates[0]-candidates[1]).truncate().dot(normal)<DISTANCE-0.001 {continue;}
+        for i in 0..2 {
+            if approach[i]<=0. {continue;}
+            let outward=if i==0 {normal}else{-normal};
+            let p=&mut bodies[i].player;
+            p.feet=candidates[i];
+            let mut along=outward.extend(0.);
+            if p.grounded && p.ground_normal.z>=0.65 {
+                along.z=-outward.dot(p.ground_normal.truncate())/p.ground_normal.z;
+            }
+            p.velocity-=along*p.velocity.truncate().dot(outward).min(0.);
+        }
+        break;
     }
 }
 
@@ -379,6 +416,35 @@ mod tests {
             input[moving].0.wish = (direction+Vec2::Y).normalize();
             for _ in 0..60 { r.move_players(&world,input); }
             assert!(r.players[moving].player.feet.y>80.);
+        }
+    }
+    #[test]
+    fn wall_slide_contact_retreats_along_motion_without_shoving_the_partner() {
+        let world=World::fixture(&[
+            (vec3(-500.,-500.,-100.),vec3(500.,500.,0.)),
+            (vec3(-500.,-500.,0.),vec3(-15.,500.,200.)),
+        ]);
+        for moving in 0..2 {
+            let mut r=pair(&world,[vec3(0.03125,-2.,0.03125),vec3(20.03125,30.,0.03125)]);
+            if moving==1 {r.players.swap(0,1);}
+            let still=serde_json::to_value(&r.players[1-moving]).unwrap();
+            let old=r.players.each_ref().map(|b|b.player.feet);
+            r.players[moving].player.feet.y=1.;
+            r.players[moving].player.velocity=Vec3::Y*104.;
+            resolve(&world,&mut r.players,old);
+            assert!(separate(&r.players));
+            assert_eq!(serde_json::to_value(&r.players[1-moving]).unwrap(),still);
+            let mut input=[(Controls::default(),Default::default());2];
+            input[moving].0=Controls{wish:Vec2::Y,run:true,..Default::default()};
+            for _ in 0..240 {
+                r.move_players(&world,input);
+                assert!(separate(&r.players));
+                assert!(r.players.iter().all(|b|clear(&world,b,b.player.feet)));
+                assert_eq!(r.players[1-moving].player.feet,old[1-moving]);
+            }
+            input[moving].0.wish=-Vec2::Y;
+            for _ in 0..60 {r.move_players(&world,input);}
+            assert!(r.players[moving].player.feet.y < -50.);
         }
     }
     #[test]

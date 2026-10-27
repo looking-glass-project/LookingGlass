@@ -3,6 +3,7 @@ mod art;
 mod cast;
 mod coop;
 mod coop_check;
+mod coop_route;
 mod coop_world_check;
 mod check;
 pub(crate) use check::drive as drive_route;
@@ -915,6 +916,16 @@ pub static REGISTRATION: Registration = Registration {
     target_base: Some(BASE),
     story_beats: &[],
     checks: &[
+        Check {
+            flag: "--wchess1-coop-route-probe",
+            help: "Inspect collision in a captured co-op route report without changing gameplay.",
+            run: Run::Headless(coop_route::probe),
+        },
+        Check {
+            flag: "--wchess1-coop-route-check",
+            help: "Drive both players through the native Pale Realm combat, puzzles and exit.",
+            run: Run::Windowed(coop_route::check),
+        },
         Check {
             flag: "--wchess1-coop-render-check",
             help: "Render both paired chess transformation owners and their restored particle effects.",

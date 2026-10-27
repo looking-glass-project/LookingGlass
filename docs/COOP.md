@@ -157,6 +157,16 @@ to **45.8%**. Full paired traversal, independent internet clients, combat effect
 team wipes and reconnects still need this visit's combined coverage. See
 [world and puzzle evidence](WCHESS1.md#co-op-world-and-puzzles).
 
+The continuous Pale Realm Arena route now captures reproducible failures using
+ordinary inputs, funded combat and compressed guest snapshots. It exposed an
+angled open-door contact where the players could overlap slightly. Source
+`24a8a6f` fixes that contact and passes **81 native world cases**, including both
+captured player roles. All three single-player check logs still match baseline.
+The four complete paired route attempts remain **0/4**: they now stay separate
+but the automated follower blocks the supply-return waypoint. This adds no
+campaign completion credit; the estimate stays **45.8%**. See
+[route and contact evidence](WCHESS1.md#continuous-co-op-route-and-captured-door-contact).
+
 The overall percentage is a weighted estimate, not elapsed time or a live build
 indicator. An earlier Garden build passed 4/4 native paired routes. After adding
 rope contact, the current build passes **2/4 native paired routes** (both watched

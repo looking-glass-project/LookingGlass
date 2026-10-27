@@ -198,3 +198,52 @@ existing test remains ignored); the seven source-package tests also pass.
 This visit remains partial. Full paired traversal/combat, independent internet
 play, rendered combat effects, visit-level team wipes/checkpoint reload and
 disconnect/rejoin still require combined evidence.
+
+## Continuous co-op route and captured door contact
+
+`--wchess1-coop-route-check` now drives the production Arena from the entrance
+with both player orders and watched/skipped scenes. It uses ordinary movement,
+funded attacks, door use, original puzzle inputs and lever use. Navigation goals
+never write player positions, inventory, health or progression. Every tick
+checks for death/wipe, unscripted relocation and body overlap; regular compressed
+guest snapshots must match. Completion requires all five scenes, both puzzles,
+the water unlock and a real Castling arrival preserving both players' resources.
+
+The default course is `src/levels/wchess1/coop_steps.json`. Optional selectors
+`LOOKING_GLASS_CHESS_COOP_FIRST=Blue|Red` and
+`LOOKING_GLASS_CHESS_COOP_SCENES=watched|skipped` narrow a run. A local
+`LOOKING_GLASS_CHESS_COOP_COURSE` override supports diagnosis. Reports under the
+isolated settings directory record the source identity, course SHA-256, original
+course identity, current goal, recent inputs and complete captured world. A
+different course cannot receive `full_route_passed=true`.
+`--wchess1-coop-route-probe` reads `LOOKING_GLASS_CHESS_ROUTE_REPORT` and examines
+collision on isolated copies. Its optional `LOOKING_GLASS_CHESS_ROUTE_GOAL` is a
+JSON `[x,y,z]`; it never changes a running session or supplies traversal credit.
+
+The route exposed a real contact failure beside the fully opened supply door:
+normal separation pointed into its angled surface, while rounding rejected a
+safe retreat along the actual movement. Co-op separation now checks a bounded
+retreat of approaching bodies and one collision skin of clearance for glancing
+wall contacts. Full swept collision, body clearance and support checks remain;
+stationary/departing partners are not used to make room for an approaching body.
+The regression restores the original door's 90-degree pose and verifies that
+the captured blocked trace exists before checking both player slots for 240
+movement ticks, with unchanged resources and a stationary partner.
+
+Source `24a8a6f5f69995f93e34245d5865951e10c5665dbde4b0b219ba1e4270b8db11`
+passes **81 native world cases**, including these two contact cases, in
+`private/coop-wchess1-components12.log`. The frozen executable is
+`private/coop-wchess1-world-24a8a6f.exe`, SHA-256
+`2955ce2cdac1bb7d9fe586e8e5161b9f975b12a3759cdedf08afb35cebcdf09a`.
+All three complete normalized single-player check logs still match `2990c66`.
+The locked release build, **816 Rust tests** (one existing ignored test), seven
+source-package tests and source worktree audit pass on this source.
+
+The four default full-route attempts remain **0/4**. They now retain separation
+through the formerly failing contact, but stop at supply-return step 22 because
+the automated follower blocks the next waypoint. See
+`private/coop-wchess1-route12-all.log` and its per-case captured reports under
+`private/coop-wchess1-route12-all-settings/`. This is a verified contact fix and
+repeatable route diagnosis, not a completed campaign visit. Overall progress
+remains **45.8%**; full traversal and the independent internet/recovery matrix
+remain open. No images were captured or inspected.

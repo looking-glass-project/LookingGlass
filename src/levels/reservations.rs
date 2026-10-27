@@ -313,10 +313,10 @@ pub static RESERVATIONS: [Reservation; 39] = [
     }), ..visit(18, "wforest") },
     Reservation {
         flags: Some(VisitFlags {
-            contract: &["--wchess1-check", "--wchess1-floor-survey", "--wchess1-coop-combat-check", "--wchess1-coop-world-check"],
+            contract: &["--wchess1-check", "--wchess1-floor-survey", "--wchess1-coop-combat-check", "--wchess1-coop-world-check", "--wchess1-coop-route-probe"],
             route: &["--wchess1-route-check", "--wchess1-route"],
             skip: &["--wchess1-skip-route-check", "--wchess1-route-skip-check"],
-            render: &["--wchess1-render-check", "--wchess1-coop-render-check"],
+            render: &["--wchess1-render-check", "--wchess1-coop-render-check", "--wchess1-coop-route-check"],
         }),
         ..visit(19, "wchess1")
     },

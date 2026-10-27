@@ -291,8 +291,55 @@ fn board_death(a:&mut Assets,map:&Bsp)->Result<()> {
         println!("PASS puzzle death {first:?}: partner released, retry and invalid-owner validation, saved ten-second 25-health revival");
     }Ok(())
 }
+fn wall_contact(a:&mut Assets,map:&Bsp)->Result<()> {
+    let mut w=World::from_bsp(map)?;
+    let visit=Visit{epoch:1,map:"wchess1".into(),entry:Some("wchess1_start1".into()),difficulty:Default::default(),combat_preview:false};
+    let mut stage=Stage::load(a,map,&mut w,&visit,false)?;
+    // The captured wall is the fully opened supply door, not a static brush.
+    // Restore that native door pose as an explicit component fixture.
+    let mut saved=serde_json::to_value(stage.snapshot())?;
+    let door=saved["world"]["doors"].as_array_mut().unwrap().iter_mut()
+        .find(|d|d["id"]==294).context("Missing supply door")?;
+    door["angle"]=serde_json::json!(90.);door["target"]=serde_json::json!(90.);
+    stage.restore(&serde_json::from_value(saved)?,map,&mut w)?;
+    // Exact movement endpoints captured by the continuous route at its supply
+    // corridor. This isolated replay is a contact regression, not route credit.
+    let before=[vec3(-10.2879038,-532.2437744,64.03125),vec3(7.7714453,-500.8675842,64.03125)];
+    let after=[vec3(-9.862754,-531.8186035,64.03125),vec3(7.8765364,-500.816925,64.03125)];
+    let blocked=w.body_trace(after[0],before[0]);
+    ensure!(blocked.fraction<1. && blocked.normal.z.abs()<0.01,"Native fixture lost the captured glancing door contact");
+    for moving in 0..2 {
+        let mut roster=Roster::new(&w,after[0]+Vec3::Z*crate::movement::EYE_HEIGHT,0.,Stats::default())?;
+        for (b,at) in roster.players.iter_mut().zip(after) {
+            b.player=Player::new(at);b.player.grounded=true;
+            ensure!(w.body_clear(at),"Captured chess contact embedded in native geometry");
+        }
+        roster.players[0].player.velocity=vec3(51.017956,51.01796,0.);
+        roster.players[0].stats.spend_will(17.);
+        let mut previous=before;
+        if moving==1 {roster.players.swap(0,1);previous.swap(0,1);}
+        let still=roster.players[1-moving].player.feet;
+        let resources=roster.players.each_ref().map(|b|serde_json::to_value(&b.stats).unwrap());
+        crate::coop::separation::resolve(&w,&mut roster.players,previous);
+        for tick in 0..240 {
+            let d=roster.players[0].player.feet-roster.players[1].player.feet;
+            ensure!(d.truncate().length()>=crate::coop::separation::DISTANCE-0.05,"Native chess wall overlap moving{moving} tick{tick}");
+            for (i,b) in roster.players.iter().enumerate() {
+                ensure!(w.body_clear(b.player.feet) && w.body_trace(b.player.feet,b.player.feet-Vec3::Z*2.).fraction<1.
+                    && serde_json::to_value(&b.stats)?==resources[i],"Wall correction lost support or personal resources");
+            }
+            ensure!(roster.players[1-moving].player.feet==still,"Wall correction shoved the partner");
+            let d=vec3(0.,-528.,64.)-roster.players[moving].player.feet;
+            let mut inputs=[(Controls::default(),Input::default());2];
+            inputs[moving].0=Controls{wish:d.truncate().normalize_or_zero()*(d.truncate().length()/48.).min(1.),run:true,..Default::default()};
+            roster.move_players(&w,inputs);
+        }
+        println!("PASS captured native chess wall contact slot{moving}: 240 ordinary movement ticks, separation/support/resources and stationary partner");
+    }Ok(())
+}
 pub(super) fn check(a:&mut Assets)->Result<()> {
     let map=Bsp::parse(&a.read("maps/wchess1.bsp")?)?;
+    wall_contact(a,&map)?;
     clocks(a,&map)?;lift(a,&map)?;hazards(a,&map)?;
     for kind in [scene::Kind::Intro,scene::Kind::Bishop,scene::Kind::Knight,scene::Kind::Bell,scene::Kind::Water] {
         for first in PlayerId::ALL {for skip in [false,true] {for dead in [false,true] {scene(a,&map,kind,first,skip,dead)?;}}}

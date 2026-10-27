@@ -106,6 +106,18 @@ Arena cases pass. Internet/rejoin testing is still required; no campaign row or
 additional percentage credit is claimed for this local route milestone.
 See [Sanctum details](CENTIPEDE2.md).
 
+Sanctum now also passes one **full Blue-first internet route with guest rejoin**
+on source `bb4d83b`, using two independent clients, 40 ms delay and 20 ms jitter
+per sender. All six boss hits, normal checkpoint saving, fresh guest reconnect,
+correct mushroom ownership and next-level arrival pass; both players survive
+at 51/49.5 health, and 1,874 matching player/world/native states agree. All four
+native routes repeat successfully on the same source. Red-first internet
+traversal remains open because the delayed test controller stalls on the climb;
+the failure reports and authentic checkpoint permit image-free replay. Full
+separate-client recovery/effects coverage is still required. This verifies more
+of the existing adapter credit: **44.6% overall, six combined campaign rows**.
+Evidence: `private/coop/sanctum-route-a90c37b7f8d54d69ae30417854abf9d1/`.
+
 The overall percentage is a weighted estimate, not elapsed time or a live build
 indicator. An earlier Garden build passed 4/4 native paired routes. After adding
 rope contact, the current build passes **2/4 native paired routes** (both watched

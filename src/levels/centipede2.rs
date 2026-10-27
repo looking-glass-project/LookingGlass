@@ -7,6 +7,7 @@ mod coop;
 mod coop_check;
 mod coop_route;
 pub(crate) use check::drive as drive_route;
+pub(crate) use coop_route::NetworkDriver;
 mod data;
 mod saves;
 mod scene;

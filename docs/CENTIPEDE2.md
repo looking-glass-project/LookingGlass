@@ -154,6 +154,51 @@ stderr. Normal still passes and Hard fails at the same position. Logs end in
 Separate-process internet traversal and reconnect checks remain open, so the
 campaign row remains partial and the weighted estimate stays 44.6%.
 
+`tools/test_coop_sanctum.py` drives two independent rendered clients through the
+public invite path, using 40 ms delay and 20 ms jitter per sender by default.
+`--first blue|red` selects the intended mushroom-scene arrival; the follower
+waits below the last platform rather than racing the chosen leader. Each client
+plans from its own received world and sends ordinary controls. Delayed clients
+settle at climb waypoints and send a pull-up jump only before pulling begins,
+so stale jump edges do not cause an extra hop after landing. `--rejoin` uses
+the normal host save operation after defeating the boss, leaves/restarts the
+guest, and checks personal resources and completed progress before continuing.
+The saved checkpoint and failure reports remain in its isolated private profile.
+This fixture uses state assertions and matching sent/restored hashes, with no
+image captures; runtime evidence is recorded separately from its availability.
+
+Source `bb4d83b492c995093eab574ae752955c0ecd539cad5f3032de0cd8d2a5f71890`
+passes a **complete Blue-first internet route with a fresh guest rejoin**. Both
+independent clients use the public invite path with 40 ms delay and 20 ms jitter
+per sender; this run sets `--input-lead 0.04 --first blue --rejoin`. It watches
+the entrance, lands all six funded boss hits, saves through the normal host
+operation, restarts the guest, completes the mushroom scenes with Blue as owner,
+and enters `wforest` alive at 51/49.5 health. All 1,874 matching player, world and
+native-resident states agree. Both clients exit successfully. Evidence:
+`private/coop/sanctum-route-a90c37b7f8d54d69ae30417854abf9d1/result.json`.
+The exact fixture source/hash, normal checkpoint, histories and logs are retained
+there. No images were captured or inspected.
+
+The same source repeats **all four native paired routes successfully**, with the
+same tick counts and outcomes as `0edf86a`; evidence is
+`private/coop-centipede2-route-all-bb4d83b.log`. All 812 active unit tests and the
+locked release build pass. The network driver is opt-in test automation: it
+reads the client's own received world and sends ordinary controls without
+changing gameplay physics, positions, resources or progression.
+
+Red-first internet traversal is **still open**. One earlier full session reached
+the next visit but Blue overtook the intended leader, so it fails the Red-owner
+assertion. Subsequent captured-checkpoint climb tests stop automatically when
+Red's delayed steering stalls, including a waypoint blocked by the follower
+after Red falls and returns. The saved checkpoint is authentic; `--checkpoint`
+results are explicitly segment-only and never count as entrance/boss traversal.
+The latest failing segment is retained in
+`private/coop/sanctum-route-66dacc6d323442deb41abb77b812f312/`.
+Further work must improve the ordinary-input controller without weakening
+collision or scene-owner assertions. Separate-client combat/recovery, broader
+effects and both players independently finishing every climb remain unverified.
+The campaign row stays partial and the overall estimate stays **44.6%**.
+
 Source `993d722cbcdd1ad904d6ff66269e3a5fbf5ee54c245e816959bedebe3ea94c9b`
 passes **28 native co-op cases**: eight target/acid/melee/grab cases, six attack
 timing cases at 30/60/144 Hz, two personal healing cases, eight watched/skipped

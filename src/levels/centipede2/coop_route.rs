@@ -1,12 +1,12 @@
 //! Full native Arena route. Only ordinary movement, weapon and scene-skip inputs.
 use super::*;
-use crate::{coop::{arena::Arena, protocol::{Input,Visit}, world::{Body,Roster},PlayerId},
+use crate::{coop::{arena::Arena, protocol::{Input,Visit}, world::{Body,Frame,Roster},PlayerId},
     movement::Controls, render::Scene};
 use std::collections::VecDeque;
 fn owner(arena:&Arena)->&Centipede {
     arena.stage.interactions.levels.iter().find_map(|s|s.ctl.downcast_ref::<Centipede>()).unwrap()
 }
-fn input(arena:&Arena,body:&Body,id:PlayerId,first:PlayerId,goals:&[Vec3],steps:&mut [usize;2],climb_ticks:usize)->(Controls,Input) {
+fn input(arena:&Arena,body:&Body,id:PlayerId,first:PlayerId,goals:&[Vec3],steps:&mut [usize;2],climb_ticks:usize,lead:f32)->(Controls,Input) {
     let o=owner(arena);let p=&body.player;
     let mut c=Controls::default();let mut keys=Input{yaw:body.yaw,pitch:body.pitch,..Default::default()};
     match o.saved.phase {
@@ -32,9 +32,14 @@ fn input(arena:&Arena,body:&Body,id:PlayerId,first:PlayerId,goals:&[Vec3],steps:
             if id!=first && steps[first.index()]<2 && climb_ticks<240 {return (c,keys);}
             while let Some(goal)=goals.get(steps[id.index()]) {
                 let delta=*goal-p.feet;let d=delta.truncate();
-                if d.length()<10. && delta.z.abs()<18. && p.grounded {steps[id.index()]+=1;continue;}
-                c.wish=d.normalize_or_zero()*(d.length()/60.).min(1.);c.run=true;
-                c.jump=p.ledge.is_some() || p.grounded && delta.z>24. && d.length()<330.;
+                if d.length()<10. && delta.z.abs()<18. && p.grounded
+                    && (lead==0. || p.velocity.truncate().length()<25.) {steps[id.index()]+=1;continue;}
+                let steering=d-p.velocity.truncate()*lead;
+                c.wish=steering.normalize_or_zero()*(steering.length()/60.).min(1.);c.run=true;
+                // A pull-up continues by itself. Repeated jump edges from a
+                // delayed view can otherwise arrive after it lands and hop off.
+                c.jump=p.ledge.as_ref().is_some_and(|h|!h.pulling)
+                    || p.grounded && delta.z>24. && d.length()<330.;
                 if d.length()>0. {keys.yaw=d.y.atan2(d.x);keys.pitch=0.;}
                 break;
             }
@@ -42,6 +47,57 @@ fn input(arena:&Arena,body:&Body,id:PlayerId,first:PlayerId,goals:&[Vec3],steps:
         _=>{}
     }
     (c,keys)
+}
+/// Opt-in client-side fixture. Uses only the received world and emits ordinary
+/// controls; it cannot mutate the boss, bodies, resources or scene progression.
+pub(crate) struct NetworkDriver {
+    goals:Vec<Vec3>,
+    steps:[usize;2],
+    climb_ticks:usize,
+    last_tick:Option<u64>,
+    cached:(Controls,Input),
+}
+impl NetworkDriver {
+    pub(crate) fn new()->Result<Self> {
+        Ok(Self{goals:check::climb_goals()?,steps:[0;2],climb_ticks:0,last_tick:None,cached:Default::default()})
+    }
+    pub(crate) fn report(&self)->serde_json::Value {
+        serde_json::json!({"steps":self.steps,"climb_ticks":self.climb_ticks,"observed_tick":self.last_tick})
+    }
+    pub(crate) fn sample(&mut self,frame:&Frame,arena:&Arena,local:PlayerId,first:PlayerId,lead:f32,keys:&mut Input)->Result<()> {
+        let o=arena.stage.interactions.levels.iter().find_map(|s|s.ctl.downcast_ref::<Centipede>())
+            .context("Sanctum course command used outside Sanctum")?;
+        let fresh=self.last_tick!=Some(frame.tick);
+        if fresh {
+            let elapsed=self.last_tick.map_or(1,|old|frame.tick.saturating_sub(old) as usize);
+            ensure!(elapsed>0 && elapsed<=360,"Sanctum course observation clock reset or stalled");
+            self.last_tick=Some(frame.tick);self.cached=Default::default();
+            if !arena.stage.busy() && frame.players[local.index()].stats.alive() {
+                if o.saved.phase==Phase::Climb {self.climb_ticks+=elapsed;}
+                for id in PlayerId::ALL {
+                    let chosen=input(arena,&frame.players[id.index()],id,first,&self.goals,&mut self.steps,self.climb_ticks,lead);
+                    if id==local {
+                        self.cached=chosen;
+                        if id!=first && o.saved.phase==Phase::Climb {
+                            let gap=frame.players[id.index()].player.feet-frame.players[first.index()].player.feet;
+                            // Leave room for the leader to brake and settle at
+                            // a shared waypoint, rather than pinning them there.
+                            // Also reserve the final approach for the chosen actor.
+                            if self.steps[id.index()]>=7 || gap.truncate().length()<96. && gap.z.abs()<120. {
+                                self.cached.0=Controls::default();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        let (control,input)=self.cached;
+        keys.wish=control.wish;keys.run=control.run;
+        keys.yaw=input.yaw;keys.pitch=input.pitch.clamp(-1.56,1.56);
+        keys.primary=input.primary;keys.alternate=input.alternate;keys.weapon=input.weapon;
+        if fresh {keys.jumps+=u64::from(control.jump);}
+        keys.validate()
+    }
 }
 async fn route(a:&mut Assets,first:PlayerId,skip:bool)->Result<()> {
     let visit=Visit{epoch:1,map:"centipede2".into(),entry:Some("centipede2_start1".into()),difficulty:Default::default(),combat_preview:false};
@@ -62,7 +118,7 @@ async fn route(a:&mut Assets,first:PlayerId,skip:bool)->Result<()> {
             let mut inputs=[(Controls::default(),Input::default());2];
             if !arena.stage.busy() {
                 if old_phase==Phase::Climb {climb_ticks+=1;}
-                for id in PlayerId::ALL {inputs[id.index()]=input(&arena,&roster.players[id.index()],id,first,&goals,&mut steps,climb_ticks);}
+                for id in PlayerId::ALL {inputs[id.index()]=input(&arena,&roster.players[id.index()],id,first,&goals,&mut steps,climb_ticks,0.);}
             } else if skip && old_phase==Phase::Intro {
                 let id=arena.stage.owner.context("Intro has no owner")?;
                 arena.stage.interactions.skip_cinematic(&scene.map,&mut scene.world,&mut roster.players[id.index()].player,&mut arena.stage.story)?;

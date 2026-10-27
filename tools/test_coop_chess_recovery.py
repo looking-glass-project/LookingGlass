@@ -2,7 +2,8 @@
 
 The approach starts from an unchanged normal checkpoint. Combat uses ordinary
 course controls; after a death the survivor retreats along already visited
-waypoints. This is recovery evidence only, never full-route completion.
+waypoints. An explicit victim keeps fighting while the partner retreats first.
+This is recovery evidence only, never full-route completion.
 """
 import argparse
 import hashlib
@@ -81,7 +82,9 @@ class ChessRecovery(ChessResume):
                 assert distance(current['player']['feet'], old['player']['feet']) < 2
                 verify_rejoin_stats(old['stats'], current['stats'], elapsed)
         for role in self.commands:
-            self.set(role, step=self.args.start_step)
+            # Load the course without accidentally beginning the target fight
+            # before the survivor's deliberate retreat has been arranged.
+            self.set(role, step=min(self.args.start_step, self.args.death_step-1))
         self.until(lambda: len(self.course_hashes) == 2, 20)
         assert 0 < self.args.start_step <= self.args.death_step < len(self.steps)
         for index in range(self.args.start_step, self.args.death_step):
@@ -96,11 +99,30 @@ class ChessRecovery(ChessResume):
         if self.args.death_step in self.args.save_before:
             self.save_checkpoint(self.args.death_step)
         self.recovering = True
-        for role in self.commands:
-            self.set(role, step=self.args.death_step)
-        self.until(lambda: any(b['stats']['sanity'] <= 0 for b in self.reports['host']['frame']['players']), 180)
+        requested = None if self.args.victim == 'auto' else ('blue', 'red').index(self.args.victim)
+        if requested is not None:
+            for role in self.commands:
+                self.set(role)
+            survivor_role = ('host', 'guest')[1-requested]
+            at = self.reports['host']['frame']['players'][1-requested]['player']['feet']
+            # Pass around the waiting partner before retreating east. A
+            # straight reverse path can make the two solid bodies block one
+            # another in this doorway. Every waypoint uses normal movement.
+            side_y = 1368 if requested == 1 else 1456
+            for goal in ([at[0], side_y, at[2]], [2592, 1392 if requested == 1 else 1456, 256]):
+                self.set(survivor_role, goal=goal, navigate=True)
+                self.until(lambda: self.reached(survivor_role), 30)
+            self.set(survivor_role, goal=self.steps[122]['pos'], navigate=True)
+            self.set(('host', 'guest')[requested], step=self.args.death_step)
+        else:
+            for role in self.commands:
+                self.set(role, step=self.args.death_step)
+        self.until(lambda: any(b['stats']['sanity'] <= 0 for b in self.reports['host']['frame']['players'])
+                   or all(self.reached(role) for role in self.commands), 180)
         bodies = self.reports['host']['frame']['players']
+        assert any(b['stats']['sanity'] <= 0 for b in bodies), 'Encounter finished without a death; no revival evidence'
         victim = next(i for i, b in enumerate(bodies) if b['stats']['sanity'] <= 0)
+        assert requested is None or victim == requested, 'Encounter killed a different player than requested'
         survivor = 1-victim
         assert bodies[survivor]['stats']['sanity'] > 0, 'No survivor to spectate'
         victim_role, survivor_role = ('host', 'guest')[victim], ('host', 'guest')[survivor]
@@ -143,7 +165,9 @@ class ChessRecovery(ChessResume):
             self.until(lambda: self.processes[role].poll() is not None, 30)
             assert self.processes[role].returncode == 0
         (self.folder / 'result.json').write_text(json.dumps(dict(passed=True, full_route_passed=False,
-            build=self.build, internet=not self.args.local, evidence=self.evidence,
+            build=self.build, internet=not self.args.local, first=self.args.first,
+            requested_victim=self.args.victim, delay_ms=self.args.delay_ms,
+            jitter_ms=self.args.jitter_ms, evidence=self.evidence,
             scope='Real combat death and ten-second revival only; no team-wipe or full-route credit'), indent=2))
         print('PASS real combat death, moving spectator camera and ten-second 25-health revival', flush=True)
 
@@ -154,9 +178,11 @@ if __name__ == '__main__':
     parser.add_argument('--data', type=Path, required=True)
     parser.add_argument('--checkpoint', type=Path, required=True)
     parser.add_argument('--start-step', type=int, default=100)
-    parser.add_argument('--death-step', type=int, default=126)
+    parser.add_argument('--death-step', type=int, choices=[126], default=126)
     parser.add_argument('--save-before', nargs='*', type=int, default=[126])
     parser.add_argument('--first', choices=('blue', 'red'), default='blue')
+    parser.add_argument('--victim', choices=('auto', 'blue', 'red'), default='auto',
+                        help='Keep this player fighting while the partner retreats before the death')
     parser.add_argument('--local', action='store_true')
     parser.add_argument('--delay-ms', type=int, default=40)
     parser.add_argument('--jitter-ms', type=int, default=20)

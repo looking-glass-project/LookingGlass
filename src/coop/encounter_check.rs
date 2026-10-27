@@ -23,6 +23,9 @@ struct Fixture {
     /// Export this isolated current visit through the normal save machinery.
     #[serde(default)]
     export_checkpoint: bool,
+    /// Retain the resulting native state for focused combat diagnosis.
+    #[serde(default)]
+    capture_final: bool,
     cases: Vec<Case>,
 }
 #[derive(Deserialize, Serialize)]
@@ -137,6 +140,8 @@ struct Outcome {
     revivals: Vec<Revival>,
     health: [f32; 2],
     final_sha256: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    final_state: Option<serde_json::Value>,
     samples: Vec<serde_json::Value>,
 }
 #[derive(Serialize, PartialEq)]
@@ -159,6 +164,7 @@ fn run(
     frame: &Frame,
     initial: &Snapshot,
     case: &Case,
+    capture_final: bool,
 ) -> Result<Outcome> {
     arena.restore_checkpoint(initial, map, world)?;
     let mut roster =
@@ -178,6 +184,7 @@ fn run(
         revivals: vec![],
         health: frame.players.each_ref().map(|p| p.stats.sanity()),
         final_sha256: String::new(),
+        final_state: None,
         samples: vec![],
     };
     let mut death_at = [None; 2];
@@ -286,6 +293,10 @@ fn run(
         }
     }
     result.final_sha256 = digest(&(roster.frame(frame.epoch, 0), arena.snapshot()))?;
+    if capture_final {
+        result.final_state = Some(serde_json::json!({
+            "frame":roster.frame(frame.epoch,0), "combat":arena.snapshot()}));
+    }
     Ok(result)
 }
 
@@ -352,8 +363,8 @@ pub async fn check(assets: &mut Assets) -> Result<()> {
     let mut results = vec![];
     let mut failed = false;
     for case in &fixture.cases {
-        let one = run(&mut arena, &map, &mut world, &frame, &snapshot, case)?;
-        let two = run(&mut arena, &map, &mut world, &frame, &snapshot, case)?;
+        let one = run(&mut arena, &map, &mut world, &frame, &snapshot, case, fixture.capture_final)?;
+        let two = run(&mut arena, &map, &mut world, &frame, &snapshot, case, fixture.capture_final)?;
         ensure!(
             one == two,
             "Encounter {} differs between identical restores and inputs",

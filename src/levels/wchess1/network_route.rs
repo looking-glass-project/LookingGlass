@@ -17,6 +17,7 @@ pub(crate) struct NetworkDriver {
     board_node:Option<usize>, board_move:usize, board_moving:bool,
     jump_at:Option<u64>, use_at:Option<u64>, tracker:fight::Tracker,
     closing:Option<usize>,
+    missed:Option<(usize,f32,u64)>, sidestep:Option<Vec3>,
     cached:(Controls,Input),
 }
 impl NetworkDriver {
@@ -27,7 +28,8 @@ impl NetworkDriver {
             ticks:0,quiet:0,home:[Vec3::ZERO;2],free:false,walked_scene:false,done:false,
             clearing_landing:false,trail:Default::default(),last:Vec3::ZERO,stuck:0,stuck_clock:0,
             plan:Default::default(),plan_age:0,worker:None,board_node:None,board_move:0,
-            board_moving:false,jump_at:None,use_at:None,tracker:Default::default(),closing:None,cached:Default::default()})
+            board_moving:false,jump_at:None,use_at:None,tracker:Default::default(),closing:None,
+            missed:None,sidestep:None,cached:Default::default()})
     }
     pub(crate) fn reached(&self)->bool {self.done}
     pub(crate) fn spectate(&mut self,tick:u64) {
@@ -37,6 +39,7 @@ impl NetworkDriver {
         self.last_tick=Some(tick);self.index=None;self.done=false;
         self.cached=Default::default();self.trail.clear();self.worker=None;
         self.tracker=Default::default();self.jump_at=None;self.use_at=None;
+        self.missed=None;self.sidestep=None;
     }
     pub(crate) fn report(&self)->serde_json::Value {
         serde_json::json!({"step":self.index,"mode":self.index.map(|i|&self.steps[i].mode),
@@ -45,6 +48,7 @@ impl NetworkDriver {
             "plan_remaining":self.plan.len(),"expected":self.plan.front().map(|(_,p)|p),
             "board_move":self.board_move,"board_node":self.board_node,"trail":self.trail,
             "closing_target":self.closing,
+            "missed_target":self.missed,"sidestep":self.sidestep,
             "input":self.cached.1,"movement":{"wish":self.cached.0.wish,"swim":self.cached.0.swim,
                 "jump":self.cached.0.jump,"use":self.cached.0.use_pressed,"run":self.cached.0.run}})
     }
@@ -64,6 +68,7 @@ impl NetworkDriver {
             self.free=false;self.walked_scene=false;self.done=false;
             self.cached=Default::default();
             self.closing=None;
+            self.missed=None;self.sidestep=None;
             self.board_node=None;self.board_move=0;self.board_moving=false;
             self.reset_walk(frame.players[local.index()].player.feet);
         }
@@ -226,6 +231,42 @@ impl NetworkDriver {
             i.weapon=Some(attack.weapon as u8);i.primary=!attack.alternate;i.alternate=attack.alternate;
             self.tracker.weapon=attack.weapon;self.tracker.last_aim=attack.aim;
         }
+        // A visible aim ray need not give the animated hand's projectile a
+        // clear shot. After several real throws without damage, try a short
+        // supported sidestep instead of firing forever from the same spot.
+        let health=attack.target.and_then(|id|realm.saved.cast.iter()
+            .find(|a|a.id()==id).map(|a|(id,a.piece.health)));
+        self.missed=health.map(|(id,health)| {
+            let ticks=self.missed.filter(|(old,h,_)|*old==id && health>=*h)
+                .map_or(0,|(_,_,ticks)|ticks+elapsed);
+            (id,health,ticks)
+        });
+        if self.steps[self.index.unwrap()].mode=="clear" && b.player.grounded
+            && !b.player.swimming && c.wish==Vec2::ZERO && self.closing.is_none() {
+            let safe_walk=|wish:Vec2,ticks:usize|->Option<Vec3> {
+                let mut future=b.player.clone();
+                for _ in 0..ticks {
+                    future.tick(world,Controls{wish,..Default::default()});
+                    if !future.grounded || !world.body_clear(future.feet)
+                        || arena.stage.interactions.hazardous(future.feet)
+                        || future.feet.distance(self.home[local.index()])>120. {return None;}
+                }
+                Some(future.feet)
+            };
+            if self.sidestep.is_none() && self.missed.is_some_and(|(_,_,ticks)|ticks>=960) {
+                let forward=attack.aim.truncate().normalize_or_zero();
+                let right=vec2(forward.y,-forward.x);
+                self.sidestep=[right,-right].into_iter().find_map(|wish|safe_walk(wish,60)
+                    .filter(|at|at.distance(b.player.feet)>40.));
+                if let Some((_,_,ticks))=&mut self.missed {*ticks=0;}
+            }
+            if let Some(goal)=self.sidestep {
+                let delta=(goal-b.player.feet).truncate();let wish=delta.normalize_or_zero();
+                if delta.length()<6. || health.is_none() || safe_walk(wish,12).is_none() {
+                    self.sidestep=None;
+                } else {c.wish=wish;c.run=false;}
+            }
+        } else {self.sidestep=None;}
         let aim=c.wish.extend(0.).normalize_or_zero();
         if arena.stage.interactions.closed_door_in_reach(world,b.player.eye(),aim).is_some() {
             c.use_pressed=true;i.yaw=aim.y.atan2(aim.x);i.pitch=0.;i.primary=false;i.alternate=false;

@@ -587,3 +587,59 @@ five recovery guards, four presence guards and seven source-package tests pass.
 Build/test logs are `private/coop-wchess1-network-{build12,unit12}.log`.
 No images were inspected; overall progress remains **45.8%** with no new
 completed campaign visit.
+
+### Combat stall and verified Blue revival
+
+An isolated replay of the step-117 failure shows that repeated stationary Blade
+throws, higher/lower aim and Cards leave Knight 72 at 8.798 health. A normal
+roughly 52-unit right sidestep followed by throws defeats it without damaging
+either player. Every input experiment matches its identical repeat. These are
+diagnostic observations, not full-route passes; final native snapshots are
+retained in `private/coop-wchess1-combat-probe13{,b}/coop-encounter-result.json`.
+
+The independent-client course now notices eight seconds of attacks without
+damage and tries a short supported sidestep during a stationary combat clear.
+Copied ordinary movement checks the floor, body clearance, hazards and a
+120-unit distance from the start of the fight before issuing real controls.
+The captured public-connection encounter passes in 31.8 seconds, with both
+players still at 68/50 health and 164 matching player/world/native states:
+`private/coop/chess-resume-0edf563a9280414f9695e9921e5886d1/`.
+
+From the unchanged ordinary checkpoint before step 100, the next public
+40/20 ms delay/jitter run passes **all 26 approach steps (100–125)**. Normal
+checkpoints show Knight 72 at 8.798 health before step 117 and zero before 126,
+confirming actual defeat. Blue then dies in ordinary combat at tick **53,891**
+and revives at **55,091** with **25 health**. Both clients verify the moving
+spectator camera, return to Blue's camera, nearby placement and unchanged
+personal inventory. All **1,761** matching player/world/native states agree.
+Evidence: `private/coop/chess-recovery-156b3b516cd547828fecb2667f19d738/` and
+`private/coop-wchess1-recovery2.log`. This is individual revival evidence;
+team wipes, rejoining and complete traversal remain separate requirements.
+
+The next short replay wins the fight without a death and is deliberately
+stopped without recovery credit. The fixture now fails promptly for that
+outcome. Its optional explicit victim keeps fighting while the partner retreats
+using ordinary controls; no health or enemy values are changed. A first
+Red-focused attempt exposes the two solid players blocking one another at the
+doorway, so the retreat now passes around the waiting partner before moving
+back along the visited route. A second retreat waypoint is moved inside the
+corridor after a wall-clearance timeout; those failed attempts remain recorded.
+Successful as well as failed runs now retain final reports for checking actual
+native enemy outcomes.
+
+The corrected Red-focused public replay passes in **38.9 seconds** from the
+unchanged normal checkpoint before step 126. Blue first moves around Red and
+retreats while Red continues ordinary combat. Red dies at tick **54,140** and
+revives at **55,340** with **25 health**; Blue remains at 68. Both clients pass
+the countdown, moving spectator camera, camera return, nearby placement and
+personal-inventory checks, with **281** matching player/world/native states.
+Evidence: `private/coop/chess-recovery-2bea58bfba4f48b581461b5c1b4168c2/` and
+`private/coop-wchess1-recovery6-red.log`. Both individual victim roles are now
+covered for this encounter; neither run supplies team-wipe or full-route credit.
+
+Tested engine source: `0782e29193767137c3c82fd752975326d4efd7f13bfa4adb7cc9a05943a4694a`.
+Frozen executable: `private/coop-wchess1-world-0782e29.exe`, SHA-256
+`f922b7f94107a45bc651f3f71b9442ff705235797afbe41a0db11b090caecefc`.
+The locked release build and **820 active Rust tests** pass (one existing
+ignored); logs are `private/coop-wchess1-network-{build14,unit14}.log`.
+Overall progress remains **45.8%**; no additional complete campaign row is claimed.

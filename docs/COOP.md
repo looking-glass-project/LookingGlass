@@ -15,12 +15,16 @@ the total; a successful component or segment is not a completed campaign visit.
 
 Status checked on **27 October 2026**: the older approximately 42% figure is
 historical; the current weighted estimate is **45.8% (about 46%)**. The latest
-Pale Realm recovery attempt passes 17 approach steps and 3,649 matching network
-states, then correctly fails when its automated combat controls stall at step
-117. Both players remain alive, so it supplies no revival or full-level credit.
-The release build and all 820 active Rust tests pass. The next concrete task is
-to resolve that combat-control stall and complete the independent-client
-revival check. See [recovery attempt details](WCHESS1.md#independent-client-revival-fixture).
+Pale Realm combat stall is resolved by a supported sidestep after repeated
+misses. A public two-client replay passes all 26 approach steps (100–125), then
+verifies Blue's real combat death, moving spectator camera and exact ten-second
+25-health revival with personal inventory retained. All 1,761 matching network
+states agree. A separate Red-focused replay also passes, with the same exact
+countdown, camera, inventory and 25-health checks and 281 matching states.
+The release build and all 820 active Rust tests pass. Full fresh
+routes in both arrival orders, the complete recovery/rejoin matrix and broader
+combat-effect checks remain open; this segment adds no full-level credit.
+See [recovery details](WCHESS1.md#independent-client-revival-fixture).
 
 Herbaceous Border now has an explicit paired platform/enemy adapter and **44
 passing native component cases**: shared fulcrum carrying/counterbalance, both

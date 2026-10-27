@@ -45,6 +45,12 @@ each assertion result. An assertion failure returns a failing exit code after
 saving the result. Even a passing reproduction of a known wipe is not a passing
 clean route; the result explicitly retains `full_route_passed: false`.
 
+For focused diagnosis, `"capture_final": true` also retains the final player
+frame and combat snapshot in each outcome. This lets a script check enemy
+health and weapon emissions after an input experiment. Those snapshots must
+match across the identical repeated runs; the option does not add a gameplay
+assertion or change a null expectation into a pass.
+
 ## Independent-client recovery segments
 
 An optional `"export_checkpoint": true` fixture field saves the captured current

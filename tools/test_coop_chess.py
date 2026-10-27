@@ -99,6 +99,14 @@ class ChessPair(Pair):
         self.record_damage(role, report)
         super().validate_report(role, report)
 
+    def close(self):
+        # Keep native enemy outcomes on successful runs too; reaching a course
+        # boundary alone must not be mistaken for defeating every opponent.
+        try:
+            (self.folder / 'last-reports.json').write_text(json.dumps(self.reports))
+        finally:
+            super().close()
+
     @staticmethod
     def interactive_owner(row):
         saved = row['chess']

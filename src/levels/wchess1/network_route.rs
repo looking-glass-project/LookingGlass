@@ -236,7 +236,8 @@ impl NetworkDriver {
         });
         let mut c=Controls::default();
         if ready.iter().all(|v|*v) {if precise {self.trail.clear();}return Ok((c,true));}
-        self.clearing_landing=!precise && frame.players[first.partner().index()].player.climbing()
+        let partner=&frame.players[first.partner().index()].player;
+        self.clearing_landing=!precise && (partner.climbing() || partner.ledge.as_ref().is_some_and(|h|h.pulling))
             && (self.clearing_landing || ready[first.index()] && leader.grounded);
         let clear_wish=|directions:&[Vec2],gap:Option<Vec2>|->Vec2 {
             for &wish in directions {
@@ -259,21 +260,33 @@ impl NetworkDriver {
             }) {self.trail.pop_front();}
             // Pursue a short, clear part of the recorded path continuously.
             // Braking at every 12-unit sample makes a delayed follower crawl
-            // while the leader waits exposed to enemies. Only shortcut over
-            // supported dry floor; jumps, banks and swimming keep their trail.
-            if p.grounded && !p.swimming {
+            // while the leader waits exposed to enemies. Grounded shortcuts
+            // require supported dry floor. During an ordinary jump, pursue the
+            // next clear airborne samples through the recorded landing instead
+            // of braking in midair and repeatedly hopping on the same ramp.
+            let airborne=!p.grounded && p.ledge.is_none() && !p.climbing() && p.rope.is_none();
+            if !p.swimming && (p.grounded || airborne) {
                 while self.trail.len()>1 {
-                    let (at,airborne)=self.trail[1];let delta=at-p.feet;
-                    if airborne || delta.z.abs()>18. || delta.truncate().length()>48.+320.*lead
-                        || world.body_trace(p.feet,at).fraction<1. || !world.body_clear(at) {break;}
-                    let segments=(delta.length()/12.).ceil().max(1.) as usize;
-                    let supported=(0..=segments).all(|n| {
-                        let point=p.feet.lerp(at,n as f32/segments as f32);
-                        let floor=world.body_trace(point,point-Vec3::Z*24.);
-                        !floor.start_solid && floor.fraction<1. && floor.normal.z>0.65
-                            && !arena.stage.interactions.hazardous(point)
-                    });
-                    if !supported {break;}
+                    let (at,next_airborne)=self.trail[1];let delta=at-p.feet;
+                    let trace=world.body_trace(p.feet,at);
+                    if delta.truncate().length()>48.+320.*lead || trace.start_solid
+                        || trace.fraction<1. || !world.body_clear(at)
+                        || arena.stage.interactions.hazardous(at) {break;}
+                    if airborne {
+                        // Stop at the first recorded landing. Ledge pulls and
+                        // swim banks never enter this ordinary-jump branch.
+                        if !self.trail[0].1 || delta.z.abs()>64. {break;}
+                    } else {
+                        if next_airborne || delta.z.abs()>18. {break;}
+                        let segments=(delta.length()/12.).ceil().max(1.) as usize;
+                        let supported=(0..=segments).all(|n| {
+                            let point=p.feet.lerp(at,n as f32/segments as f32);
+                            let floor=world.body_trace(point,point-Vec3::Z*24.);
+                            !floor.start_solid && floor.fraction<1. && floor.normal.z>0.65
+                                && !arena.stage.interactions.hazardous(point)
+                        });
+                        if !supported {break;}
+                    }
                     self.trail.pop_front();
                 }
             }
@@ -285,7 +298,15 @@ impl NetworkDriver {
         if !precise && local!=first && !ready[first.index()] && gap.truncate().length()<80. && gap.z.abs()<70. {
             let forward=(goals[first.index()]-leader.feet).truncate().try_normalize().unwrap_or(Vec2::X);
             let carries=gap.z < -(PLAYER_HALF.z*2.-0.1) && gap.truncate().length()<crate::coop::separation::DISTANCE;
-            if gap.truncate().dot(forward)>-4. || carries {let side=vec2(-forward.y,forward.x);
+            if p.grounded && leader.ledge.as_ref().is_some_and(|h|!h.pulling) {
+                // A caught lip may require releasing backwards before going
+                // around. Give that ordinary escape room instead of standing
+                // immediately behind the hanging leader and blocking its plan.
+                let away=gap.truncate().try_normalize().unwrap_or(-forward);
+                let side=vec2(-away.y,away.x);
+                c.wish=clear_wish(&[away,side,-side],Some(gap.truncate()));
+                if c.wish!=Vec2::ZERO {self.trail.clear();}
+            } else if gap.truncate().dot(forward)>-4. || carries {let side=vec2(-forward.y,forward.x);
                 c.wish=clear_wish(&[side,-side,forward,-forward],Some(gap.truncate()));
                 if c.wish!=Vec2::ZERO {self.trail.clear();}
             }return Ok((c,false));
@@ -304,7 +325,11 @@ impl NetworkDriver {
         if self.stuck_clock>=120 {
             self.stuck_clock%=120;self.stuck=if p.feet.distance(self.last)<16.{self.stuck+1}else{0};self.last=p.feet;
             if (2..4).contains(&self.stuck) && p.grounded && self.plan.is_empty() {c.jump=true;}
-            if self.stuck>=4 && self.plan.is_empty() && self.worker.is_none() && p.grounded {
+            // A caught lip can have no clear pull-up destination. Search from
+            // that actual hanging state so ordinary release/shimmy inputs can
+            // find a way around it, as the native route already does.
+            if self.stuck>=4 && self.plan.is_empty() && self.worker.is_none()
+                && (p.grounded || p.ledge.is_some()) {
                 let (send,result)=mpsc::channel();let snapshot=world.clone();let player=p.clone();
                 self.worker=Some(Worker{step:self.index.unwrap(),phase:self.phase,warp:frame.players[i].warped_at,start:p.feet,result});
                 std::thread::spawn(move ||{let _=send.send(Route::plan_with_takeoff_margin(&snapshot,&player,goal,22.,if lead>0.{12}else{0}));});

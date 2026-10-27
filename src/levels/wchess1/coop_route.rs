@@ -457,5 +457,26 @@ pub(super) fn probe(a:&mut Assets)->Result<()> {
             println!("PROBE fresh {label} jump{jump}: {:?}",p.feet);
         }
     }
+    if report["plan"].as_bool()==Some(true) {
+        let path=Route::plan(&world,saved,goal,22.)
+            .map_err(|n|anyhow::anyhow!("Captured-state path exhausted {n} states"))?;
+        let mut player=saved.clone();
+        for (input,expected) in &path {
+            for tick in 0..24 {
+                player.tick(&world,Controls{jump:input.jump && tick==0,..*input});
+                ensure!(world.body_clear(player.feet),"Captured-state plan entered a solid");
+            }
+            ensure!(player.feet.distance(*expected)<0.01,"Captured-state plan replay diverged");
+        }
+        ensure!(player.grounded && player.ledge.is_none() && player.feet.distance(goal)<22.,
+            "Captured-state plan did not reach supported goal");
+        println!("PASS captured-state ordinary-input path: {} segments, {:?} -> {:?}; isolated diagnosis only",
+            path.len(),saved.feet,player.feet);
+        std::fs::create_dir_all(crate::preferences::path(""))?;
+        std::fs::write(crate::preferences::path("wchess1-captured-plan.json"),
+            serde_json::to_vec_pretty(&serde_json::json!({"start":saved.feet,"goal":goal,
+                "steps":path.iter().map(|(c,p)|serde_json::json!({"wish":c.wish,"jump":c.jump,
+                    "run":c.run,"expected":p})).collect::<Vec<_>>()}))?)?;
+    }
     Ok(())
 }

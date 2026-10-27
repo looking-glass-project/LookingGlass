@@ -458,3 +458,96 @@ Frozen executable: `private/coop-wchess1-world-685a05d.exe`, SHA-256
 Logs: `private/coop-wchess1-network-{build6,unit6}.log`,
 `private/coop-wchess1-internet5.log` and
 `private/coop-wchess1-{components,check,route-check,route-skip-check,campaign,shared-world,fortress,beyond}-685a05d.log`.
+
+### Delayed follower and ledge recovery
+
+The independent route now searches from a real hanging state as well as a
+grounded one. A captured-state physics probe of the step-71 failure finds and
+replays 12 ordinary-input segments to supported ground near the original goal.
+The probe reads a captured frame/world, changes only isolated copies and earns
+no traversal credit. Set `plan: true` in its private input report to retain the
+chosen controls and verify every replayed segment against the planner.
+
+The first full internet repeat on `d35e931` fails earlier at step 62: the follower
+brakes at closely spaced airborne trail points and repeatedly hops on the ramp,
+leaving the leader exposed to two pawns. Its 4,066 matching network states agree;
+the captured damage is real, not a passing clean route. Source `4923202` follows
+nearby clear airborne samples through the recorded landing, while retaining
+support checks on grounded shortcuts and excluding swimming, ledge pulls, climbs
+and ropes. It clears that encounter with both players at 100 health and completes
+steps 0–70. The run is then deliberately stopped after repeated step-71 escape
+attempts: the follower stands behind the hanging leader and blocks the planned
+release. Evidence: `private/coop/chess-route-9e20cdfedea34044940702c72472e0cd/`
+and `private/coop/chess-route-86b8888e17c74bffa54f0b2181c649e6/`.
+
+The follower now walks to checked floor away from a nearby hanging leader so
+that the leader can release and go around the obstruction. Source `4adff1c`
+passes a two-client **public-internet segment covering steps 71–74**, using the
+unchanged normal save from the preceding full run and 40/20 ms delay/jitter.
+All **414** matching player/world/native-resident states agree, with no deaths,
+unscripted warps or free-play overlap. This proves the focused fix, not the
+complete 161-step route. Evidence:
+`private/coop/chess-resume-349603a8cf0c495290d60271f1095440/`.
+The earlier resumed attempt on `4923202` restored correctly and reproduced the
+hang, then its guest reported that the host ended the session; that unexplained
+connection ending remains recorded in
+`private/coop/chess-resume-951a27b26a6c4a5cbb7a606b4482e265/`.
+
+`tools/test_coop_chess.py --save-before 62 71` requests the same save operation as
+the host menu and retains the resulting files byte-for-byte. The separate
+`tools/test_coop_chess_resume.py` accepts `--checkpoint`, `--start-step` and
+`--last-step`, verifies restored placement and personal resources, and replays
+only that segment with two independent clients. Its result always sets
+`full_route_passed: false`. The verified checkpoint before step 71 has SHA-256
+`52cae121ed673012ac411327306cc0542870a13ad0f2ffe1a46e4caa0c0c524b`.
+
+The presence verifier now derives active puzzle ownership from the board/reunion
+state. A remembered actor alone no longer exempts ordinary play from overlap and
+camera checks. It also rejects unscripted warps and movement by the waiting puzzle
+partner. Four positive/negative guard tests pass, and the stricter checks pass
+over the earlier 2,355 host and 2,317 guest observations. No screenshots were
+inspected for this work; combat-effect visibility still needs separate evidence.
+
+Source: `4adff1c24f1c8e5fb0e542d761e1128e8897fd536d8104a08449ecb8ee1ada5b`.
+Frozen executable: `private/coop-wchess1-world-4adff1c.exe`, SHA-256
+`b873a875c79aedfd899111de9704911adb4b3d0f600b46afd4fdcaaa8f2ca2a1`.
+The locked release build, **820 active Rust tests** (one existing ignored),
+**87 native world cases**, all three complete single-player baseline log
+comparisons, seven source-package tests and four presence-verifier tests pass.
+Logs are `private/coop-wchess1-network-{build10,unit10}.log` and
+`private/coop-wchess1-{components,check,route-check,route-skip-check}-4adff1c.log`.
+
+The fresh full-route repeat on that build completes **97 of 161 steps (0–96)**,
+including both original puzzles, the bell sequence and the previously blocked
+step 71. Both players remain alive at 68 health. It times out at step 97 when
+the arrived leader occupies the follower's ledge pull-up destination. The normal
+player-contact system holds the pull-up safely; the automated leader incorrectly
+waits because its existing landing-clearance rule only recognizes ordinary
+climbs. All **9,205** matching player/world/native-resident states agree, and the
+stricter presence checks pass across 2,630 host and 2,574 guest observations.
+Evidence: `private/coop/chess-route-2e8d380017c04ea3be50d7e04d1e8da9/` and
+`private/coop-wchess1-internet8.log`. This is still a failed full traversal.
+
+The landing-clearance rule now recognizes a partner's active ledge pull-up as
+well as an ordinary climb. Source `766eb15` restores the same unchanged normal
+checkpoint before step 71 and completes **55 resumed steps (71–125)**, including
+the previously blocked pull-up at 97. It then fails at the step-126 combat clear:
+Blue dies, with Red still alive at 30 health. The final living observation has
+Blue at 8 health, Red at 50 and both nearly out of Will. This clean-route fixture
+stops on death; it does not establish the later revival/wipe outcome. There are
+**3,442** exact matching player/world/native-resident states, and presence checks
+pass across 1,037 host and 1,005 guest observations. The remaining tail has not
+passed. Evidence is `private/coop/chess-resume-ebee548717b44f7ab664b8e71967b82f/`
+and `private/coop-wchess1-resume3.log`, including unchanged normal checkpoints
+before steps 97 and 100, full pre-step states and damage captures.
+
+Exact final source: `766eb15988f6ed692e97fb7d805f7ab4c31ac6a377739679dfcb25625d7c448c`.
+Frozen executable: `private/coop-wchess1-world-766eb15.exe`, SHA-256
+`e4588cbcc3d3bf29a51d7ef389a58c310f1aba1b3d034ecd00e17bbbdb2cb42c`.
+The locked release build, **820 active Rust tests** (one existing ignored),
+**87 native world cases** and all three complete single-player baseline log
+comparisons pass. Logs are `private/coop-wchess1-network-{build11,unit11}.log` and
+`private/coop-wchess1-{components,check,route-check,route-skip-check}-766eb15.log`.
+Overall progress remains **45.8%**. Full fresh routes in both arrival orders,
+the rest of the water section, combat effects and recovery/rejoin remain open;
+combining successful fragments from different builds does not complete a row.

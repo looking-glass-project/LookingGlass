@@ -195,6 +195,25 @@ No new campaign row or percentage credit is claimed. See
 [Pale Realm internet evidence](WCHESS1.md#independent-client-route-fixture) and
 [Beyond regression](BEYOND.md#co-op-contact-regression-27-october-2026).
 
+The next automation changes clear the delayed follower's ramp fight with both
+players at full health and let the leader plan an escape from a caught ledge.
+The follower also moves aside to avoid blocking that escape. A normal saved
+checkpoint now supports focused two-client replays: **steps 71–74 pass over the
+public connection with 414 exact matching states** on source `4adff1c`. The
+presence checks continue through ordinary play after puzzles and verify no
+overlap, wrong camera, unexpected teleporting or moving puzzle waiter. A focused
+segment is not full-level evidence; the overall estimate remains **45.8%**.
+See [delayed follower and ledge recovery](WCHESS1.md#delayed-follower-and-ledge-recovery).
+
+A fresh full-route repeat on that build now completes **97 of 161 steps**,
+including both puzzles and the repaired ledge. It then stalls because the
+leader waits in the partner's next pull-up destination. Both remain alive;
+9,205 matching states agree. This is further partial evidence, not a completed
+campaign visit. Source `766eb15` extends the landing-clearance rule to ledge
+pull-ups. A resumed internet run then completes **steps 71–125**, with 3,442
+matching states, before Blue dies in combat at step 126. The remaining route,
+full repeat in both arrival orders and recovery/rejoin checks remain open.
+
 The overall percentage is a weighted estimate, not elapsed time or a live build
 indicator. An earlier Garden build passed 4/4 native paired routes. After adding
 rope contact, the current build passes **2/4 native paired routes** (both watched

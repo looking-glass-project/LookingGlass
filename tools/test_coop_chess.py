@@ -96,6 +96,48 @@ class ChessPair(Pair):
                 path.write_text(json.dumps(dict(before=previous, after=report)))
         super().validate_report(role, report)
 
+    @staticmethod
+    def interactive_owner(row):
+        saved = row['chess']
+        paired = saved['coop'] or {}
+        # The saved actor remains after a puzzle. Only an active board/reunion
+        # hides the partner; ordinary play must still check both bodies.
+        return paired.get('actor') if saved['board'] is not None or paired.get('reunion') else None
+
+    def verify_presence(self, route, role):
+        for row in route:
+            if row['owner'] is None and self.interactive_owner(row) is None:
+                a, b = [p['feet'] for p in row['players']]
+                assert distance(a[:2], b[:2]) >= 35.95 or abs(a[2]-b[2]) >= 55.95, 'Players overlap'
+                assert row['camera_player'] == ('Blue' if role == 'host' else 'Red')
+        for old, row in zip(route, route[1:]):
+            changed = any(a['warped_at'] != b['warped_at'] for a, b in zip(old['players'], row['players']))
+            assert not changed or old['owner'] is not None or row['owner'] is not None \
+                or self.interactive_owner(old) is not None, 'Unscripted Pale Realm warp'
+            actor = self.interactive_owner(row)
+            if actor is not None and actor == self.interactive_owner(old):
+                assert row['players'][1-actor]['feet'] == old['players'][1-actor]['feet'], 'Puzzle moved waiter'
+
+    def save_checkpoint(self, step):
+        """Retain an unchanged normal save for a later focused segment test."""
+        for role in self.commands:
+            self.set(role)
+        self.wait(.5)
+        self.commands['host']['checkpoint'] = True
+        command = self.commands['host']['id']
+        self.until(lambda: (self.reports['host']['route_driver'].get('checkpoint') or {}).get('command') == command, 15)
+        receipt = self.reports['host']['route_driver']['checkpoint']
+        assert receipt['epoch'] == 1 and receipt['error'] is None, receipt
+        saved = (self.folder / 'host' / 'coop-checkpoint.json').read_bytes()
+        payload = json.loads(saved)['payload']
+        assert payload['visit']['map'] == self.map_name and payload['visit']['epoch'] == 1
+        assert payload['frame']['tick'] == receipt['tick'] and payload['frame']['checkpoint_generation'] == 0
+        path = self.folder / f'checkpoint-before-{step:03d}.json'
+        path.write_bytes(saved)
+        self.evidence.setdefault('checkpoints', {})[str(step)] = dict(
+            file=path.name, sha256=hashlib.sha256(saved).hexdigest(), **receipt)
+        print('PASS ordinary checkpoint before step', step, flush=True)
+
     def verify(self):
         assert self.steps and self.completed == list(range(len(self.steps))), 'Incomplete course'
         assert len(self.course_hashes) == 2
@@ -103,15 +145,11 @@ class ChessPair(Pair):
         for role, rows in self.history.items():
             route = [r for r in rows if r['map'] == self.map_name and r['epoch'] == 1]
             assert route
+            self.verify_presence(route, role)
             owners = {}
             for row in route:
                 if row['scene'] and row['owner']:
                     owners.setdefault(row['scene'], set()).add(row['owner'])
-                focus = (row['chess']['coop'] or {}).get('actor')
-                if row['owner'] is None and focus is None:
-                    a, b = [p['feet'] for p in row['players']]
-                    assert distance(a[:2], b[:2]) >= 35.95 or abs(a[2]-b[2]) >= 55.95, 'Players overlap'
-                    assert row['camera_player'] == ('Blue' if role == 'host' else 'Red')
             assert len(owners) == 5, f'Missing original scenes: {owners}'
             for scene, actors in owners.items():
                 assert actors == {'Blue' if scene == 'cinema_wchess1_intro_thread' else self.args.first.title()}, \
@@ -141,7 +179,10 @@ class ChessPair(Pair):
         for role in self.commands:
             self.set(role, step=0)
         self.until(lambda: len(self.course_hashes) == 2, 20)
+        assert all(0 < step < len(self.steps) for step in self.args.save_before), 'Invalid checkpoint step'
         for index, step in enumerate(self.steps):
+            if index in self.args.save_before:
+                self.save_checkpoint(index)
             (self.folder / f'before-step-{index:03d}.json').write_text(json.dumps(self.reports['host']))
             if index:
                 for role in self.commands:
@@ -170,6 +211,8 @@ if __name__ == '__main__':
     parser.add_argument('--exe', type=Path, default=ROOT / 'target/release/looking-glass.exe')
     parser.add_argument('--data', type=Path, required=True)
     parser.add_argument('--first', choices=('blue', 'red'), default='blue')
+    parser.add_argument('--save-before', nargs='*', type=int, default=[],
+                        help='Retain ordinary co-op saves before these steps for later segment tests')
     parser.add_argument('--local', action='store_true')
     parser.add_argument('--delay-ms', type=int, default=40)
     parser.add_argument('--jitter-ms', type=int, default=20)

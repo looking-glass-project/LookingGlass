@@ -946,5 +946,33 @@ guest** presence observations. Evidence:
 `private/coop/chess-route-4408925c9d4747acae572d74662ed3cb/`, including
 `before-step-067.json`, `before-step-068.json` and `descending-trail-stall.json`.
 This is a newly isolated test-driver failure, not a completed fresh traversal.
-Reconnecting to a nearby supported recorded landing without discarding required
-jump takeoffs or crossing hazards remains to be implemented and verified.
+The following change addresses this captured failure; fresh full traversal
+remains a separate gate.
+
+### Rejoining a recorded descent
+
+Source `6e98519` reconnects a grounded follower below an obsolete airborne
+sample to the nearest recorded ground sample within 48 horizontal/18 vertical
+units. A complete body sweep, sampled floor support, liquid exclusion and hazard
+checks must all pass. It discards only the obsolete prefix, keeps later takeoffs
+and landings, and cancels any path search toward the old target. It does not move
+the body or change normal movement, collision, hazards or authored course steps.
+
+Three new unit regressions cover safe selection, unchanged body state, walls,
+gaps, water, hazards, upper/distant landings and ongoing airborne/swimming motion.
+The existing closely spaced landing/takeoff check also passes. All **828** active
+Rust tests pass (one existing ignored). The native paired world suite reproduces
+the captured coordinates and verifies 240 grounded movement ticks without jumps.
+
+The Red-led internet replay from the unchanged checkpoint **before step 67**
+passes **67–70** with 40 ms delay and 20 ms jitter per sender, exact restore,
+presence/lifecycle checks and **339** matching player/world/resident states.
+Evidence: `private/coop/chess-resume-b2801256b754450e9b68b65cab6a4673/` and
+`private/coop-wchess1-coop-world-check-6e98519.log`. Starting before the descent
+records a new trail; the checkpoint after it alone would omit the failed driver
+trail and would not reproduce this case. The separate Blue-led **100–108**
+required-jump repeat also passes, with the same delay/jitter and exact-restore
+checks and **312** matching states. Evidence:
+`private/coop/chess-resume-eba16db9f6f74dd88d18573d06f18ee5/`.
+Fresh full repeats remain pending; no full-level or overall percentage credit
+is added here.

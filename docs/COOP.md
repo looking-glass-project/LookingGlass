@@ -24,10 +24,12 @@ These add no full-level credit; see [timed corridor checks](WCHESS1.md#timed-cor
 A missed readiness frame in the lift test is also fixed: both leader roles now
 pass the captured lift-to-corridor segment using persistent boarding/arrival
 facts. See [lift handoff checks](WCHESS1.md#delayed-lift-handoff).
-The latest fresh Red-led run passes 0–67, including the repaired lift and timed
-corridor, then stalls when the follower pursues an old airborne sample after
-landing below it. Both players remain alive; safe recovery of that recorded
-path is the next route-driver case to fix.
+The fresh Red-led run on `d7bbc99` passes 0–67, then exposes a follower pursuing
+an old airborne sample after landing. Supported path reattachment now passes a
+native captured-position check and the Red-led internet replay through 67–70,
+with 339 matching states. The required-jump section 100–108 also passes with
+312 matching states. Fresh full repeats remain pending.
+See [descent recovery](WCHESS1.md#rejoining-a-recorded-descent).
 The earlier Pale Realm combat stall is resolved by a supported sidestep after repeated
 misses. A public two-client replay passes all 26 approach steps (100–125), then
 verifies Blue's real combat death, moving spectator camera and exact ten-second
@@ -55,7 +57,7 @@ its diagonal yield choices are blocked. See [focused checks](WCHESS1.md#jump-tak
 A graceful guest leave/rejoin followed by the swimming exit also passes, with
 624 matching states recorded after the new guest process joins. The original
 puzzles, native resident health and personal resources remain intact.
-The release build and all 825 active Rust tests pass. Full fresh
+The release build and all 828 active Rust tests pass. Full fresh
 routes in both arrival orders, the complete recovery/rejoin matrix and broader
 combat-effect checks remain open; this segment adds no full-level credit.
 See [recovery details](WCHESS1.md#independent-client-revival-fixture).

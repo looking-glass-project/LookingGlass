@@ -442,9 +442,34 @@ fn landing_contact(map:&Bsp)->Result<()> {
         println!("PASS captured native landing contact slot{moving}: 240 physics ticks, separation/support/resources and stationary partner");
     }Ok(())
 }
+fn descending_trail(a:&mut Assets,map:&Bsp)->Result<()> {
+    let (r,w,_,_)=free(a,map)?;
+    let mut p=Player::new(vec3(591.044189453125,1185.6131591796875,48.02117919921875));
+    p.grounded=true;
+    let landing=vec3(590.28271484375,1179.8125,48.21154022216797);
+    let mut trail=std::collections::VecDeque::from([
+        (vec3(589.250244140625,1185.6141357421875,394.25347900390625),true),
+        (vec3(659.244140625,1202.0079345703125,30.971193313598633),false),
+        (landing,false),(vec3(760.427978515625,1183.8223876953125,5.6752400398254395),false)]);
+    let before=serde_json::to_value(&p)?;
+    ensure!(network_route::rejoin_landing(&mut trail,&p,&w,|at|r.hazardous(at)),
+        "Captured descending follower could not rejoin supported ground");
+    ensure!(trail.front()==Some(&(landing,false)) && serde_json::to_value(&p)?==before,
+        "Descending trail recovery moved the body or chose an obsolete target");
+    let goal=trail.back().unwrap().0;
+    for _ in 0..240 {
+        let d=goal-p.feet;
+        p.tick(&w,Controls{wish:d.truncate().normalize_or_zero()*(d.truncate().length()/48.).min(1.),run:true,..Default::default()});
+        ensure!(w.body_clear(p.feet) && p.grounded && !r.hazardous(p.feet),"Recovered descent lost safe support");
+    }
+    ensure!(p.feet.distance(goal)<8. && p.jumps==0,"Recovered descent still jumped toward obsolete air samples");
+    println!("PASS captured descending trail: supported reattachment, unchanged body, 240 ordinary grounded ticks without jumping");
+    Ok(())
+}
 pub(super) fn check(a:&mut Assets)->Result<()> {
     let map=Bsp::parse(&a.read("maps/wchess1.bsp")?)?;
     wall_contact(a,&map)?;falling_contact(&map)?;overhanging_contact(&map)?;landing_contact(&map)?;
+    descending_trail(a,&map)?;
     clocks(a,&map)?;lift(a,&map)?;hazards(a,&map)?;
     spike_forecast(a,&map)?;spike_crossing(a,&map)?;
     for kind in [scene::Kind::Intro,scene::Kind::Bishop,scene::Kind::Knight,scene::Kind::Bell,scene::Kind::Water] {

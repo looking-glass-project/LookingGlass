@@ -21,6 +21,31 @@ fn record_trail(trail:&mut VecDeque<(Vec3,bool)>,feet:Vec3,airborne:bool) {
     }
 }
 
+/// A follower may land before reaching every sample of a recorded descent.
+/// Rejoin only nearby, continuously supported ground; never shortcut a jump
+/// from its takeoff or aim back up at an already completed fall.
+pub(super) fn rejoin_landing(trail:&mut VecDeque<(Vec3,bool)>,p:&Player,world:&World,
+    hazardous:impl Fn(Vec3)->bool)->bool {
+    if !p.grounded || p.swimming || p.climbing() || p.ledge.is_some() || p.rope.is_some()
+        || !trail.front().is_some_and(|(at,air)|*air && at.z-p.feet.z>64.) {return false;}
+    let candidate=trail.iter().enumerate().skip(1).filter(|(_, (at,air))| {
+        let delta=*at-p.feet;
+        if *air || delta.truncate().length()>48. || delta.z.abs()>18.
+            || !world.body_clear(*at) {return false;}
+        let path=world.body_trace(p.feet,*at);
+        if path.start_solid || path.fraction<1. {return false;}
+        let segments=(delta.length()/12.).ceil().max(1.) as usize;
+        (0..=segments).all(|n| {
+            let point=p.feet.lerp(*at,n as f32/segments as f32);
+            let floor=world.body_trace(point,point-Vec3::Z*24.);
+            !floor.start_solid && floor.fraction<1. && floor.normal.z>0.65
+                && world.liquid_at(point+Vec3::Z)==0 && !hazardous(point)
+        })
+    }).min_by(|(_, (a,_)),(_, (b,_))|a.distance_squared(p.feet).total_cmp(&b.distance_squared(p.feet)))
+        .map(|(index,_)|index);
+    if let Some(index)=candidate {trail.drain(..index);true} else {false}
+}
+
 pub(crate) struct NetworkDriver {
     steps:Vec<coop_route::Step>, index:Option<usize>, phase:u8,
     last_tick:Option<u64>, ticks:u64, quiet:u64, home:[Vec3;2],
@@ -335,6 +360,11 @@ impl NetworkDriver {
             return Ok((c,false));
         }
         if local!=first && !precise {
+            if rejoin_landing(&mut self.trail,p,world,|at|arena.stage.interactions.hazardous(at)) {
+                // A pending search belongs to the obsolete high target even
+                // when its step/phase/start position still match this frame.
+                self.worker=None;self.reset_walk(p.feet);
+            }
             while self.trail.front().is_some_and(|(at,airborne)| {let d=*at-p.feet;
                 p.swimming && *airborne && d.z>45. || d.truncate().length()<8. && d.z.abs()<45.
             }) {self.trail.pop_front();}
@@ -459,6 +489,54 @@ impl NetworkDriver {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn landed_follower_rejoins_nearest_supported_sample_without_moving_the_body() {
+        let world=World::fixture(&[(vec3(-100.,-100.,-20.),vec3(100.,100.,0.))]);
+        let mut p=Player::new(vec3(0.,0.,0.03125));p.grounded=true;
+        let nearest=p.feet+Vec3::X*6.;let later=p.feet+Vec3::X*30.;
+        let mut trail=VecDeque::from([(p.feet+Vec3::Z*346.,true),
+            (later,false),(nearest,false),(nearest+Vec3::Z*6.,true),(later,false)]);
+        let before=serde_json::to_value(&p).unwrap();
+        assert!(rejoin_landing(&mut trail,&p,&world,|_|false));
+        assert_eq!(trail,VecDeque::from([(nearest,false),(nearest+Vec3::Z*6.,true),(later,false)]));
+        assert_eq!(serde_json::to_value(&p).unwrap(),before);
+    }
+
+    #[test]
+    fn landing_rejoin_rejects_walls_gaps_liquid_and_hazards() {
+        let floor=(vec3(-100.,-100.,-20.),vec3(100.,100.,0.));
+        let mut p=Player::new(vec3(-8.,0.,0.03125));p.grounded=true;
+        let trail=VecDeque::from([(p.feet+Vec3::Z*346.,true),(vec3(40.,0.,0.03125),false)]);
+        let wall=World::fixture(&[floor,(vec3(18.,-100.,0.),vec3(22.,100.,100.))]);
+        let gap=World::fixture(&[(floor.0,vec3(0.,100.,0.)),(vec3(48.,-100.,-20.),floor.1)]);
+        let mut water=World::fixture(&[floor]);
+        water.add_liquid(vec3(10.,-100.,-10.),vec3(30.,100.,10.),0x20,None);
+        for world in [wall,gap,water] {
+            let mut path=trail.clone();assert!(!rejoin_landing(&mut path,&p,&world,|_|false));assert_eq!(path,trail);
+        }
+        let mut path=trail.clone();
+        assert!(!rejoin_landing(&mut path,&p,&World::fixture(&[floor]),|at|at.x>10. && at.x<30.));
+        assert_eq!(path,trail);
+    }
+
+    #[test]
+    fn landing_rejoin_preserves_required_jumps_and_other_traversal() {
+        let world=World::fixture(&[(vec3(-100.,-100.,-20.),vec3(100.,100.,0.))]);
+        let mut p=Player::new(vec3(0.,0.,0.03125));p.grounded=true;
+        for (front,landing) in [(p.feet+Vec3::Z*60.,p.feet+Vec3::X*10.),
+            (p.feet+Vec3::Z*346.,p.feet+vec3(10.,0.,40.)),
+            (p.feet+Vec3::Z*346.,p.feet+Vec3::X*49.)] {
+            let original=VecDeque::from([(front,true),(landing,false)]);let mut path=original.clone();
+            assert!(!rejoin_landing(&mut path,&p,&world,|_|false));assert_eq!(path,original);
+        }
+        for (grounded,swimming) in [(false,false),(true,true)] {
+            p.grounded=grounded;p.swimming=swimming;
+            let original=VecDeque::from([(p.feet+Vec3::Z*346.,true),(p.feet+Vec3::X*10.,false)]);
+            let mut path=original.clone();
+            assert!(!rejoin_landing(&mut path,&p,&world,|_|false));assert_eq!(path,original);
+        }
+    }
 
     #[test]
     fn delayed_lift_observer_catches_up_after_peer_leaves_the_ready_area() {

@@ -28,7 +28,10 @@ The fresh Red-led run on `d7bbc99` passes 0–67, then exposes a follower pursui
 an old airborne sample after landing. Supported path reattachment now passes a
 native captured-position check and the Red-led internet replay through 67–70,
 with 339 matching states. The required-jump section 100–108 also passes with
-312 matching states. Fresh full repeats remain pending.
+312 matching states. The next fresh run completes 0–92, then exposes an ownership
+case when the Knight trigger becomes eligible with both players already inside.
+The test expects Red but Blue owns the puzzle; earlier arrival ordering must be
+checked before changing that expectation. Fresh full repeats remain pending.
 See [descent recovery](WCHESS1.md#rejoining-a-recorded-descent).
 The earlier Pale Realm combat stall is resolved by a supported sidestep after repeated
 misses. A public two-client replay passes all 26 approach steps (100–125), then

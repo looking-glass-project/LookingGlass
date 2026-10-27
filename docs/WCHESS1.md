@@ -976,3 +976,22 @@ checks and **312** matching states. Evidence:
 `private/coop/chess-resume-eba16db9f6f74dd88d18573d06f18ee5/`.
 Fresh full repeats remain pending; no full-level or overall percentage credit
 is added here.
+
+The next fresh Red-led run on this build completes **0–92**, including the
+repaired descent, then fails the strict puzzle-owner check at 93. Both players
+remain alive at **67/66 health**. The Knight gate is still closed in the reports
+before 91, 92 and 93. After combat opens it, shared trigger 30 fires and Blue
+owns the Knight scene/puzzle although Red was the configured leading player.
+Both are already stationary inside the area when the scene begins. The paired
+contact resolver currently discards contact history while a rule is ineligible;
+when enabled, simultaneous inside contacts tie by player identity. Reconstruct
+the captured approach and verify the first arrival before changing this logic
+or the ownership assertion. Do not treat this failure as a completed route.
+
+Evidence: `private/coop/chess-route-45239e4b05c5479998d52cc937949eed/` has
+**4,983** matching states and **1,450 host / 1,419 guest** passing presence
+observations. Its unchanged before-92 report is exported through the normal
+checkpoint store to `private/coop-wchess1-knight92-export29/coop-checkpoint.json`;
+exact export and a deterministic one-tick idle repeat pass with the original
+67/66 health. This isolates the next ownership investigation without replaying
+the opening or modifying personal resources.

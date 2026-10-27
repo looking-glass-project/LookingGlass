@@ -358,6 +358,14 @@ impl NetworkDriver {
             } else if gap.truncate().dot(forward)>-4. || carries {let side=vec2(-forward.y,forward.x);
                 c.wish=clear_wish(&[side,-side,forward,-forward],Some(gap.truncate()));
                 if c.wish!=Vec2::ZERO {self.trail.clear();}
+            } else if p.grounded && gap.truncate().length()<56. {
+                // Leave room for a sideways doorway detour. Waiting at the
+                // exact contact distance can block the leader's first planned
+                // move even when the entire path is clear of level geometry.
+                let away=gap.truncate().try_normalize().unwrap_or(-forward);
+                let side=vec2(-away.y,away.x);
+                c.wish=clear_wish(&[away,side,-side],Some(gap.truncate()));
+                if c.wish!=Vec2::ZERO {self.trail.clear();}
             }return Ok((c,false));
         }
         if ready[i] {return Ok((c,false));}
@@ -372,7 +380,12 @@ impl NetworkDriver {
         }
         self.stuck_clock+=elapsed;
         if self.stuck_clock>=120 {
-            self.stuck_clock%=120;self.stuck=if p.feet.distance(self.last)<16.{self.stuck+1}else{0};self.last=p.feet;
+            self.stuck_clock%=120;
+            // Shuffling along a blocked doorway or jumping in place is not
+            // progress. Retain the best approach point so these motions cannot
+            // keep resetting the stall clock and postpone a route search.
+            self.stuck=if self.last.distance(goal)-p.feet.distance(goal)<16. {self.stuck+1}
+                else {self.last=p.feet;0};
             if (2..4).contains(&self.stuck) && p.grounded && self.plan.is_empty() {c.jump=true;}
             // A caught lip can have no clear pull-up destination. Search from
             // that actual hanging state so ordinary release/shimmy inputs can
@@ -398,6 +411,11 @@ impl NetworkDriver {
             c.wish=steering.truncate().normalize_or_zero()*(steering.truncate().length()/approach).min(1.);
             c.swim=steering.normalize_or_zero()*if lead>0.{(steering.length()/approach).min(1.)}else{1.};
             c.rise=if p.swimming && d.z>30.{1.}else{0.};c.run=true;
+            // A shore breadcrumb can be almost directly above the swimmer.
+            // Keep a deliberate direction while requesting the normal bank
+            // climb; analog arrival braking otherwise falls below its intent
+            // threshold and holds the follower underneath the landing.
+            if c.rise>0. {c.wish=d.truncate().normalize_or_zero();}
             c.jump|=p.ledge.as_ref().is_some_and(|h|!h.pulling) || p.grounded && d.z>24. && d.truncate().length()<330.;
         }Ok((c,false))
     }

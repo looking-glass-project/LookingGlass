@@ -643,3 +643,81 @@ Frozen executable: `private/coop-wchess1-world-0782e29.exe`, SHA-256
 The locked release build and **820 active Rust tests** pass (one existing
 ignored); logs are `private/coop-wchess1-network-{build14,unit14}.log`.
 Overall progress remains **45.8%**; no additional complete campaign row is claimed.
+
+### Shared checkpoint wipe
+
+`tools/test_coop_chess_wipe.py` resumes the unchanged normal checkpoint before
+step 126. Both players approach the Pawns using ordinary walking without
+attacking; the game supplies all damage and performs the shared restore. The
+fixture checks a common new spawn tick, the original visit and personal
+health/inventory, bounded placement at the saved positions, restored native
+enemy health and progression, separate bodies, camera ownership/subject and
+matching player/world/native states. Five guard tests reject plausible but
+incorrect restores, including stale observations and a camera following the
+other body. It supplies no full-route credit.
+
+An isolated native replay on source `0782e29` repeats the same ordinary inputs
+twice. Both die by offset 786, restoring at tick **54,177** with the saved
+**68/50 health**. The complete player and combat state is checked at the atomic
+restore, and both repeats match exactly. Evidence is
+`private/coop-wchess1-wipe-native14/coop-encounter-result.json`; the unchanged
+checkpoint conversion and its hash are retained in
+`private/coop-wchess1-wipe-fixture14/provenance.json`.
+
+The separate public-client test with 40/20 ms delay/jitter passes on that build
+in 29.6 seconds, restoring both at **54,191** with **124** matching states:
+`private/coop/chess-wipe-d309554de99c429089057a107eadb618/`.
+The strengthened camera/subject version repeats successfully on source
+`67e3d1fdc912647c916835af1f3682038ac7a43712eaace2d66ef148304fd1f7`
+in 29.5 seconds, with restore tick **54,189** and **118** matching states:
+`private/coop/chess-wipe-9c2f8cc7bba64568b1d3660dabc5c4d5/`.
+Logs are `private/coop-wchess1-wipe-{native14,internet14,internet15}.log`.
+This establishes this encounter's shared-wipe behavior alongside the two
+individual revival roles. The rest of the level and reconnect matrix remain open.
+
+### Automated doorway and swimming-exit recovery
+
+The independent route controller now measures progress toward its goal instead
+of counting sideways shuffling or jumping in place as progress. A follower
+waiting immediately behind the leader also leaves 56 units of checked floor
+space for a doorway detour. On source `6130a91`, the public resumed route clears
+steps **129–150**, including the formerly blocked water-lever doorway, before
+exposing a separate bank-climb stall at step 151. Evidence:
+`private/coop/chess-resume-f3df79566b2e4077866b970b8c1a217f/`.
+
+At that bank, the follower's recorded target is almost directly overhead. The
+controller's analog arrival braking reduces directional input below the normal
+climb threshold. It now keeps a deliberate horizontal direction while asking
+for a bank climb. This changes automated controls, not gameplay physics or
+collision. The unchanged captured state reproduces the old stall with zero
+climbs, then reaches supported ground with one normal climb using the corrected
+input. Run the existing `--wchess1-coop-route-probe` with a captured swimming
+report containing `bank: true` to assert both outcomes; this is isolated
+diagnosis, not traversal evidence. Local evidence:
+`private/coop-wchess1-bank151-intent17.log`.
+
+On source `32f6ca1460bf21caad27f9245bebaf32e115da3964ead79d1770b16afa9d7cbe`,
+the public **Blue-first steps 151–160** pass in 59.8 seconds with 40/20 ms
+delay/jitter. Both players swim, climb out and reach `wchess2_start1` in epoch 2,
+with personal health/inventory preserved across the transition. All **617**
+compared player/world/native states match. Evidence:
+`private/coop/chess-resume-e97a2a19d6554adb9b568d671f53143e/`, including retained
+history and `tail-arrival-analysis.json`. These resumed segments do not form a
+fresh full-level pass and add no campaign-row credit.
+
+The **Red-first** repeat of the same unchanged checkpoint also passes all ten
+steps in 49.8 seconds, with both swimmers, correct arrival and retained personal
+resources. All **441** compared states match. Evidence:
+`private/coop/chess-resume-3b6d05104e0b41bd865854a24c8e9358/`.
+The frozen executable is `private/coop-wchess1-world-32f6ca1.exe`, SHA-256
+`b82d5e41a10b16004bd557c4833f5fc4977ea969afef2fefd62d8b14f25fcb89`.
+The locked release build and **820 active Rust tests** pass (one existing
+ignored), as do 14 chess-fixture guard tests and seven source-package tests.
+Build/test logs: `private/coop-wchess1-network-{build17,unit17}.log`;
+public replay logs: `private/coop-wchess1-{tail4,tail5-red}.log`.
+
+The recovery fixture also accepts `--continue-to 160` to continue ordinary
+traversal after verifying the real combat revival. Subsequent movement remains
+strictly death-free so revival cannot skip swimming or another route section.
+Its current retained run verifies Red's revival and steps 126–128 before the
+older doorway failure; the complete continuation still needs a passing replay.

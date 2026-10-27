@@ -21,6 +21,13 @@ verifies Blue's real combat death, moving spectator camera and exact ten-second
 25-health revival with personal inventory retained. All 1,761 matching network
 states agree. A separate Red-focused replay also passes, with the same exact
 countdown, camera, inventory and 25-health checks and 281 matching states.
+The same encounter's shared team wipe is now verified by exact native restore
+and independent public clients, including restored resources, enemies,
+progression and both cameras (118 matching states in the strengthened repeat).
+The swimming-exit stall in the automated follower is also resolved: public
+bank-to-exit replays pass with either leader, both players swimming and arriving
+at the correct next-level entrance with their resources retained (617/441
+matching states). These are resumed segments, not fresh full-level passes.
 The release build and all 820 active Rust tests pass. Full fresh
 routes in both arrival orders, the complete recovery/rejoin matrix and broader
 combat-effect checks remain open; this segment adds no full-level credit.

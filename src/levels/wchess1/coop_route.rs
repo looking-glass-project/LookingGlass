@@ -457,6 +457,26 @@ pub(super) fn probe(a:&mut Assets)->Result<()> {
             println!("PROBE fresh {label} jump{jump}: {:?}",p.feet);
         }
     }
+    if saved.swimming {
+        for deliberate in [false,true] {
+            let mut p=saved.clone();
+            for _ in 0..360 {
+                let d=goal-p.feet;
+                if p.grounded && d.length()<22. {break;}
+                let direction=d.truncate().normalize_or_zero();
+                p.tick(&world,Controls{wish:direction*if deliberate{1.}else{(d.truncate().length()/48.).min(1.)},
+                    swim:d.normalize_or_zero(),rise:if p.swimming && d.z>30.{1.}else{0.},run:true,
+                    ..Default::default()});
+                ensure!(world.body_clear(p.feet),"Captured bank replay entered a solid");
+            }
+            println!("PROBE bank deliberate{deliberate}: feet{:?} grounded{} climbs{} distance{}",
+                p.feet,p.grounded,p.climbs,p.feet.distance(goal));
+            if report["bank"].as_bool()==Some(true) {
+                ensure!(if deliberate {p.grounded && p.feet.distance(goal)<22. && p.climbs>saved.climbs}
+                    else {!p.grounded && p.climbs==saved.climbs},"Captured bank intent regression did not reproduce");
+            }
+        }
+    }
     if report["plan"].as_bool()==Some(true) {
         let path=Route::plan(&world,saved,goal,22.)
             .map_err(|n|anyhow::anyhow!("Captured-state path exhausted {n} states"))?;

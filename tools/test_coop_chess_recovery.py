@@ -3,7 +3,8 @@
 The approach starts from an unchanged normal checkpoint. Combat uses ordinary
 course controls; after a death the survivor retreats along already visited
 waypoints. An explicit victim keeps fighting while the partner retreats first.
-This is recovery evidence only, never full-route completion.
+An optional continuation traverses the remaining course after revival. Neither
+mode counts as a complete entrance-to-exit route.
 """
 import argparse
 import hashlib
@@ -145,10 +146,37 @@ class ChessRecovery(ChessResume):
                 retreats.pop(0)
                 self.set(survivor_role, goal=retreats[0], navigate=True)
         self.wait(.3)
+        if self.args.continue_to is not None:
+            # The subsequent traversal remains strict: both players must
+            # actually swim/walk it, without another death skipping a section.
+            self.recovering = False
+            for index in range(self.args.death_step, self.args.continue_to+1):
+                if index in self.args.save_before:
+                    self.save_checkpoint(index)
+                (self.folder / f'before-tail-step-{index:03d}.json').write_text(json.dumps(self.reports['host']))
+                for role in self.commands:
+                    self.set(role, step=index)
+                self.until(lambda: self.arrived() or all(self.reached(role) for role in self.commands))
+                self.completed.append(index)
+                print('PASS continued route step', index, flush=True)
+                if self.arrived():
+                    break
+            assert self.completed == list(range(self.args.start_step, self.args.continue_to+1))
+            if self.args.continue_to == len(self.steps)-1:
+                self.until(self.arrived, 60)
+                for role, rows in self.history.items():
+                    route = [r for r in rows if r['epoch'] == 1 and r['map'] == self.map_name]
+                    assert all(any(r['players'][i]['swimming'] for r in route) for i in (0, 1)), 'Missing paired swim'
+                    assert self.reports[role]['visit']['entry'] == 'wchess2_start1'
+                    for before, after in zip(route[-1]['players'], self.reports[role]['frame']['players']):
+                        for field in ('sanity', 'owned', 'collected', 'school_items', 'staff_component'):
+                            assert before['stats'][field] == after['stats'][field], 'Arrival changed ' + field
         initial_spawns = [b['spawned_at'] for b in self.saved['frame']['players']]
-        recovery = {role: verify_revives(rows, role, initial_spawns) for role, rows in self.history.items()}
+        routes = {role: [r for r in rows if r['epoch'] == 1 and r['map'] == self.map_name]
+                  for role, rows in self.history.items()}
+        recovery = {role: verify_revives(rows, role, initial_spawns) for role, rows in routes.items()}
         assert recovery['host'] == recovery['guest'], 'Clients disagree about revival timing'
-        for role, rows in self.history.items():
+        for role, rows in routes.items():
             for row in rows:
                 if all(p['health'] > 0 for p in row['players']):
                     self.verify_presence([row], role)
@@ -161,14 +189,14 @@ class ChessRecovery(ChessResume):
         self.verify_network_states('native_sha256', 'matching_native_residents')
         self.evidence.update(recovery=recovery, victim=victim, completed_steps=self.completed)
         for role in ('guest', 'host'):
-            self.set(role, finish=True)
+            self.set(role, finish=True, epoch=self.reports[role]['visit']['epoch'])
             self.until(lambda: self.processes[role].poll() is not None, 30)
             assert self.processes[role].returncode == 0
         (self.folder / 'result.json').write_text(json.dumps(dict(passed=True, full_route_passed=False,
             build=self.build, internet=not self.args.local, first=self.args.first,
             requested_victim=self.args.victim, delay_ms=self.args.delay_ms,
-            jitter_ms=self.args.jitter_ms, evidence=self.evidence,
-            scope='Real combat death and ten-second revival only; no team-wipe or full-route credit'), indent=2))
+            jitter_ms=self.args.jitter_ms, continue_to=self.args.continue_to, evidence=self.evidence,
+            scope='Real combat death and ten-second revival, with optional remaining-course traversal; no team-wipe or full-route credit'), indent=2))
         print('PASS real combat death, moving spectator camera and ten-second 25-health revival', flush=True)
 
 
@@ -179,6 +207,8 @@ if __name__ == '__main__':
     parser.add_argument('--checkpoint', type=Path, required=True)
     parser.add_argument('--start-step', type=int, default=100)
     parser.add_argument('--death-step', type=int, choices=[126], default=126)
+    parser.add_argument('--continue-to', type=int,
+                        help='Continue the course through this step after revival; later traversal must remain death-free')
     parser.add_argument('--save-before', nargs='*', type=int, default=[126])
     parser.add_argument('--first', choices=('blue', 'red'), default='blue')
     parser.add_argument('--victim', choices=('auto', 'blue', 'red'), default='auto',
@@ -187,9 +217,11 @@ if __name__ == '__main__':
     parser.add_argument('--delay-ms', type=int, default=40)
     parser.add_argument('--jitter-ms', type=int, default=20)
     args = parser.parse_args()
-    args.last_step = args.death_step
+    args.last_step = args.continue_to if args.continue_to is not None else args.death_step
     if not (0 < args.start_step <= args.death_step < 1000):
         parser.error('Choose an ordered, nonzero course segment')
+    if args.continue_to is not None and not (args.death_step <= args.continue_to <= 160):
+        parser.error('Continuation must end between the target encounter and the final course step')
     if not (0 <= args.delay_ms <= 500 and 0 <= args.jitter_ms <= 500):
         parser.error('Delay/jitter must be between 0 and 500 ms')
     pair = ChessRecovery(args)

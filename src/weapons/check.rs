@@ -392,5 +392,6 @@ pub async fn render(assets: &mut Assets) -> Result<()> {
         );
     }
     println!("PASS native Blade/Cards art, held/loose props, funded actions, return effect, live split and first/third-person hand hit detection");
+    super::replica_check::check(assets).await?;
     Ok(())
 }

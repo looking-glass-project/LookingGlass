@@ -132,6 +132,9 @@ class Pair:
                    'checkpoint_generation': frame['checkpoint_generation'], 'lives': frame['lives'],
                    'camera_player': report['camera_player'], 'camera_target': report['camera_target'],
                    'camera_subject_feet': report['camera_subject_feet'],
+                   'weapon_effects': [{key: len(c['projectiles'].get(key, []))
+                                       for key in ('sparks', 'trail', 'flight_trails')}
+                                      for c in report['combat']['characters']],
                    'encounters': stage['world']['encounters'],
                    'owner': stage['owner'], 'scene': driver['scene'], 'driver': driver,
                    'players': [{'feet': b['player']['feet'], 'health': b['stats']['sanity'],

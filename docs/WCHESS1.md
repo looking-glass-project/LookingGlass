@@ -721,3 +721,18 @@ traversal after verifying the real combat revival. Subsequent movement remains
 strictly death-free so revival cannot skip swimming or another route section.
 Its current retained run verifies Red's revival and steps 126–128 before the
 older doorway failure; the complete continuation still needs a passing replay.
+
+### Fresh route after the swimming-exit fix
+
+The next Blue-first public run on source `32f6ca1` starts at the ordinary entrance
+and passes **steps 0–106**, including both chess puzzles. It then fails at step
+107 after the follower falls to the lower floor beneath the leader's landing.
+Both remain alive; the follower's recovery search does not finish the step.
+All **9,496** compared player/world/native states agree in the retained prefix,
+and ordinary player-presence checks pass. This is a new recovery case, not a
+complete entrance-to-exit pass or additional campaign credit.
+
+Evidence: `private/coop/chess-route-db85869cf3e541298054be40393ff76b/` and
+`private/coop-wchess1-fresh17-blue.log`. Normal checkpoints before steps 71, 97
+and 100, the step-start reports, and an unchanged captured fall state at
+`private/coop-wchess1-fall107-probe.json` support a focused replay.

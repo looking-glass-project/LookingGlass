@@ -4,7 +4,7 @@ Development branch: `coop`, based on public main `0220970`.
 This is work in progress. A policy test or a connected pair of windows does not
 establish campaign support. Single-player behavior and saves must remain supported.
 
-Current milestone: **45.8% estimated overall; six campaign visits have combined
+Current milestone: **46.1% estimated overall; six campaign visits have combined
 verification evidence, 33 remain open.** Earlier contact-system repeats are still
 required as detailed in the campaign matrix. Pool of Tears has 38 passing native
 component cases plus public two-client opening and bank checkpoint segments.
@@ -14,7 +14,7 @@ recovery remain open for both visits. Report these smaller milestones alongside
 the total; a successful component or segment is not a completed campaign visit.
 
 Status checked on **27 October 2026**: the older approximately 42% figure is
-historical; the current weighted estimate is **45.8% (about 46%)**. The latest
+historical; the current weighted estimate is **46.1% (about 46%)**. The latest
 Pale Realm combat stall is resolved by a supported sidestep after repeated
 misses. A public two-client replay passes all 26 approach steps (100–125), then
 verifies Blue's real combat death, moving spectator camera and exact ten-second
@@ -28,7 +28,12 @@ The swimming-exit stall in the automated follower is also resolved: public
 bank-to-exit replays pass with either leader, both players swimming and arriving
 at the correct next-level entrance with their resources retained (617/441
 matching states). These are resumed segments, not fresh full-level passes.
-The release build and all 820 active Rust tests pass. Full fresh
+Weapon sparks and swing/projectile trails now survive the guest snapshot path.
+Six native pixel comparisons cover both Alices, and a public two-client combat
+check observes all three effect types and both emitting players, with 59 matching
+states. This adds 0.25 movement/presentation points; it does not complete any
+campaign row or certify every weapon effect. See [effect checks](COOP-EFFECTS.md).
+The release build and all 822 active Rust tests pass. Full fresh
 routes in both arrival orders, the complete recovery/rejoin matrix and broader
 combat-effect checks remain open; this segment adds no full-level credit.
 See [recovery details](WCHESS1.md#independent-client-revival-fixture).
@@ -435,9 +440,9 @@ movement viewer both wait for helper shutdown before exiting.
 After tightening cancellation and the forged-message regression, all 21 focused
 co-op tests passed again. This final focused run includes the latest source changes.
 
-Overall estimate after completing the village, Pandemonium, both Fortress visits, Beyond and return-school verification rows, plus native-rope recovery, Herbaceous components, the Rolling Stones/Icy Reception/Flora/Sanctum/both Caterpillar's Plot shared-world adapters and Pale Realm cast/world components: **about 45.8%**. Credited
+Overall estimate after completing the village, Pandemonium, both Fortress visits, Beyond and return-school verification rows, plus native-rope recovery, Herbaceous components, the Rolling Stones/Icy Reception/Flora/Sanctum/both Caterpillar's Plot shared-world adapters, Pale Realm cast/world components and replicated weapon sparks/trails: **about 46.1%**. Credited
 points are 8/10 for foundation/diagnostics, 7/15 for internet Host/Join,
-9.5/15 for two-player movement/presentation, paired school supports, dry/swimming arrival placement, complete delayed village/Pandemonium traversal in separate clients, rendered independent rope controls and Pale Realm's native paired lift, and 8.5/20 for native targeting, host-owned
+9.75/15 for two-player movement/presentation, paired school supports, dry/swimming arrival placement, complete delayed village/Pandemonium traversal in separate clients, rendered independent rope controls, Pale Realm's native paired lift and replicated weapon sparks/trails, and 8.5/20 for native targeting, host-owned
 weapons/damage, personal resources, timed respawns and full saved-state team wipes.
 The additional 0.5 points credit tested recovery beside a survivor hanging on an
 active native rope: both-role unit coverage plus a captured fall/revival through
@@ -467,8 +472,11 @@ original ambush ownership/reunion, following 0.25 points each for Icy Reception'
 hazards/portal and the Rolling Stones chase adapter. They do not credit a full
 paired route, internet play or a completed campaign row.
 Full-campaign verification now earns 120/39 points (about 3.08/20), for those six
-visits' complete combined evidence. Total credited points are about 45.83, reported
-as 45.8%, up from 45.33 before the Pale Realm world adapter. Updates include
+visits' complete combined evidence. Total credited points are about 46.08, reported
+as 46.1%, up from 45.83 before the replicated weapon-effect fix. The extra 0.25
+presentation points require both native visible-pixel comparisons and real
+public-client delivery of impact sparks, swing trails and projectile trails.
+They do not cover every other effect or count as a completed visit. Updates include
 completed milestones so rounding does not conceal progress. Standalone policy
 tests receive no campaign credit; 33 visits remain open. The first five historical
 passes still need the contact-system repeats described in the campaign matrix.

@@ -15,6 +15,7 @@ pub mod ice_jacks_check;
 mod jacks;
 pub mod mallet_jack_check;
 mod projectile;
+mod replica_check;
 pub mod route_heavy;
 mod skool_check;
 mod trail;
@@ -1111,18 +1112,48 @@ fn launch_from_eye(
         (target - origin).try_normalize().unwrap_or(direction),
     )
 }
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct Spark {
     position: Vec3,
     velocity: Vec3,
     life: f32,
+    #[serde(with = "effect_color")]
     color: Color,
 }
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct Trail {
     a: Vec3,
     b: Vec3,
     life: f32,
+    #[serde(with = "effect_color")]
     color: Color,
     electric: bool,
+}
+mod effect_color {
+    use super::Color;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    pub fn serialize<S: Serializer>(c: &Color, s: S) -> Result<S::Ok, S::Error> {
+        [c.r, c.g, c.b, c.a].serialize(s)
+    }
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Color, D::Error> {
+        let [r,g,b,a] = <[f32;4]>::deserialize(d)?;
+        Ok(Color::new(r,g,b,a))
+    }
+    pub fn valid(c: Color) -> bool {
+        [c.r,c.g,c.b,c.a].into_iter().all(|v| (0. ..=1.).contains(&v))
+    }
+}
+impl Spark {
+    fn valid(&self) -> bool {
+        self.position.is_finite() && self.velocity.is_finite()
+            && (0. ..=1.).contains(&self.life) && effect_color::valid(self.color)
+    }
+}
+impl Trail {
+    fn valid(&self) -> bool {
+        self.a.is_finite() && self.b.is_finite()
+            && (0. ..=1.).contains(&self.life) && effect_color::valid(self.color)
+    }
 }
 fn append_swing(vertices: &mut Vec<Vertex>, trail: &[Trail], electric: bool) {
     for (i, t) in trail.windows(2).enumerate() {
@@ -1349,6 +1380,9 @@ impl Visuals {
             projectiles: self.projectiles.clone(),
             shots: self.shots,
             impacts: self.impacts,
+            sparks: self.sparks.clone(),
+            trail: self.trail.clone(),
+            flight_trails: self.flight_trails.clone(),
         }
     }
     pub fn restore(&mut self, s: &ProjectileSave) -> Result<()> {
@@ -1365,6 +1399,9 @@ impl Visuals {
         self.projectiles = s.projectiles;
         self.shots = s.shots;
         self.impacts = s.impacts;
+        self.sparks = s.sparks;
+        self.trail = s.trail;
+        self.flight_trails = s.flight_trails;
         Ok(())
     }
     pub fn load(assets: &mut Assets) -> Result<Self> {
@@ -2438,6 +2475,15 @@ pub struct ProjectileSave {
     projectiles: Vec<Projectile>,
     shots: u64,
     impacts: u64,
+    // These short-lived world-space effects are produced only by the host.
+    // Guests restore them with the attack instead of running weapon simulation.
+    // Older saves lack the fields and correctly resume without old particles.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    sparks: Vec<Spark>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    trail: Vec<Trail>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    flight_trails: Vec<Trail>,
 }
 impl ProjectileSave {
     /// The bounds `Visuals::restore` enforces before it accepts a saved block.
@@ -2452,6 +2498,11 @@ impl ProjectileSave {
             "Invalid saved explosions"
         );
         ensure!(self.dice_count <= 3, "Invalid saved Dice count");
+        ensure!(self.sparks.len() <= 256 && self.sparks.iter().all(Spark::valid),
+            "Invalid saved weapon sparks");
+        ensure!(self.trail.len() <= 32 && self.trail.iter().all(Trail::valid)
+            && self.flight_trails.len() <= 256 && self.flight_trails.iter().all(Trail::valid),
+            "Invalid saved weapon trails");
         ensure!(
             self.projectiles.len() <= 256 && self.projectiles.iter().all(Projectile::valid),
             "Invalid saved player projectiles"

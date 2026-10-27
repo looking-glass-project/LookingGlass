@@ -21,6 +21,9 @@ but do not satisfy that gate. The timed spike corridor and its following four
 steps now pass focused internet replays with either leader, including delayed
 approach/stop inputs and a check against retracing the completed corridor.
 These add no full-level credit; see [timed corridor checks](WCHESS1.md#timed-corridor-test-controls).
+A missed readiness frame in the lift test is also fixed: both leader roles now
+pass the captured lift-to-corridor segment using persistent boarding/arrival
+facts. See [lift handoff checks](WCHESS1.md#delayed-lift-handoff).
 The earlier Pale Realm combat stall is resolved by a supported sidestep after repeated
 misses. A public two-client replay passes all 26 approach steps (100–125), then
 verifies Blue's real combat death, moving spectator camera and exact ten-second
@@ -48,7 +51,7 @@ its diagonal yield choices are blocked. See [focused checks](WCHESS1.md#jump-tak
 A graceful guest leave/rejoin followed by the swimming exit also passes, with
 624 matching states recorded after the new guest process joins. The original
 puzzles, native resident health and personal resources remain intact.
-The release build and all 824 active Rust tests pass. Full fresh
+The release build and all 825 active Rust tests pass. Full fresh
 routes in both arrival orders, the complete recovery/rejoin matrix and broader
 combat-effect checks remain open; this segment adds no full-level credit.
 See [recovery details](WCHESS1.md#independent-client-revival-fixture).

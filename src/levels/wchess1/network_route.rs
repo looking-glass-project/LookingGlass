@@ -8,6 +8,10 @@ use std::{collections::VecDeque, sync::mpsc};
 type Plan=VecDeque<(Controls,Vec3)>;
 struct Worker { step:usize, phase:u8, warp:u64, start:Vec3, result:mpsc::Receiver<std::result::Result<Vec<(Controls,Vec3)>,usize>> }
 
+pub(super) fn lift_phase(phase:u8,assembled:bool,boarded:bool,arrived:bool)->u8 {
+    match phase {0 if assembled || boarded=>1,1 if arrived=>2,_=>phase}
+}
+
 fn record_trail(trail:&mut VecDeque<(Vec3,bool)>,feet:Vec3,airborne:bool) {
     // Keep takeoffs and landings even when they are closer than the spatial
     // sampling interval. Otherwise two jumps can merge into one airborne path
@@ -167,6 +171,15 @@ impl NetworkDriver {
                             }
                         }
                         "lift"=> {
+                            // A peer can miss the brief all-ready frame after
+                            // the other client boards or leaves. Actual lift
+                            // support and this player's arrival remain visible.
+                            let boarded=frame.players.iter().any(|b|b.player.grounded && realm.lift_support(b.player.feet));
+                            let arrived=body.player.grounded && body.player.feet.z>250.;
+                            let observed=lift_phase(self.phase,false,boarded,arrived);
+                            if observed!=self.phase {
+                                self.phase=observed;self.trail.clear();self.reset_walk(body.player.feet);
+                            }
                             let (goals,precise,radius)=match self.phase {
                                 0=>([vec3(-720.,-544.,64.);2],false,7.),
                                 1=>{let mut g=[vec3(-752.,-384.,256.+realm.saved.elevator.height);2];
@@ -174,12 +187,9 @@ impl NetworkDriver {
                                 _=>([vec3(-800.,-256.,256.);2],false,7.),
                             };
                             let (input,ready)=self.walk(goals,precise,radius,frame,arena,world,local,first,lead,elapsed)?;c=input;
-                            let advance=match self.phase {
-                                0=>ready && realm.saved.elevator.phase==1,
-                                1=>ready && frame.players.iter().all(|b|b.player.feet.z>250. && b.player.grounded),
-                                _=>ready,
-                            };
-                            if advance {if self.phase==2 {self.done=true;}else {self.phase+=1;self.trail.clear();self.reset_walk(body.player.feet);}}
+                            let next=lift_phase(self.phase,ready && realm.saved.elevator.phase==1,boarded,arrived);
+                            if next!=self.phase {self.phase=next;self.trail.clear();self.reset_walk(body.player.feet);}
+                            else if self.phase==2 && ready {self.done=true;}
                         }
                         _=>anyhow::bail!("Unknown Pale Realm course mode"),
                     }
@@ -449,6 +459,27 @@ impl NetworkDriver {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn delayed_lift_observer_catches_up_after_peer_leaves_the_ready_area() {
+        // Either peer may see assembly readiness first. The later observer
+        // catches up from boarding even though assembly is no longer true.
+        for early in 0..2 {
+            let mut phases=[0;2];
+            phases[early]=lift_phase(phases[early],true,false,false);
+            assert_eq!(phases[early],1);
+            phases[1-early]=lift_phase(phases[1-early],false,true,false);
+            assert_eq!(phases,[1,1]);
+            // At the upper stop each rider can leave after their own grounded
+            // arrival, including when the peer has already left its berth.
+            phases[early]=lift_phase(phases[early],false,true,true);
+            phases[1-early]=lift_phase(phases[1-early],false,true,true);
+            assert_eq!(phases,[2,2]);
+            assert_eq!(lift_phase(phases[early],false,false,false),2);
+        }
+        assert_eq!(lift_phase(0,false,false,false),0);
+        assert_eq!(lift_phase(1,false,true,false),1);
+    }
 
     #[test]
     fn nearby_landing_and_takeoff_remain_distinct_between_recorded_jumps() {

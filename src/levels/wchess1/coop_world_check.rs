@@ -47,6 +47,17 @@ fn clocks(a:&mut Assets,map:&Bsp)->Result<()> {
     }Ok(())
 }
 fn lift(a:&mut Assets,map:&Bsp)->Result<()> {
+    {
+        let (mut r,mut w,_,_)=free(a,map)?;
+        r.saved.elevator=motion::Lift{phase:1,time:0.,height:-192.};r.rebuild(map)?;w.set_dynamic(r.colliders());
+        let boarded=vec3(-795.4345092773438,-392.8413391113281,64.03125);
+        let waiting=vec3(-680.9300537109375,-493.6340026855469,64.03125);
+        ensure!(w.body_clear(boarded) && w.body_clear(waiting) && r.lift_support(boarded)
+            && !r.lift_support(waiting),"Captured lift phase disagreement no longer has one rider aboard");
+        ensure!(network_route::lift_phase(0,false,r.lift_support(boarded),false)==1,
+            "Delayed lift observer failed to recognise the already boarded peer");
+        println!("PASS captured paired lift handoff: one real rider aboard, waiting peer can catch up without an all-ready frame");
+    }
     for missing in 0..2 {
         let (mut r,mut w,mut p,mut s)=free(a,map)?;
         r.saved.elevator=motion::Lift{phase:1,time:0.,height:-192.};r.rebuild(map)?;w.set_dynamic(r.colliders());

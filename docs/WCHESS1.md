@@ -901,3 +901,37 @@ All three complete single-player check logs match the `2990c66` baseline.
 No screenshots were inspected; fixture-generated captures remain private.
 Overall co-op progress stays **46.1%**, with fresh uninterrupted routes and the
 broader campaign/recovery matrix still open.
+
+### Delayed lift handoff
+
+A fresh Blue-led full attempt on `8499731` passes 0–29, then stalls at the lift
+on step 30. The host saw both players ready and boarded; the guest missed that
+brief observation and continued waiting at the assembly point. The lift itself
+correctly waits for both living players. The failed prefix retains **5,281**
+matching player/world/native states and passes **1,570 host / 1,556 guest**
+presence observations. Evidence:
+`private/coop/chess-route-68121cdcc0bd44ecba08d31991ac9e1f/`.
+
+The test driver now recognises actual deck support as persistent evidence that
+boarding has begun. At the top, each client proceeds after its own grounded
+arrival, even if the peer has already left its reserved berth. It still supplies
+ordinary movement inputs. A unit regression covers either observer missing the
+ready frame; a native test checks the captured occupied/waiting positions against
+the real lift hull. The normal all-living boarding and paired carry checks pass.
+
+Source `d7bbc999cc76b73bf9649f28dbd657846508032f5d0e1e7209e815ce7a67466e`
+passes **30–40** through independent public clients with both leader roles,
+starting from an unchanged checkpoint export of the actual stalled host state.
+Both pass exact restore, no-death, separation, lifecycle and no-backtracking
+assertions with 40 ms injected delay and 20 ms jitter:
+
+- Blue: **493** matching states,
+  `private/coop/chess-resume-20316aa42cb649098f3e9d1a4b2f604e/`.
+- Red: **491** matching states,
+  `private/coop/chess-resume-92486ee0cb8f44de8639711e8d673b40/`.
+
+The locked release build, **825 active Rust tests** (one existing ignored),
+and the native paired world suite pass. The preceding build also repeats all
+39 entrance/four underwater recovery, 82 shared-world, five Fortress and 15
+Beyond component checks; details are in `COOP_CAMPAIGN.md`. This change concerns
+the opt-in route driver. No full-level or overall percentage credit is added.

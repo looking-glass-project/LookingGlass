@@ -8,11 +8,13 @@ pub(super) struct Art {
     blast: crate::particles::Attached,
     essence: crate::loot_art::Art,
     rubble: Vec<crate::weapons::Prop>,
+    local_player: Option<usize>,
 }
 impl Art {
     pub fn load(a: &mut Assets) -> Result<Self> {
         let specs = crate::texture::read_materials(a)?;
         Ok(Self {
+            local_player: None,
             alice: Puppet::load(a, "alice", data::ALICE, &specs)?,
             cat: Puppet::load(a, "c_cheshire", data::CAT, &specs)?,
             humpty: Puppet::load(a, "c_humptydumpty", data::HUMPTY, &specs)?,
@@ -35,6 +37,7 @@ fn watch(p: &mut Puppet, at: Transform, target: Vec3) {
     p.watch(w);
 }
 impl LevelArt for Art {
+    fn coop_view(&mut self, local: usize) { self.local_player=Some(local); }
     fn story_pose(&mut self, s: &Story) {
         self.alice.mouth(s.mouth(&["alice"]));
         self.cat
@@ -144,14 +147,9 @@ impl LevelArt for Art {
                 }
             }
         }
-        if f.saved.returning && f.saved.essence_delay == 0. {
-            let at = f.data.at(if f.saved.essence == 0 {
-                "get_me1"
-            } else {
-                "get_me2"
-            });
+        if let Some(at) = f.personal_essence(self.local_player) {
             self.essence
-                .draw(crate::loot::Grade::Medium, at.translation, atmo, camera, f.saved.clock);
+                .draw(crate::loot::Grade::Medium, at, atmo, camera, f.saved.clock);
         }
     }
     fn handoff_pose(&self) -> Option<&crate::cinematic::ActorPose> {

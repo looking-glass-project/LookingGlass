@@ -65,6 +65,26 @@ pub fn reunion_with_partner(world: &World, owner: &Player, partner: &Player,
     })
 }
 
+/// Opt-in for an authored scene ending on a narrow perch. Ordinary scene
+/// reunion and death revival retain their existing smaller search. Even this
+/// fallback cannot cross a wall, land on an edge or enter a controller hazard.
+pub fn reunion_with_limits(world:&World, owner:&Player, radius:f32, drop:f32,
+    safe:impl Fn(Vec3)->bool)->Option<Player> {
+    if !radius.is_finite() || !drop.is_finite() || !(40. ..=256.).contains(&radius)
+        || !(0. ..=256.).contains(&drop) {return None;}
+    for distance in [40.,48.,64.,80.,96.,112.,128.,160.,192.,224.,256.] {
+        if distance>radius {break;}
+        for index in 0..32 {
+            let angle=index as f32*std::f32::consts::TAU/32.;
+            let point=owner.feet+vec3(angle.cos(),angle.sin(),0.)*distance;
+            for step in [18.,0.] {
+                if let Some(player)=beside_with_step(world,owner.feet,point,drop,step,&safe) {return Some(player);}
+            }
+        }
+    }
+    None
+}
+
 pub fn near(world: &World, feet: Vec3, drop: f32, safe: impl Fn(Vec3) -> bool) -> Option<Player> {
     for radius in [48., 72., 96.] {
         for direction in directions() {
@@ -207,6 +227,27 @@ fn supported(world: &World, feet: Vec3) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn authored_perch_reunion_keeps_wall_support_and_hazard_checks() {
+        let floor=(vec3(-400.,-400.,-20.),vec3(400.,400.,0.));
+        let perch=(vec3(-20.,-20.,0.),vec3(20.,20.,200.));
+        let world=World::fixture(&[floor,perch]);
+        let owner=Player::spawn(&world,Vec3::Z*(200.03125+EYE_HEIGHT)).unwrap();
+        assert!(reunion(&world,&owner,|_|true).is_none());
+        assert!(revival(&world,&owner,|_|true).is_none());
+        let partner=reunion_with_limits(&world,&owner,256.,256.,|_|true).unwrap();
+        assert!(partner.grounded && supported(&world,partner.feet));
+        assert!(partner.feet.z<1. && (partner.feet-owner.feet).truncate().length()>=40.);
+        assert!(reunion_with_limits(&world,&owner,256.,32.,|_|true).is_none());
+        assert!(reunion_with_limits(&world,&owner,256.,256.,|_|false).is_none());
+        for (radius,drop) in [(257.,256.),(256.,257.),(f32::NAN,256.),(256.,f32::NAN)] {
+            assert!(reunion_with_limits(&world,&owner,radius,drop,|_|true).is_none());
+        }
+        let walls=[(vec3(28.,-60.,0.),vec3(32.,60.,500.)),(vec3(-32.,-60.,0.),vec3(-28.,60.,500.)),
+            (vec3(-60.,28.,0.),vec3(60.,32.,500.)),(vec3(-60.,-32.,0.),vec3(60.,-28.,500.))];
+        let enclosed=World::fixture(&[vec![floor,perch],walls.to_vec()].concat());
+        assert!(reunion_with_limits(&enclosed,&owner,256.,256.,|_|true).is_none());
+    }
     #[test]
     fn rope_revival_uses_clear_separate_grips_and_rejects_blocked_or_inactive_ropes() {
         use crate::{movement::{Controls, RopeGrip}, traversal::Rope};

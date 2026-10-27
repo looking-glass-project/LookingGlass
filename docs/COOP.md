@@ -4,7 +4,7 @@ Development branch: `coop`, based on public main `0220970`.
 This is work in progress. A policy test or a connected pair of windows does not
 establish campaign support. Single-player behavior and saves must remain supported.
 
-Current milestone: **44.6% estimated overall; six campaign visits have combined
+Current milestone: **45.1% estimated overall; six campaign visits have combined
 verification evidence, 33 remain open.** Earlier contact-system repeats are still
 required as detailed in the campaign matrix. Pool of Tears has 38 passing native
 component cases plus public two-client opening and bank checkpoint segments.
@@ -117,6 +117,19 @@ the failure reports and authentic checkpoint permit image-free replay. Full
 separate-client recovery/effects coverage is still required. This verifies more
 of the existing adapter credit: **44.6% overall, six combined campaign rows**.
 Evidence: `private/coop/sanctum-route-a90c37b7f8d54d69ae30417854abf9d1/`.
+
+Both Caterpillar's Plot visits now have explicit paired progression, shared gate
+and destruction clocks, individual essence stations, and first-arrival Staff
+ownership. Source `2990c66` passes **62 staged co-op cases**, including 40 original
+scene combinations and eight isolated native gate carry/obstruction cases.
+The scene checks exposed and fixed a real reunion deadlock on the Staff pillar:
+that specific handoff now permits a supported, unobstructed partner landing
+within 256 horizontal/downward units. Ordinary revival is unchanged. All 813
+active unit tests pass, and both single-player scene suites and routes match
+their baseline logs exactly. This adds 0.25 shared-progression points per visit,
+bringing the estimate to **45.1%**. Both campaign rows remain partial; full paired
+traversal, combat, optional reward coverage, internet, rendered effects and
+recovery/rejoin remain open. See [Caterpillar's Plot details](WFOREST.md).
 
 The overall percentage is a weighted estimate, not elapsed time or a live build
 indicator. An earlier Garden build passed 4/4 native paired routes. After adding
@@ -319,7 +332,7 @@ movement viewer both wait for helper shutdown before exiting.
 After tightening cancellation and the forged-message regression, all 21 focused
 co-op tests passed again. This final focused run includes the latest source changes.
 
-Overall estimate after completing the village, Pandemonium, both Fortress visits, Beyond and return-school verification rows, plus native-rope recovery, Herbaceous components and the Rolling Stones/Icy Reception/Flora/Sanctum shared-world adapters: **about 44.6%**. Credited
+Overall estimate after completing the village, Pandemonium, both Fortress visits, Beyond and return-school verification rows, plus native-rope recovery, Herbaceous components and the Rolling Stones/Icy Reception/Flora/Sanctum/both Caterpillar's Plot shared-world adapters: **about 45.1%**. Credited
 points are 8/10 for foundation/diagnostics, 7/15 for internet Host/Join,
 9.25/15 for two-player movement/presentation, paired school supports, dry/swimming arrival placement, complete delayed village/Pandemonium traversal in separate clients and rendered independent rope controls, and 8.25/20 for native targeting, host-owned
 weapons/damage, personal resources, timed respawns and full saved-state team wipes.
@@ -334,18 +347,20 @@ Flora adds 0.25 combat points for its integrated native Ant targeting/personal
 hits, paired spawn visibility and visit-specific health-floor handling.
 Sanctum adds 0.25 combat points for its verified native paired boss attacks,
 owned grabs/throws and personal healing. Credit also includes
-9/20 for shared world replication, ordered contacts, the verified theatre
+9.5/20 for shared world replication, ordered contacts, the verified theatre
 ownership/reunion slice, school boarding barriers, visit history and restart/backup
 restoration of shared checkpoints, and native traversal of all six village scenes
 and all four Pandemonium scenes with either player arriving first (also verified through public internet clients).
-The latest 0.25 points cover Sanctum's shared boss-defeat/spike/mushroom progression
+The latest 0.5 points cover both Caterpillar's Plot visits' verified shared gates,
+wall/secret progression and original scene handoffs (0.25 per visit). The preceding
+0.25 points cover Sanctum's shared boss-defeat/spike/mushroom progression
 and personal slide arrival; the preceding 0.25 cover Flora's shared wave/departure clock and
 original ambush ownership/reunion, following 0.25 points each for Icy Reception's
 hazards/portal and the Rolling Stones chase adapter. They do not credit a full
 paired route, internet play or a completed campaign row.
 Full-campaign verification now earns 120/39 points (about 3.08/20), for those six
-visits' complete combined evidence. Total credited points are about 44.58, reported
-as 44.6%, up from 44.08 before the Sanctum adapter. Updates include
+visits' complete combined evidence. Total credited points are about 45.08, reported
+as 45.1%, up from 44.58 before the Caterpillar's Plot adapters. Updates include
 completed milestones so rounding does not conceal progress. Standalone policy
 tests receive no campaign credit; 33 visits remain open. The first five historical
 passes still need the contact-system repeats described in the campaign matrix.

@@ -1995,6 +1995,10 @@ handoff. Independent internet traversal/rejoin remains open; see `CENTIPEDE2.md`
 It shares the existing boss stages and hit IDs. Staged checks do not establish
 full paired traversal or independent-client networking.
 
+`--wforest-coop-check` reserves staged co-op checks across both Caterpillar's
+Plot visits: shared machinery, individual healing, Staff arrival and original
+scene ownership/reunion. Full traversal and internet coverage remain separate.
+
 Majestic Maze additionally reserves `--hedge1-save-write` and `--hedge1-save-read` for fresh-process native save checks. Its route requires a native window for the existing NPC cast; it has no active cinematic to skip.
 
 Clockwork and Ascension additionally reserve `--hatter1-route-native-check` and

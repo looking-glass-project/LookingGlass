@@ -305,6 +305,10 @@ pub trait LevelController: Any {
     fn coop_scene_step(&mut self, _owner: usize, player: &mut Player, stats: &mut Stats) {
         self.prepare_player(stats, player);
     }
+    /// An authored narrow perch can require a wider scene reunion. Return a
+    /// horizontal radius and downward search limit; placement still checks the
+    /// complete path, support and hazards, and caps both at 256 world units.
+    fn coop_reunion_limits(&self, _player: &Player) -> Option<(f32, f32)> { None }
     /// Shared ride activation waits for every living player on its deck.
     fn coop_boarding_ready(&self, _thread: &str, _feet: &[Vec3]) -> Option<bool> { None }
     /// Script-owned lethal volumes also exclude checkpoint/reunion placement.

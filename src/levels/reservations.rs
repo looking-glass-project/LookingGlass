@@ -306,7 +306,11 @@ pub static RESERVATIONS: [Reservation; 39] = [
         }),
         ..visit(17, "centipede2")
     },
-    visit(18, "wforest"),
+    Reservation { flags: Some(VisitFlags {
+        contract: &["--wforest-check", "--wforest-coop-check"],
+        route: &["--wforest-route-check"], skip: &["--wforest-skip-route-check"],
+        render: &["--wforest-render-check"],
+    }), ..visit(18, "wforest") },
     Reservation {
         flags: Some(VisitFlags {
             contract: &["--wchess1-check", "--wchess1-floor-survey"],

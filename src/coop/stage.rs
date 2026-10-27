@@ -515,6 +515,15 @@ impl Stage {
                         &roster.players[partner.index()].player, |at| {
                         !self.interactions.hazardous(at)
                             && self.interactions.beyond.as_ref().is_none_or(|b| b.reunion_safe(at))
+                    }).or_else(|| {
+                        let actor=&roster.players[owner.index()].player;
+                        self.interactions.levels.iter().find_map(|slot| {
+                            let (radius,drop)=slot.ctl.coop_reunion_limits(actor)?;
+                            super::placement::reunion_with_limits(world,actor,radius,drop,|at| {
+                                !self.interactions.hazardous(at)
+                                    && self.interactions.beyond.as_ref().is_none_or(|b|b.reunion_safe(at))
+                            })
+                        })
                     })
                 else {
                     return Ok(());

@@ -789,3 +789,61 @@ personal resources and arrive separately at `wchess2_start1` in epoch 2.
 Evidence: `private/coop/chess-resume-3dd2168214af4c818b5826973b8ee63e/`, including
 `tail-arrival-analysis.json`. This remains a resumed segment; overall credit stays
 **46.1%**.
+
+### Guest rejoin followed by the swimming exit
+
+`tools/test_coop_chess_rejoin.py` restores an unchanged normal checkpoint after
+both puzzles and the water release. The guest exits, a new process rejoins the
+same host, and both continue through steps 151–160 using ordinary controls.
+The check preserves personal resources, position, spawn/warp clocks, completed
+puzzles, lever timings and native resident identities/health. It requires at
+least 20 matching player/world/native states **after** the new guest joins, so
+old matching observations cannot pass the reconnect check. Six guard tests reject
+progress resets, revived enemies, missing residents and stale network evidence.
+
+The Blue-first public run on source `efc29e7` passes with 40/20 ms delay/jitter in
+64 seconds. It retains **645** matching states overall, **624 after rejoin**, and
+both clients reach `wchess2_start1` in epoch 2. Evidence:
+`private/coop/chess-rejoin-0ab32230985f44fd95b796e5cf0035bd/`, including before/after
+rejoin reports and both final reports. This verifies a graceful guest leave and
+fresh-process rejoin followed by the exit; it does not simulate a network outage
+or establish a fresh complete level traversal.
+
+### Preserve closely spaced landings in the recorded route
+
+A subsequent fresh Blue-first run on `efc29e7` again passes steps 0–106 but
+misses the follower's landing at 107. Its **9,606** matching states and all
+ordinary presence observations pass; recovery from the lower floor eventually
+stalls. Evidence: `private/coop/chess-route-74bd18b17c814048b35c4c66e0dbe4aa/`.
+The leader's last airborne sample was only 11.9 units from its landing, inside
+the recorder's 12-unit spacing threshold. Consequently, no grounded point was
+recorded between two separate jumps. The recorder now always retains changes
+between grounded and airborne states, with the spatial threshold still applied
+within each state. A regression uses those captured coordinates.
+
+On source `68696dd7cb4c0c9cb91ed044cdd97356b7bbb2ce8b5fe8c363bccbf804155f69`,
+the newer unchanged normal checkpoint passes **100–108** Blue-first over the
+public connection in 40.8 seconds, with **320** matching player/world/native
+states and unchanged presence/resource assertions. Evidence:
+`private/coop/chess-resume-d1cafba2906d40fb82b97a50e2262755/`.
+The release build and **824 active Rust tests** pass (one existing ignored).
+This is a focused repeat, not a completed fresh route.
+
+Two connection failures remain separately recorded. A simultaneous Red-first
+run with four game windows disconnects at step 12 when its client cannot consume
+updates fast enough (`chess-route-c47f44b9b23648cea05fa71cfc55ece0`). A later
+two-client jump replay fails before gameplay because its temporary invite address
+cannot be resolved (`chess-resume-713d3f01cb8a40c1b3329bf001da7667`). The successful
+retry above does not erase either failure or establish connection reliability.
+
+The next fresh Red-first run uses only one client pair on `68696dd` and passes
+steps **0–35**, including the original Bishop scene and shared lift. At step 36,
+the following Blue player dies in the active spike corridor; Red remains at
+100 health. The retained prefix has **2,026** matching states and passes all
+**621 host / 608 guest** presence observations. Evidence:
+`private/coop/chess-route-3f0cf4146f424d70bb039d1898b36d19/`, including the exact
+before/after damage reports. An unchanged host capture before step 36 is exported
+through the normal checkpoint machinery in
+`private/coop-wchess1-spikes36-export23/` for focused diagnosis. The native export
+and one-tick idle repeat pass; this supplies no traversal credit. Safe timed-spike
+traversal for both leaders and fresh full-level completion remain open.

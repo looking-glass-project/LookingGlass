@@ -8,6 +8,15 @@ use std::{collections::VecDeque, sync::mpsc};
 type Plan=VecDeque<(Controls,Vec3)>;
 struct Worker { step:usize, phase:u8, warp:u64, start:Vec3, result:mpsc::Receiver<std::result::Result<Vec<(Controls,Vec3)>,usize>> }
 
+fn record_trail(trail:&mut VecDeque<(Vec3,bool)>,feet:Vec3,airborne:bool) {
+    // Keep takeoffs and landings even when they are closer than the spatial
+    // sampling interval. Otherwise two jumps can merge into one airborne path
+    // and the follower loses the supported takeoff between them.
+    if trail.back().is_none_or(|(at,air)|at.distance(feet)>12. || *air!=airborne) {
+        trail.push_back((feet,airborne));
+    }
+}
+
 pub(crate) struct NetworkDriver {
     steps:Vec<coop_route::Step>, index:Option<usize>, phase:u8,
     last_tick:Option<u64>, ticks:u64, quiet:u64, home:[Vec3;2],
@@ -86,9 +95,8 @@ impl NetworkDriver {
                 self.free=true;self.ticks+=elapsed;
                 ensure!(self.ticks<120*180,"Pale Realm course step {index} stalled");
                 let leader=&frame.players[first.index()].player;
-                if local!=first && arena.stage.interactive_actor().is_none()
-                    && self.trail.back().is_none_or(|(p,_)|p.distance(leader.feet)>12.) {
-                    self.trail.push_back((leader.feet,!leader.grounded && !leader.swimming));
+                if local!=first && arena.stage.interactive_actor().is_none() {
+                    record_trail(&mut self.trail,leader.feet,!leader.grounded && !leader.swimming);
                 }
                 ensure!(self.trail.len()<2000,"Pale Realm follower lost leader trail");
                 let mut c=Controls::default();
@@ -422,5 +430,25 @@ impl NetworkDriver {
             if c.rise>0. {c.wish=d.truncate().normalize_or_zero();}
             c.jump|=p.ledge.as_ref().is_some_and(|h|!h.pulling) || p.grounded && d.z>24. && d.truncate().length()<330.;
         }Ok((c,false))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn nearby_landing_and_takeoff_remain_distinct_between_recorded_jumps() {
+        // The full public route omitted this landing: it is 11.9 units from
+        // the preceding airborne sample, inside the usual 12-unit interval.
+        let falling=vec3(4000.348876953125,2329.49853515625,133.78106689453125);
+        let landed=vec3(4000.14697265625,2319.125732421875,127.97212982177734);
+        let takeoff=landed+Vec3::Z*6.;
+        let mut trail=VecDeque::new();
+        for sample in [(falling,true),(landed,false),(landed,false),
+            (landed+Vec3::X*2.,false),(takeoff,true),(takeoff,true)] {
+            record_trail(&mut trail,sample.0,sample.1);
+        }
+        assert_eq!(trail.into_iter().collect::<Vec<_>>(),vec![(falling,true),(landed,false),(takeoff,true)]);
     }
 }

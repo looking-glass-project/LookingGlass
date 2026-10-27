@@ -39,7 +39,10 @@ the waiting partner unmoved. Both player slots pass native regressions; the
 captured replay improves from 15.26 to 36.00 units of separation. The automated
 follower also retains jump takeoffs and can make room along the corridor when
 its diagonal yield choices are blocked. See [focused checks](WCHESS1.md#jump-takeoff-and-narrow-corridor-contact).
-The release build and all 823 active Rust tests pass. Full fresh
+A graceful guest leave/rejoin followed by the swimming exit also passes, with
+624 matching states recorded after the new guest process joins. The original
+puzzles, native resident health and personal resources remain intact.
+The release build and all 824 active Rust tests pass. Full fresh
 routes in both arrival orders, the complete recovery/rejoin matrix and broader
 combat-effect checks remain open; this segment adds no full-level credit.
 See [recovery details](WCHESS1.md#independent-client-revival-fixture).

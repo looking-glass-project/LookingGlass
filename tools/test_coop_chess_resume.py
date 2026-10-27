@@ -39,6 +39,7 @@ class ChessResume(ChessPair):
             for current, old in zip(report['frame']['players'], self.saved['frame']['players']):
                 assert distance(current['player']['feet'], old['player']['feet']) < 2, 'Resume changed placement'
                 verify_rejoin_stats(old['stats'], current['stats'], elapsed)
+        self.after_resume()
         for role in self.commands:
             self.set(role, step=self.args.start_step)
         self.until(lambda: len(self.course_hashes) == 2, 20)
@@ -75,6 +76,9 @@ class ChessResume(ChessPair):
             delay_ms=self.args.delay_ms, jitter_ms=self.args.jitter_ms, evidence=self.evidence,
             scope='Resumed segment only; no full-level completion credit'), indent=2))
         print('PASS resumed Pale Realm segment; not a complete traversal', flush=True)
+
+    def after_resume(self):
+        """Optional lifecycle check after validating the unchanged checkpoint."""
 
 
 if __name__ == '__main__':

@@ -5,6 +5,7 @@ mod coop;
 mod coop_check;
 mod coop_route;
 mod network_route;
+mod spike_route;
 pub(crate) use network_route::NetworkDriver;
 mod coop_world_check;
 mod check;

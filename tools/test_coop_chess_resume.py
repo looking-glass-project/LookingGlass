@@ -9,8 +9,25 @@ import json
 from pathlib import Path
 
 from test_coop_chess import ChessPair
-from test_coop_play import ROOT, distance
+from test_coop_play import ROOT
 from test_coop_village import verify_rejoin_stats
+
+
+def verify_resume_receipt(receipt, saved, build):
+    """Require the native exact comparison made before any physics advances."""
+    assert receipt['verified'] is True, 'Native resume was not verified'
+    assert receipt['build'] == build, 'Resume receipt belongs to another build'
+    assert receipt['epoch'] == saved['visit']['epoch'], 'Resume receipt changed epoch'
+    assert receipt['tick'] == saved['frame']['tick'], 'Resume receipt changed checkpoint tick'
+
+
+def verify_resume_body(current, old, elapsed):
+    # A captured body can still have momentum. By the first network report it
+    # has advanced normally, so position equality belongs to the native receipt.
+    assert elapsed >= 0, 'Resume observation precedes the checkpoint'
+    for stamp in ('spawned_at', 'warped_at'):
+        assert current[stamp] == old[stamp], 'Resume unexpectedly changed ' + stamp
+    verify_rejoin_stats(old['stats'], current['stats'], elapsed)
 
 
 class ChessResume(ChessPair):
@@ -33,12 +50,14 @@ class ChessResume(ChessPair):
 
     def run(self):
         self.start_pair()
+        receipt = json.loads((self.folder / 'host' / 'route-resume.json').read_text())
+        verify_resume_receipt(receipt, self.saved, self.build)
+        self.evidence['exact_resume_receipt'] = receipt
         for role, report in self.reports.items():
             assert report['visit'] == self.saved['visit'], 'Resume changed visit'
             elapsed = report['frame']['tick'] - self.saved['frame']['tick']
             for current, old in zip(report['frame']['players'], self.saved['frame']['players']):
-                assert distance(current['player']['feet'], old['player']['feet']) < 2, 'Resume changed placement'
-                verify_rejoin_stats(old['stats'], current['stats'], elapsed)
+                verify_resume_body(current, old, elapsed)
         self.after_resume()
         for role in self.commands:
             self.set(role, step=self.args.start_step)

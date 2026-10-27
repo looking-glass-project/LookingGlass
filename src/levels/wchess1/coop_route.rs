@@ -9,7 +9,8 @@ use sha2::{Digest,Sha256};
 #[derive(Clone,Deserialize,Debug)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Step { pub mode:String, #[serde(default)] pub pos:[f32;3], #[serde(default)] pub value:f32,
-    #[serde(default)] pub name:String, #[serde(default="arrival_radius")] pub radius:f32 }
+    #[serde(default)] pub name:String, #[serde(default="arrival_radius")] pub radius:f32,
+    #[serde(default)] pub hold:[f32;3] }
 fn arrival_radius()->f32 {24.}
 struct Replay {
     arena:Arena,scene:RenderScene,roster:Roster,guest:Arena,guest_world:World,
@@ -127,6 +128,18 @@ impl Replay {
             if self.arena.stage.transition.is_some(){break;}
             self.step(Default::default(),true).await?;
         }self.scene_end().await
+    }
+    async fn spikes(&mut self,s:&Step)->Result<()> {
+        let mut crossing:[spike_route::Crossing;2]=Default::default();
+        self.goal=Some(Vec3::from_array(s.pos));
+        for _ in 0..120*60 {
+            let planned=std::array::from_fn::<_,2,_>(|i|crossing[i].controls(self.realm(),&self.scene.world,
+                &self.roster.players[i].player,&self.roster.players[self.first.index()].player,
+                i==self.first.index(),Vec3::from_array(s.hold),Vec3::from_array(s.pos),0.));
+            if planned.iter().all(|(_,ready)|*ready) {self.trail.clear();return Ok(());}
+            self.step(planned.map(|(c,_)|c),false).await?;
+        }
+        anyhow::bail!("Timed corridor crossing stalled")
     }
     async fn go(&mut self,goals:[Vec3;2],precise:bool,radius:f32)->Result<()> {
         self.goal=Some(goals[self.first.index()]);
@@ -358,6 +371,7 @@ async fn route(a:&mut Assets,first:PlayerId,skip:bool)->Result<()> {
             match s.mode.as_str() {
                 "walk"=>r.go([Vec3::from_array(s.pos);2],false,s.radius).await?,
                 "wait"=>r.wait(s.value).await?,
+                "spikes"=>r.spikes(s).await?,
                 "clear"|"rush"=>r.clear(s.value,s.mode=="rush").await?,
                 "lift"=>r.lift().await?,"lever"=>r.lever(&s.name).await?,
                 "bishop"=>r.board(Piece::Bishop).await?,"knight"=>r.board(Piece::Knight).await?,

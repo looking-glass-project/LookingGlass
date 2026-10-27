@@ -435,11 +435,88 @@ pub(super) fn check(a:&mut Assets)->Result<()> {
     let map=Bsp::parse(&a.read("maps/wchess1.bsp")?)?;
     wall_contact(a,&map)?;falling_contact(&map)?;overhanging_contact(&map)?;landing_contact(&map)?;
     clocks(a,&map)?;lift(a,&map)?;hazards(a,&map)?;
+    spike_forecast(a,&map)?;spike_crossing(a,&map)?;
     for kind in [scene::Kind::Intro,scene::Kind::Bishop,scene::Kind::Knight,scene::Kind::Bell,scene::Kind::Water] {
         for first in PlayerId::ALL {for skip in [false,true] {for dead in [false,true] {scene(a,&map,kind,first,skip,dead)?;}}}
     }
     boards(a,&map)?;levers(a,&map)?;board_death(a,&map)?;
     println!("PASS paired Pale Realm world/scenes/puzzles; full combat traversal, internet and recovery remain separate");Ok(())
+}
+
+fn spike_forecast(a:&mut Assets,map:&Bsp)->Result<()> {
+    let (mut r,_,_,_)=free(a,map)?;
+    let (mut future,_,_,_)=free(a,map)?;
+    r.saved.age=119.734489;r.saved.spikes=Some(116.835197);
+    let mut hits=0;let mut clear=0;
+    for off in [None,Some(r.saved.age+0.3)] {
+        r.saved.spikes_off=off;r.rebuild(map)?;
+        future.saved.spikes=r.saved.spikes;future.saved.spikes_off=off;
+        for n in 0..=220 {
+            let after=n as f32*0.05;
+            future.saved.age=r.saved.age+after;future.rebuild(map)?;
+            for x in [-784.,-848.,-912.,-957.083435,-1008.,-1072.,-1120.] {
+                let feet=vec3(x,399.041168,224.03125);
+                let predicted=spike_route::hazardous_after(&r,feet,after);
+                let actual=future.hazardous(feet);
+                ensure!(predicted==actual,"Spike forecast differs from native rebuilt hull: off{off:?} after{after} x{x}");
+                if actual {hits+=1;} else {clear+=1;}
+            }
+        }
+    }
+    ensure!(hits>0 && clear>0,"Spike forecast did not exercise hazards and safe phases");
+    println!("PASS native spike forecast: {hits} hazardous and {clear} clear body queries, full cycle and disable delay");Ok(())
+}
+fn spike_crossing(a:&mut Assets,map:&Bsp)->Result<()> {
+    for first in 0..2 {for delay in [0,36] {
+        let (mut r,mut w,_,_)=free(a,map)?;
+        r.saved.age=119.734489;r.saved.spikes=Some(116.835197);r.saved.bishop_done=true;
+        r.rebuild(map)?;w.set_dynamic(r.colliders());
+        // Actual public-client stopping position: a roughly quarter-second
+        // input delay carries the leader beyond the old circular arrival area.
+        let hold=vec3(-784.,400.,256.);let goal=vec3(-1120.,384.,224.);
+        let mut stopped=Player::new(vec3(-1185.5670166,407.6112671,192.03125));stopped.grounded=true;
+        ensure!(spike_route::arrived(&r,&stopped,hold,goal,24.),"Safely cleared network leader was not recognised");
+        stopped.feet=vec3(-957.083435,399.041168,224.03125);
+        ensure!(!spike_route::arrived(&r,&stopped,hold,goal,80.),"Spike corridor was accepted as a safe exit");
+        let (eye,yaw)=crate::interaction::spawn(map,Some("wchess1_start1"));
+        let mut roster=Roster::new(&w,eye,yaw,Stats::default())?;
+        roster.players[first].player=Player::new(vec3(-789.971130,400.459076,252.549454));
+        roster.players[first].player.velocity=vec3(-39.18865,-1.51835,-19.59432);
+        roster.players[1-first].player=Player::new(vec3(-748.75,351.795624,256.031128));
+        for b in &mut roster.players {b.player.grounded=true;}
+        let resources=roster.players.each_ref().map(|b|serde_json::to_value(&b.stats).unwrap());
+        let mut crossing:[spike_route::Crossing;2]=Default::default();let mut passed=false;
+        let mut pending=std::collections::VecDeque::new();
+        let mut guest=(Controls::default(),false);let mut delivered=Controls::default();
+        for n in 0..120*60 {
+            let host=crossing[0].controls(&r,&w,&roster.players[0].player,&roster.players[first].player,
+                first==0,hold,goal,0.);
+            if delay==0 || n%6==0 {
+                guest=crossing[1].controls(&r,&w,&roster.players[1].player,&roster.players[first].player,
+                    first==1,hold,goal,delay as f32*FIXED_DT);
+                pending.push_back((n+delay,guest.0));
+            }
+            while pending.front().is_some_and(|(at,_)|*at<=n) {delivered=pending.pop_front().unwrap().1;}
+            let controls=[host,(delivered,guest.1)];
+            if controls.iter().all(|(_,ready)|*ready) {
+                println!("PASS native timed spike crossing first{first} delay{delay}: {n} ordinary physics ticks, both alive and separated");
+                passed=true;break;
+            }
+            roster.move_players(&w,controls.map(|(c,_)|(c,Input::default())));
+            let [blue,red]=roster.players.each_mut();
+            r.coop_advance_roster(FIXED_DT,map,&mut w,&mut [
+                CoopPlayer{player:&mut blue.player,stats:&mut blue.stats},
+                CoopPlayer{player:&mut red.player,stats:&mut red.stats}],&[])?;
+            let d=roster.players[0].player.feet-roster.players[1].player.feet;
+            ensure!(d.truncate().length()>=crate::coop::separation::DISTANCE-0.05 || d.z.abs()>=PLAYER_HALF.z*2.-0.05,
+                "Spike route overlapped players tick{n}");
+            for (i,b) in roster.players.iter().enumerate() {
+                ensure!(b.stats.alive() && serde_json::to_value(&b.stats)?==resources[i],"Spike route damaged player{i} tick{n}");
+            }
+        }
+        ensure!(passed,"Spike route stalled first{first}: {:?}, {}",
+            roster.players.each_ref().map(|b|b.player.feet),serde_json::to_string(&crossing)?);
+    }}Ok(())
 }
 
 /// Exercise both Alice materials and the native transformation emitter on the

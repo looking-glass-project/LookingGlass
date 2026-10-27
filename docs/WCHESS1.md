@@ -845,5 +845,59 @@ the following Blue player dies in the active spike corridor; Red remains at
 before/after damage reports. An unchanged host capture before step 36 is exported
 through the normal checkpoint machinery in
 `private/coop-wchess1-spikes36-export23/` for focused diagnosis. The native export
-and one-tick idle repeat pass; this supplies no traversal credit. Safe timed-spike
-traversal for both leaders and fresh full-level completion remain open.
+and one-tick idle repeat pass; this supplies no traversal credit. This failure
+motivates the focused timed-corridor checks below. Fresh full-level completion
+remains open.
+
+### Timed corridor test controls
+
+The ordinary-input test driver now crosses the timed corridor one player at a
+time. Each player waits at a safe approach point and previews ordinary movement
+against the native spike hulls for the complete crossing and its estimated input
+delay. Arrival means clearing the exit plane, so a leader carried farther by a
+delayed stop cannot strand the follower. Approach input is limited according to
+the connection delay to prevent overshooting the waiting point. The completed
+corridor's recorded trail is discarded before the following leg.
+
+The native wave-position calculation is shared with this forecast; its timings,
+colliders, damage and normal player controls retain their existing rules.
+On source `849973177da47717255ea0c32708fc601daab41ad1c8adf23e72d2a626885a1a`,
+**3,094** predicted body queries match rebuilt native hazards across a full
+cycle and the switch-off delay. Both leader roles cross with zero delay and with
+36 ticks (300 ms) of guest input delay sampled every six ticks. All four cases
+retain health, resources and body separation. These are staged component tests.
+
+The assertions also retain the failures that led to the fix. Build `fa7b58e`
+lets the leader clear the corridor but waits indefinitely after the leader
+leaves a small arrival circle. Build `9e4d8c6` exposes the remote follower's
+approach overshoot. An earlier Red-led result on that build appeared to pass
+36–40, but reviewing its history showed the follower retracing the spikes on
+step 37. The new progress assertion rejects **both actual client histories**
+from `private/coop/chess-resume-4b9830d9fd8b41f79e6429f71600266a/`; that result
+is not safe-crossing evidence.
+
+A separate initial Blue replay stopped before traversal because a captured
+player still had momentum. The resume fixture now requires the native exact
+restore receipt from before physics advances, matching build, epoch and saved
+tick. Later observations must retain spawn/warp stamps and the resource
+contract. Four fixture guard tests cover stale proof, changed lifecycle stamps,
+resource failures and the captured backtracking. The six existing rejoin guard
+tests also pass.
+
+The final build passes **36–40 over the public connection with both leader
+roles**, using two independent processes, 40 ms injected delay and 20 ms jitter.
+Blue has **428** matching player/world/native states; Red has **292**. Both
+replays require the exact native restore receipt and pass the no-death,
+presence/separation, lifecycle and no-backtracking assertions. Evidence:
+
+- Blue: `private/coop/chess-resume-1b9342c73d524dd5966433b603be7ae2/`.
+- Red: `private/coop/chess-resume-d206e365f09b4ddc83d04025e98442da/`.
+
+These resume unchanged checkpoint exports from the original host captures;
+they are focused segments, not new full-level passes. The locked release build,
+**824 active Rust tests** (one existing ignored), paired native world checks,
+four resume guards, six rejoin guards and seven source-package tests pass.
+All three complete single-player check logs match the `2990c66` baseline.
+No screenshots were inspected; fixture-generated captures remain private.
+Overall co-op progress stays **46.1%**, with fresh uninterrupted routes and the
+broader campaign/recovery matrix still open.

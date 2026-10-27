@@ -15,6 +15,22 @@ from test_coop_play import ROOT, distance
 from test_coop_village import Pair
 
 
+def verify_spike_exit_progress(route, steps):
+    """A completed timed corridor must not be retraced on the following leg."""
+    for row in route:
+        index = (row['driver'].get('chess_course') or {}).get('step')
+        if index is None or index == 0 or steps[index - 1]['mode'] != 'spikes':
+            continue
+        previous = steps[index - 1]
+        direction = [b - a for a, b in zip(previous['hold'][:2], previous['pos'][:2])]
+        length = sum(v * v for v in direction) ** .5
+        assert length > 0, 'Timed corridor has no crossing direction'
+        for player in row['players']:
+            along = sum((p - goal) * d / length for p, goal, d in
+                        zip(player['feet'][:2], previous['pos'][:2], direction))
+            assert along >= -80.5, 'Follower retraced the completed spike corridor'
+
+
 class ChessPair(Pair):
     map_name = 'wchess1'
     entry = 'wchess1_start1'
@@ -116,6 +132,7 @@ class ChessPair(Pair):
         return paired.get('actor') if saved['board'] is not None or paired.get('reunion') else None
 
     def verify_presence(self, route, role):
+        verify_spike_exit_progress(route, self.steps)
         for row in route:
             if row['owner'] is None and self.interactive_owner(row) is None:
                 a, b = [p['feet'] for p in row['players']]

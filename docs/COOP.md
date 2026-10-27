@@ -14,8 +14,14 @@ recovery remain open for both visits. Report these smaller milestones alongside
 the total; a successful component or segment is not a completed campaign visit.
 
 Status checked on **27 October 2026**: the older approximately 42% figure is
-historical; the current weighted estimate is **46.1% (about 46%)**. The latest
-Pale Realm combat stall is resolved by a supported sidestep after repeated
+historical; the current weighted estimate is **46.1% (about 46%)**. The current
+gate is a fresh, uninterrupted Pale Realm traversal in both leader orders.
+Focused combat, swimming, recovery and rejoin passes below are useful progress,
+but do not satisfy that gate. The timed spike corridor and its following four
+steps now pass focused internet replays with either leader, including delayed
+approach/stop inputs and a check against retracing the completed corridor.
+These add no full-level credit; see [timed corridor checks](WCHESS1.md#timed-corridor-test-controls).
+The earlier Pale Realm combat stall is resolved by a supported sidestep after repeated
 misses. A public two-client replay passes all 26 approach steps (100–125), then
 verifies Blue's real combat death, moving spectator camera and exact ten-second
 25-health revival with personal inventory retained. All 1,761 matching network

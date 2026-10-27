@@ -28,6 +28,7 @@ pub(crate) struct NetworkDriver {
     closing:Option<usize>,
     missed:Option<(usize,f32,u64)>, sidestep:Option<Vec3>,
     cached:(Controls,Input),
+    crossing:spike_route::Crossing,
 }
 impl NetworkDriver {
     pub(crate) fn new()->Result<Self> {
@@ -38,7 +39,7 @@ impl NetworkDriver {
             clearing_landing:false,trail:Default::default(),last:Vec3::ZERO,stuck:0,stuck_clock:0,
             plan:Default::default(),plan_age:0,worker:None,board_node:None,board_move:0,
             board_moving:false,jump_at:None,use_at:None,tracker:Default::default(),closing:None,
-            missed:None,sidestep:None,cached:Default::default()})
+            missed:None,sidestep:None,cached:Default::default(),crossing:Default::default()})
     }
     pub(crate) fn reached(&self)->bool {self.done}
     pub(crate) fn spectate(&mut self,tick:u64) {
@@ -49,6 +50,7 @@ impl NetworkDriver {
         self.cached=Default::default();self.trail.clear();self.worker=None;
         self.tracker=Default::default();self.jump_at=None;self.use_at=None;
         self.missed=None;self.sidestep=None;
+        self.crossing=Default::default();
     }
     pub(crate) fn report(&self)->serde_json::Value {
         serde_json::json!({"step":self.index,"mode":self.index.map(|i|&self.steps[i].mode),
@@ -58,6 +60,7 @@ impl NetworkDriver {
             "board_move":self.board_move,"board_node":self.board_node,"trail":self.trail,
             "closing_target":self.closing,
             "missed_target":self.missed,"sidestep":self.sidestep,
+            "spike_crossing":self.crossing,
             "input":self.cached.1,"movement":{"wish":self.cached.0.wish,"swim":self.cached.0.swim,
                 "jump":self.cached.0.jump,"use":self.cached.0.use_pressed,"run":self.cached.0.run}})
     }
@@ -72,12 +75,16 @@ impl NetworkDriver {
             .context("Pale Realm course used outside Pale Realm")?;
         if self.index!=Some(index) {
             ensure!(self.index.is_none_or(|old|index==old+1),"Pale Realm course skipped a step");
+            // The timed corridor has its own traversal controller. Its old
+            // leader trail would send the follower back through the spikes.
+            if self.index.is_some_and(|old|self.steps[old].mode=="spikes") {self.trail.clear();}
             self.index=Some(index);self.phase=0;self.ticks=0;self.quiet=0;
             self.home=frame.players.each_ref().map(|b|b.player.feet);
             self.free=false;self.walked_scene=false;self.done=false;
             self.cached=Default::default();
             self.closing=None;
             self.missed=None;self.sidestep=None;
+            self.crossing=Default::default();
             self.board_node=None;self.board_move=0;self.board_moving=false;
             self.reset_walk(frame.players[local.index()].player.feet);
         }
@@ -107,6 +114,12 @@ impl NetworkDriver {
                             else {let (input,ready)=self.walk([Vec3::from_array(s.pos);2],false,s.radius,frame,arena,world,local,first,lead,elapsed)?;c=input;self.done=ready;}
                         }
                         "wait"=>self.done=self.ticks as f32*FIXED_DT>=s.value,
+                        "spikes"=> {
+                            let (input,ready)=self.crossing.controls(realm,world,&body.player,
+                                &frame.players[first.index()].player,local==first,
+                                Vec3::from_array(s.hold),Vec3::from_array(s.pos),lead);
+                            c=input;self.done=ready;
+                        }
                         "clear"|"rush"=> {
                             let targets=realm.targets();let ctx=crate::combat::Context{world,targets:&targets};
                             let mut seen=false;
@@ -173,7 +186,7 @@ impl NetworkDriver {
                 }
                 self.cached.0=c;
                 if s.mode!="lever" {self.cached.1=Input{yaw:body.yaw,pitch:body.pitch,..Default::default()};}
-                if arena.stage.interactive_actor().is_none() && s.mode!="lever" {
+                if arena.stage.interactive_actor().is_none() && s.mode!="lever" && s.mode!="spikes" {
                     self.combat(frame,arena,world,local,elapsed);
                 }
                 if self.cached.0.jump && self.jump_at.is_none_or(|t|frame.tick.saturating_sub(t)>=60) {self.jump_at=Some(frame.tick);}

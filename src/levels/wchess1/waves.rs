@@ -1,6 +1,13 @@
 //! Numeric corridor spike-wave schedule, in seconds and BSP coordinates.
 pub(super) const PERIOD: f32 = 10.500;
-pub(super) const WAVE: &[(u8, f32, [f32; 3])] = &[
+pub(in super::super) fn position(id:u8,elapsed:f32)->Option<[f32;3]> {
+    let t=elapsed.rem_euclid(PERIOD);
+    let (_,at,pos)=WAVE.iter().find(|(k,at,_)|*k==id && (0. ..0.7).contains(&(t-at)))?;
+    let u=t-at;
+    let rise=if u<0.1 {u*1600.} else if u<0.6 {160.} else {(0.7-u)*1600.};
+    Some([pos[0],pos[1],pos[2]+rise])
+}
+pub(in super::super) const WAVE: &[(u8, f32, [f32; 3])] = &[
     (2, 0.000, [-848.0, 400.0, 232.0]),
     (3, 0.100, [-848.0, 432.0, 232.0]),
     (4, 0.200, [-880.0, 432.0, 232.0]),

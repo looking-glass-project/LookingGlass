@@ -1,6 +1,6 @@
 use super::*;
 #[path = "waves.rs"]
-mod waves;
+pub(super) mod waves;
 #[derive(Clone, Serialize, Deserialize)]
 pub(super) struct Lift {
     pub phase: u8,
@@ -286,20 +286,8 @@ impl Realm {
                             .spikes_off
                             .is_none_or(|t| self.saved.age - t < 1.)
                     }) {
-                        let t = (self.saved.age - start).rem_euclid(waves::PERIOD);
-                        if let Some((_, at, pos)) = waves::WAVE
-                            .iter()
-                            .find(|(k, at, _)| *k == i && (0. ..0.7).contains(&(t - at)))
-                        {
-                            let u = t - at;
-                            let rise = if u < 0.1 {
-                                u * 1600.
-                            } else if u < 0.6 {
-                                160.
-                            } else {
-                                (0.7 - u) * 1600.
-                            };
-                            o.pose.translation = Vec3::from_array(*pos) + Vec3::Z * rise;
+                        if let Some(pos) = waves::position(i, self.saved.age - start) {
+                            o.pose.translation = Vec3::from_array(pos);
                             o.draw = true;
                             o.solid = true;
                             o.hazard = true;

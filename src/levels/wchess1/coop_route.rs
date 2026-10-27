@@ -6,10 +6,10 @@ use crate::{coop::{arena::Arena, protocol::{Input,Visit},world::Roster,PlayerId}
 use std::collections::{BTreeMap,VecDeque};
 use sha2::{Digest,Sha256};
 
-#[derive(Deserialize,Debug)]
+#[derive(Clone,Deserialize,Debug)]
 #[serde(deny_unknown_fields)]
-struct Step { mode:String, #[serde(default)] pos:[f32;3], #[serde(default)] value:f32,
-    #[serde(default)] name:String, #[serde(default="arrival_radius")] radius:f32 }
+pub(super) struct Step { pub mode:String, #[serde(default)] pub pos:[f32;3], #[serde(default)] pub value:f32,
+    #[serde(default)] pub name:String, #[serde(default="arrival_radius")] pub radius:f32 }
 fn arrival_radius()->f32 {24.}
 struct Replay {
     arena:Arena,scene:RenderScene,roster:Roster,guest:Arena,guest_world:World,

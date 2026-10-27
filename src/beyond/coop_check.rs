@@ -279,7 +279,28 @@ fn interactions(assets: &mut Assets, map: &Bsp) -> Result<()> {
             && (p.player.feet.z-start.z+48.).abs()<0.2), "Rage lift did not carry both after the reunion");
         // The uncollected copy remains reachable by an ordinary jump from the
         // lowered lift. It grants only the second player and never replays the scene.
-        let mut control = inputs(); control[other].0.wish = (roster.players[a].player.feet-roster.players[other].player.feet).truncate().normalize_or_zero();
+        // The first collector must walk off the item's centre. Personal-space
+        // contact now correctly prevents the partner walking through that body.
+        let pickup_at=roster.players[a].player.feet;
+        let waiting=roster.players[other].player.feet;
+        let aside=[Vec3::Y,-Vec3::Y,-Vec3::X,Vec3::X].into_iter().map(|d|pickup_at+d*48.)
+            .find(|at| {
+                let floor=world.body_trace(*at,*at-Vec3::Z*4.);
+                world.body_clear(*at) && !floor.start_solid && floor.fraction<1. && floor.normal.z>0.65
+                    && at.truncate().distance(waiting.truncate())>=48.
+                    && stage.interactions.beyond.as_ref().unwrap().aboard("ragelift",*at)
+            }).context("Rage lift has no separate waiting space")?;
+        for _ in 0..240 {
+            let delta=(aside-roster.players[a].player.feet).truncate();
+            if delta.length()<3. {break;}
+            let mut control=inputs();control[a].0.wish=delta.normalize_or_zero()*(delta.length()/24.).min(1.);
+            step(&mut stage,&mut roster,map,&mut world,control)?;
+        }
+        ensure!(roster.players[a].player.feet.truncate().distance(aside.truncate())<3.
+            && roster.players.iter().all(|p|p.player.grounded && world.body_clear(p.player.feet)
+                && stage.interactions.beyond.as_ref().unwrap().aboard("ragelift",p.player.feet)),
+            "First Rage collector did not walk safely aside on the lift");
+        let mut control = inputs(); control[other].0.wish = (pickup_at-roster.players[other].player.feet).truncate().normalize_or_zero();
         for _ in 0..55 { step(&mut stage,&mut roster,map,&mut world,control)?; }
         for tick in 0..90 {
             let mut control = inputs(); control[other].0.jump = tick == 0;

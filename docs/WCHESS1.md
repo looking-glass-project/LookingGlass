@@ -371,3 +371,90 @@ three `*-7fa6ff4.log` single-player checks. The four success reports and
 ownership, all 161 steps and survival. Full internet routes, broader rendered
 combat effects, team-wipe/checkpoint reload and reconnect coverage remain open.
 Overall progress stays **45.8%**; no combined campaign row is completed here.
+
+### Independent-client route fixture
+
+`tools/test_coop_chess.py` runs the same embedded 161-step course through two
+independent native clients and isolated profiles. Public internet joining is the
+default, with 40 ms added delay and 20 ms jitter per sender. `--local` explicitly
+selects a local connection; `--first blue|red` chooses the leading player.
+
+Each client derives movement, attacks, door/lever use and chess-piece directions
+from its own received world. The harness advances the authored step after both
+clients report completion. It never supplies positions, resources or world
+progression. Path searches run outside input sampling so they cannot freeze the
+host's simulation clock. The reports retain embedded course identity, body and
+world hashes, scene ownership, swimming, personal resources and next-visit arrival.
+
+Run this fixture in Anode with `--exe` pointing at a frozen release build and
+`--data` pointing at a compatible local installation. All evidence stays under
+`private/coop/chess-route-*`; no screenshots are required. This fixture currently
+watches the original scenes. Skipping, recovery and rejoining require separate
+tests, and adding the fixture alone does not establish a passing internet route.
+
+The first independent-client attempt on source `e48ba75` was stopped at step 0:
+full-delay velocity anticipation made the guest circle small trail points.
+Reducing approach gain according to measured delay and limiting velocity
+anticipation to 50 ms lets source `83059a1` complete steps **0–13**, including
+the original Bishop puzzle and reunion, through the public connection. It then
+fails at step 14: Blue exhausts Will and takes five 20-point pawn hits while
+waiting outside Blade range for the follower. This is a failed clean traversal,
+not a passing route or completed campaign row. The private reports preserve the
+last living state and the fatal state for diagnosis.
+
+Evidence: `private/coop/chess-route-55a6a0cf920b4e4ca60d8efcdd3f1552/` and
+`private/coop/chess-route-3e39aa3af5d64059829f0b36b0b74ef6/`. The second source
+passes the locked release build, **820 unit tests** (one existing ignored),
+**87 native world cases** and all three complete single-player baseline log
+comparisons. Full internet traversal remains open. Further fixture changes add
+scene-name reporting and preserve free melee attacks during delayed waits;
+their route result must be checked independently.
+
+The next public attempts on `3a2f9d8` and `4530145` again complete steps 0–13
+and fail at 14. The first of these records weapon switching near a glancing
+doorway; a read-only probe of the saved state confirms normal walking can slide
+through that approach. The later controller predicts that ordinary walking on
+a copy and retains a close target. It defeats the first pawn but Blue dies to
+the following attacker while the guest catches up. It is still not a passing
+route. Evidence: `private/coop/chess-route-ae1e25b8e6d54a43b694e1586bf23282/`,
+`private/coop/chess-route-6bf7a58eedf04f65aeb28e7e2ceb7489/` and
+`private/coop-wchess1-internet3-combat-probe.{json,log}`. The latter route records
+full host state before each step and both clients' pre/post-damage states for
+focused encounter diagnosis without screenshots. These captures are diagnostic
+data, not completed traversal evidence.
+
+Source `685a05d` allows the delayed follower to pursue a short clear stretch of
+the leader's recorded path without braking at every sample. This lookahead is
+limited to supported dry floor, with complete body clearance and floor/hazard
+checks; jump, bank and swimming samples retain the original trail. The next
+public-internet attempt clears the former step-14 fight and completes **71 of
+161 steps (0–70)**, including the Bishop puzzle and bell sequence. It times out
+at step 71 with Blue hanging at `(1008.97, 303.03, 27.16)` and Red waiting nearby.
+Both survive at 18/70 health. The saved course report shows no active path search;
+the independent controller currently starts searches only while grounded, unlike
+the native replay. This is a diagnosis lead, not a verified repair.
+
+The failed run retains **8,213 exact matching states** for player, shared-world
+and native-resident hashes. Both clients observe Blue owning the Intro, Bishop
+and Bell scenes. Their rendered-effect counters are positive with zero reported
+drops, but counters alone do not establish correct visibility of every combat
+effect. Evidence is `private/coop/chess-route-0f0791b0561542b4ab128f7f0f76af28/`,
+including `prefix-analysis.json`, `before-step-071.json`, full history, damage
+captures and the terminal failure. No screenshots were inspected. The run has
+ended and both owned clients have closed; full internet traversal remains open.
+
+The final locked release build and **820 active Rust tests** (one existing
+ignored) pass on this source. It also passes **87 Pale Realm native world
+cases**, all three complete single-player baseline log comparisons, all 39
+campaign entrance checks plus four underwater recovery cases, 82 shared-world
+checks, five Fortress adapter checks and 15 Beyond adapter checks. These are
+regressions and component tests, not a substitute for the remaining full routes,
+recovery, rejoining and combat-effect verification. Overall progress remains
+**45.8%**, with no additional completed campaign row.
+
+Exact source: `685a05dc1265948c2e1ba8f0e72138793d844c240467fab20cd47681e8b3a9a6`.
+Frozen executable: `private/coop-wchess1-world-685a05d.exe`, SHA-256
+`5f5ffe9273dc56fd958331993887db1b9d8505c91beecc3ca4aba3df34fe8f33`.
+Logs: `private/coop-wchess1-network-{build6,unit6}.log`,
+`private/coop-wchess1-internet5.log` and
+`private/coop-wchess1-{components,check,route-check,route-skip-check,campaign,shared-world,fortress,beyond}-685a05d.log`.

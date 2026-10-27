@@ -11,6 +11,17 @@ waiting/landing positions before release. The focused contact/effect checks
 in `COOP.md` do not substitute for those campaign repeats.
 The return-school row was verified with the contact system enabled.
 
+On 27 October 2026, source `685a05d` repeats all 39 entrance checks plus four
+underwater recovery cases, all 82 shared-world checks, five Fortress adapter
+checks and 15 Beyond adapter checks successfully. Beyond's old Rage test assumed
+walking through the first collector; it now has that player walk aside using
+normal input. Logs are `private/coop-wchess1-campaign-685a05d.log`,
+`private/coop-wchess1-shared-world-685a05d.log` and
+`private/coop-wchess1-{fortress,beyond}-685a05d.log`. These are native
+component/entrance repeats; the full independent-client campaign repeats above
+remain open. The same build's Pale Realm internet run completes steps 0–70,
+then stalls at a ledge on step 71; it does not complete a campaign row.
+
 Each visit requires both host/guest roles and both first-arrival orders, coherent enemies
 and individual consumables, single-player cutscenes with safe reunion, shared-transport
 boarding, a real gameplay death followed by timed spectating/respawn, a simultaneous wipe

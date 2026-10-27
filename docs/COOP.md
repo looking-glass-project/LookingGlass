@@ -177,6 +177,24 @@ open. No combined campaign row is completed by these checks; the estimate
 reviewed on **27 October 2026** stays **45.8% (about 46%)**. See
 [route and contact evidence](WCHESS1.md#continuous-co-op-route-and-captured-door-contact).
 
+The independent-client Pale Realm fixture now uses the same authored course
+over the public connection with delay/jitter and no image inspection. Source
+`685a05d` completes **71 of 161 steps (0–70)**, including the Bishop puzzle and
+bell sequence. It then times out at step 71 with Blue hanging at a ledge and
+Red waiting nearby; both remain alive at 18/70 health. All **8,213** matching
+network states agree on players, shared world and native residents. This is
+partial traversal evidence; the full route has not passed. Full pre-step and
+damage-state captures preserve the failure for focused diagnosis.
+
+The exact same source passes 820 active unit tests, 87 Pale Realm native world
+cases, all three single-player baseline log comparisons, all 39 campaign entrance
+checks plus four underwater recovery cases, 82 shared-world checks, five Fortress
+adapter checks and 15 Beyond adapter checks. Beyond's old Rage test now has the
+first collector walk aside instead of expecting the second to pass through her.
+No new campaign row or percentage credit is claimed. See
+[Pale Realm internet evidence](WCHESS1.md#independent-client-route-fixture) and
+[Beyond regression](BEYOND.md#co-op-contact-regression-27-october-2026).
+
 The overall percentage is a weighted estimate, not elapsed time or a live build
 indicator. An earlier Garden build passed 4/4 native paired routes. After adding
 rope contact, the current build passes **2/4 native paired routes** (both watched

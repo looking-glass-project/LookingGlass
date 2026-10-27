@@ -47,6 +47,11 @@ struct Command {
     /// Ordinary-input Sanctum fight/climb course from this client's own view.
     #[serde(default)]
     sanctum_follow: Option<PlayerId>,
+    /// Pale Realm course step, interpreted independently in each client.
+    #[serde(default)]
+    chess_follow: Option<PlayerId>,
+    #[serde(default)]
+    chess_step: Option<usize>,
     /// Initial test-course step for an explicitly restored Garden segment.
     #[serde(default)]
     garden_start: Option<usize>,
@@ -89,6 +94,8 @@ impl Command {
         ensure!(self.input_lead.is_finite() && (0. ..=1.5).contains(&self.input_lead), "Invalid input lead");
         ensure!(self.garden_start.is_none() || self.garden_follow.is_some(),
             "A Garden start requires the Garden course");
+        ensure!(self.chess_step.is_some()==self.chess_follow.is_some()
+            && self.chess_step.is_none_or(|i|i<1000), "Invalid Pale Realm course selector");
         ensure!(self.arrival_radius.is_finite() && (1. ..=8.).contains(&self.arrival_radius),
             "Invalid route arrival radius");
         if let Some(speed) = self.speed_limit {
@@ -101,7 +108,7 @@ impl Command {
         ensure!(self.goal.is_none() || self.marker.is_none(), "Choose a route goal or a marker");
         ensure!(!self.swim || (self.goal.is_some() && !self.horizontal && !self.navigate
             && self.rope.is_none() && self.runup.is_none() && self.use_aim.is_none()
-            && self.beyond_step.is_none() && self.temple_follow.is_none() && self.garden_follow.is_none() && self.sanctum_follow.is_none()
+            && self.beyond_step.is_none() && self.temple_follow.is_none() && self.garden_follow.is_none() && self.sanctum_follow.is_none() && self.chess_follow.is_none()
             && self.speed_limit.is_none() && !self.jump && !self.checkpoint && !self.finish),
             "Explicit swimming requires its own three-dimensional route goal");
         ensure!(self.marker.is_none_or(|i| i < 100_000), "Invalid route marker");
@@ -123,7 +130,7 @@ impl Command {
                 && self.rope.is_none() && self.use_aim.is_none() && !self.navigate && !self.run && !self.jump,
                 "Invalid moving-step command");
         }
-        let courses=[self.temple_follow,self.garden_follow,self.sanctum_follow].iter().filter(|c|c.is_some()).count();
+        let courses=[self.temple_follow,self.garden_follow,self.sanctum_follow,self.chess_follow].iter().filter(|c|c.is_some()).count();
         if courses>0 {
             ensure!(self.goal.is_none() && self.marker.is_none() && self.rope.is_none()
                 && self.use_aim.is_none() && self.beyond_step.is_none() && self.speed_limit.is_none()
@@ -225,6 +232,7 @@ pub struct Report {
     pub swim_planning: Option<SwimPlanning>,
     pub garden_course: Option<crate::levels::garden1::CourseReport>,
     pub sanctum_course: Option<serde_json::Value>,
+    pub chess_course: Option<serde_json::Value>,
 }
 #[derive(Serialize)]
 pub struct SwimPlanning {
@@ -439,6 +447,7 @@ pub struct Driver {
     swim_worker: Option<SwimWorker>,
     garden_course: Option<crate::levels::garden1::NetworkDriver>,
     sanctum_course: Option<crate::levels::centipede2::NetworkDriver>,
+    chess_course: Option<crate::levels::wchess1::NetworkDriver>,
     location: Option<(u64, u64, u64)>,
     pub report: Report,
 }
@@ -469,7 +478,7 @@ impl Driver {
             walking_progress:WalkingProgress::new(Vec3::ZERO,now),
             navigation_clock:NavigationClock::new(now), jumped: false, rope_used: false,
             control_used: false, step_height: None, swim_goal: None, swim_worker: None,
-            garden_course: None, sanctum_course: None, location: None, report: Report::default() }
+            garden_course: None, sanctum_course: None, chess_course: None, location: None, report: Report::default() }
     }
     pub fn poll(&mut self, now: Instant) {
         if now.duration_since(self.polled) < Duration::from_millis(50) { return; }
@@ -485,6 +494,9 @@ impl Driver {
         };
         match read() {
             Ok(Some((modified, command))) => {
+                if self.command.as_ref().is_none_or(|old|old.chess_follow!=command.chess_follow || old.epoch!=command.epoch) {
+                    self.chess_course=None;self.report.chess_course=None;
+                }
                 if self.command.as_ref().is_none_or(|old| old.id != command.id) {
                     self.plan.clear(); self.jumped = false; self.rope_used = false; self.location = None;
                     self.control_used = false;
@@ -542,7 +554,7 @@ impl Driver {
             .or_else(|| arena.stage.interactions.school.as_ref().and_then(|s|s.scene_id()))
             .or_else(|| arena.stage.interactions.school2.as_ref().and_then(|s|s.scene_id()))
             .or_else(|| arena.stage.interactions.beyond.as_ref().and_then(|b|b.scene_id()))
-            .or_else(|| arena.stage.interactions.levels.iter().filter(|s| s.ctl.id() == "garden1")
+            .or_else(|| arena.stage.interactions.levels.iter()
                 .find_map(|s| s.ctl.scene_id())).map(str::to_owned);
         self.report.speech = arena.stage.story.busy() && !arena.stage.busy();
         self.report.snarks = arena.npcs.snarks().map(|(id, snark, active)| {
@@ -655,6 +667,17 @@ impl Driver {
         if !command.watch_dialogue && arena.stage.story.busy() && arena.stage.owner == Some(local)
             && now.duration_since(self.used) >= Duration::from_millis(250) {
             keys.uses += 1; self.used = now;
+        }
+        if let Some(first) = command.chess_follow {
+            let result=(|| -> Result<()> {
+                if self.chess_course.is_none() {self.chess_course=Some(crate::levels::wchess1::NetworkDriver::new()?);}
+                let course=self.chess_course.as_mut().unwrap();
+                course.sample(command.chess_step.unwrap(),frame,arena,world,local,first,command.input_lead,keys)?;
+                self.report.reached=course.reached();self.report.chess_course=Some(course.report());Ok(())
+            })();
+            if let Err(error)=result {self.report.error=Some(error.to_string());}
+            self.report.phase=if arena.stage.busy(){"scene"}else{"following Pale Realm course"};
+            return;
         }
         if let Some(first) = command.sanctum_follow {
             let result=(|| -> Result<()> {
@@ -1410,8 +1433,9 @@ mod tests {
     fn level_courses_cannot_be_combined_with_other_route_actions() {
         let base=serde_json::json!({"id":1,"heartbeat":1,"epoch":1,"goal":null,
             "navigate":false,"attack":false,"capture":false,"finish":false});
-        for field in ["temple_follow", "garden_follow", "sanctum_follow"] { for first in ["Blue","Red"] {
+        for field in ["temple_follow", "garden_follow", "sanctum_follow", "chess_follow"] { for first in ["Blue","Red"] {
             let mut swim=base.clone(); swim[field]=first.into();
+            if field=="chess_follow" {swim["chess_step"]=0.into();}
             assert!(serde_json::from_value::<Command>(swim.clone()).unwrap().validate().is_ok());
             for (field,value) in [("goal",serde_json::json!([0,0,0])),("marker",1.into()),
                 ("attack",true.into()),("navigate",true.into()),("checkpoint",true.into()),
@@ -1421,7 +1445,7 @@ mod tests {
             }
         }
         }
-        for field in ["temple_follow", "garden_follow", "sanctum_follow"] {
+        for field in ["temple_follow", "garden_follow", "sanctum_follow", "chess_follow"] {
             let mut invalid=base.clone(); invalid[field]="Green".into();
             assert!(serde_json::from_value::<Command>(invalid).is_err());
         }
@@ -1429,6 +1453,13 @@ mod tests {
             let mut both=base.clone();
             for field in fields {both[field]="Blue".into();}
             assert!(serde_json::from_value::<Command>(both).unwrap().validate().is_err());
+        }
+        for invalid in [serde_json::json!({"chess_follow":"Blue"}),serde_json::json!({"chess_step":0}),
+            serde_json::json!({"chess_follow":"Blue","chess_step":1000}),
+            serde_json::json!({"chess_follow":"Blue","chess_step":0,"garden_follow":"Red"})] {
+            let mut command=base.clone();
+            for (key,value) in invalid.as_object().unwrap() {command[key]=value.clone();}
+            assert!(serde_json::from_value::<Command>(command).unwrap().validate().is_err());
         }
     }
 }

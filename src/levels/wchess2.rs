@@ -5,6 +5,8 @@ mod coop_check;
 mod coop_world;
 mod coop_world_check;
 mod coop_route;
+mod network_route;
+pub(crate) use network_route::NetworkDriver;
 mod check;
 pub(crate) use check::drive as drive_route;
 mod data;

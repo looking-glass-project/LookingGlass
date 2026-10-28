@@ -122,10 +122,50 @@ Evidence is retained under `private/coop/castling-route-a80ef8f-*`, including
 the frozen executable identity and full logs. Verification used state/log checks
 without screenshot inspection.
 
-These runs establish continuous native traversal, not independent network play.
-Internet latency, disconnect/rejoin, death/wipe recovery and broader effects
-coverage remain open for Castling. Its campaign row and the overall weighted
-estimate therefore remain unchanged.
+The independent-client evidence below extends these native results. Disconnect/
+rejoin, death/wipe recovery and broader effects coverage remain open for Castling.
+Its campaign row and the overall weighted estimate remain unchanged.
+
+### Independent internet traversal checks
+
+`tools/test_coop_castling.py` starts two independent clients and profiles through
+the public invite path. Each client derives ordinary controls from its received
+world. The fixture checks both full routes, personal cameras, separation, original
+scene ownership and frozen partners, exact replicated state and Checkmate arrival.
+Death, shared rollback, unscripted warps and cheats invalidate the route. Optional
+`--save-before` steps use the ordinary pause-menu checkpoint operation. The default
+adds 40 ms delay and 20 ms jitter; `--first blue|red` selects the first player.
+Five Python negative-control tests ensure the presence checks reject overlap,
+wrong cameras, unscripted warps and moving scene partners.
+
+The first Blue-led public run on source `04dd45c` passes steps 0–7, then stalls at
+step 8 with both players at 100 health. The delayed follower repeatedly reverses
+around an old trail sample while the leader waits. All 4,078 common player,
+world and native-resident hashes match; 1,251 host and 1,227 guest presence samples
+pass. This is a failed full route, with no additional campaign credit. Reports,
+the normal checkpoint before step 2 and the failed prefix checks are retained in
+`private/coop/castling-route-0bbdde512884436d9146b211e95286a3`.
+
+The diagnostic controller now reduces steering gain with input delay and follows
+farther along recorded ground paths only after checking body clearance, continuous
+support, liquids and hazards. A native-physics test starts from the captured
+position and velocity, delays both observations and inputs, reproduces the old
+oscillation and verifies settling at four delay levels. Separate negative cases
+reject gaps, walls, hazardous paths and airborne shortcuts. All 836 active unit
+tests pass, with one existing ignored test. Production movement is unchanged.
+
+The fresh Blue-led public internet repeat on source
+`e54bc16d3ef2e2a9a90f9d711565d18e4e661a3c2ff152d852da7d97015a0f53`
+passes all **203 legs** with 40 ms delay and 20 ms jitter. Both original scenes
+belong to Blue, the partner stays frozen, both players remain separated during
+gameplay and both arrive in Checkmate at 75/100 health. All **8,749 common player,
+world and native-resident hashes** match, and 2,570 host/2,549 guest presence samples
+pass. Normal checkpoints before steps 2, 42, 110, 186 and 202 are retained alongside
+the reports under `private/coop/castling-route-048ce8d9a3d94f7ba36ef842980980bb`.
+Both processes exit successfully; the run takes 554 seconds without screenshot
+inspection. The Red-led internet route, skipped scenes over the network and
+recovery/rejoin remain separate open requirements. No completed-row credit is
+assigned yet.
 
 `--wchess2-check` exercises real approach triggers, both royal outcomes, dialogue, pause, save futures, moving-platform support, bound exits, ambush alternatives and migration. `--wchess2-route-check` and `--wchess2-route-skip-check` traverse from the real entrance with Normal combat into a loaded Checkmate visit. Route checkpoints are private diagnostics; they do not change player saves. `--wchess2-render-check` captures eight staged views. Native save fixtures are `wchess2-queen-mid`, `wchess2-king-mid`, and `wchess2-exit-open`.
 

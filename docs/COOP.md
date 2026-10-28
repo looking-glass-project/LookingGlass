@@ -15,7 +15,12 @@ the total; a successful component or segment is not a completed campaign visit.
 
 Status checked on **28 October 2026**: the older approximately 42% figure is
 historical; the current weighted estimate is **46.8% (about 47%)**. The current
-gate is a fresh, uninterrupted Pale Realm traversal in both leader orders.
+work covers Castling's independent internet route and fresh, uninterrupted Pale
+Realm traversal in both leader orders. Castling's four full native routes pass.
+After repairing delayed test-follower oscillation, its Blue-led public internet
+run also passes all 203 legs with 8,749 matching replicated states. The Red-led
+internet route and recovery checks remain open. See
+[Castling internet checks](WCHESS2.md#independent-internet-traversal-checks).
 Focused combat, swimming, recovery and rejoin passes below are useful progress,
 but do not satisfy that gate. The timed spike corridor and its following four
 steps now pass focused internet replays with either leader, including delayed
@@ -56,8 +61,11 @@ the broad shared-world, campaign entrance/recovery and Pale Realm component suit
 also pass. The continuous native route now passes all 203 legs with either player
 first and scenes watched or skipped, including both royal reunions and Checkmate
 arrival with exact personal resources retained. All four runs pass, with 214
-exact guest-world comparisons in total. Independent internet clients and recovery
-remain open, so this adds no completed campaign row or percentage credit; see
+exact guest-world comparisons in total. The separate Blue-led internet route now
+also passes on `e54bc16`, with 8,749 matching player/world/native states, both
+original scenes and Checkmate arrival at 75/100 health. All 836 active units pass.
+The opposite internet leader order, recovery/rejoin and broader effects remain
+open, so this adds no completed campaign row or percentage credit; see
 [Castling traversal](WCHESS2.md#continuous-paired-traversal).
 See [descent recovery](WCHESS1.md#rejoining-a-recorded-descent).
 The earlier Pale Realm combat stall is resolved by a supported sidestep after repeated

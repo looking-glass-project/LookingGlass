@@ -7,7 +7,7 @@ use macroquad::prelude::{Vec2, Vec3};
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 
-pub const REVISION: u32 = 7;
+pub const REVISION: u32 = 8;
 pub const INPUT_TIMEOUT: Duration = Duration::from_millis(500);
 const MAX_EDGES: u64 = 8;
 
@@ -165,6 +165,14 @@ pub enum FromGuest {
         epoch: u64,
         tick: u64,
     },
+    /// Ordered after pre-suspension inputs, establishing cancelled button counters.
+    ControlsReset {
+        epoch: u64,
+        reset: u64,
+        sequence: u64,
+        sampled_micros: u64,
+        controls: Input,
+    },
     Input {
         epoch: u64,
         sequence: u64,
@@ -180,6 +188,7 @@ pub enum HostMessage<T> {
     Hello { identity: Identity },
     Enter { visit: Visit },
     Playing { epoch: u64 },
+    ResetControls { epoch: u64, reset: u64 },
     Frame { frame: T },
 }
 // Use an external tag so JSON decodes the typed payload directly. An internal

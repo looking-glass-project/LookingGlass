@@ -24,14 +24,17 @@ matching player/world/native states and a 75/100-health Checkmate arrival. The
 new Red run passes 0–127 and both original scenes but **stalls at leg 128**;
 it remains failed despite 9,378 matching states and passing presence samples.
 Its host has about one second of queued controls while the guest reports about
-206 ms round-trip time; delayed steering is a hypothesis pending diagnosis.
+206 ms round-trip time. Diagnosis traces the backlog onset to a 561 ms host
+pause followed by delayed old input batches. An ordered control reset now passes
+a real forced-pause internet replay through legs 124–129, with 145 matching
+states and both players at 100 health; a fresh full Red repeat remains open.
 
 Real combat recovery passes for either player: both clients agree on the
 1,200-tick spectator delay, nearby 25-health revival and retained personal items.
 The unchanged team-wipe encounter also passes separation and shared restoration
 after the sloped-wall repair. The current build adds the original held Enter/A
 scene-skip control for the scene owner, with a fresh 0.65-second hold and the
-existing safe reunion. All **839 active unit tests** and the broader native
+existing safe reunion. All **843 active unit tests** and the broader native
 checks pass. All four independent internet scene-skip cases also pass: both
 royal scenes with either owner, unchanged personal resources and safe reunion. See
 [Castling internet checks](WCHESS2.md#independent-internet-traversal-checks).

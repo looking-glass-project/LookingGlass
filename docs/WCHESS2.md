@@ -328,6 +328,61 @@ weapon selection immediately after the scene, and one incorrectly expected Will
 recovery throughout the cutscene. Three negative controls reject early,
 inconsistent or incomplete skip evidence. No images are inspected.
 
+### Recovery after a suspended host
+
+The retained Red failure narrows the input-delay onset to a 560.78 ms host
+frame at tick 36,236, during leg 124. The existing simulation watchdog cancels
+controls for that frame, but later network polls admit more controls sampled
+during the suspension. At tick 36,254, a coalesced unchanged hold already has
+1,089.7 ms of unsimulated sampled time. Later movement changes retain roughly
+one second of extra delay through leg 128, even after network round-trip time
+returns to about 206 ms. The retained sequence is
+`private/coop-castling-red53-suspension.json`.
+
+Protocol revision 8 adds an ordered reset exchange after the host's simulation
+watchdog fires. Until the guest's reply, the host validates and discards old
+controls. The guest clears unsent old samples and replies with its latest button
+counters; those counters are consumed without executing suspended actions.
+Only subsequent fresh inputs drive Alice. Normal sampled movement intervals,
+run-ups and jumps retain their existing timing. Repeated suspension while
+waiting does not queue duplicate resets, and transitions/reconnections clear
+the reset state.
+
+All 843 active unit tests pass, with one existing ignored test. New real-session
+tests cover old inputs spanning many bounded receive polls, cancelled suspended
+jumps, one execution of a fresh jump, transitions during the exchange and
+rejection of unsolicited/future reset replies. A native timeline regression
+retains the original duration of a resumed run-up before its jump.
+Source `cc2388ea85f7055571872c815217cdd910084ddba4edb7201f0d5b07ca3782de`
+also passes the independent internet forced-suspension check with 40/20 ms
+injected delay/jitter. `tools/test_coop_castling_suspend.py` restores an exact
+offline export of the retained pre-leg-124 snapshot (tick 35,974), uses ordinary
+controls through legs 124–129, and suspends only its own host process during
+active ramp movement. The host is always resumed in a finally block.
+
+In the passing run, suspension lasts approximately 640 ms at tick 36,855. The
+ordered reset is acknowledged by tick 36,952. Six settled measurements from
+37,096–37,216 show a median buffered control time of 36.68 ms (peak 92.17 ms),
+well below the original persistent one-second backlog. Both players finish at
+100 health, all 145 common player/world/native-state hashes match, all 79 host /
+70 guest presence samples pass, and both processes exit cleanly. Evidence is
+`private/coop/castling-suspend-d51b88e085574cc0b9bb88684ba170ef`.
+
+The fixture requires at least 240 post-acknowledgement simulation ticks and at
+least five distinct settled samples spanning 96 ticks; their median must remain
+below 100 ms. Three negative controls reject absent resets, inadequate sampling
+and a persistent 1,000 ms backlog. One earlier run cleared the backlog but failed
+a single-sample 100 ms assertion on a 116.52 ms jitter spike while relay round-trip
+time was about 1.3 seconds. That failure remains retained; the repeated passing
+run above uses the sustained-window criterion. Two earlier fixtures missed the
+pause trigger, and a separate attempt failed invite DNS resolution before play;
+none is counted as passing.
+
+The same build passes 82 shared-world, 43 campaign entrance/recovery and 119 Pale
+Realm cases, the Castling native cast/world checks, and all three single-player
+logs remain identical to baseline. The fixed full Red-led route still needs a
+fresh repeat; this six-leg checkpoint segment adds no completed campaign row.
+
 `--wchess2-check` exercises real approach triggers, both royal outcomes, dialogue, pause, save futures, moving-platform support, bound exits, ambush alternatives and migration. `--wchess2-route-check` and `--wchess2-route-skip-check` traverse from the real entrance with Normal combat into a loaded Checkmate visit. Route checkpoints are private diagnostics; they do not change player saves. `--wchess2-render-check` captures eight staged views. Native save fixtures are `wchess2-queen-mid`, `wchess2-king-mid`, and `wchess2-exit-open`.
 
 Use `tools/launchers/Launch-Castling.cmd` for a fresh visit with separate playtest saves. Release identity, exact test results and limits are recorded in `private/wchess2/WORKLOG.md`.

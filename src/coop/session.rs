@@ -76,6 +76,8 @@ pub struct Host {
     guest_ready: bool,
     guest_loading: bool,
     input: TimedInput,
+    control_reset: u64,
+    awaiting_controls: bool,
     frames: SnapshotWindow,
 }
 impl Host {
@@ -94,6 +96,8 @@ impl Host {
             guest_ready: false,
             guest_loading: false,
             input: TimedInput::default(),
+            control_reset: 0,
+            awaiting_controls: false,
             frames: SnapshotWindow::default(),
         })
     }
@@ -117,6 +121,8 @@ impl Host {
         timing["unacknowledged_frames"] = self.frames.pending.len().into();
         timing["latest_sent_frame"] = self.frames.sent.into();
         timing["acknowledged_frame"] = self.frames.seen.into();
+        timing["control_reset"] = self.control_reset.into();
+        timing["awaiting_controls"] = self.awaiting_controls.into();
         timing
     }
     pub fn can_send_frame(&self) -> bool {
@@ -153,6 +159,7 @@ impl Host {
             self.peer.disconnect();
             self.phase = Phase::Waiting;
             self.input = TimedInput::default();
+            self.control_reset = 0; self.awaiting_controls = false;
             self.frames = SnapshotWindow::default();
             self.pending.clear();
             self.deadline = None;
@@ -173,6 +180,7 @@ impl Host {
                 Phase::Waiting
             };
             self.input = TimedInput::default();
+            self.control_reset = 0; self.awaiting_controls = false;
             self.frames = SnapshotWindow::default();
             self.guest_ready = false;
             self.guest_loading = false;
@@ -186,6 +194,7 @@ impl Host {
             self.guest_ready = false;
             self.guest_loading = false;
             self.input = TimedInput::default();
+            self.control_reset = 0; self.awaiting_controls = false;
             self.frames = SnapshotWindow::default();
             self.pending.clear();
             self.deadline = Some(now + CHECK_TIMEOUT);
@@ -261,6 +270,17 @@ impl Host {
                         self.frames.acknowledge(tick)?;
                     }
                 }
+                FromGuest::ControlsReset { epoch, reset, sequence, sampled_micros, controls } => {
+                    ensure!(epoch <= self.visit.epoch, "Guest reset controls for a future visit.");
+                    if epoch == self.visit.epoch {
+                        ensure!(self.phase == Phase::Playing && self.awaiting_controls
+                            && reset == self.control_reset && sequence > self.input.sequence(),
+                            "Unexpected guest control reset.");
+                        self.input.accept(sequence, controls, sampled_micros, now)?;
+                        self.input.cancel();
+                        self.awaiting_controls = false;
+                    }
+                }
                 FromGuest::Input {
                     epoch,
                     sequence,
@@ -278,6 +298,10 @@ impl Host {
                     // In-flight input from a departing visit is ordinary, not an error.
                     if epoch == self.visit.epoch && self.phase == Phase::Playing {
                         self.input.accept(sequence, controls, sampled_micros, now)?;
+                        // Inputs ahead of the ordered reset reply were sampled
+                        // while the host was suspended. Validate their counters
+                        // without applying or retaining their movement intervals.
+                        if self.awaiting_controls { self.input.cancel(); }
                     }
                 }
             }
@@ -326,6 +350,7 @@ impl Host {
         self.guest_ready = false;
         self.guest_loading = false;
         self.input = TimedInput::default();
+        self.control_reset = 0; self.awaiting_controls = false;
         self.frames = SnapshotWindow::default();
         if matches!(self.phase, Phase::Loading | Phase::Playing) {
             queue(
@@ -339,9 +364,21 @@ impl Host {
         }
         Ok(())
     }
-    pub fn cancel_controls(&mut self) { self.input.cancel(); }
+    pub fn cancel_controls(&mut self) -> Result<()> {
+        self.input.cancel();
+        if self.phase == Phase::Playing && !self.awaiting_controls {
+            self.control_reset = self.control_reset.checked_add(1)
+                .ok_or_else(||anyhow::anyhow!("Session control reset limit reached."))?;
+            queue(&mut self.pending, &FromHost::ResetControls {
+                epoch:self.visit.epoch, reset:self.control_reset,
+            })?;
+            self.awaiting_controls = true;
+        }
+        Ok(())
+    }
     pub fn controls(&mut self, now: Instant) -> (crate::movement::Controls, Input) {
         if self.phase == Phase::Playing
+            && !self.awaiting_controls
             && self.peer.state() == State::Connected
             && self.generation == self.peer.generation()
         {
@@ -365,6 +402,8 @@ pub struct Guest {
     sent_inputs: VecDeque<(u64, Instant)>,
     input_started: Instant,
     queued_controls: InputOutbox,
+    latest_controls: Input,
+    control_reset: u64,
     input_round_trip_ms: Option<f32>,
     frame: Option<super::world::Frame>,
     last_tick: Option<u64>,
@@ -387,6 +426,8 @@ impl Guest {
             sent_inputs: VecDeque::new(),
             input_started: now,
             queued_controls: InputOutbox::default(),
+            latest_controls: Input::default(),
+            control_reset: 0,
             input_round_trip_ms: None,
             frame: None,
             last_tick: None,
@@ -486,6 +527,7 @@ impl Guest {
                     self.sequence = 0;
                     self.input_started = now;
                     self.queued_controls.clear();
+                    self.latest_controls = Input::default(); self.control_reset = 0;
                     self.sent_inputs.clear();
                     self.input_round_trip_ms = None;
                     self.frame = None;
@@ -507,6 +549,25 @@ impl Guest {
                         "Host started before both players loaded the level."
                     );
                     self.phase = Phase::Playing;
+                }
+                FromHost::ResetControls { epoch, reset } => {
+                    ensure!(self.phase == Phase::Playing
+                        && self.visit.as_ref().is_some_and(|v|v.epoch == epoch)
+                        && reset > self.control_reset, "Unexpected host control reset.");
+                    self.control_reset = reset;
+                    self.queued_controls.clear();
+                    self.sent_inputs.clear(); self.input_round_trip_ms = None;
+                    self.sequence = self.sequence.checked_add(1)
+                        .ok_or_else(||anyhow::anyhow!("Session input limit reached."))?;
+                    let sampled_micros = self.input_started.elapsed().as_micros().try_into()
+                        .map_err(|_|anyhow::anyhow!("Session input clock limit reached."))?;
+                    // The ordered reply follows all already-sent old inputs.
+                    // Its counters consume suspended presses without acting on
+                    // them; only later, freshly sampled controls may drive Alice.
+                    queue(&mut self.pending, &FromGuest::ControlsReset {
+                        epoch, reset, sequence:self.sequence, sampled_micros,
+                        controls:self.latest_controls,
+                    })?;
                 }
                 FromHost::Frame { frame } => {
                     ensure!(
@@ -562,6 +623,7 @@ impl Guest {
         let sampled_micros=self.input_started.elapsed().as_micros().try_into()
             .map_err(|_| anyhow::anyhow!("Session input clock limit reached."))?;
         self.queued_controls.push(controls,sampled_micros)?;
+        self.latest_controls = controls;
         self.flush_controls()?;
         Ok(true)
     }
@@ -590,6 +652,71 @@ mod tests {
     use crate::coop::transport::{self, Conditions};
     use macroquad::prelude::Vec2;
     use std::thread;
+
+    #[test]
+    fn suspended_host_uses_an_ordered_barrier_before_fresh_controls() {
+        let (mut host, mut guest, _) = pair();play(&mut host,&mut guest);
+        guest.controls(Input{wish:Vec2::X,..Default::default()}).unwrap();
+        until(&mut host,&mut guest,|h,_|h.acknowledged_input()==1);
+        assert_eq!(host.controls(Instant::now()).0.wish,Vec2::X);
+        host.cancel_controls().unwrap();
+        for number in 0..24 {
+            // The guest has not read the reset yet and continues to send old
+            // controls. Their delivery spans many of the host's four-message polls.
+            guest.controls(Input{wish:if number%2==0{Vec2::X}else{Vec2::Y},
+                primary:true,jumps:1,..Default::default()}).unwrap();
+            thread::sleep(Duration::from_millis(2));
+            host.poll(Instant::now()).unwrap();
+            let (c,i)=host.controls(Instant::now());
+            assert_eq!(c.wish,Vec2::ZERO);assert!(!c.jump && !i.primary);
+            host.cancel_controls().unwrap();
+            assert_eq!(host.control_reset,1,"Repeated suspension queued duplicate resets");
+        }
+        until(&mut host,&mut guest,|h,_|!h.awaiting_controls);
+        assert_eq!(host.input.timing()["buffered_control_ms"],0.);
+        let (c,i)=host.controls(Instant::now());
+        assert_eq!(c.wish,Vec2::ZERO);assert!(!c.jump && !i.primary);
+        let before=host.acknowledged_input();
+        guest.controls(Input{wish:-Vec2::X,jumps:1,..Default::default()}).unwrap();
+        until(&mut host,&mut guest,|h,_|h.acknowledged_input()>before);
+        let c=host.controls(Instant::now()).0;
+        assert_eq!(c.wish,-Vec2::X);assert!(!c.jump,"Suspended jump reappeared after the barrier");
+        let before=host.acknowledged_input();
+        guest.controls(Input{wish:-Vec2::X,jumps:2,..Default::default()}).unwrap();
+        until(&mut host,&mut guest,|h,_|h.acknowledged_input()>before);
+        let jumps=(0..120).filter(|_|host.controls(Instant::now()).0.jump).count();
+        assert_eq!(jumps,1,"A fresh post-resume jump was lost or duplicated");
+    }
+
+    #[test]
+    fn control_reset_barrier_cannot_affect_a_later_visit() {
+        let (mut host,mut guest,_)=pair();play(&mut host,&mut guest);
+        host.cancel_controls().unwrap();
+        host.enter("skool1".into(),None,Default::default(),Instant::now()).unwrap();
+        play(&mut host,&mut guest);
+        assert!(!host.awaiting_controls);assert_eq!(host.control_reset,0);
+        guest.controls(Input{wish:Vec2::Y,..Default::default()}).unwrap();
+        until(&mut host,&mut guest,|h,_|h.acknowledged_input()==1);
+        assert_eq!(host.controls(Instant::now()).0.wish,Vec2::Y);
+    }
+
+    #[test]
+    fn unsolicited_and_future_control_resets_are_rejected() {
+        for requested in [false,true] {
+            let (mut host,mut guest,_)=pair();play(&mut host,&mut guest);
+            if requested {host.cancel_controls().unwrap();}
+            assert!(guest.peer.send(serde_json::to_vec(&FromGuest::ControlsReset {
+                epoch:1,reset:2,sequence:1,sampled_micros:0,controls:Input::default(),
+            }).unwrap()).unwrap());
+            let deadline=Instant::now()+Duration::from_secs(2);
+            loop {
+                if host.poll(Instant::now()).is_err() {break;}
+                assert!(Instant::now()<deadline,"Accepted an unsolicited or future control reset");
+                thread::sleep(Duration::from_millis(2));
+            }
+            assert_eq!(host.phase(),Phase::Waiting);
+        }
+    }
 
     #[test]
     fn delayed_snapshot_reader_resumes_with_latest_state_without_losing_controls() {

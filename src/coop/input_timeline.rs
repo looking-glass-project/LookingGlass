@@ -372,4 +372,20 @@ mod tests {
         stream.accept(4,Input{jumps:2,..edge},800_000,now).unwrap();
         assert!(stream.sample(now).0.jump); assert!(!stream.sample(now).0.jump);
     }
+
+    #[test]
+    fn resumed_burst_retains_a_changed_runup_and_jump() {
+        let mut stream=TimedInput::default();let start=Instant::now();
+        stream.accept(1,Input::default(),0,start).unwrap();stream.sample(start);stream.cancel();
+        let resumed=start+Duration::from_secs(1);
+        let run=Input{wish:Vec2::X,run:true,..Default::default()};
+        stream.accept(2,run,600_000,resumed).unwrap();
+        stream.accept(3,run,700_000,resumed).unwrap();
+        stream.accept(4,Input{jumps:1,..run},800_000,resumed).unwrap();
+        for tick in 0..25 {
+            let (c,_)=stream.sample(resumed+Duration::from_micros(tick*1_000_000/120));
+            assert_eq!(c.wish,Vec2::X);
+            assert_eq!(c.jump,tick==24,"Suspension retiming shortened the resumed run-up");
+        }
+    }
 }

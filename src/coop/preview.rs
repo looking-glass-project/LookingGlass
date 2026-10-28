@@ -433,7 +433,7 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
             if let (Some(host), Some(roster)) = (&mut host, &mut roster) {
                 if playing {
                     let (steps, suspended) = simulation_clock.advance(get_frame_time());
-                    if suspended { host.cancel_controls(); local_latch.cancel(); }
+                    if suspended { host.cancel_controls()?; local_latch.cancel(); }
                     for _ in 0..steps {
                         // The diagnostic planner describes exact 24-tick input
                         // segments. Sampling once per render frame can hold a

@@ -509,7 +509,9 @@ fn exchange<S: Read + Write>(
         }
         // TCP may deliver a normal internet burst between render frames. Keep
         // at most one additional message and stop reading until the consumer
-        // catches up. A persistently stalled consumer still has a deadline.
+        // catches up. Checkpoint writes can briefly block the render thread;
+        // use the same bounded grace as a quiet connection instead of dropping
+        // a healthy session after two seconds. Queue capacity is unchanged.
         if let Some(data) = waiting_input.take() {
             match incoming.try_send((generation, data)) {
                 Ok(()) => blocked_since = None,
@@ -518,7 +520,7 @@ fn exchange<S: Read + Write>(
             }
         }
         anyhow::ensure!(
-            blocked_since.is_none_or(|at: Instant| at.elapsed() < Duration::from_secs(2)),
+            blocked_since.is_none_or(|at: Instant| at.elapsed() < IDLE),
             "Game updates could not be consumed fast enough. Rejoin the host."
         );
         // Bound processing as well as memory so flooding cannot starve outgoing traffic.
@@ -724,20 +726,22 @@ mod tests {
                 break;
             }
             let _ = host.send(vec![1; 1024]);
-            assert!(started.elapsed() < Duration::from_secs(5));
+            assert!(started.elapsed() < IDLE + Duration::from_secs(3));
             thread::sleep(Duration::from_millis(5));
         }
     }
 
     #[test]
-    fn a_render_stall_applies_backpressure_without_losing_a_normal_burst() {
+    fn a_checkpoint_length_stall_preserves_ordered_packets_and_the_connection() {
         let (host, invite) = host(Conditions::default()).unwrap();
         let guest = join(invite, Conditions::default()).unwrap();
         wait_connected(&host, &guest);
         for n in 0..8_u8 {
             wait_for(|| host.send(vec![n]).unwrap());
         }
-        thread::sleep(Duration::from_millis(200));
+        // Exceeds the former two-second queue deadline. A slow checkpoint
+        // write must not discard the peer or any of its ordered packets.
+        thread::sleep(Duration::from_secs(3));
         assert_eq!(guest.state(), State::Connected);
         for n in 0..8_u8 {
             wait_for(|| {

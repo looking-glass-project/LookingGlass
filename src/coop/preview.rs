@@ -33,6 +33,35 @@ pub struct Launch {
     pub route_driver: Option<PathBuf>,
     pub conditions: Conditions,
 }
+
+fn follow_body_visible(watched: bool, show_watched: bool, camera: Vec3, feet: Vec3) -> bool {
+    // Only hide the camera's own subject when the follow camera is pressed
+    // against it. A nearby partner is still a separate, visible player.
+    !watched || (show_watched && camera.distance(feet + Vec3::Z * 32.) > 48.)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::follow_body_visible;
+    use macroquad::prelude::*;
+
+    #[test]
+    fn close_partner_survives_follow_camera_culling_after_scene_reunion() {
+        // Captured Checkmate reunion: the players are 48 units apart, but Red
+        // is only 46.86 units from Blue's camera and previously disappeared.
+        let camera = vec3(516.03125, 2723.7375, 298.63898);
+        let blue = vec3(608., 2736., 256.03125);
+        let red = vec3(560., 2736., 256.03125);
+        assert!(follow_body_visible(true, true, camera, blue));
+        assert!(follow_body_visible(false, true, camera, red));
+        // A genuinely cramped own camera still hides its subject, without
+        // applying that decision to the other player (including spectating).
+        assert!(!follow_body_visible(true, true, camera, red));
+        assert!(!follow_body_visible(true, false, camera, blue));
+        assert!(follow_body_visible(false, false, camera, red));
+    }
+}
+
 pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Result<()> {
     let ui = crate::ui::Ui::load(assets)?;
     show_mouse(false);
@@ -499,9 +528,10 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                             if let Some(command) = driver.checkpoint_request(visit.epoch, now) {
                                 // Use the normal host menu operation, including all save
                                 // validation and its atomic disk-before-memory commit.
+                                let save_started = Instant::now();
                                 let result = checkpoint_store.save(&visit, roster, &mut arena, &scene.world, &campaign);
                                 if result.is_ok() { checkpoint_pending = false; }
-                                driver.checkpoint_result(command, visit.epoch, roster.tick,
+                                driver.checkpoint_result(command, visit.epoch, roster.tick, save_started.elapsed(),
                                     result.err().map(|error| error.to_string()));
                             }
                         }
@@ -578,8 +608,7 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                     character.atmosphere(&scene.atmosphere, camera_eye);
                     let show_body = if scripted.is_some() { rage_actor == Some(index) } else {
                         (arena.stage.owner.is_none() || index == watched.index())
-                        && (index != watched.index() || show_local)
-                        && camera_eye.distance(body.player.feet + Vec3::Z * 32.) > 48.
+                        && follow_body_visible(index == watched.index(), show_local, camera_eye, body.player.feet)
                     };
                     let show_body = show_body && !arena.stage.interactions.levels.iter()
                         .any(|s| s.ctl.coop_hides_player(index));

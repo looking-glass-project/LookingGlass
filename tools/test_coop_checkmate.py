@@ -32,7 +32,10 @@ def verify_beheading(rows, first, role):
     verify_presence(rows, role)
     final = rows[-1]
     assert final['owner'] is None and final['checkmate']['beheaded'], 'Beheading did not finish'
-    assert all(final['presentation']['visible_players']), 'Players did not reappear after the scene'
+    # The follow camera can legitimately hide its own body against a wall.
+    # Each client must still draw the other player after the scripted hold.
+    remote = 1 if role == 'host' else 0
+    assert final['presentation']['visible_players'][remote], 'Partner did not reappear after the scene'
     assert all(p['health'] > 0 for p in final['players']), 'Scene ended with a dead player'
     return dict(owner=first.title(), scene_samples=len(scene), reunited=True)
 
@@ -120,6 +123,14 @@ class CheckmatePair(Pair):
             if report['combat']['stage']['owner'] is None:
                 a, b = [p['player']['feet'] for p in bodies]
                 assert distance(a[:2], b[:2]) >= 35.95 or abs(a[2]-b[2]) >= 55.95, 'Players overlap'
+                if report['visit']['map'] == self.map_name and report['route_driver']['scene'] is None:
+                    remote = 1 if role == 'host' else 0
+                    assert report['presentation']['visible_players'][remote], 'Partner hidden during free Checkmate play'
+                    center = list(bodies[remote]['player']['feet'])
+                    center[2] += 32
+                    if distance(report['camera'], center) < 48:
+                        samples = self.evidence.setdefault('close_partner_samples', {})
+                        samples[role] = samples.get(role, 0) + 1
         except Exception:
             (self.folder / ('failure-' + role + '.json')).write_text(json.dumps(dict(
                 before=self.last_valid.get(role), after=report, commands=self.commands, step=self.step)))
@@ -322,7 +333,12 @@ class CheckmatePair(Pair):
             self.pump()
 
     def verify(self):
-        assert self.completed == list(range(len(self.steps))), 'Incomplete approach'
+        assert self.completed == list(range(self.args.start_step, len(self.steps))), 'Incomplete requested approach'
+        expected_scenes = set(SCENES)
+        if self.saved:
+            initial = self.saved['frame']['combat']['stage']['world']['levels'][self.map_name]
+            if initial['beheaded']:
+                expected_scenes.remove('cinema_beheading_thread')
         for role, rows in self.history.items():
             route = [r for r in rows if r['map'] == self.map_name and r['epoch'] == 1]
             verify_presence(route, role)
@@ -330,14 +346,15 @@ class CheckmatePair(Pair):
             for row in route:
                 if row['scene'] and row['owner']:
                     owners.setdefault(row['scene'], set()).add(row['owner'])
-            assert set(owners) == SCENES, f'Missing scenes: {owners}'
-            for scene in SCENES - {'cinema_king_killed_thread'}:
+            assert set(owners) == expected_scenes, f'Missing scenes: {owners}'
+            for scene in expected_scenes - {'cinema_king_killed_thread'}:
                 assert owners[scene] == {self.args.first.title()}, 'Wrong first arrival'
             assert len(owners['cinema_king_killed_thread']) == 1, 'Victory owner changed'
             final = self.last_valid[role]['combat']['stage']['world']['levels'][self.map_name]
             assert final['boss']['health'] == 0 and final['beheaded']
             assert self.reports[role]['visit']['entry'] == 'funhouse_start1'
-            assert all(any(r['players'][i]['rope'] is not None for r in route) for i in (0, 1)), 'Both players must climb the native rope'
+            if 7 in self.completed:
+                assert all(any(r['players'][i]['rope'] is not None for r in route) for i in (0, 1)), 'Both players must climb the native rope'
             self.evidence[role] = dict(owners={k: sorted(v) for k, v in owners.items()}, samples=len(route))
         for field, metric in [('sha256', 'matching_player_states'), ('world_sha256', 'matching_world_states'), ('native_sha256', 'matching_native_residents')]:
             self.verify_network_states(field, metric)
@@ -380,7 +397,8 @@ class CheckmatePair(Pair):
             self.completed.append(index)
             print('PASS Checkmate approach', index, 'health', [self.body(r)['stats']['sanity'] for r in self.commands], flush=True)
         full_route = self.saved is None and self.args.last_step == len(self.steps)-1
-        if full_route:
+        through_exit = full_route or self.args.through_exit
+        if through_exit:
             self.step = len(self.steps)
             self.go([3936, 2944, 0], navigate=True)
             self.boss()
@@ -400,10 +418,12 @@ class CheckmatePair(Pair):
             assert self.processes[role].returncode == 0
         self.evidence['completed_steps'] = self.completed
         (self.folder / 'result.json').write_text(json.dumps(dict(passed=True, full_route=full_route,
+            through_exit=through_exit,
             internet=not self.args.local, build=self.build, first=self.args.first,
             delay_ms=self.args.delay_ms, jitter_ms=self.args.jitter_ms, evidence=self.evidence), indent=2))
         print('PASS full independent Checkmate route through Funhouse' if full_route else
-              f'PASS independent Checkmate segment {self.args.start_step}..{self.args.last_step}; not a full route', flush=True)
+              ('PASS independent Checkmate checkpoint route through Funhouse; not a full route' if through_exit else
+               f'PASS independent Checkmate segment {self.args.start_step}..{self.args.last_step}; not a full route'), flush=True)
 
     def close(self):
         try:
@@ -422,6 +442,7 @@ if __name__ == '__main__':
     parser.add_argument('--checkpoint', type=Path)
     parser.add_argument('--start-step', type=int, default=0)
     parser.add_argument('--last-step', type=int, default=44)
+    parser.add_argument('--through-exit', action='store_true', help='Continue the final approach segment through the King and Funhouse; resumed runs remain partial')
     parser.add_argument('--save-before', nargs='*', type=int, default=[7, 12, 27, 44])
     parser.add_argument('--delay-ms', type=int, default=40)
     parser.add_argument('--jitter-ms', type=int, default=20)
@@ -432,6 +453,8 @@ if __name__ == '__main__':
         parser.error('Choose an ordered segment within 0..44, starting before the whole rope procedure')
     if (args.start_step > 0) != bool(args.checkpoint):
         parser.error('A later start requires an unchanged checkpoint; an entrance run starts at zero')
+    if args.through_exit and args.last_step != 44:
+        parser.error('Continuing through the exit requires the final approach step, 44')
     pair = CheckmatePair(args)
     try:
         pair.run()

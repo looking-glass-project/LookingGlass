@@ -31,6 +31,16 @@ beheading scene, with 3,444 matching states and both players finishing at 100
 health. Red waits still and hidden during the scene; both reappear afterward.
 The total stays at 47.3%; checkpoint segments are not a completed campaign visit.
 
+A subsequent fresh Checkmate run exposed a camera rule that hid a nearby partner
+even with safely separated bodies. Close-camera hiding now applies only to the
+watched player. The source-69 internet run passes free-play visibility, including
+103 host and 23 guest near-partner samples, and the original scene reunion. It
+reaches step 34 before Blue dies in an ambush; the run remains failed. The same
+build passes 852 active units and native checks, with unchanged single-player
+baselines. A blocked network consumer now gets the existing 15-second connection
+grace with unchanged queue limits, and a three-second ordered-packet stall test
+passes. Full traversal, recovery and broader effects coverage remain open.
+
 Castling's earlier Blue-led and Red-led public internet runs pass all 203 legs.
 After the sloped-wall collision fix, Blue passes the full route again with 8,793
 matching player/world/native states and a 75/100-health Checkmate arrival. The

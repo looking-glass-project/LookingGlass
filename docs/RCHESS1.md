@@ -265,3 +265,76 @@ including `result.json` and `beheading-verification.json`. This is still a
 checkpoint segment, not a fresh entrance-to-Funhouse pass. The later approach,
 King fight, opposite arrival order, skip/recovery and broader effects checks
 remain open. No campaign-row or percentage credit is added.
+
+## Fresh-route camera visibility regression
+
+The first fresh Blue-led internet route on `d12189f` passes steps 0-25 but fails
+the new reunion verifier at step 26. Both players are alive at 100 health and
+48 units apart after the completed beheading scene. In Blue's view, Red's body
+is only 46.86 units from the follow camera; the renderer's 48-unit close-camera
+cutoff incorrectly hides Red even though there is no active scene. This is a
+rendering failure, not evidence of overlapping physics bodies or a route pass.
+The captured run remains under
+`private/coop/checkmate-route-488409831b76417ea86b3b754647e3f2/`.
+
+Close-camera hiding now applies only to the watched player. The other player's
+body retains its normal draw eligibility, with cinematic and native scripted
+hiding still respected. A regression uses the captured camera and body positions
+and preserves own-body hiding for cramped or spectating cameras. The route
+verifier checks the remote player in each client's view after reunion and
+throughout free Checkmate play. Its own body may legitimately be hidden by the
+follow camera. Rechecking the retained histories still accepts the earlier
+segment and rejects the fresh run's actual remote disappearance. All 852 active
+unit tests pass. The next build also passes the release build, 94 native
+Checkmate records, unchanged single-player baselines and the 82/43 broader
+checks. A fresh internet attempt passes the rope section and all observed
+free-play partner visibility checks, including 20 host and 30 guest samples
+with the other body within 48 units of the camera. It then disconnects during
+the pre-step-12 checkpoint operation, before reaching the reunion again.
+
+
+The retained disconnect is under
+`private/coop/checkmate-route-15bdcf3bceb94e119bd1844be841d475/`. The host reports
+that incoming updates were not consumed quickly enough; the transport used a
+two-second queue deadline. The save file was committed at tick 5758, but the
+runner had not yet received its acknowledgement. Exact save duration was not
+recorded, so a slow filesystem write is not established as the sole cause.
+
+The transport now gives a blocked consumer the existing 15-second connection
+grace, retaining the same four-message channel and one held incoming message.
+A three-second stall regression requires all eight packets to arrive in order
+and the connection to remain usable. A persistent stall still disconnects within
+the bounded timeout. Diagnostic checkpoint acknowledgements now include
+`save_ms`; save format, validation and disk-before-memory atomicity are unchanged.
+All 852 active units pass, including both backpressure cases. Frozen source
+`999049c05976d6187c24eacaabf78c9a302ad8162a3522511a32f137ced51c5e` passes the
+release build and the same native and single-player checks. Its fresh full
+internet replay passes steps 0-33, including the beheading/reunion and later
+platforms, before Blue dies during the step-34 ambush. The failed run is retained;
+no completed campaign row is claimed.
+
+For focused later failures, `--through-exit` with final approach step 44 lets
+an unchanged checkpoint replay continue through the King and Funhouse, while
+verifying the remaining scenes. Such a result always remains `full_route: false`.
+Only a fresh normal-entrance run can produce a full-route pass. The new checkpoint
+exit mode has not yet completed a real boss/exit replay.
+
+
+The source-69 fresh run is retained under
+`private/coop/checkmate-route-977e10f98a6744a2aa0d7bbbe2920a1d/`. The render
+assertion passes all observed free-play frames, including 103 host and 23 guest
+near-partner camera samples. The Blue-owned beheading is observed in 119/118
+samples with a hidden, stationary partner; both reappear at 100 health. Normal
+checkpoints before steps 7, 12 and 27 take approximately 49, 37 and 19 ms. These
+fast saves do not reproduce the earlier unexplained stall.
+
+At step 34, Blue is cornered near two active Pawns and dies; Red remains at 100
+health farther back on the route. The retained pre-death state has Blue at 20
+health and 0.56 Will, with a walking controller replanning around the corner.
+The diagnostic grounded-route controller currently walks rather than runs,
+while the authored single-player course keeps moving past these optional
+northern ambushes. Movement speed, coordination and attack tactics need review;
+enemy damage and death checks remain intact. The normal pre-step-27 checkpoint
+and the failed reports allow a focused replay. `prefix-verification.json`
+records the scene checks separately and explicitly retains the death and
+`full_route_passed: false`. The King, exit and fresh full traversal remain open.

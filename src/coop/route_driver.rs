@@ -264,6 +264,7 @@ pub struct CheckpointReport {
     pub command: u64,
     pub epoch: u64,
     pub tick: u64,
+    pub save_ms: f32,
     pub error: Option<String>,
 }
 #[derive(Serialize)]
@@ -440,8 +441,7 @@ fn attack_target<'a>(world: &World, targets: &'a [crate::combat::Target], eye: V
         .min_by(|(a,_),(b,_)| a.center.distance_squared(eye).total_cmp(&b.center.distance_squared(eye)))
 }
 
-/// Shared by the diagnostic driver and native data checks; only emits ordinary
-/// weapon controls. The checks need no renderer or authoritative state writes.
+/// Keep all combat bodies in the visibility context, including friendly ones.
 fn combat_targets(interactions:&crate::interaction::Interactions,
     mut targets:Vec<crate::combat::Target>) -> Vec<crate::combat::Target> {
     if let Some(cast)=&interactions.encounters {targets.extend(cast.targets());}
@@ -465,6 +465,8 @@ pub(crate) fn native_threat(world:&World,interactions:&crate::interaction::Inter
     }).map(|(target,_)|target.id)
 }
 
+/// Shared by the diagnostic driver and native data checks; only emits ordinary
+/// weapon controls. The checks need no renderer or authoritative state writes.
 pub(crate) fn combat_controls(world:&World,interactions:&crate::interaction::Interactions,
     targets:Vec<crate::combat::Target>,body:&super::world::Body,prefer_cards:bool,
     idle_guard:impl Fn(usize)->bool,keys:&mut Input) {
@@ -587,8 +589,8 @@ impl Driver {
             && self.report.checkpoint.as_ref().is_none_or(|r| (r.epoch,r.command) != (epoch,c.id)))
             .map(|c| c.id)
     }
-    pub fn checkpoint_result(&mut self, command: u64, epoch: u64, tick: u64, error: Option<String>) {
-        self.report.checkpoint = Some(CheckpointReport { command, epoch, tick, error });
+    pub fn checkpoint_result(&mut self, command: u64, epoch: u64, tick: u64, elapsed: Duration, error: Option<String>) {
+        self.report.checkpoint = Some(CheckpointReport { command, epoch, tick, save_ms: elapsed.as_secs_f32()*1000., error });
     }
     fn neutral(keys: &mut Input) {
         keys.wish = Vec2::ZERO; keys.swim = Vec3::ZERO; keys.rise = 0.;
@@ -1158,13 +1160,13 @@ mod tests {
         assert_eq!(driver.checkpoint_request(1,now),None);
         assert_eq!(driver.checkpoint_request(2,now+Duration::from_secs(3)),None);
         assert_eq!(driver.checkpoint_request(2,now),Some(7));
-        driver.checkpoint_result(7,2,100,Some("Wait until the scene finishes".into()));
+        driver.checkpoint_result(7,2,100,Duration::ZERO,Some("Wait until the scene finishes".into()));
         assert_eq!(driver.checkpoint_request(2,now),None);
         driver.command.as_mut().unwrap().heartbeat+=1;
         assert_eq!(driver.checkpoint_request(2,now),None);
         driver.command.as_mut().unwrap().id=8;
         assert_eq!(driver.checkpoint_request(2,now),Some(8));
-        driver.checkpoint_result(8,2,120,None);
+        driver.checkpoint_result(8,2,120,Duration::from_millis(12),None);
         assert_eq!(driver.checkpoint_request(2,now),None);
     }
     #[test]

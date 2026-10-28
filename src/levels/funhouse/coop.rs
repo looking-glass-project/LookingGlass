@@ -89,6 +89,13 @@ impl Funhouse {
         Ok(())
     }
     pub(super) fn pair_actor(&mut self, players:&[CoopPlayer<'_>;2])->Option<usize> {
+        // Collection is personal; the first living collector starts the shared
+        // ordinary speech on the next contact phase. No cinematic owner/freeze
+        // is needed, and the completed speech never replays for the partner.
+        if self.saved.scene.is_none() && !self.saved.jack
+            && players.iter().any(|p|p.stats.alive() && p.stats.collected.contains(&self.data.jack_key)) {
+            self.begin(Kind::Jack);
+        }
         if self.saved.scene.is_none() && !self.saved.gas && !self.saved.fight
             && self.saved.all_cells.is_some_and(|t|self.saved.time>=t+1.) {
             // This scene starts automatically after the shared clock puzzle.

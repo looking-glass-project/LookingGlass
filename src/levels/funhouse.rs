@@ -4,6 +4,7 @@ mod battle;
 mod check;
 mod coop;
 mod coop_check;
+mod coop_scene_check;
 mod coop_world_check;
 mod data;
 mod motion;
@@ -269,6 +270,14 @@ impl LevelController for Funhouse {
         }))
     }
     fn coop_scene_step(&mut self, owner:usize, _player:&mut Player, stats:&mut Stats) { self.pair_scene(owner,stats); }
+    fn coop_reunion_limits(&self, player:&Player)->Option<(f32,f32)> {
+        // The arrival stand only fits the original actor and withdraws two
+        // seconds later. Reunite on the adjacent lower corridor, retaining the
+        // shared swept-path, full-footprint and hazard checks.
+        (self.saved.arrived && self.saved.stand.is_some()
+            && player.feet.distance(self.data.points["funhouse_start1"].translation)<8.)
+            .then_some((256.,256.))
+    }
     fn coop_contacts(&mut self, _dt:f32, players:&mut [crate::level::CoopPlayer<'_>;2])->Option<usize> {
         self.pair_actor(players)
     }
@@ -388,7 +397,10 @@ impl LevelController for Funhouse {
         }
     }
     fn scripted(&self) -> bool {
-        self.saved
+        // Co-op must retain its actor for the update that delivers a committed
+        // exit. A dead partner needs no reunion; releasing control immediately
+        // would otherwise skip that update and strand the surviving player.
+        (self.saved.coop.is_some() && self.saved.exit.committed) || self.saved
             .scene
             .as_ref()
             .is_some_and(|s| s.kind != Kind::Jack)
@@ -685,6 +697,11 @@ pub static REGISTRATION: Registration = Registration {
         ),
     ],
     checks: &[
+        Check {
+            flag: "--funhouse-coop-scene-check",
+            help: "Verify paired scene ownership, skipping, saved cameras and safe reunion.",
+            run: Run::Headless(coop_scene_check::check),
+        },
         Check {
             flag: "--funhouse-coop-world-check",
             help: "Verify paired machinery, tube boarding and automatic scene ownership.",

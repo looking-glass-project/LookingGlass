@@ -74,6 +74,7 @@ pub(super) struct Data {
     pub pushes: Vec<usize>,
     pub tube_boarding: Collider,
     pub gas_focus: Vec3,
+    pub jack_key: String,
 }
 pub fn pose(e: &super::super::Entity) -> Transform {
     let v = e
@@ -112,6 +113,9 @@ impl Data {
             .context("Missing gas scene focus model")?.parse::<usize>()?;
         let shape=map.models.get(model).context("Invalid gas scene focus model")?;
         let gas_focus=pose(pipe).translation+(shape.min+shape.max)*0.5;
+        let jack=map.entities.iter().position(|e|e.get("pickup_thread").is_some_and(|s|s==Kind::Jack.id()))
+            .context("Missing Jacks pickup dialogue")?;
+        let jack_key=format!("funhouse:{jack}");
         for n in [
             "funhouse_start1",
             "alice_pos1",
@@ -245,6 +249,7 @@ impl Data {
             pushes,
             tube_boarding,
             gas_focus,
+            jack_key,
         })
     }
 }

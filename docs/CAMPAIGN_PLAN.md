@@ -2014,6 +2014,12 @@ compressed guest replicas and resource-preserving Checkmate arrival. It uses
 ordinary movement/weapon inputs and records failed states; staged component
 checks and independent internet runs remain separate evidence.
 
+`--funhouse-coop-scene-check` reserves staged native paired scene contracts:
+Arrival, Gas, Tweedles and Hatter with either actor, watched or held-skipped,
+living or dead partners, paused/compressed restored cameras and safe handoff.
+It also checks the real personal Jacks pickup and ordinary speech during
+exploration. Full traversal, rendered effects and internet remain separate.
+
 `--funhouse-coop-world-check` reserves native paired Funhouse machinery
 fixtures: all-rider carry/obstruction, weighted fulcrums, a pendulum period,
 either-player door contacts, the rotating tube and saved boarding order,

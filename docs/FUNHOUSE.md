@@ -97,3 +97,47 @@ including the same final coordinates. The route remains failed; no full co-op
 route, independent internet, recovery or rendered-effects pass is claimed.
 The broader 94 Checkmate, 82 shared-world and 43 campaign checks also pass with
 unchanged Checkmate single-player logs. No images were opened.
+
+## Co-op scene follow-up (28 October 2026)
+
+Source `e1b17cb10c40c705ff419449fb123fa8b15fe3d729ca6fea10f9436a1db61777` passes 37 records through
+`--funhouse-coop-scene-check`: 32 cinematic combinations (Arrival, Gas, Tweedles
+and Hatter, both actors, watched/skipped, living/dead partners) and four real
+personal Jacks pickup cases. Cinematics keep the waiting partner frozen; held
+partner input cannot skip them. Compressed saves preserve scene state, camera
+eye/target/up, field of view and world poses. Invalid/paused time leaves both
+bodies and the scene unchanged. A dead partner stays dead. Hatter skipping keeps
+its 6.5-second floor/exit tail and requests the original next visit.
+Co-op retains its actor after committing the exit until the normal scene update
+delivers the request, so a dead partner cannot cause premature control release.
+
+The arrival stand fits one Alice. Its completed scene now opts into a bounded,
+swept reunion search on the adjacent lower corridor, with full-footprint support
+and hazard rejection. The actor retains the authored endpoint and the stand's
+normal withdrawal. Jacks collection now starts ordinary shared speech in the
+co-op contact phase using the actual pickup identity from local data; it does
+not freeze exploration. The partner retains an individual pickup and cannot
+replay completed speech.
+
+These are staged native components. Fresh simultaneous arrival normally ties
+to Blue; Red's arrival case explicitly restores an alternate owner. Tweedles
+uses the real trigger; Gas and Hatter use staged puzzle/post-battle conditions
+and the production owner-selection phase. Hatter uses native damage to create
+valid dead enemies. No full route, rendered visibility/effects, internet or
+recovery pass is claimed. The previous single-player route still fails at step
+142; that historical trace is not a new route pass.
+
+The first scene attempt stalled at the opening reunion and was terminated; the
+next passed 28 cases but rejected eight invalid Hatter fixtures whose health had
+been zeroed without the normal death transition. The third passed 32 cases but
+exposed four dead-partner Hatter cases that released control before delivering
+the committed exit. The fourth confirmed that an ordinary free-world tick does
+not deliver it. Co-op now keeps scene control through the automatic request.
+All attempts remain private.
+The corrected run passes all 36 cases plus its summary record, together with 63
+battle and 35 machinery records. Single-player component gameplay is identical
+to baseline, excluding only two benchmark timings. The 855 active unit tests
+pass with the final production changes (one existing ignored test).
+The 94 Checkmate, 82 shared-world and 43 campaign checks pass on this build;
+Checkmate single-player component and full-route logs remain identical.
+No screenshots were opened.

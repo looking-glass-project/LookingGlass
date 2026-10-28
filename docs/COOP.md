@@ -26,7 +26,10 @@ The follow-up public-internet rope replay also passes, with 240 matching
 states and 92/100 health, on the build with bounded DNS retries. All 851 active
 unit tests and the native checks pass. The two earlier invite-resolution failures
 remain recorded; full Checkmate traversal and recovery remain open. See [Checkmate evidence](RCHESS1.md).
-The total stays at 47.3%; a local segment is not a completed campaign visit.
+A further public replay now passes Checkmate steps 10-26 and the Blue-owned
+beheading scene, with 3,444 matching states and both players finishing at 100
+health. Red waits still and hidden during the scene; both reappear afterward.
+The total stays at 47.3%; checkpoint segments are not a completed campaign visit.
 
 Castling's earlier Blue-led and Red-led public internet runs pass all 203 legs.
 After the sloped-wall collision fix, Blue passes the full route again with 8,793

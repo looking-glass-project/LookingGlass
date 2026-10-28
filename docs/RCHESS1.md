@@ -226,3 +226,42 @@ supports the next approach replay. It remains a segment, not a fresh full-route
 pass, and adds no campaign completion credit. Evidence:
 `private/coop/checkmate-route-9f0cbdef6ec04beb9867f74afa856652/result.json` and
 `private/coop-rchess1-native66.log`. Further traversal/recovery remains open.
+
+## Visibility-aware combat waits
+
+The next internet replay restored the normal upper-platform checkpoint and
+passed step 10, but its proximity-only clear predicate then waited for Knight
+464 on the lower floor. Both players stayed alive at 92/100 health; the run was
+stopped with its reports retained. A nearby enemy behind the platform cannot
+be cleared by standing still above it. The original single-player route also
+uses occlusion when deciding which threats to fight.
+
+The opt-in diagnostic report now includes each player's nearest visible native
+hostile within 700 units. It uses native hostility and the same aiming/occlusion
+context as ordinary attack controls, retaining other bodies as obstructions.
+The runner requires a current acknowledged report from each client before
+ending a combat wait. It does not change enemies, damage or progression.
+
+Frozen source `d12189f270267e3ad5d5f9ebd21c1d1d2c617f943b49dafbb2df54e91a26192c`
+passes all 851 active units, the release build, 94 Checkmate native records,
+82 shared-world and 43 campaign entrance/recovery checks. The ten native driver
+cases now also require a visible threat, no threat through a wall, and no threat
+outside the clear radius for the King and four chess families from either slot.
+Both single-player baseline logs remain identical.
+
+The subsequent public-internet replay passes steps 10-26 from the unchanged
+normal checkpoint, with 40 ms delay and 20 ms jitter. Both clients pass presence
+and body-clearance checks and match all three state hashes at 3,444 ticks.
+Blue's lowest health is 80 and Red's is 100; normal pickups restore both to 100
+at the finish. The original beheading scene is observed in 110 host and 112
+guest samples, always owned by Blue. Red stays still and hidden during the
+scene, then both players reappear alive. A normal checkpoint before step 12 is
+retained. The runner now explicitly verifies scene ownership, waiting-partner
+visibility and reunion when that segment includes the approach to beheading;
+that verifier also passes against the retained run's complete history.
+
+Evidence: `private/coop/checkmate-route-4c37fcefa3cc4e2b9872c45b3dae7d16/`,
+including `result.json` and `beheading-verification.json`. This is still a
+checkpoint segment, not a fresh entrance-to-Funhouse pass. The later approach,
+King fight, opposite arrival order, skip/recovery and broader effects checks
+remain open. No campaign-row or percentage credit is added.

@@ -229,6 +229,8 @@ pub struct Report {
     pub scene: Option<String>,
     pub speech: bool,
     pub clear: [bool; 2],
+    /// Nearest visible native hostile within the route's 700-unit clear radius.
+    pub native_threats: [Option<usize>; 2],
     /// Nearby supported stopping points; only the local fixture reads these.
     pub neighbors: [Vec<Vec3>; 2],
     pub blade_pickups: [bool; 2],
@@ -440,16 +442,34 @@ fn attack_target<'a>(world: &World, targets: &'a [crate::combat::Target], eye: V
 
 /// Shared by the diagnostic driver and native data checks; only emits ordinary
 /// weapon controls. The checks need no renderer or authoritative state writes.
-pub(crate) fn combat_controls(world:&World,interactions:&crate::interaction::Interactions,
-    mut targets:Vec<crate::combat::Target>,body:&super::world::Body,prefer_cards:bool,
-    idle_guard:impl Fn(usize)->bool,keys:&mut Input) {
-    if body.stats.copies(0)==0 {return;}
+fn combat_targets(interactions:&crate::interaction::Interactions,
+    mut targets:Vec<crate::combat::Target>) -> Vec<crate::combat::Target> {
     if let Some(cast)=&interactions.encounters {targets.extend(cast.targets());}
     if let Some(school)=&interactions.school2 {targets.extend(school.targets());}
     // Native campaign controllers own chess pieces and bosses. Leaving them
     // out makes an attack-enabled replay stand idle beside an attacking pawn.
     targets.extend(interactions.levels_targets());
     targets.extend(interactions.shot_targets());
+    targets
+}
+
+pub(crate) fn native_threat(world:&World,interactions:&crate::interaction::Interactions,
+    targets:Vec<crate::combat::Target>,body:&super::world::Body) -> Option<usize> {
+    if !body.stats.alive() {return None;}
+    let targets=combat_targets(interactions,targets);
+    let eye=body.player.eye();
+    attack_target(world,&targets,eye,|id| {
+        crate::level::hit_owner(&interactions.levels,id)
+            .is_some_and(|slot|interactions.levels[slot].ctl.hostile_target(id))
+        && targets.iter().any(|t|t.id==id && t.center.distance(eye)<=700.)
+    }).map(|(target,_)|target.id)
+}
+
+pub(crate) fn combat_controls(world:&World,interactions:&crate::interaction::Interactions,
+    targets:Vec<crate::combat::Target>,body:&super::world::Body,prefer_cards:bool,
+    idle_guard:impl Fn(usize)->bool,keys:&mut Input) {
+    if body.stats.copies(0)==0 {return;}
+    let targets=combat_targets(interactions,targets);
     // Retain non-hostile/idle bodies for occlusion, but do not attack them.
     if let Some((_,point))=attack_target(world,&targets,body.player.eye(),|id|
         crate::level::hit_owner(&interactions.levels,id)
@@ -584,6 +604,8 @@ impl Driver {
         self.report.beyond_steps = arena.stage.interactions.beyond.as_ref()
             .map(|b|std::array::from_fn(|i|b.step_goal(i+1)));
         self.report.clear = frame.players.each_ref().map(|b| !b.stats.alive() || world.body_clear(b.player.feet));
+        self.report.native_threats = frame.players.each_ref().map(|b|
+            native_threat(world,&arena.stage.interactions,arena.npcs.targets(),b));
         self.report.neighbors = frame.players.each_ref().map(|b| {
             if b.stats.alive() && b.player.grounded && !arena.stage.busy() {
                 super::placement::neighbors(world,b.player.feet,|at| !arena.stage.interactions.hazardous(at))

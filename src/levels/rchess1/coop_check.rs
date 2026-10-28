@@ -245,7 +245,7 @@ fn scene(a:&mut Assets,map:&Bsp,phase:Phase,first:PlayerId,skip:bool,dead:bool)-
     Ok(())
 }
 fn route_combat(a:&mut Assets,map:&Bsp)->Result<()> {
-    use crate::coop::{protocol::Input,route_driver::combat_controls};
+    use crate::coop::{protocol::Input,route_driver::{combat_controls,native_threat}};
     let visit=Visit{epoch:1,map:"rchess1".into(),entry:Some("rchess1_start1".into()),difficulty:Default::default(),combat_preview:false};
     let mut w=World::from_bsp(map)?;let mut stage=Stage::load(a,map,&mut w,&visit,false)?;
     w=floor(false);
@@ -266,6 +266,8 @@ fn route_combat(a:&mut Assets,map:&Bsp)->Result<()> {
             // Component placements: the same combat controller used by each
             // real client must aim ordinary Cards input at the native enemy.
             let body=&mut roster.players[local.index()];body.player=Player::new(vec3(-200.,0.,0.1));
+            ensure!(native_threat(&w,&stage.interactions,vec![],body)==Some(id),
+                "Visible native threat missing for {kind:?} {local:?}");
             let mut keys=Input::default();
             combat_controls(&w,&stage.interactions,vec![],body,true,|_|false,&mut keys);
             ensure!(keys.weapon==Some(1) && keys.primary && !keys.alternate,
@@ -280,7 +282,12 @@ fn route_combat(a:&mut Assets,map:&Bsp)->Result<()> {
             combat_controls(&blocked,&stage.interactions,vec![],body,true,|_|false,&mut hidden);
             ensure!(hidden.weapon.is_none() && !hidden.primary && !hidden.alternate,
                 "Route driver shot through the occluding wall");
-            println!("PASS Checkmate route driver {kind:?} {local:?}: ordinary Cards aim and wall occlusion");
+            ensure!(native_threat(&blocked,&stage.interactions,vec![],body).is_none(),
+                "Clear diagnostic waited for an occluded enemy");
+            body.player=Player::new(vec3(-800.,0.,0.1));
+            ensure!(native_threat(&w,&stage.interactions,vec![],body).is_none(),
+                "Clear diagnostic exceeded the 700-unit combat radius");
+            println!("PASS Checkmate route driver {kind:?} {local:?}: ordinary Cards aim, wall occlusion and visible-threat radius");
         }
     }Ok(())
 }

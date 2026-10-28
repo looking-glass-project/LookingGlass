@@ -23,6 +23,20 @@ CORNERS = [(3940, 2630, 0), (4470, 2630, 0), (4470, 3370, 0), (3940, 3370, 0)]
 SCENES = {'cinema_beheading_thread', 'cinema_king_battle_thread', 'cinema_king_killed_thread'}
 
 
+def verify_beheading(rows, first, role):
+    scene = [r for r in rows if r['scene'] == 'cinema_beheading_thread']
+    assert scene, 'Original beheading scene was not observed'
+    assert {r['owner'] for r in scene} == {first.title()}, 'Wrong beheading owner'
+    partner = 1 if first == 'blue' else 0
+    assert all(not r['presentation']['visible_players'][partner] for r in scene), 'Scene displayed the waiting partner'
+    verify_presence(rows, role)
+    final = rows[-1]
+    assert final['owner'] is None and final['checkmate']['beheaded'], 'Beheading did not finish'
+    assert all(final['presentation']['visible_players']), 'Players did not reappear after the scene'
+    assert all(p['health'] > 0 for p in final['players']), 'Scene ended with a dead player'
+    return dict(owner=first.title(), scene_samples=len(scene), reunited=True)
+
+
 def course():
     source = (ROOT / 'src/levels/rchess1/route_input.rs').read_text()
     match = re.search(r'r#"(.*?)"#', source, re.S)
@@ -265,9 +279,14 @@ class CheckmatePair(Pair):
             state = self.state()
             if not state or self.busy():
                 return True
-            people = [b['player']['feet'] for b in self.reports['host']['frame']['players']]
-            return not any(p['active'] and not p['suppressed'] and p['health'] > 0
-                and any(distance(p['feet'], at) < 700 for at in people) for _, p in state['pieces'])
+            # A live Knight on the floor below is nearby but cannot be fought
+            # through the platform. Use native hostile selection and actual
+            # world/body occlusion, as the single-player clear route does.
+            # Missing diagnostics or an unacknowledged command cannot pass.
+            return all(report['route_driver']['command'] == self.commands[role]['id']
+                and report['route_driver']['observed_tick'] == report['frame']['tick']
+                and report['route_driver']['native_threats'][0 if role == 'host' else 1] is None
+                for role, report in self.reports.items())
         self.until(cleared, 120)
         self.scene_end()
 
@@ -355,6 +374,9 @@ class CheckmatePair(Pair):
                 self.scene_end()
             else:
                 raise AssertionError('Unknown Checkmate route input')
+            if index == 26 and self.args.start_step < 26:
+                self.evidence['beheading'] = {role: verify_beheading(rows, self.args.first, role)
+                                             for role, rows in self.history.items()}
             self.completed.append(index)
             print('PASS Checkmate approach', index, 'health', [self.body(r)['stats']['sanity'] for r in self.commands], flush=True)
         full_route = self.saved is None and self.args.last_step == len(self.steps)-1

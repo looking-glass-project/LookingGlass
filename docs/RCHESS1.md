@@ -385,3 +385,14 @@ normal checkpoint comes from `checkpoint-before-033.json` in the earlier
 `private/coop/checkmate-route-0a3e63e666084d2ba790ee5eececc7fb/` run. Red's delayed
 travel through the later turns still needs work. The King, exit, fresh full
 traversal and other campaign gates remain open; no percentage credit is added.
+
+A further running-controller change can advance a nearby intermediate corner
+only when the entire body path is clear and floor support continues across
+the turn. Final destinations, height changes and ordinary walking retain
+their arrival rules. Two additional regressions cover blocked/missing-floor
+corners and delayed input under repeated knockback. All 855 active unit
+tests pass. Source `c132c65e943349f85f7dde7308d7f3de590c61c43a059bdf645fd5393f74c892`
+passes the native and unchanged single-player checks. Its actual internet
+replay advances beyond the former corner but still loses Red near step 39
+after Blue reaches the bridge with 4 health; the paired route remains failed.
+Evidence: `private/coop/checkmate-route-5fbc69e2285b4731a7c2600913276bca/`.

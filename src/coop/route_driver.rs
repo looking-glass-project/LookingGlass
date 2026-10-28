@@ -378,6 +378,26 @@ fn walking_control(player: &Player, point: Vec3, lead: f32, run: bool) -> (Vec2,
     let slowing = if run { (640.*lead).max(48.) } else { 48. };
     (steering.normalize_or_zero()*(steering.length()/slowing).min(1.),reached)
 }
+fn grounded_waypoint_ready(world: &World, player: &Player, point: Vec3, next: Option<Vec3>, run: bool) -> bool {
+    if walking_control(player,point,0.,run).1 { return true; }
+    let Some(next)=next else { return false; };
+    if !run || !player.grounded || player.swimming || player.ledge.is_some()
+        || player.feet.truncate().distance(point.truncate())>=22.
+        || (player.feet.z-point.z).abs()>2. || (next.z-point.z).abs()>2. { return false; }
+    // A running traveler need not stop at every nearby steering point. Join
+    // the next segment only if the actual body can cross that small corner
+    // and has continuous floor support. Never use this for final landings.
+    let onward=next-point;
+    let join=point+onward.clamp_length_max(32.);
+    let trace=world.body_trace(player.feet,join);
+    if trace.start_solid || trace.fraction<1. { return false; }
+    let samples=(player.feet.distance(join)/8.).ceil().max(1.) as usize;
+    (0..=samples).all(|i| {
+        let at=player.feet.lerp(join,i as f32/samples as f32);
+        let support=world.body_trace(at+Vec3::Z*2.,at-Vec3::Z*2.);
+        !support.start_solid && support.fraction<1. && support.normal.z>=0.65
+    })
+}
 struct WalkingProgress {
     feet: Vec3,
     advanced: Instant,
@@ -983,7 +1003,7 @@ impl Driver {
                 self.report.phase="replanning obstructed walk";
             } else {
                 while self.plan.front().is_some_and(|(_,point)|
-                    walking_control(&body.player,*point,command.input_lead,command.run).1) {
+                    grounded_waypoint_ready(world,&body.player,*point,self.plan.get(1).map(|s|s.1),command.run)) {
                     self.plan.pop_front();
                 }
                 if let Some((_,point))=self.plan.front() {
@@ -1270,7 +1290,8 @@ mod tests {
                 let world=if tick<96 {&blocked} else {&open};
                 let view=views.pop_front().unwrap();
                 let input=if feedback {
-                    while next<route.len() && walking_control(&view,route[next].1,0.2,run).1 {next+=1;}
+                    while next<route.len() && grounded_waypoint_ready(world,&view,route[next].1,
+                        route.get(next+1).map(|s|s.1),run) {next+=1;}
                     let target=route.get(next).map_or(goal,|s|s.1);
                     landing_control(world,&view,goal,2.*delay as f32/120.,8.)
                         .map(|(wish,_)|Controls {wish,..Default::default()})
@@ -1315,7 +1336,8 @@ mod tests {
                 for tick in 0..6000 {
                     let view=views.pop_front().unwrap();
                     let lead=2.*delay as f32/120.;
-                    while next<route.len() && walking_control(&view,route[next].1,lead,run).1 {next+=1;}
+                    while next<route.len() && grounded_waypoint_ready(&world,&view,route[next].1,
+                        route.get(next+1).map(|s|s.1),run) {next+=1;}
                     let control=landing_control(&world,&view,goal,lead,8.)
                         .map(|(wish,_)|Controls {wish,..Default::default()})
                         .unwrap_or(Controls {wish:walking_control(&view,
@@ -1332,6 +1354,63 @@ mod tests {
             }
             assert!(times[1]<times[0],"Running did not improve traversal: delay={delay} ticks={times:?}");
         }
+    }
+    #[test]
+    fn running_corner_advancement_requires_clear_body_and_floor_support() {
+        let floor=(vec3(-100.,-100.,-100.),vec3(100.,150.,0.));
+        let open=World::fixture(&[floor]);
+        let player=Player::spawn(&open,vec3(-20.,0.,crate::movement::EYE_HEIGHT)).unwrap();
+        let point=vec3(0.,0.,player.feet.z);
+        let next=point+Vec3::Y*100.;
+        assert!(grounded_waypoint_ready(&open,&player,point,Some(next),true));
+        assert!(!grounded_waypoint_ready(&open,&player,point,Some(next),false));
+        assert!(!grounded_waypoint_ready(&open,&player,point,None,true));
+        let wall=World::fixture(&[floor,(vec3(-30.,20.,0.),vec3(-20.,35.,100.))]);
+        assert!(!grounded_waypoint_ready(&wall,&player,point,Some(next),true));
+        let gap=World::fixture(&[(vec3(-40.,-40.,-100.),vec3(4.,40.,0.)),
+            (vec3(64.,-40.,-100.),vec3(150.,40.,0.))]);
+        let player=Player::spawn(&gap,Vec3::Z*crate::movement::EYE_HEIGHT).unwrap();
+        assert!(!grounded_waypoint_ready(&gap,&player,player.feet+Vec3::X*10.,
+            Some(player.feet+Vec3::X*100.),true));
+    }
+    #[test]
+    fn delayed_running_leaves_a_nearby_corner_under_repeated_knockback() {
+        let world=World::fixture(&[(vec3(-100.,-150.,-100.),vec3(250.,100.,0.))]);
+        // Relative positions from Red's Checkmate waypoint-39 failure.
+        let start=Player::spawn(&world,Vec3::Z*crate::movement::EYE_HEIGHT).unwrap();
+        let route=[vec3(9.374,-2.829,start.feet.z),vec3(54.626,-48.081,start.feet.z),
+            vec3(85.53,-58.69,start.feet.z)];
+        let goal=route[2];
+        let mut arrivals=[None;2];
+        for (mode,advance) in [false,true].into_iter().enumerate() {
+            let mut player=start.clone(); player.velocity=vec3(23.735,-3.133,0.);
+            let delay=17;
+            let mut views=VecDeque::from(vec![player.clone();delay+1]);
+            let mut pending=VecDeque::from(vec![Controls::default();delay]);
+            let mut next=0;
+            for tick in 0..1200 {
+                let view=views.pop_front().unwrap();
+                let lead=2.*delay as f32/120.;
+                while next<route.len() && if advance {
+                    grounded_waypoint_ready(&world,&view,route[next],route.get(next+1).copied(),true)
+                } else {walking_control(&view,route[next],lead,true).1} {next+=1;}
+                let control=landing_control(&world,&view,goal,lead,8.)
+                    .map(|(wish,_)|Controls{wish,..Default::default()})
+                    .unwrap_or(Controls{wish:walking_control(&view,
+                        route.get(next).copied().unwrap_or(goal),lead,true).0,run:true,..Default::default()});
+                if tick%72==0 && player.feet.truncate().length()<36. {
+                    player.knockback(vec3(-80.,20.,0.));
+                }
+                pending.push_back(control); player.tick(&world,pending.pop_front().unwrap());
+                assert!(player.grounded && player.feet.z.abs()<0.1);
+                views.push_back(player.clone());
+                if landing_control(&world,&player,goal,lead,8.).is_some_and(|(_,settled)|settled) {
+                    arrivals[mode]=Some(tick); break;
+                }
+            }
+        }
+        let improved=arrivals[1].expect("Delayed runner did not leave the knockback area");
+        assert!(arrivals[0].is_none_or(|old|improved<old),"Corner advancement did not improve arrival: {arrivals:?}");
     }
     #[test]
     fn navigation_keeps_lateral_jump_input_until_above_the_landing() {

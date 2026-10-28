@@ -105,6 +105,25 @@ fn previous_footing(world: &World, body: &Body, previous: Vec3) -> Option<Vec3> 
         .then_some(previous)
 }
 
+fn contact_correction(world: &World, body: &Body, along: Vec3, outward: Vec2, amount: f32) -> Option<Vec3> {
+    let p=&body.player;
+    let enough=|to:Vec3| (to-p.feet).truncate().dot(outward)>=amount-0.0001;
+    let to=p.feet+along*amount;
+    if let Some(at)=contact_position(world,body,to).filter(|at|enough(*at)) {return Some(at);}
+    let wall=world.body_trace(p.feet,to);
+    if wall.start_solid || wall.fraction>=1. || wall.normal.z.abs()>=0.65 {return None;}
+    // A bevel can lift a walking body by a fraction of a unit. Returning to
+    // its last position then hits that same wall's collision skin; nudging out
+    // of the wall also nudges into the partner. Try the wall tangent instead.
+    // Keep the existing ground plane, or horizontal height while airborne,
+    // and retain the full swept clearance, support and immersion checks.
+    let plane=if p.grounded && p.ground_normal.z>=0.65 {p.ground_normal} else {Vec3::Z};
+    let tangent=crate::movement::constrain(along,&[wall.normal,plane,-plane]);
+    let projection=tangent.truncate().dot(outward);
+    if projection<0.25 {return None;}
+    contact_position(world,body,p.feet+tangent*(amount/projection)).filter(|at|enough(*at))
+}
+
 fn contact(start: Vec3, finish: Vec3) -> Option<(f32, Vec3)> {
     let delta = finish - start;
     let xy = start.truncate();
@@ -206,8 +225,7 @@ pub fn resolve(world: &World, bodies: &mut [Body; 2], previous: [Vec3; 2]) {
         if p.grounded && p.ground_normal.z >= 0.65 {
             along.z = -outward.dot(p.ground_normal.truncate()) / p.ground_normal.z;
         }
-        let candidate = end[index] + along * penetration * weights[index];
-        if let Some(candidate) = contact_position(world, &bodies[index], candidate) {
+        if let Some(candidate) = contact_correction(world, &bodies[index], along, outward, penetration * weights[index]) {
             let p = &mut bodies[index].player;
             p.feet = candidate;
             let inward = p.velocity.truncate().dot(outward).min(0.);
@@ -730,6 +748,26 @@ mod tests {
         assert!(previous_footing(&world,&body,body.player.feet).is_none());
         body.player.swimming=false;body.player.grounded=false;
         assert!(previous_footing(&world,&body,body.player.feet).is_none());
+    }
+    #[test]
+    fn wall_tangent_contact_preserves_height_and_cannot_cross_a_corner() {
+        let floor=(vec3(-500.,-500.,-100.),vec3(500.,500.,0.));
+        let wall=(vec3(-500.,-500.,0.),vec3(0.,500.,300.));
+        let world=World::fixture(&[floor,wall]);
+        let mut body=Body{player:Player::new(vec3(15.01,0.,0.04)),stats:Stats::default(),
+            yaw:0.,pitch:0.,running:false,spawned_at:0,warped_at:0};
+        let outward=vec2(-1.,-1.).normalize();
+        for grounded in [false,true] {
+            body.player.grounded=grounded;
+            let at=contact_correction(&world,&body,outward.extend(0.),outward,0.5).unwrap();
+            assert!((at-body.player.feet).truncate().dot(outward)>=0.4999);
+            assert_eq!(at.z,body.player.feet.z);
+            assert!(world.body_clear(at) && world.body_trace(body.player.feet,at).fraction==1.);
+            // No tangent can separate directly opposing bodies at this wall.
+            assert!(contact_correction(&world,&body,-Vec3::X,-Vec2::X,0.5).is_none());
+            let corner=World::fixture(&[floor,wall,(vec3(0.,-500.,0.),vec3(500.,-15.01,300.))]);
+            assert!(contact_correction(&corner,&body,outward.extend(0.),outward,0.5).is_none());
+        }
     }
     #[test]
     fn overlap_near_wall_or_edge_never_moves_a_body_into_solid_or_off_support() {

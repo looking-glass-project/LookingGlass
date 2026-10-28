@@ -259,10 +259,45 @@ fn moving_exit(a:&mut Assets,map:&Bsp)->Result<()> {
         println!("PASS Castling moving exit roster{roster_path} restore{restore}: actual translated contact volume, no clock advance on restore");
     }}Ok(())
 }
+fn sloped_wall_contact(a:&mut Assets,map:&Bsp)->Result<()> {
+    let (_,w,_,_)=setup(a,map)?;
+    for moving in 0..2 {
+        let mut bodies=std::array::from_fn(|_|crate::coop::world::Body {
+            player:Player::new(Vec3::ZERO),stats:Stats::for_level("wchess2",None),
+            yaw:0.,pitch:0.,running:false,spawned_at:0,warped_at:0,
+        });
+        // Captured immediately before the public combat-wipe overlap. The
+        // native wall briefly lifts the approaching body off the flat floor.
+        bodies[1-moving].player.feet=vec3(-120.723800659,-643.012023926,64.03125);
+        bodies[moving].player.feet=vec3(-144.989608765,-671.818786621,64.03125);
+        bodies[moving].player.velocity=vec3(-0.923340797,59.354679108,0.);
+        for b in &mut bodies {b.player.grounded=true;}
+        let still=serde_json::to_value(&bodies[1-moving])?;
+        let resources=bodies.each_ref().map(|b|serde_json::to_value(&b.stats).unwrap());
+        for n in 0..120 {
+            let previous=bodies.each_ref().map(|b|b.player.clone());
+            for (i,b) in bodies.iter_mut().enumerate() {
+                b.player.tick(&w,Controls{wish:if i==moving {vec2(-0.928,0.373)} else {Vec2::ZERO},..Default::default()});
+            }
+            crate::coop::separation::wait_for_climbers(&w,&mut bodies,&previous);
+            crate::coop::separation::resolve(&w,&mut bodies,previous.each_ref().map(|p|p.feet));
+            let d=bodies[0].player.feet-bodies[1].player.feet;
+            ensure!(d.truncate().length()>=36.-0.05 || d.z.abs()>=PLAYER_HALF.z*2.-0.05,
+                "Sloped-wall overlap slot{moving} tick{n}: previous {:?}, now {:?}, retreat {:?}",
+                previous[moving],bodies[moving].player,w.body_trace(bodies[moving].player.feet,previous[moving].feet));
+            ensure!(serde_json::to_value(&bodies[1-moving])?==still,"Wall contact moved the stationary partner");
+            for (i,b) in bodies.iter().enumerate() {
+                ensure!(w.body_clear(b.player.feet) && (b.player.feet.z-64.03125).abs()<1.
+                    && serde_json::to_value(&b.stats)?==resources[i],"Wall contact lost safe footing/resources slot{i}");
+            }
+        }
+        println!("PASS Castling captured sloped-wall contact slot{moving}: 120 physics ticks, stationary partner and safe separation");
+    }Ok(())
+}
 pub(super) fn check(a:&mut Assets)->Result<()> {
     let map=Bsp::parse(&a.read("maps/wchess2.bsp")?)?;
     let mut failures=Vec::new();
-    for (label,result) in [("clocks",clocks(a,&map)),("portal",portal(a,&map)),
+    for (label,result) in [("sloped wall contact",sloped_wall_contact(a,&map)),("clocks",clocks(a,&map)),("portal",portal(a,&map)),
         ("doors",doors(a,&map)),("door safety",door_safety(a,&map))] {
         if let Err(error)=result {failures.push(format!("{label}: {error:#}"));}
     }

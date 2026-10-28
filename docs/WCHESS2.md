@@ -46,8 +46,8 @@ manifest and `coop-wchess2-*-025b004.log` files.
 
 Those checks verify combat components only. The shared world adapter below now
 owns scripted cast movement once per world update; paired combat does not advance
-it again. Continuous native traversal is verified below; independent internet
-clients and recovery/rejoin remain open.
+it again. Continuous native traversal, independent internet clients and focused
+recovery/rejoin checks are recorded below.
 
 ### Paired machinery and royal scenes
 
@@ -122,8 +122,8 @@ Evidence is retained under `private/coop/castling-route-a80ef8f-*`, including
 the frozen executable identity and full logs. Verification used state/log checks
 without screenshot inspection.
 
-The independent-client evidence below extends these native results. Disconnect/
-rejoin, death/wipe recovery and broader effects coverage remain open for Castling.
+The independent-client evidence below extends these native results. Abrupt
+disconnect, skipped network scenes and broader effects coverage remain open.
 Its campaign row and the overall weighted estimate remain unchanged.
 
 ### Independent internet traversal checks
@@ -215,8 +215,61 @@ both processes exit successfully. Evidence is in
 `private/coop/castling-resume-52741abcb7624bafab98c0b855c6b724` (Blue) and
 `private/coop/castling-resume-94aaab2959fb4ab586bfc9135b4c7648` (Red). All **837
 active unit tests** pass on this source, with one existing ignored test. These
-checks use state/log evidence without screenshot inspection. Death, timed
-revival, team wipe and broader effects checks remain open for this visit.
+checks use state/log evidence without screenshot inspection. The following
+section records the separate death, timed revival and team-wipe checks.
+
+### Real combat recovery checks
+
+`tools/test_coop_castling_recovery.py` resumes an unchanged normal checkpoint
+before leg 77. The selected player approaches the knights without attacking;
+the survivor retreats through the already cleared route with ordinary movement.
+The fixture verifies the dead player's moving spectator camera, exactly 1,200
+ticks before revival, 25 health, safe nearby placement and retained personal
+inventory. It checks both clients and all three replicated-state hash families.
+Five existing negative controls reject incorrect recovery evidence.
+
+On source `c1a202c`, the Blue death at tick 21,269 revives at 22,469; the Red death
+at 21,605 revives at 22,805. Both roles pass, with 302 and 367 matching states
+respectively, over public internet joining with 40/20 ms delay/jitter. Evidence
+is retained under `private/coop/castling-recovery-687f2dcfbaf14e8e86c24ed7cada84bc`
+and `private/coop/castling-recovery-599b939d022649d9a12778fddc4a1c18`.
+
+`tools/test_coop_castling_wipe.py` sends both players into the same encounter
+without attacks. It requires shared checkpoint restoration, original individual
+resources, royal progression, actor health and each client's own camera. Four
+negative controls reject incorrect restoration evidence. The first two live runs
+restore both saved players but **fail** the strict presence check: approaching
+the partner beside a sloped wall permits overlap. Captured full states are kept
+in `private/coop/castling-wipe-b5d5b43354c643eba83045ef8c7b9888`; an offline native
+reproduction also overlaps after 14 physics ticks. Both old runs remain failed.
+
+Source `62fe393291e2fbcd92d0e7a7f9176125a192b1f15da7ddac7d75184e13d37975`
+repairs that collision defect. If a wall blocks the outward correction, Alice
+can slide along its tangent while retaining her ground plane or airborne height.
+The correction must still restore personal space and pass swept clearance,
+support and immersion checks. Nearly perpendicular corrections are rejected to
+avoid magnifying the displacement. The stationary partner remains unchanged.
+The captured native approach now passes 120 physics ticks in both slots; the
+old code failed on tick 14. A unit regression also rejects wall/corner crossings.
+
+The unchanged public-client wipe fixture now passes: both clients restore at
+tick 21,489, all 164 common player/world/native-state hashes match, and all living
+presence samples pass. The saved individual Will values differ and are preserved
+within ordinary regeneration bounds. Evidence is in
+`private/coop/castling-wipe-23ff8a9120f9498c89ec6813889819f9`. All 838 active Rust
+tests pass, with one existing ignored test; 82 shared-world, 43 campaign entrance/
+recovery and 119 Pale Realm checks also pass. All three complete Castling
+single-player check logs match their baseline. These focused checks add no
+completed campaign-row credit; full-route repeats after this collision change,
+skipped network scenes and broader effects coverage remain separate work.
+
+Both real combat revivals also pass again on `62fe393`: Blue dies at 21,194 and
+revives at 22,394; Red dies at 21,614 and revives at 22,814. Each returns with
+25 health after exactly 1,200 ticks, with matching moving spectator cameras,
+personal resources and safe placement. The three hash families match at 295 and
+358 common states. Repeat evidence is under
+`private/coop/castling-recovery-e8ad78548f3f48269232b663df31ec35` and
+`private/coop/castling-recovery-2d1dad8ebb13409e9ca433765dadd9d2`.
 
 `--wchess2-check` exercises real approach triggers, both royal outcomes, dialogue, pause, save futures, moving-platform support, bound exits, ambush alternatives and migration. `--wchess2-route-check` and `--wchess2-route-skip-check` traverse from the real entrance with Normal combat into a loaded Checkmate visit. Route checkpoints are private diagnostics; they do not change player saves. `--wchess2-render-check` captures eight staged views. Native save fixtures are `wchess2-queen-mid`, `wchess2-king-mid`, and `wchess2-exit-open`.
 

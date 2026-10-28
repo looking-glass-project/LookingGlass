@@ -20,8 +20,12 @@ Realm traversal in both leader orders. Castling's four full native routes pass.
 After repairing delayed test-follower oscillation, its Blue-led and Red-led public
 internet runs also pass all 203 legs, with 8,749 and 7,680 matching replicated
 states respectively. Graceful guest rejoin and the shared exit also pass from
-both saved leader roles after repairing a delayed jump probe. Death and team-wipe
-checks remain open. See
+both saved leader roles after repairing a delayed jump probe. Real combat deaths
+now pass for either player: both clients agree on the 1,200-tick spectator delay,
+nearby 25-health revival and retained personal items. The team-wipe test exposed
+an overlap beside a sloped wall; after fixing the wall correction, the same
+encounter passes separation and shared restoration with 164 matching states.
+All 838 active unit tests and the broad native movement checks pass. See
 [Castling internet checks](WCHESS2.md#independent-internet-traversal-checks).
 Focused combat, swimming, recovery and rejoin passes below are useful progress,
 but do not satisfy that gate. The timed spike corridor and its following four

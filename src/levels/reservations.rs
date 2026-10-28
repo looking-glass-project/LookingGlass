@@ -330,7 +330,7 @@ pub static RESERVATIONS: [Reservation; 39] = [
         render: &["--rchess1-render-check"],
     }), ..visit(21, "rchess1") },
     Reservation { flags: Some(VisitFlags {
-        contract: &["--funhouse-check", "--funhouse-traversal-probe", "--funhouse-coop-check"],
+        contract: &["--funhouse-check", "--funhouse-traversal-probe", "--funhouse-coop-check", "--funhouse-coop-world-check"],
         route: &["--funhouse-route-check"], skip: &["--funhouse-skip-route-check"],
         render: &["--funhouse-render-check"],
     }), ..visit(22, "funhouse") },

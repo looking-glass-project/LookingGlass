@@ -64,6 +64,36 @@ All 855 active unit tests pass (one pre-existing ignored test); the locked relea
 build succeeds. The eight single-player component records match the preceding
 baseline, excluding only two measured rebuild-performance timings. The original
 single-player full-route baseline already fails at step 142; no new full-route
-pass is claimed. Shared co-op machinery, automatic scene ownership, full scene
-combinations, independent internet traversal, recovery and rendered effects
-remain open. This component check does not complete a campaign visit.
+pass is claimed. At that battle-only checkpoint, shared machinery and the broader scene,
+traversal, internet, recovery and rendered-effects checks remained open. This component check does not complete a campaign visit.
+
+## Co-op machinery follow-up (28 October 2026)
+
+Source `74a6a2519a35e800e99756ca69976522d0adf98bf9c700c72d6df34df745dc28`
+passes 35 native cases through `--funhouse-coop-world-check`, plus the preceding
+63 battle cases and all 855 active units. One shared motion update now handles
+all living players. Passive fulcrums use their average loading position. Both
+riders complete a full pendulum period and the tube's complete turn, remaining
+clear and separate. Tube departure waits at its authored trigger for all living
+players; saved contact order keeps the first living requester. Doors react to
+either player and hold their own leaf if the other blocks it, without stopping
+unrelated clocks. Any blocked platform carry rolls back the shared step and both
+bodies before either is committed. Both dead-player slots match the one-player
+machinery result exactly; a dead team leaves the world frozen.
+
+The automatic gas scene binds the living player nearest the gas machinery in
+the contact phase. Ordinary Jack speech keeps exploration running, and Stage
+advances bound cinematics once. Full watched/skipped scene and safe-reunion
+combinations still need verification. The entrance stand keeps its authored
+withdrawal/drop behavior; it is not treated as a passenger lift.
+
+The first machinery run passed 32 records but failed because the tube fixture
+placed its riders inside the floor. The corrected fixture uses a native body
+sweep and verifies actual tube support before testing movement. Both attempts
+are retained privately. The existing single-player component gameplay log is
+identical, excluding two measured benchmark timings. An Anode replay also
+matches every single-player route line through its pre-existing step-142 death,
+including the same final coordinates. The route remains failed; no full co-op
+route, independent internet, recovery or rendered-effects pass is claimed.
+The broader 94 Checkmate, 82 shared-world and 43 campaign checks also pass with
+unchanged Checkmate single-player logs. No images were opened.

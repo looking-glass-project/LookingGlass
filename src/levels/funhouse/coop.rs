@@ -1,4 +1,4 @@
-//! Paired battle clock and personal essence. Shared machinery is separate work.
+//! One shared machinery/battle clock, personal essence and automatic scene ownership.
 use super::*;
 use crate::{combat::PlayerTarget, level::CoopPlayer, movement::FIXED_DT};
 
@@ -66,7 +66,40 @@ impl Funhouse {
         state.initialized[owner]=true; state.actor=Some(owner);
         self.saved.initialized=true;
     }
+    pub(super) fn pair_advance(&mut self,dt:f32,map:&Bsp,world:&mut World,
+        players:&mut [CoopPlayer<'_>;2],fixed:&[Collider])->Result<()> {
+        if !dt.is_finite() || dt<=0. || self.scripted()
+            || !players.iter().any(|p|p.stats.alive()) {return Ok(());}
+        self.pair_prepare(players);
+        let dt=dt.min(0.1);
+        {
+            let mut living=players.iter_mut().filter(|p|p.stats.alive())
+                .map(|p|&mut *p.player).collect::<Vec<_>>();
+            self.move_world_players(dt,map,world,&mut living,fixed)?;
+        }
+        self.saved.exit.advance(dt);
+        // Ordinary Jack speech keeps both players exploring. Cinematic scenes
+        // are advanced by Stage with their bound actor, never by this path.
+        if let Some(actor)=players.iter_mut().find(|p|p.stats.alive()) {
+            self.advance_scene(dt,map,world,actor.player)?;
+        }
+        self.rebuild(map)?;
+        world.set_dynamic(fixed.iter().cloned().chain(self.colliders()).collect());
+        self.traversal(&mut world.traversal);
+        Ok(())
+    }
     pub(super) fn pair_actor(&mut self, players:&[CoopPlayer<'_>;2])->Option<usize> {
+        if self.saved.scene.is_none() && !self.saved.gas && !self.saved.fight
+            && self.saved.all_cells.is_some_and(|t|self.saved.time>=t+1.) {
+            // This scene starts automatically after the shared clock puzzle.
+            // Select a living participant nearest the gas machinery and bind
+            // it in the contact phase before any cinematic world tick.
+            let at=self.data.gas_focus;
+            let actor=(0..2).filter(|&i|players[i].stats.alive()).min_by(|&a,&b|
+                players[a].player.feet.distance_squared(at).total_cmp(&players[b].player.feet.distance_squared(at)))?;
+            self.saved.gas_start=Some(self.saved.time);
+            self.begin(Kind::Gas);self.pair_state().actor=Some(actor);
+        }
         if self.saved.fight && self.saved.scene.is_none() && self.saved.death_wait>=5.
             && self.saved.bosses.iter().all(|b|b.health<=0.) {
             // Bind only after Stage has applied this tick's damage.
@@ -78,7 +111,7 @@ impl Funhouse {
             self.begin(Kind::Hatter);
             self.pair_state().actor=Some(actor);
         }
-        self.saved.scene.as_ref().and_then(|_|self.saved.coop.as_ref()?.actor)
+        self.scripted().then(||self.saved.coop.as_ref().and_then(|s|s.actor)).flatten()
             .filter(|&slot|players[slot].stats.alive())
     }
     pub(super) fn visible_essence(&self, local:Option<usize>)->Option<Vec3> {

@@ -2014,6 +2014,12 @@ compressed guest replicas and resource-preserving Checkmate arrival. It uses
 ordinary movement/weapon inputs and records failed states; staged component
 checks and independent internet runs remain separate evidence.
 
+`--funhouse-coop-world-check` reserves native paired Funhouse machinery
+fixtures: all-rider carry/obstruction, weighted fulcrums, a pendulum period,
+either-player door contacts, the rotating tube and saved boarding order,
+dead-player exclusion and automatic gas-scene ownership. Full scene/reunion
+combinations, continuous traversal and independent internet runs are separate.
+
 `--funhouse-coop-check` reserves staged paired Funhouse battle components:
 nearest-visible living Tweedle targets, personal knife/grenade/ground-pound
 damage, separate healing, saved battle continuation and the post-damage

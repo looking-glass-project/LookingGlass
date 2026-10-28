@@ -4,7 +4,7 @@ Development branch: `coop`, based on public main `0220970`.
 This is work in progress. A policy test or a connected pair of windows does not
 establish campaign support. Single-player behavior and saves must remain supported.
 
-Current milestone: **47.3% estimated overall; six campaign visits have combined
+Current milestone: **47.8% estimated overall; six campaign visits have combined
 verification evidence, 33 remain open.** Earlier contact-system repeats are still
 required as detailed in the campaign matrix. Pool of Tears has 38 passing native
 component cases plus public two-client opening and bank checkpoint segments.
@@ -14,22 +14,30 @@ recovery remain open for both visits. Report these smaller milestones alongside
 the total; a successful component or segment is not a completed campaign visit.
 
 Status checked on **28 October 2026**: the older approximately 42% figure is
-historical; the current weighted estimate is **47.3% (about 47%)**. Six of 39
+historical; the current weighted estimate is **47.8% (about 48%)**. Six of 39
 campaign visits have combined evidence, with earlier contact-system repeats
 still required. Repeated component tests do not increase this total.
 
-Current blockers: Checkmate's paired northern route still fails when Red dies
-after waypoint 38, even though Blue reaches the bridge. Funhouse's paired
-combat and personal-healing adapter is in development; its shared machinery,
-scene ownership and full traversal are not yet verified. These open gates
-keep the estimate unchanged. The estimate is not a live build progress bar.
+Latest Funhouse milestone: 35 native paired machinery checks and 63 battle
+checks pass on source `74a6a25`, alongside all 855 active unit tests and the
+locked release build. Both riders complete the rotating tube and a pendulum
+period; the seesaw balances their positions; doors admit either player and
+hold safely against the other. A blocked rider rolls back both bodies and the
+shared step. Tube boarding preserves the first living requester across saves,
+and automatic gas scenes bind a living participant near the machinery.
 
-Funhouse now passes 63 staged paired battle checks for personal damage/healing,
-target selection and saved battle/victory continuation. All 855 active unit
-tests and the locked release build pass. Existing single-player component
-output matches its baseline except for measured benchmark timings. These
-checks do not verify shared machinery or a complete paired route; the
-overall estimate remains 47.3%. See [Funhouse evidence](FUNHOUSE.md).
+The single-player component output and full route trace match the preceding
+baseline. That full route still dies at step 142, so it remains a failed route.
+Checkmate's 94 component cases, its unchanged single-player routes, 82 shared-
+world and 43 campaign entrance/recovery checks also pass. No screenshots were
+opened. See [Funhouse evidence](FUNHOUSE.md).
+
+This earns 0.25 movement points and 0.25 combat points under the existing
+component-credit scheme, taking the estimate from 47.3% to 47.8%. Six campaign
+visits retain combined evidence; 33 remain open. Funhouse's full scene/reunion
+matrix, two-client traversal, recovery and rendered effects remain unverified.
+Checkmate still loses Red near northern waypoint 39. Repeated tests alone do
+not increase the estimate.
 
 Latest Checkmate checkpoint: two independent local clients now pass the rope
 climb, upper landing and onward waypoint (steps 7-10), at 92/100 health with
@@ -42,7 +50,7 @@ remain recorded; full Checkmate traversal and recovery remain open. See [Checkma
 A further public replay now passes Checkmate steps 10-26 and the Blue-owned
 beheading scene, with 3,444 matching states and both players finishing at 100
 health. Red waits still and hidden during the scene; both reappear afterward.
-The total stays at 47.3%; checkpoint segments are not a completed campaign visit.
+Those checkpoint segments did not complete a campaign visit.
 
 A subsequent fresh Checkmate run exposed a camera rule that hid a nearby partner
 even with safely separated bodies. Close-camera hiding now applies only to the
@@ -587,9 +595,9 @@ movement viewer both wait for helper shutdown before exiting.
 After tightening cancellation and the forged-message regression, all 21 focused
 co-op tests passed again. This final focused run includes the latest source changes.
 
-Overall estimate after completing the village, Pandemonium, both Fortress visits, Beyond and return-school verification rows, plus native-rope recovery, Herbaceous components, the Rolling Stones/Icy Reception/Flora/Sanctum/both Caterpillar's Plot shared-world adapters, Pale Realm cast/world components, replicated weapon sparks/trails, Castling combat/world components and Checkmate combat/scene components: **about 47.3%**. Credited
+Overall estimate after completing the village, Pandemonium, both Fortress visits, Beyond and return-school verification rows, plus native-rope recovery, Herbaceous components, the Rolling Stones/Icy Reception/Flora/Sanctum/both Caterpillar's Plot shared-world adapters, Pale Realm cast/world components, replicated weapon sparks/trails, Castling combat/world components and Checkmate combat/scene components and Funhouse battle/machinery components: **about 47.8%**. Credited
 points are 8/10 for foundation/diagnostics, 7/15 for internet Host/Join,
-10/15 for two-player movement/presentation, paired school supports, dry/swimming arrival placement, complete delayed village/Pandemonium traversal in separate clients, rendered independent rope controls, Pale Realm's native paired lift, Castling's portal boarding/carry and replicated weapon sparks/trails, and 9/20 for native targeting, host-owned
+10.25/15 for two-player movement/presentation, paired school supports, dry/swimming arrival placement, complete delayed village/Pandemonium traversal in separate clients, rendered independent rope controls, Pale Realm's native paired lift, Castling's portal boarding/carry and replicated weapon sparks/trails, and 9.25/20 for native targeting, host-owned
 weapons/damage, personal resources, timed respawns and full saved-state team wipes.
 The additional 0.5 points credit tested recovery beside a survivor hanging on an
 active native rope: both-role unit coverage plus a captured fall/revival through
@@ -631,8 +639,11 @@ paired King/chess attacks, saved target ownership and personal healing, plus
 0.25 progression points for the original three scenes with either actor, watched
 or held-skipped, paused/restored, safe reunion or Funhouse departure. The
 84 staged native component records add no full-route, internet or campaign-row
-credit. Total credited points are about 47.33, reported as 47.3%, up from 46.83
-before Checkmate's combat/scene checks. The earlier 0.25
+credit. Funhouse adds 0.25 movement points for native paired seesaw, pendulum
+and tube carry with obstruction/boarding checks, and 0.25 combat points for its
+paired battle, personal healing and saved attack/victory components. Full scenes,
+traversal, internet and recovery remain separate requirements. Total credited
+points are about 47.83, reported as 47.8%, up from 47.33 before Funhouse. The earlier 0.25
 presentation points require both native visible-pixel comparisons and real
 public-client delivery of impact sparks, swing trails and projectile trails.
 They do not cover every other effect or count as a completed visit. Updates include

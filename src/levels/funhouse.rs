@@ -4,6 +4,7 @@ mod battle;
 mod check;
 mod coop;
 mod coop_check;
+mod coop_world_check;
 mod data;
 mod motion;
 mod presentation_check;
@@ -257,6 +258,16 @@ impl LevelController for Funhouse {
         "funhouse"
     }
     fn coop_prepare(&mut self, players:&mut [crate::level::CoopPlayer<'_>;2]) { self.pair_prepare(players); }
+    fn coop_advance_roster(&mut self,dt:f32,map:&Bsp,world:&mut World,
+        players:&mut [crate::level::CoopPlayer<'_>;2],fixed:&[Collider])->Result<()> {
+        self.pair_advance(dt,map,world,players,fixed)
+    }
+    fn coop_boarding_ready(&self,thread:&str,feet:&[Vec3])->Option<bool> {
+        (thread=="Funhouse_Rotate_Tuber").then(||!feet.is_empty() && feet.iter().all(|at| {
+            let c=*at+PLAYER_CENTER;
+            self.data.tube_boarding.trace(c,c,PLAYER_HALF).start_solid
+        }))
+    }
     fn coop_scene_step(&mut self, owner:usize, _player:&mut Player, stats:&mut Stats) { self.pair_scene(owner,stats); }
     fn coop_contacts(&mut self, _dt:f32, players:&mut [crate::level::CoopPlayer<'_>;2])->Option<usize> {
         self.pair_actor(players)
@@ -674,6 +685,11 @@ pub static REGISTRATION: Registration = Registration {
         ),
     ],
     checks: &[
+        Check {
+            flag: "--funhouse-coop-world-check",
+            help: "Verify paired machinery, tube boarding and automatic scene ownership.",
+            run: Run::Headless(coop_world_check::check),
+        },
         Check {
             flag: "--funhouse-coop-check",
             help: "Verify paired Tweedle targeting, attacks, healing and saved combat state.",

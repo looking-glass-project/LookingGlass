@@ -2008,6 +2008,12 @@ Castling world, route, scene, recovery or independent-client checks.
 royal-scene checks: shared clocks, personal door use, portal boarding/carry,
 saved first-arrival ownership and safe reunion. Full routes remain separate.
 
+`--wchess2-coop-route-check` reserves continuous paired Castling traversal through
+the production Arena, both first-arrival roles, watched/skipped royal scenes,
+compressed guest replicas and resource-preserving Checkmate arrival. It uses
+ordinary movement/weapon inputs and records failed states; staged component
+checks and independent internet runs remain separate evidence.
+
 `--wchess1-coop-combat-check` reserves isolated paired Pale Realm cast checks:
 targeting, personal attacks, scripted faction fights and gate death callbacks.
 It uses the native roster and timings; paired puzzles, machinery, traversal and

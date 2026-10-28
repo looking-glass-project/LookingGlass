@@ -53,8 +53,12 @@ scenes with either owner, and saved first-arrival exit boarding. The moving exit
 volume now follows its visible platform in both paired updates and after restore.
 Its three single-player logs match baseline and all 834 active unit tests pass;
 the broad shared-world, campaign entrance/recovery and Pale Realm component suites
-also pass. Full paired traversal, independent internet clients and recovery remain
-open; see [Castling machinery](WCHESS2.md#paired-machinery-and-royal-scenes).
+also pass. The continuous native route now passes all 203 legs with either player
+first and scenes watched or skipped, including both royal reunions and Checkmate
+arrival with exact personal resources retained. All four runs pass, with 214
+exact guest-world comparisons in total. Independent internet clients and recovery
+remain open, so this adds no completed campaign row or percentage credit; see
+[Castling traversal](WCHESS2.md#continuous-paired-traversal).
 See [descent recovery](WCHESS1.md#rejoining-a-recorded-descent).
 The earlier Pale Realm combat stall is resolved by a supported sidestep after repeated
 misses. A public two-client replay passes all 26 approach steps (100–125), then

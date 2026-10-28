@@ -46,7 +46,8 @@ manifest and `coop-wchess2-*-025b004.log` files.
 
 Those checks verify combat components only. The shared world adapter below now
 owns scripted cast movement once per world update; paired combat does not advance
-it again. Full traversal, internet clients and recovery/rejoin remain open.
+it again. Continuous native traversal is verified below; independent internet
+clients and recovery/rejoin remain open.
 
 ### Paired machinery and royal scenes
 
@@ -83,6 +84,48 @@ underwater-recovery cases**, and **119 Pale Realm world cases**. All three compl
 Castling single-player logs match the `d7bbc99` baseline. Build identity and binary
 hash are retained in `private/coop-wchess2-world-build.json`; individual logs use
 the suffix `ac3a080`. No new complete campaign row is credited by this milestone.
+
+### Continuous paired traversal
+
+`--wchess2-coop-route-check` runs the production two-player Arena from the real
+Castling entrance through all **203 route legs** into a loaded Checkmate visit.
+It uses ordinary movement, jump, door-use, weapon and scene-skip inputs. Waypoints
+steer the players; the driver never places bodies, grants resources, kills actors
+or changes script state. Blocked approaches use short movement plans against the
+current geometry, allowing later proximity doors to open on approach. At the
+portal, players jump from the ledge to enter the shared boarding area together.
+
+Source `a80ef8fa922d13e923c7135463d0fb12ec48c78725834f11c9eebe26d32e8db7`
+passes all four continuous runs on Normal difficulty:
+
+| First player | Scenes | Simulation ticks | Exact guest-world comparisons | Final Blue / Red health |
+| --- | --- | ---: | ---: | ---: |
+| Blue | Watched | 38,775 | 64 | 75 / 100 |
+| Red | Watched | 38,761 | 64 | 100 / 75 |
+| Blue | Skipped | 26,071 | 43 | 95 / 100 |
+| Red | Skipped | 26,057 | 43 | 100 / 95 |
+
+Every run verifies both original royal scenes belong to the first player, the
+partner stays frozen during each scene, both reunions complete, and the players
+remain separated during gameplay. Death, checkpoint rollback, unscripted warps,
+god mode and notarget invalidate the run. Compressed world snapshots restore
+exactly into a separate guest Arena. Checkmate loads with clear, separated
+entrance positions and each player's exact personal resources retained. All
+**834 active unit tests** also pass on this source, with one existing ignored test.
+
+The default command checks all four combinations. Optional selectors are
+`LOOKING_GLASS_CASTLING_COOP_FIRST=Blue|Red` and
+`LOOKING_GLASS_CASTLING_COOP_SCENES=watched|skipped`. Set
+`LOOKING_GLASS_SETTINGS_DIR` to an isolated output directory. Each route writes
+before-leg states, its recent input history and a final passed/failed record.
+Evidence is retained under `private/coop/castling-route-a80ef8f-*`, including
+the frozen executable identity and full logs. Verification used state/log checks
+without screenshot inspection.
+
+These runs establish continuous native traversal, not independent network play.
+Internet latency, disconnect/rejoin, death/wipe recovery and broader effects
+coverage remain open for Castling. Its campaign row and the overall weighted
+estimate therefore remain unchanged.
 
 `--wchess2-check` exercises real approach triggers, both royal outcomes, dialogue, pause, save futures, moving-platform support, bound exits, ambush alternatives and migration. `--wchess2-route-check` and `--wchess2-route-skip-check` traverse from the real entrance with Normal combat into a loaded Checkmate visit. Route checkpoints are private diagnostics; they do not change player saves. `--wchess2-render-check` captures eight staged views. Native save fixtures are `wchess2-queen-mid`, `wchess2-king-mid`, and `wchess2-exit-open`.
 

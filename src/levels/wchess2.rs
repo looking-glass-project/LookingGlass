@@ -4,6 +4,7 @@ mod cast;
 mod coop_check;
 mod coop_world;
 mod coop_world_check;
+mod coop_route;
 mod check;
 pub(crate) use check::drive as drive_route;
 mod data;
@@ -590,6 +591,11 @@ pub static REGISTRATION: Registration = Registration {
         },
     ],
     checks: &[
+        Check {
+            flag: "--wchess2-coop-route-check",
+            help: "Walk both players through Castling and into Checkmate using ordinary inputs.",
+            run: Run::Windowed(coop_route::check),
+        },
         Check {
             flag: "--wchess2-coop-world-check",
             help: "Verify Castling paired doors, portal boarding/carry and royal scene handoffs.",

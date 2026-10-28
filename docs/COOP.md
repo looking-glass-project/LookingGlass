@@ -22,9 +22,10 @@ Latest Checkmate checkpoint: two independent local clients now pass the rope
 climb, upper landing and onward waypoint (steps 7-10), at 92/100 health with
 243 matching player/world/native states. This uses an unchanged normal save
 from the earlier internet water approach and keeps body separation checks.
-The 848 active unit tests and native checks pass. Two internet retries failed
-before gameplay during invite hostname resolution; full Checkmate traversal,
-internet replay and recovery remain open. See [Checkmate evidence](RCHESS1.md).
+The follow-up public-internet rope replay also passes, with 240 matching
+states and 92/100 health, on the build with bounded DNS retries. All 851 active
+unit tests and the native checks pass. The two earlier invite-resolution failures
+remain recorded; full Checkmate traversal and recovery remain open. See [Checkmate evidence](RCHESS1.md).
 The total stays at 47.3%; a local segment is not a completed campaign visit.
 
 Castling's earlier Blue-led and Red-led public internet runs pass all 203 legs.
@@ -522,6 +523,11 @@ and exercise slow readers rather than assuming loopback performance represents t
 - New tunnel hostnames initially failed DNS resolution when published too early.
   Hosting now waits for tunnel registration and a 12-second propagation grace.
   This passed repeated public tests; it is not a universal DNS availability guarantee.
+  Joining now retries failed or empty DNS answers once per second within a
+  20-second retry budget on the connection worker. Cancel interrupts the wait;
+  a cancelled lookup cannot proceed to connect. An operating-system lookup
+  already in progress can still take its system timeout. Persistent failure
+  returns a clear retry message. Invite authentication and TLS are unchanged.
 - Main/ESC Host/Join now opens the development movement/combat slice. Full-campaign
   integration remains unfinished. These transport probes verify
   networking; the later rendered checks exercise two independently controlled Alices.

@@ -4,7 +4,7 @@ use anyhow::{bail, Context, Result};
 use std::{
     collections::VecDeque,
     io::{Read, Write},
-    net::{TcpListener, TcpStream, ToSocketAddrs},
+    net::{SocketAddr, TcpListener, TcpStream, ToSocketAddrs},
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
         mpsc::{self, Receiver, SyncSender, TryRecvError, TrySendError},
@@ -307,6 +307,36 @@ pub fn host(conditions: Conditions) -> Result<(Peer, Invite)> {
     Ok((peer, invite))
 }
 
+// A newly registered relay can briefly fail resolution on a guest's resolver.
+// Keep this on the connection worker, retry within a finite budget, and honour
+// cancellation between lookups and while waiting. An OS lookup already in
+// progress may still take its system timeout; never connect after cancellation.
+fn resolve_with_retry(
+    shared: &Shared,
+    budget: Duration,
+    interval: Duration,
+    mut resolve: impl FnMut() -> std::io::Result<Vec<SocketAddr>>,
+) -> Result<Vec<SocketAddr>> {
+    let deadline = Instant::now() + budget;
+    loop {
+        anyhow::ensure!(!shared.stopped(), "Connection cancelled");
+        let result = resolve();
+        anyhow::ensure!(!shared.stopped(), "Connection cancelled");
+        if let Ok(addresses) = result {
+            if !addresses.is_empty() { return Ok(addresses); }
+        }
+        let retry_at = (Instant::now() + interval).min(deadline);
+        loop {
+            anyhow::ensure!(!shared.stopped(), "Connection cancelled");
+            let now = Instant::now();
+            anyhow::ensure!(now < deadline,
+                "Cannot resolve the invite's internet address. Check your connection and try joining again.");
+            if now >= retry_at { break; }
+            thread::sleep((retry_at - now).min(Duration::from_millis(50)));
+        }
+    }
+}
+
 fn connect(invite: &Invite, shared: &Shared) -> Result<WebSocket<MaybeTlsStream<TcpStream>>> {
     let url = invite.websocket_url();
     let uri: tungstenite::http::Uri = url.parse()?;
@@ -322,11 +352,9 @@ fn connect(invite: &Invite, shared: &Shared) -> Result<WebSocket<MaybeTlsStream<
             80
         });
     let mut stream = None;
-    for address in (host, port)
-        .to_socket_addrs()
-        .context("Cannot resolve the invite's internet address.")?
-        .take(4)
-    {
+    let addresses = resolve_with_retry(shared, Duration::from_secs(20), Duration::from_secs(1),
+        || (host, port).to_socket_addrs().map(|addresses| addresses.take(4).collect()))?;
+    for address in addresses {
         if shared.stopped() {
             bail!("Connection cancelled");
         }
@@ -537,6 +565,61 @@ fn exchange<S: Read + Write>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn transient_and_empty_dns_results_recover_to_a_reachable_listener() {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let expected = listener.local_addr().unwrap();
+        let (_peer, _, _, shared) = channels(State::Connecting, MAX_INPUT);
+        let mut attempts = 0;
+        let addresses = resolve_with_retry(&shared, Duration::from_secs(2), Duration::from_millis(1), || {
+            attempts += 1;
+            match attempts {
+                1 => Err(std::io::ErrorKind::NotFound.into()),
+                2 => Ok(Vec::new()),
+                _ => ("localhost", expected.port()).to_socket_addrs()
+                    .map(|all| all.filter(|a| a.is_ipv4()).collect()),
+            }
+        }).unwrap();
+        assert_eq!(attempts, 3);
+        let client = TcpStream::connect_timeout(&addresses[0], Duration::from_secs(1)).unwrap();
+        let (server, _) = listener.accept().unwrap();
+        assert_eq!(client.peer_addr().unwrap(), server.local_addr().unwrap());
+    }
+    #[test]
+    fn persistent_dns_failure_exhausts_the_budget() {
+        let (_peer, _, _, shared) = channels(State::Connecting, MAX_INPUT);
+        let start = Instant::now();
+        let result = resolve_with_retry(&shared, Duration::from_millis(20), Duration::from_millis(1),
+            || Err(std::io::ErrorKind::NotFound.into()));
+        assert!(result.unwrap_err().to_string().starts_with("Cannot resolve the invite's internet address."));
+        assert!(start.elapsed() >= Duration::from_millis(20));
+    }
+    #[test]
+    fn cancelling_dns_wait_or_inflight_lookup_never_returns_an_address() {
+        let (peer, _, _, shared) = channels(State::Connecting, MAX_INPUT);
+        let (attempted, ready) = mpsc::channel();
+        let worker = thread::spawn(move || {
+            let mut attempts = 0;
+            let result = resolve_with_retry(&shared, Duration::from_secs(20), Duration::from_secs(10), || {
+                attempts += 1;
+                attempted.send(()).unwrap();
+                Err(std::io::ErrorKind::NotFound.into())
+            });
+            (result, attempts)
+        });
+        ready.recv_timeout(Duration::from_secs(2)).unwrap();
+        peer.stop();
+        let (result, attempts) = worker.join().unwrap();
+        assert_eq!(attempts, 1);
+        assert_eq!(result.unwrap_err().to_string(), "Connection cancelled");
+
+        let (peer, _, _, shared) = channels(State::Connecting, MAX_INPUT);
+        let result = resolve_with_retry(&shared, Duration::from_secs(20), Duration::from_secs(1), || {
+            peer.stop();
+            Ok(vec!["127.0.0.1:1234".parse().unwrap()])
+        });
+        assert_eq!(result.unwrap_err().to_string(), "Connection cancelled");
+    }
     #[test]
     fn accepted_nonblocking_socket_waits_for_delayed_upgrade_bytes() {
         let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();

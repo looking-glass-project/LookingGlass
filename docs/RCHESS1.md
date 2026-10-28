@@ -206,3 +206,23 @@ Internet retry/reliability, the full fresh route in both arrival orders, recover
 and rendered-effects coverage remain open. This segment adds no campaign-row
 or percentage credit. Local evidence: `private/coop-rchess1-native65.log` and
 `private/coop/checkmate-route-4be55339a1224afc92509f1925227e52/result.json`.
+
+## Public-internet rope replay
+
+Frozen source `8beb04fa32c42d17c9bd7e8af72e058a8eb794032feb507be41ef0a1eee356df`
+adds bounded, cancellable DNS retries to the guest connection worker. All 851
+active units, the release build and the same 94/82/43 native check groups pass;
+both single-player logs remain identical. The DNS regressions exercise failed
+and empty answers followed by a real reachable listener, persistent failure,
+and cancellation during the retry wait or a lookup that returns an address.
+A fresh relay probe also resolves through both the system and provider resolver
+at 12 seconds and returns the expected HTTPS response; this does not establish
+the cause of the two older invite-resolution failures.
+
+The actual public-internet replay of the unchanged pre-rope checkpoint passes
+steps 7-10, with 40 ms delay and 20 ms jitter, 92/100 health, body clearance and
+240 matching player/world/native hashes. Its normal pre-step-10 checkpoint
+supports the next approach replay. It remains a segment, not a fresh full-route
+pass, and adds no campaign completion credit. Evidence:
+`private/coop/checkmate-route-9f0cbdef6ec04beb9867f74afa856652/result.json` and
+`private/coop-rchess1-native66.log`. Further traversal/recovery remains open.

@@ -439,17 +439,54 @@ her spectator camera and return, unchanged carried resources and placement pass.
 Blue traversed northern waypoints 34-43 while Red was dead; those are explicitly
 recorded as revival-carried coverage for Red, who resumes ordinary movement.
 This is a full team route with legitimate revival, not a zero-death personal
-traversal by both players. Red-first/skipped playback, Checkmate-specific team
-wipe and rejoin/effects coverage remain open. No completed campaign row or
+traversal by both players. The remaining route orders, recovery and effect cases
+are tracked in the follow-up evidence below. No completed campaign row or
 percentage credit is added yet.
 
 Red-led skipped-scene repeats remain failed and are retained separately. The
 ordinary-input runner now holds the follower until the delayed leader clears
 its starting lane, plans the narrow doorway approach, swims either player to
-the rope base and swings before release. The latest unchanged-checkpoint replay
-(`checkmate-recovery-route-5734634c58664b8ab0644b337a866c18`) passes both rope
-climbs and steps 7-24, then stalls at 25: Blue waits at (560, 2736) and blocks
-Red at (560.43, 2700.00) from reaching (560, 2720). Both remain alive at 100/59
-health. This is a remaining test-driver coordination failure, not a passing
-segment or Red-owned scene proof. The next route check must clear the waiting
-partner from the approach, then repeat the fresh Red-led run.
+the rope base and swings before release. Checkpoint replay
+`checkmate-recovery-route-5734634c58664b8ab0644b337a866c18` passes both rope
+climbs and steps 7-24, then stalls at 25. Inspection showed that the Red-owned
+beheading had already completed during step 24: 119 host and 117 guest scene
+samples pass the owner, hidden-partner, camera and reunion checks. The scene
+placed Blue in the now-obsolete pre-scene approach. The runner now verifies that
+observed scene and records step 25 as superseded, rather than walking backwards.
+The original failed result remains failed. A subsequent fresh Red run
+(`checkmate-recovery-route-9a417cfd415f4a19aa6f6c8bf69d2d3f`) instead failed the
+rope landing after two enemy hits knocked Red off her grip and ledge approach.
+Rope-combat input and the fresh Red-led route remain follow-up work.
+
+### Shared checkpoint and effect-delivery follow-up
+
+The separate real combat wipe now passes on source `e11e75c` with 40/20 ms
+internet delay/jitter. Both players approach the northern encounter without
+attacking, from the unchanged ordinary checkpoint captured at tick 23611.
+Evidence: `checkmate-recovery-route-5fa30dca05f14407b73eaf9acde9d733`.
+At tick 25055 both return together to their exact saved positions, complete
+personal resources and scene stamps. The 613-row immutable host trace proves
+the restore boundary and safe placement; both clients independently confirm
+restored native pieces, King health, shared progression and personal cameras.
+All 229 shared player/world/native states match. This proves a Checkmate wipe,
+not a complete traversal from the entrance.
+
+The retained successful Blue full-route history also passes the existing weapon
+effect-delivery verifier: both clients receive sparks, swing trails and projectile
+flight trails from both players. This is delivery evidence; broader native King
+and environment effect visibility remains a separate gate. All 64 Python guards
+pass, including corrupted-wipe rejection and reconnect progression/resident checks.
+
+The Blue-led graceful guest reconnect also passes through the King and into
+Funhouse on that build. Evidence:
+`checkmate-recovery-route-4fb573b3db62437bbd9c750342d9bbc8`. The new guest joins
+at tick 17865 with the saved position, personal resources, seen scenes and native
+piece health intact. There are 3,433 matching player/world/native states in all,
+including 3,410 after reconnect. Red later dies at 24667 and revives at 25867
+with 25 health; the exact timer, spectator camera and safe placement pass.
+Blue traverses northern waypoints 35-43 while Red is dead; they remain explicitly
+revival-carried coverage for Red. Both clients reach Funhouse. This starts from
+the unchanged normal checkpoint after the first scene and is a resumed segment,
+not another full entrance route. The fresh Red-led route, other reconnect order,
+abrupt disconnects and broader effect visibility remain open. Progress stays
+48.1% with no newly completed campaign row.

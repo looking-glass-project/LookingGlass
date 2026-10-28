@@ -24,9 +24,13 @@ ten-second revival and all three watched original scenes. There are 5,765
 matching player/world/native states. Sustained paired hits previously lifted the
 King out of reach; co-op recoil now keeps him on supported ground. All 857 active
 Rust units and the native Checkmate/shared-world/campaign checks pass, and both
-single-player Checkmate logs match baseline. Opposite arrival order, skipped
-playback, team wipe and rejoin/effects coverage remain open; the campaign row
-is still partial and the overall estimate stays 48.1%. See [Checkmate evidence](RCHESS1.md).
+single-player Checkmate logs match baseline. The separate natural team wipe now
+passes with exact saved players and 229 matching states. A fresh guest reconnect
+also continues through the King into Funhouse with 3,410 matching post-rejoin
+states and a verified revival. Both clients receive both players' weapon effect
+types. Opposite arrival order, a fresh skipped full route, the other reconnect
+order and broader effect visibility remain open. The campaign row is still
+partial and the overall estimate stays 48.1%. See [Checkmate evidence](RCHESS1.md).
 
 Latest automated recovery milestone: Checkmate's northern checkpoint segment
 (steps 33-44) passes in two independent internet clients with 40 ms delay and

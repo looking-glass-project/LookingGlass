@@ -122,7 +122,8 @@ class CheckmatePair(Pair):
 
     def retain(self, name):
         (self.folder / (name + '.json')).write_text(json.dumps(dict(
-            step=self.step, completed=self.completed, commands=self.commands, reports=self.reports)))
+            step=self.step, completed=self.completed, commands=self.commands,
+            reports=self.reports, evidence=self.evidence)))
 
     def validate_report(self, role, report):
         try:
@@ -535,6 +536,9 @@ class CheckmatePair(Pair):
         for field, metric in [('sha256', 'matching_player_states'), ('world_sha256', 'matching_world_states'), ('native_sha256', 'matching_native_residents')]:
             self.verify_network_states(field, metric)
 
+    def after_resume(self):
+        pass
+
     def run(self):
         self.start_pair()
         if self.saved:
@@ -546,6 +550,7 @@ class CheckmatePair(Pair):
                 elapsed = report['frame']['tick'] - self.saved['frame']['tick']
                 for current, old in zip(report['frame']['players'], self.saved['frame']['players']):
                     verify_resume_body(current, old, elapsed)
+            self.after_resume()
         for index in range(self.args.start_step, self.args.last_step + 1):
             if index in self.completed:
                 continue
@@ -554,7 +559,17 @@ class CheckmatePair(Pair):
             self.retain(f'before-{index:03d}')
             if index in self.args.save_before:
                 self.save_checkpoint(index)
-            if index == 33 and self.args.last_step == 44:
+            if index == 25 and all(self.state(r)['beheaded'] for r in self.commands):
+                # Either approach can enter the real trigger before the final
+                # pre-scene waypoint. The original scene has already placed
+                # both players beyond it; walking back can block the leader
+                # against the reunited partner. Require the observed scene,
+                # owner and reunion before accepting that obsolete waypoint.
+                proof = {role: verify_beheading(rows, self.args.first, role, self.verify_presence)
+                         for role, rows in self.history.items()}
+                self.evidence.setdefault('scene_superseded_steps', []).append(
+                    dict(step=index, scene='cinema_beheading_thread', proof=proof))
+            elif index == 33 and self.args.last_step == 44:
                 self.northern_course()
                 continue
             elif index == 7:

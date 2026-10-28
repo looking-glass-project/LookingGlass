@@ -50,7 +50,7 @@ must match a verified native revival. It never counts those waypoints as a
 personal traversal by the revived player, and cannot skip untraversed team
 ground. The result's mode and personal coverage remain explicit.
 
-Validation as of 28 October 2026: the native trace observer's read-only/exact-tick
+Initial observer rollout on 28 October 2026: the native trace observer's read-only/exact-tick
 unit check passes within all 856 active units (one existing ignored test).
 Python guards cover bad clocks, missing events, unsafe placement, changed
 resources, camera failures and invalid waypoint coverage. Funhouse's 63 battle,
@@ -78,3 +78,23 @@ All 56 Python co-op guard tests pass, including stale-goal handling and rejectio
 of altered personal inventory or will. This is a resumed segment, not a full
 Checkmate route or a team-wipe test. It adds no completed campaign visit or
 percentage credit. Overall progress remains approximately 48.1%.
+
+The later Checkmate shared-wipe fixture is `tools/test_coop_checkmate_wipe.py`.
+It resumes an unchanged northern checkpoint, sends ordinary movement without
+attacks, and checks an actual combat wipe. Its separate trace verifier requires
+one common spawn tick, exact saved positions, full personal resources and safe
+geometry. Both clients must observe the death and restore, including native
+piece health and shared progression. Generation one is accepted only by this
+explicit wipe check; ordinary route presence checks still reject a wipe.
+On source `e11e75c`, checkpoint tick 23611 restores at 25055 with 613 trace rows
+and 229 matching player/world/native states. Evidence is recorded in `RCHESS1.md`.
+
+`tools/test_coop_checkmate_rejoin.py` resumes the checkpoint after the first
+scene, gracefully exits the guest, starts a fresh guest process on the same
+invite and continues through the King and Funhouse. It checks unchanged personal
+resources/positions, completed scenes and native piece health, then requires
+at least 20 matching states after reconnect in each of the three state domains.
+This is a graceful-reconnect fixture; it does not claim abrupt network-loss
+coverage. On source `e11e75c`, the Blue-led case passes through Funhouse with
+3,410 matching post-rejoin states and another exact ten-second, 25-health Red
+revival. The shared recovery guard suite now has 64 passing tests.

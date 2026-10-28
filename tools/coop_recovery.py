@@ -107,10 +107,10 @@ def read_trace(path, build, require_revival=False):
         return verify_trace((json.loads(line) for line in source), build, require_revival)
 
 
-def verify_presence(rows, role):
+def verify_presence(rows, role, *, generation=0):
     local = 0 if role == 'host' else 1
     for row in rows:
-        assert row['checkpoint_generation'] == 0, 'Unexpected team wipe'
+        assert row['checkpoint_generation'] == generation, 'Unexpected team wipe'
         if row['owner'] is not None:
             continue
         a, b = row['players']

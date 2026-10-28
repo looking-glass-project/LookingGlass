@@ -156,6 +156,7 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
         look.sensitivity = prefs.sensitivity;
         look.inverted = prefs.invert_mouse;
         let mut controls = crate::input::Input::default();
+        let mut skip_prompt = crate::cinematic::Skip::default();
         let mut camera = crate::camera::Follow::default();
         let mut camera_subject = None;
         let mut local_latch = RemoteInput::default();
@@ -318,6 +319,11 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
             keys.jumps += u64::from(pressed(KeyCode::Space));
             let previous_uses = keys.uses;
             keys.uses += u64::from(pressed(KeyCode::E));
+            keys.skip_scene = held(KeyCode::Enter) || input_active && controls.pad_held("A");
+            let owns_scene = arena.stage.owner == Some(local)
+                && display.as_ref().is_some_and(|f| f.players[local.index()].stats.alive());
+            skip_prompt.update(if owns_scene { arena.stage.scene_id() } else { None },
+                input_active && owns_scene, keys.skip_scene, elapsed);
             let click = weapon_buttons.sample([
                 controls.action(&prefs, "Mouse 1", false), controls.action(&prefs, "Mouse 2", false)
             ], input_active);
@@ -606,6 +612,7 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                 if !arena.stage.busy() { hud.draw_coop(personal, &arena.catalog, &controls, &prefs); }
                 level_art.hud(&arena.stage.interactions);
                 arena.stage.story.draw(&controls.label(&prefs, "E"), &ui);
+                skip_prompt.draw(&ui, &controls.label(&prefs, "Enter"));
                 if let Some(notice) = &arena.stage.notices[local.index()] {
                     if notice.until > frame.tick { ui.toast(&notice.text, screen_height() * 0.3); }
                 }

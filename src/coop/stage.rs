@@ -51,6 +51,8 @@ pub struct Stage {
     contacts: Contacts,
     last_owner: PlayerId,
     initial: Option<Snapshot>,
+    // Local input progress is intentionally not checkpointed or replicated.
+    skip: crate::cinematic::Skip,
 }
 impl Stage {
     pub fn load(
@@ -87,6 +89,7 @@ impl Stage {
             notices: [None, None],
             last_owner: PlayerId::Blue,
             initial: None,
+            skip: Default::default(),
         };
         stage.initial = Some(stage.snapshot());
         Ok(stage)
@@ -129,6 +132,7 @@ impl Stage {
         self.transition = state.transition.clone();
         self.notices = state.notices.clone();
         self.voice_running = state.voice_running;
+        self.skip = Default::default();
         self.interactions.sync_coop(world);
         Ok(())
     }
@@ -313,6 +317,7 @@ impl Stage {
         inputs: &[(Controls, Input); 2],
         dt: f32,
     ) -> Result<()> {
+        self.skip = Default::default();
         self.prepare_registered_players(roster);
         self.sync_school_return_items(roster);
         if let Some(d) = &mut self.interactions.duchess {
@@ -459,6 +464,17 @@ impl Stage {
         self.sync_school_return_items(roster);
         Ok(())
     }
+    pub fn scene_id(&self) -> Option<&'static str> {
+        let i=&self.interactions;
+        i.scene_id_after(i.duchess.as_ref().and_then(|d|d.scene_id())
+            .or_else(||i.pandemonium.as_ref().and_then(|p|p.scene_id()))
+            .or_else(||i.pool.as_ref().and_then(|p|p.scene_id()))
+            .or_else(||i.school.as_ref().and_then(|s|s.scene_id()))
+            .or_else(||i.school2.as_ref().and_then(|s|s.scene_id()))
+            .or_else(||i.beyond.as_ref().and_then(|b|b.scene_id()))
+            .or_else(||i.fortress.as_ref().and_then(|f|f.state.cinema.scene_id()))
+            .or_else(||i.village.as_ref().and_then(|v|v.cinema.scene_id())))
+    }
     /// Original scene code receives exactly one actor. The other body is frozen
     /// and omitted from rendering until both can reunite at supported positions.
     pub fn scene_step(
@@ -473,6 +489,15 @@ impl Stage {
         let Some(owner) = self.owner else {
             return Ok(());
         };
+        let scene = self.scene_id();
+        if self.skip.update(scene, roster.players[owner.index()].stats.alive(),
+            inputs[owner.index()].1.skip_scene, FIXED_DT)
+            && self.interactions.skip_cinematic(map, world,
+                &mut roster.players[owner.index()].player, &mut self.story)? {
+            for notice in &mut self.notices {
+                *notice = Some(Notice { text: "Scene skipped".into(), until: roster.tick + 240 });
+            }
+        }
         // Scene control supersedes traversal for both actors. Do not resume a
         // grip at its old anchor after the scene moves Alice somewhere else.
         for body in &mut roster.players { body.player.release_rope(); }

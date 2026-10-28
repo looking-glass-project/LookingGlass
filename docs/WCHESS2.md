@@ -271,6 +271,63 @@ personal resources and safe placement. The three hash families match at 295 and
 `private/coop/castling-recovery-e8ad78548f3f48269232b663df31ec35` and
 `private/coop/castling-recovery-2d1dad8ebb13409e9ca433765dadd9d2`.
 
+### Current route repeat and held scene skip
+
+The post-collision source `62fe393` Blue-led internet repeat completes all 203
+legs, both original royal scenes and the Checkmate arrival at 75/100 health.
+All 8,793 common player/world/native-state hashes match; presence checks pass.
+Evidence is `private/coop/castling-route-512e8f087ff2442390f6b7709c0fc1fc`.
+
+The corresponding Red-led repeat **fails at leg 128**, after completing 0–127
+and both scenes. Both players remain alive at 100 health; 9,378 common hashes
+and all 2,623 host / 2,606 guest presence samples match. Its retained failure
+reports roughly 1,029 ms of queued host controls versus 206 ms guest round-trip
+time. A stale steering estimate is a hypothesis, not an established cause.
+Evidence remains `private/coop/castling-route-4671ddbc50904c51be0c32b81cbe82a1`.
+This failure does not inherit the older build's full-route pass.
+
+Source `592728d2811460b3cb556b5d6a23c34bc5171a2617698d55181c27050ac03799`
+adds the original held Enter/controller-A scene skip to co-op. Only the living
+scene owner may skip, after a fresh 0.65-second hold. The host runs the original
+skip and safe reunion path; a waiting partner's held input cannot end the scene.
+Both clients receive the same skip notice. Protocol revision 7 carries the held
+control; it expires with other controls, and active holds retain their sampled
+duration. Saved games do not retain partial holds.
+
+The native royal scene checks now use actual held inputs rather than directly
+calling the skip function. Both owners, both scenes, watched/skipped outcomes,
+living/dead partners and restored scenes pass. All 839 active unit tests pass
+(one existing ignored), as do 82 shared-world, 43 campaign entrance/recovery and
+119 Pale Realm cases. All three complete single-player logs match their baseline.
+`tools/test_coop_castling_skip.py` now passes all four independent internet
+cases with 40 ms delay / 20 ms jitter. The partner holds skip alone for at least
+180 ticks, then the owner holds it; both clients must acknowledge the identical
+skip tick and safely reunite with unchanged health, inventory and selection.
+Will stays frozen during cinematic ticks and resumes normal recovery afterward.
+The fixture sends neutral controls through the handoff so automatic combat
+cannot switch weapons or spend Will before the assertions inspect the result.
+
+| Owner / scene | Partner hold / owner hold / skip ticks | Matching states |
+| --- | --- | ---: |
+| Blue / Queen | 6,392 / 6,584 / 6,672 | 83 |
+| Blue / King | 25,818 / 26,009 / 26,110 | 65 |
+| Red / Queen | 5,835 / 6,026 / 6,130 | 112 |
+| Red / King | 22,757 / 22,949 / 23,054 | 87 |
+
+Counts apply separately to player, world and native-resident hashes. Both clients
+exit cleanly in each case. Evidence folders under `private/coop/` are
+`castling-skip-d6f9498414ba4589a9329909d7152761`,
+`castling-skip-a29f3a6a4b46464287d0bed8ecd50968`,
+`castling-skip-8aa76fe1980649d2bdd84fa77dd52379` and
+`castling-skip-6190c31ba2ec401e83e5cf2430278c84`, respectively.
+Their isolated checkpoints are exact offline exports of retained pre-scene
+authoritative snapshots through the normal checkpoint store; they are not normal
+pause-menu saves or evidence of a new full route. The earlier failed fixtures
+remain retained: one stopped outside the Queen trigger, one allowed automatic
+weapon selection immediately after the scene, and one incorrectly expected Will
+recovery throughout the cutscene. Three negative controls reject early,
+inconsistent or incomplete skip evidence. No images are inspected.
+
 `--wchess2-check` exercises real approach triggers, both royal outcomes, dialogue, pause, save futures, moving-platform support, bound exits, ambush alternatives and migration. `--wchess2-route-check` and `--wchess2-route-skip-check` traverse from the real entrance with Normal combat into a loaded Checkmate visit. Route checkpoints are private diagnostics; they do not change player saves. `--wchess2-render-check` captures eight staged views. Native save fixtures are `wchess2-queen-mid`, `wchess2-king-mid`, and `wchess2-exit-open`.
 
 Use `tools/launchers/Launch-Castling.cmd` for a fresh visit with separate playtest saves. Release identity, exact test results and limits are recorded in `private/wchess2/WORKLOG.md`.

@@ -124,7 +124,7 @@ impl TimedInput {
             // Short pauses, active controls and queued changes keep their time.
             if self.elapsed >= SETTLED_IDLE_UNITS && pending.iter().all(|&n|n==0)
                 && input.wish==Vec2::ZERO && input.swim==Vec3::ZERO && input.rise==0.
-                && !input.primary && !input.alternate {
+                && !input.primary && !input.alternate && !input.skip_scene {
                 let confirmed=u128::from(sampled_micros-self.current.unwrap().at)*120;
                 self.elapsed=self.elapsed.max(confirmed);
             }
@@ -311,6 +311,7 @@ mod tests {
             Input{rise:1.,..Default::default()},
             Input{primary:true,..Default::default()},
             Input{alternate:true,..Default::default()},
+            Input{skip_scene:true,..Default::default()},
         ];
         let start=Instant::now();
         for (input,ticks) in active.into_iter().map(|input|(input,36)).chain([(Input::default(),12)]) {

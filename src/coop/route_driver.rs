@@ -36,6 +36,9 @@ struct Command {
     use_aim: Option<Vec2>,
     #[serde(default)]
     watch_dialogue: bool,
+    /// Ordinary held skip input; authoritative scene ownership still applies.
+    #[serde(default)]
+    skip_scene: bool,
     #[serde(default)]
     beyond_step: Option<usize>,
     /// Opt-in swimming fixture: identifies the first arrival, not a state write.
@@ -539,6 +542,7 @@ impl Driver {
     fn neutral(keys: &mut Input) {
         keys.wish = Vec2::ZERO; keys.swim = Vec3::ZERO; keys.rise = 0.;
         keys.run = false; keys.primary = false; keys.alternate = false; keys.weapon = None;
+        keys.skip_scene = false;
     }
     // Observe after simulation, alongside the frame being written. Input sampling
     // happens before a host step and can otherwise label a finished scene with
@@ -684,6 +688,7 @@ impl Driver {
             self.report.phase = "spectating"; return;
         }
         if command.checkpoint { self.report.phase = "saving checkpoint"; return; }
+        keys.skip_scene = command.skip_scene;
         if !command.watch_dialogue && arena.stage.story.busy() && arena.stage.owner == Some(local)
             && now.duration_since(self.used) >= Duration::from_millis(250) {
             keys.uses += 1; self.used = now;

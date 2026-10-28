@@ -7,7 +7,7 @@ use macroquad::prelude::{Vec2, Vec3};
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 
-pub const REVISION: u32 = 6;
+pub const REVISION: u32 = 7;
 pub const INPUT_TIMEOUT: Duration = Duration::from_millis(500);
 const MAX_EDGES: u64 = 8;
 
@@ -97,6 +97,9 @@ pub struct Input {
     pub run: bool,
     pub primary: bool,
     pub alternate: bool,
+    /// Held input; the host requires a fresh 0.65-second hold by the scene owner.
+    #[serde(default)]
+    pub skip_scene: bool,
     pub attack_presses: [u64; 2],
     pub weapon: Option<u8>,
     /// Cumulative edges survive a short press between network sends and queue
@@ -396,6 +399,21 @@ mod tests {
             latch.accept(3, input, now).is_err(),
             "Counters cannot roll backwards"
         );
+    }
+    #[test]
+    fn held_scene_skip_releases_and_expires_with_the_other_controls() {
+        let now=Instant::now();let mut latch=RemoteInput::default();
+        let held=Input{skip_scene:true,..Default::default()};
+        latch.accept(1,held,now).unwrap();
+        assert!(latch.sample(now).1.skip_scene);
+        latch.accept(2,Input::default(),now).unwrap();
+        assert!(!latch.sample(now).1.skip_scene);
+        latch.accept(3,held,now).unwrap();
+        assert!(!latch.sample(now+INPUT_TIMEOUT).1.skip_scene);
+        latch.accept(3,held,now+INPUT_TIMEOUT).unwrap();
+        assert!(!latch.sample(now+INPUT_TIMEOUT).1.skip_scene);
+        latch.accept(4,held,now+INPUT_TIMEOUT).unwrap();latch.cancel();
+        assert!(!latch.sample(now+INPUT_TIMEOUT).1.skip_scene);
     }
     #[test]
     fn controls_cannot_grant_speed_or_upload_world_state() {

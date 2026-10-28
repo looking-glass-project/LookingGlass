@@ -14,18 +14,26 @@ recovery remain open for both visits. Report these smaller milestones alongside
 the total; a successful component or segment is not a completed campaign visit.
 
 Status checked on **28 October 2026**: the older approximately 42% figure is
-historical; the current weighted estimate is **46.8% (about 47%)**. The current
-work covers Castling's independent internet route and fresh, uninterrupted Pale
-Realm traversal in both leader orders. Castling's four full native routes pass.
-After repairing delayed test-follower oscillation, its Blue-led and Red-led public
-internet runs also pass all 203 legs, with 8,749 and 7,680 matching replicated
-states respectively. Graceful guest rejoin and the shared exit also pass from
-both saved leader roles after repairing a delayed jump probe. Real combat deaths
-now pass for either player: both clients agree on the 1,200-tick spectator delay,
-nearby 25-health revival and retained personal items. The team-wipe test exposed
-an overlap beside a sloped wall; after fixing the wall correction, the same
-encounter passes separation and shared restoration with 164 matching states.
-All 838 active unit tests and the broad native movement checks pass. See
+historical; the current weighted estimate is **46.8% (about 47%)**. Six of 39
+campaign visits have combined evidence, with earlier contact-system repeats
+still required. Repeated component tests do not increase this total.
+
+Castling's earlier Blue-led and Red-led public internet runs pass all 203 legs.
+After the sloped-wall collision fix, Blue passes the full route again with 8,793
+matching player/world/native states and a 75/100-health Checkmate arrival. The
+new Red run passes 0–127 and both original scenes but **stalls at leg 128**;
+it remains failed despite 9,378 matching states and passing presence samples.
+Its host has about one second of queued controls while the guest reports about
+206 ms round-trip time; delayed steering is a hypothesis pending diagnosis.
+
+Real combat recovery passes for either player: both clients agree on the
+1,200-tick spectator delay, nearby 25-health revival and retained personal items.
+The unchanged team-wipe encounter also passes separation and shared restoration
+after the sloped-wall repair. The current build adds the original held Enter/A
+scene-skip control for the scene owner, with a fresh 0.65-second hold and the
+existing safe reunion. All **839 active unit tests** and the broader native
+checks pass. All four independent internet scene-skip cases also pass: both
+royal scenes with either owner, unchanged personal resources and safe reunion. See
 [Castling internet checks](WCHESS2.md#independent-internet-traversal-checks).
 Focused combat, swimming, recovery and rejoin passes below are useful progress,
 but do not satisfy that gate. The timed spike corridor and its following four

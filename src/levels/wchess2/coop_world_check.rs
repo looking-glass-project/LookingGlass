@@ -192,12 +192,18 @@ fn scene(a:&mut Assets,map:&Bsp,kind:scene::Kind,first:PlayerId,skip:bool,dead:b
             stage.restore(&serde_json::from_slice(&crate::coop::codec::decode(&bytes)?)?,map,&mut w)?;
             ensure!(serde_json::to_value(stage.snapshot())?==value,"Royal scene save changed");
         }
-        if skip && n==240 {stage.interactions.skip_cinematic(map,&mut w,&mut roster.players[first.index()].player,&mut stage.story)?;}
-        stage.scene_step(&mut roster,map,&mut w,&Default::default())?;
+        let mut inputs=[(Controls::default(),crate::coop::protocol::Input::default());2];
+        inputs[first.partner().index()].1.skip_scene=true;
+        inputs[first.index()].1.skip_scene=skip && n>=240;
+        stage.scene_step(&mut roster,map,&mut w,&inputs)?;
+        if n<240 {ensure!(stage.scene_id()==Some(label),"Waiting partner skipped the owner's scene");}
+        if skip && n==330 {ensure!(stage.scene_id()!=Some(label),"Owner's held skip did not finish scene");}
         if !stage.busy(){break;}
         ensure!(roster.players[first.partner().index()].player.feet==waiting,"Royal scene moved waiting partner");
     }
     ensure!(!stage.busy(),"Royal reunion stalled {label} {first:?} skip{skip} dead{dead}");
+    ensure!(stage.notices[first.index()].as_ref().is_some_and(|n|n.text=="Scene skipped")==skip,
+        "Royal scene accepted the wrong player's skip");
     ensure!(resources==roster.players.each_ref().map(|p|(p.stats.sanity(),p.stats.will())),"Royal scene changed resources");
     if !dead {ensure!(roster.players.iter().all(|p|w.body_clear(p.player.feet))
         && roster.players[0].player.feet.distance(roster.players[1].player.feet)>=36.,"Royal reunion overlaps");}

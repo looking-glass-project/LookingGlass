@@ -331,10 +331,57 @@ fast saves do not reproduce the earlier unexplained stall.
 At step 34, Blue is cornered near two active Pawns and dies; Red remains at 100
 health farther back on the route. The retained pre-death state has Blue at 20
 health and 0.56 Will, with a walking controller replanning around the corner.
-The diagnostic grounded-route controller currently walks rather than runs,
+The diagnostic grounded-route controller at that point walked rather than ran,
 while the authored single-player course keeps moving past these optional
 northern ambushes. Movement speed, coordination and attack tactics need review;
 enemy damage and death checks remain intact. The normal pre-step-27 checkpoint
 and the failed reports allow a focused replay. `prefix-verification.json`
 records the scene checks separately and explicitly retains the death and
 `full_route_passed: false`. The King, exit and fresh full traversal remain open.
+
+
+## Grounded running and independent northern traversal
+
+The diagnostic controller now accepts opt-in running on grounded planned
+routes. It combines forward collinear points, preserving turns, height changes,
+timed jump controls and final walking stops. Steering corrections account for
+input delay; legacy walking commands retain their previous behavior. Native
+physics regressions cover a temporary obstacle, a narrow turn and a long
+corridor at zero, 200 and 400 ms combined observation/input delay. Both modes
+arrive safely, and the running corridor traversal finishes sooner. All 853
+active unit tests pass (one existing test remains ignored), along with the
+release build, 94 Checkmate checks, 82 shared-world checks and 43 campaign
+checks. Both single-player Checkmate logs remain identical to their baselines.
+
+The first running replay passes steps 27-32 but Blue dies while waiting at
+step 33; Red is still about 680 units behind. Combining straight sections
+reduces that gap to about 180 units in the next internet replay, but Blue still
+dies while trying to settle at the exposed waypoint under Pawn knockback.
+Neither run passes. Evidence remains in
+`private/coop/checkmate-route-ec7d8ba47cfc4df0a1dc3e793f5724cc/` and
+`private/coop/checkmate-route-62e5384e6b0946baa9c4adca3160b0e6/`.
+The latter uses frozen source
+`3580af10eed12ce7110a6b0fbe854c60afbbddd58bdd765e93ca84de7333d3df`.
+
+The runner now advances both clients independently through steps 33-44 and
+requires a recorded arrival at every step for each player. The grounded travel
+points (33-42) accept an acknowledged position within 24 horizontal units and
+the existing 35-unit height band so movement can continue under knockback.
+The descent and bridge (43/44) retain the native settled-arrival check. The first player
+to finish normally moves a short distance along the bridge to leave room for
+the second arrival. Death, respawn, overlap, remote visibility and network-state
+checks remain unchanged. Default checkpoints are now before 7, 12, 27 and 33;
+the northern section runs continuously. Before starting, the players regroup
+with ordinary navigation on the clear approach lane. Starting Red seventy
+units south had produced four extra turns around a wall in her actual plan.
+
+The first independent replay lets Blue pass 33-38 and Red pass 33 before Blue
+dies near 39. With regrouping and continuous grounded travel, Blue passes all
+12 northern waypoints and reaches the bridge with 4 health. Red passes 33-38
+but dies before finishing 39. The paired route remains failed; a solo partial
+completion does not satisfy its per-player checks. This latest replay is in
+`private/coop/checkmate-route-0d59f99779b84e9397bd52fd12fda5fa/`; its unchanged
+normal checkpoint comes from `checkpoint-before-033.json` in the earlier
+`private/coop/checkmate-route-0a3e63e666084d2ba790ee5eececc7fb/` run. Red's delayed
+travel through the later turns still needs work. The King, exit, fresh full
+traversal and other campaign gates remain open; no percentage credit is added.

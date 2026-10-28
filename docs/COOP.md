@@ -41,6 +41,13 @@ baselines. A blocked network consumer now gets the existing 15-second connection
 grace with unchanged queue limits, and a three-second ordered-packet stall test
 passes. Full traversal, recovery and broader effects coverage remain open.
 
+The diagnostic route controller now supports running along straight grounded
+sections with delayed-input steering. Its native regression suite passes 853
+active tests, including narrow turns and faster corridor traversal. Checkmate's
+latest internet replay lets Blue traverse all 12 northern waypoints to the
+bridge, but Red dies after waypoint 38. The per-player route check keeps that
+paired run failed. This adds no completed visit.
+
 Castling's earlier Blue-led and Red-led public internet runs pass all 203 legs.
 After the sloped-wall collision fix, Blue passes the full route again with 8,793
 matching player/world/native states and a 75/100-health Checkmate arrival. The

@@ -94,7 +94,9 @@ class CheckmatePair(Pair):
         if attack is None:
             attack = goal is not None
         if navigate:
-            kwargs['run'] = False  # Planned controls carry their own running input.
+            # Run the exposed late approach; timed jumps and final landing
+            # braking retain their own inputs in the native controller.
+            kwargs['run'] = self.step >= 27
         self.swim_requested[role] = swim
         swimming = role in self.reports and self.body(role)['player']['swimming']
         super().set(role, goal, navigate, attack=attack, **kwargs)
@@ -177,11 +179,13 @@ class CheckmatePair(Pair):
         self.until(lambda: self.arrived() or not self.busy(), 180)
 
     def go(self, goal, navigate=False, swim=False):
-        """Leader takes the next waypoint; partner follows its preceding footing."""
+        """Follow real footings, advancing the partner during long late legs."""
         self.scene_end()
         if self.arrived():
             return
         previous = self.body(self.first)['player']['feet']
+        trail = [list(previous)]
+        follow_trail = navigate and self.step >= 27
         active = [self.first]
         if distance(previous, goal) >= 96 and distance(self.body(self.partner)['player']['feet'], previous) > 48:
             self.set(self.partner, previous, navigate, swim=swim, run=True)
@@ -201,7 +205,26 @@ class CheckmatePair(Pair):
             return self.reached(role) or (swim and body['swimming']
                 and driver['command'] == command['id']
                 and distance(body['feet'], command['goal']) < 18)
-        self.until(lambda: self.arrived() or self.busy() or all(at_waypoint(r) for r in active))
+        def arrived_together():
+            if self.arrived() or self.busy():
+                return True
+            leader = self.body(self.first)['player']
+            if follow_trail:
+                feet = leader['feet']
+                if leader['grounded'] and distance(trail[-1], feet) >= 96:
+                    trail.append(list(feet))
+                # These are observed supported positions, never invented
+                # offsets on an unknown ledge. Keep a gap behind the leader.
+                target = next((p for p in reversed(trail) if distance(p, feet) >= 64), None)
+                if target is not None and (self.partner not in active or at_waypoint(self.partner)):
+                    old = self.commands[self.partner]['goal']
+                    if old is None or distance(old, target) > 48:
+                        self.set(self.partner, target, navigate=True, run=True)
+                        if self.partner not in active:
+                            active.append(self.partner)
+                        self.evidence['following_footings'] = self.evidence.get('following_footings', 0) + 1
+            return all(at_waypoint(r) for r in active)
+        self.until(arrived_together)
         self.scene_end()
 
     def rope(self):
@@ -282,6 +305,71 @@ class CheckmatePair(Pair):
         assert all(self.body(r)['player']['grounded'] and self.body(r)['player']['feet'][2] > 250
                    for r in self.commands), 'Both players must finish the native rope landing'
         self.retain('rope-finished')
+
+    def northern_course(self):
+        """Both clients traverse every late waypoint without waiting in combat."""
+        # Regroup on the clear approach lane. Starting seventy units south
+        # gave the delayed client four extra turns around the wall at x=1200.
+        self.set(self.first, [1024, 4512, 384], navigate=True, run=True)
+        self.set(self.partner, [960, 4512, 384], navigate=True, run=True)
+        self.until(lambda: all(self.reached(r) for r in self.commands), 60)
+        self.retain('northern-regrouped')
+        progress = dict.fromkeys(self.commands, 33)
+        events = self.evidence.setdefault('northern_steps', {r: [] for r in self.commands})
+        parked = None
+
+        def command(role):
+            index = progress[role]
+            step = self.steps[index]
+            goal = step.get('nav', step.get('steer'))[:3]
+            self.set(role, goal, navigate='nav' in step, run=True)
+
+        for role in self.commands:
+            command(role)
+
+        def advance():
+            nonlocal parked
+            assert not self.arrived() and not self.busy(), 'Northern course was interrupted by a scene'
+            for role in (self.first, self.partner):
+                index = progress[role]
+                if index > 44:
+                    continue
+                body = self.body(role)['player']
+                driver = self.reports[role]['route_driver']
+                target = self.commands[role]
+                delta = [a-b for a, b in zip(body['feet'], target['goal'])]
+                # The northern ground waypoints are travel points, not
+                # landings: advance while grounded and within 24 units rather
+                # than standing still under repeated knockback. The descent
+                # and final bridge (43/44) retain settled-arrival checks.
+                passing = 33 <= index <= 42 and body['grounded'] and abs(delta[2]) < 35 \
+                    and distance(delta[:2], [0, 0]) < 24 \
+                    and driver['command'] == target['id'] \
+                    and driver['observed_tick'] == self.reports[role]['frame']['tick']
+                if not (self.reached(role) or passing):
+                    continue
+                events[role].append(dict(step=index, tick=self.reports[role]['frame']['tick'],
+                    feet=list(body['feet']), passing=passing))
+                print('PASS northern waypoint', role, index, flush=True)
+                progress[role] += 1
+                if index < 44:
+                    command(role)
+                elif parked is None:
+                    # Continue a short distance along the authored bridge
+                    # approach so the second player can reach the same point.
+                    parked = role
+                    self.set(role, [3376, 2944, 0], navigate=True, run=True)
+                else:
+                    self.set(role, attack=True)
+            self.step = min(min(progress.values()), 44)
+            return all(i == 45 for i in progress.values()) and self.reached(parked)
+
+        self.until(advance, 240)
+        for role in self.commands:
+            assert [e['step'] for e in events[role]] == list(range(33, 45)), 'Incomplete personal northern route'
+            self.set(role, attack=True)
+        self.completed.extend(range(33, 45))
+        self.retain('northern-finished')
 
     def clear(self):
         for role in self.commands:
@@ -371,12 +459,17 @@ class CheckmatePair(Pair):
                 for current, old in zip(report['frame']['players'], self.saved['frame']['players']):
                     verify_resume_body(current, old, elapsed)
         for index in range(self.args.start_step, self.args.last_step + 1):
+            if index in self.completed:
+                continue
             step = self.steps[index]
             self.step = index
             self.retain(f'before-{index:03d}')
             if index in self.args.save_before:
                 self.save_checkpoint(index)
-            if index == 7:
+            if index == 33 and self.args.last_step == 44:
+                self.northern_course()
+                continue
+            elif index == 7:
                 self.rope()
             elif index in (8, 9):
                 pass  # Completed by independently acknowledged rope controls above.
@@ -443,7 +536,7 @@ if __name__ == '__main__':
     parser.add_argument('--start-step', type=int, default=0)
     parser.add_argument('--last-step', type=int, default=44)
     parser.add_argument('--through-exit', action='store_true', help='Continue the final approach segment through the King and Funhouse; resumed runs remain partial')
-    parser.add_argument('--save-before', nargs='*', type=int, default=[7, 12, 27, 44])
+    parser.add_argument('--save-before', nargs='*', type=int, default=[7, 12, 27, 33])
     parser.add_argument('--delay-ms', type=int, default=40)
     parser.add_argument('--jitter-ms', type=int, default=20)
     args = parser.parse_args()
@@ -455,6 +548,8 @@ if __name__ == '__main__':
         parser.error('A later start requires an unchanged checkpoint; an entrance run starts at zero')
     if args.through_exit and args.last_step != 44:
         parser.error('Continuing through the exit requires the final approach step, 44')
+    if args.start_step <= 33 and args.last_step == 44 and any(34 <= i <= 44 for i in args.save_before):
+        parser.error('The northern course runs continuously; save before step 33 instead')
     pair = CheckmatePair(args)
     try:
         pair.run()

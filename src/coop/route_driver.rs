@@ -122,8 +122,9 @@ impl Command {
             && self.speed_limit.is_none() && !self.jump && !self.checkpoint && !self.finish),
             "Explicit swimming requires its own three-dimensional route goal");
         ensure!(self.marker.is_none_or(|i| i < 100_000), "Invalid route marker");
-        ensure!(!(self.run || self.jump) || !self.navigate && self.rope.is_none(),
-            "Explicit run/jump needs straight movement, not a planned route or rope command");
+        ensure!(!self.jump || !self.navigate && self.rope.is_none(),
+            "Explicit jump needs straight movement, not a planned route or rope command");
+        ensure!(!self.run || self.rope.is_none(), "Rope controls own their running input");
         if let Some(runup) = &self.runup {
             ensure!(self.jump && self.run && self.goal.is_some() && (1..=500).contains(&runup.millis)
                 && runup.wish.is_finite() && (runup.wish.length()-1.).abs()<0.01,
@@ -350,11 +351,32 @@ fn plan_stays_grounded(world: &World, start: &Player, steps: &[(Controls, Vec3)]
     }
     true
 }
-fn walking_control(player: &Player, point: Vec3, lead: f32) -> (Vec2, bool) {
+fn straight_grounded_sections(start: Vec3, steps: Vec<(Controls, Vec3)>) -> Vec<(Controls, Vec3)> {
+    let mut result = Vec::new();
+    let mut anchor = start;
+    for (i, step) in steps.iter().enumerate() {
+        if let Some(next) = steps.get(i+1) {
+            let line = next.1-anchor;
+            let fraction = (step.1-anchor).dot(line)/line.length_squared();
+            // Remove only points on the same forward three-dimensional line.
+            // Preserve every turn/height change in the verified grounded plan.
+            if (0. ..1.).contains(&fraction)
+                && (step.1-anchor-line*fraction).length()<0.001 { continue; }
+        }
+        result.push(*step);
+        anchor = step.1;
+    }
+    result
+}
+fn walking_control(player: &Player, point: Vec3, lead: f32, run: bool) -> (Vec2, bool) {
     let delta=point-player.feet;
     let reached=player.grounded && delta.truncate().length()<8. && delta.z.abs()<35.;
     let steering=delta.truncate()-player.velocity.truncate()*lead;
-    (steering.normalize_or_zero()*(steering.length()/48.).min(1.),reached)
+    // Running needs gentler corrections when observations and inputs are in
+    // flight. Otherwise a delayed turn alternates full-speed corrections and
+    // never reaches its next waypoint. Keep legacy walking gain unchanged.
+    let slowing = if run { (640.*lead).max(48.) } else { 48. };
+    (steering.normalize_or_zero()*(steering.length()/slowing).min(1.),reached)
 }
 struct WalkingProgress {
     feet: Vec3,
@@ -708,7 +730,10 @@ impl Driver {
                     && frame.epoch == worker.epoch && body.warped_at == worker.warped
                     && body.player.feet.distance(worker.start) < 16. && !arena.stage.busy() {
                     match result {
-                        Ok(plan) => {
+                        Ok(mut plan) => {
+                            if plan.walking && self.command.as_ref().is_some_and(|c|c.run) {
+                                plan.steps=straight_grounded_sections(worker.start,plan.steps);
+                            }
                             let trace = serde_json::json!({ "build": env!("LOOKING_GLASS_BUILD"),
                                 "epoch": worker.epoch, "command": worker.id, "start": worker.start,
                                 "walking":plan.walking,
@@ -958,12 +983,15 @@ impl Driver {
                 self.report.phase="replanning obstructed walk";
             } else {
                 while self.plan.front().is_some_and(|(_,point)|
-                    walking_control(&body.player,*point,command.input_lead).1) {
+                    walking_control(&body.player,*point,command.input_lead,command.run).1) {
                     self.plan.pop_front();
                 }
                 if let Some((_,point))=self.plan.front() {
-                    keys.wish=walking_control(&body.player,*point,command.input_lead).0;
+                    keys.wish=walking_control(&body.player,*point,command.input_lead,command.run).0;
                     keys.swim=keys.wish.extend(0.);
+                    // Opt-in ordinary running on grounded routes. Timed jumps
+                    // retain their planned speed; final landings still walk.
+                    keys.run=command.run;
                 }
             }
             self.report.plan_remaining=self.plan.len();
@@ -1197,9 +1225,9 @@ mod tests {
                     assert!(plan_stays_grounded(&blocked,&view,&steps));
                     progress=WalkingProgress::new(view.feet,now);next=0;replans+=1;
                 }
-                while next<steps.len() && walking_control(&view,steps[next].1,0.).1 {next+=1;}
+                while next<steps.len() && walking_control(&view,steps[next].1,0.,false).1 {next+=1;}
                 let wish=landing.map_or_else(||walking_control(&view,
-                    steps.get(next).map_or(goal,|s|s.1),2.*delay as f32/120.).0,|s|s.0);
+                    steps.get(next).map_or(goal,|s|s.1),2.*delay as f32/120.,false).0,|s|s.0);
                 pending.push_back(Controls{wish,..Default::default()});
                 player.tick(&blocked,pending.pop_front().unwrap());
                 assert!(player.grounded,"Walking recovery left the floor");
@@ -1231,7 +1259,8 @@ mod tests {
         let gap=World::fixture(&[(vec3(-40.,-40.,-100.),vec3(20.,40.,0.))]);
         assert!(!plan_stays_grounded(&gap,&start,&steps));
         let goal=planned.feet-Vec3::Y*12.;
-        let replay=|feedback:bool,delay:usize| {
+        let replay=|feedback:bool,delay:usize,run:bool| {
+            let route=if run {straight_grounded_sections(start.feet,steps.clone())} else {steps.clone()};
             let mut player=start.clone();
             let mut views=VecDeque::from(vec![player.clone();delay+1]);
             let mut pending=VecDeque::from(vec![Controls::default();delay]);
@@ -1241,9 +1270,11 @@ mod tests {
                 let world=if tick<96 {&blocked} else {&open};
                 let view=views.pop_front().unwrap();
                 let input=if feedback {
-                    while next<steps.len() && walking_control(&view,steps[next].1,0.2).1 {next+=1;}
-                    let target=steps.get(next).map_or(goal,|s|s.1);
-                    Controls {wish:walking_control(&view,target,2.*delay as f32/120.).0,..Default::default()}
+                    while next<route.len() && walking_control(&view,route[next].1,0.2,run).1 {next+=1;}
+                    let target=route.get(next).map_or(goal,|s|s.1);
+                    landing_control(world,&view,goal,2.*delay as f32/120.,8.)
+                        .map(|(wish,_)|Controls {wish,..Default::default()})
+                        .unwrap_or(Controls {wish:walking_control(&view,target,2.*delay as f32/120.,run).0,run,..Default::default()})
                 } else {steps.get(tick/24).map_or(Controls::default(),|s|s.0)};
                 pending.push_back(input);
                 player.tick(world,pending.pop_front().unwrap());
@@ -1252,11 +1283,54 @@ mod tests {
             }
             (player,lowest)
         };
-        assert!(replay(false,0).1 < -100.,"Timed control did not reproduce the missed turn");
-        for delay in [0,12] {
-            let (player,lowest)=replay(true,delay);
+        assert!(replay(false,0,false).1 < -100.,"Timed control did not reproduce the missed turn");
+        for run in [false,true] { for delay in [0,12,24] {
+            let (player,lowest)=replay(true,delay,run);
             assert!(lowest>=-0.1 && player.grounded && player.feet.distance(goal)<8.,
-                "Feedback route failed after {delay} ticks of delay: {:?}, minimum {lowest}",player.feet);
+                "Feedback route failed run={run} after {delay} ticks of delay: {:?}, minimum {lowest}",player.feet);
+        }}
+    }
+    #[test]
+    fn running_grounded_routes_cross_long_corridors_without_waypoint_stops() {
+        let world=World::fixture(&[(vec3(-40.,-48.,-100.),vec3(1000.,48.,0.))]);
+        let start=Player::spawn(&world,Vec3::Z*crate::movement::EYE_HEIGHT).unwrap();
+        let mut planned=start.clone();
+        let input=Controls {wish:Vec2::X,run:true,..Default::default()};
+        let steps:Vec<_>=(0..13).map(|_| {
+            for _ in 0..24 {planned.tick(&world,input);}
+            (input,planned.feet)
+        }).collect();
+        assert!(plan_stays_grounded(&world,&start,&steps));
+        let goal=planned.feet;
+        for delay in [0,12,24] {
+            let mut times=[0;2];
+            for (mode,run) in [false,true].into_iter().enumerate() {
+                let route=if run {straight_grounded_sections(start.feet,steps.clone())} else {steps.clone()};
+                let mut player=start.clone();
+                let mut views=VecDeque::from(vec![player.clone();delay+1]);
+                let mut pending=VecDeque::from(vec![Controls::default();delay]);
+                let mut next=0;
+                // Include the deliberately slow legacy walking baseline at
+                // 400 ms round trip; compare arrivals, not a short timeout.
+                for tick in 0..6000 {
+                    let view=views.pop_front().unwrap();
+                    let lead=2.*delay as f32/120.;
+                    while next<route.len() && walking_control(&view,route[next].1,lead,run).1 {next+=1;}
+                    let control=landing_control(&world,&view,goal,lead,8.)
+                        .map(|(wish,_)|Controls {wish,..Default::default()})
+                        .unwrap_or(Controls {wish:walking_control(&view,
+                            route.get(next).map_or(goal,|s|s.1),lead,run).0,run,..Default::default()});
+                    pending.push_back(control);
+                    player.tick(&world,pending.pop_front().unwrap());
+                    assert!(player.grounded && player.feet.z.abs()<0.1);
+                    views.push_back(player.clone());
+                    if landing_control(&world,&player,goal,lead,8.).is_some_and(|(_,settled)|settled) {
+                        times[mode]=tick; break;
+                    }
+                }
+                assert!(times[mode]>0,"Corridor never settled: run={run} delay={delay}, feet={:?}",player.feet);
+            }
+            assert!(times[1]<times[0],"Running did not improve traversal: delay={delay} ticks={times:?}");
         }
     }
     #[test]
@@ -1536,6 +1610,8 @@ mod tests {
         assert!(serde_json::from_value::<Command>(jumping.clone()).unwrap().validate().is_ok());
         jumping["navigate"]=true.into();
         assert!(serde_json::from_value::<Command>(jumping).unwrap().validate().is_err());
+        let mut running=base.clone(); running["run"]=true.into(); running["navigate"]=true.into();
+        assert!(serde_json::from_value::<Command>(running).unwrap().validate().is_ok());
         for invalid in [serde_json::json!({"action":"climb","rise":2}),
             serde_json::json!({"action":"climb","rise":0,"wish":[2,0]}),
             serde_json::json!({"action":"release","goal":[1e9,0]})] {

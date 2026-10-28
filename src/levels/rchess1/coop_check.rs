@@ -244,10 +244,51 @@ fn scene(a:&mut Assets,map:&Bsp,phase:Phase,first:PlayerId,skip:bool,dead:bool)-
     println!("PASS Checkmate {label} {first:?} skip{skip} dead{dead}: staged native contact/death ownership, frozen partner, pause/save and handoff");
     Ok(())
 }
+fn route_combat(a:&mut Assets,map:&Bsp)->Result<()> {
+    use crate::coop::{protocol::Input,route_driver::combat_controls};
+    let visit=Visit{epoch:1,map:"rchess1".into(),entry:Some("rchess1_start1".into()),difficulty:Default::default(),combat_preview:false};
+    let mut w=World::from_bsp(map)?;let mut stage=Stage::load(a,map,&mut w,&visit,false)?;
+    w=floor(false);
+    let mut roster=Roster::new(&w,vec3(-200.,0.,48.),0.,Stats::for_level("rchess1",None))?;
+    for kind in [None,Some(crate::chess::Kind::Pawn),Some(crate::chess::Kind::Knight),
+        Some(crate::chess::Kind::Bishop),Some(crate::chess::Kind::Rook)] {
+        let mut r=fixture(a,map)?;
+        let id=if let Some(kind)=kind {
+            let (id,p)=r.saved.pieces.iter_mut().find(|(_,p)|p.kind==kind).context("Missing chess family")?;
+            *p=crate::chess::Piece::new(kind,Vec3::Z*0.1,0.,p.scale,BASE+100+*id);
+            BASE+100+*id
+        } else {
+            r.saved.phase=Phase::Fight;
+            r.saved.boss=battle::Boss::new(Transform{translation:Vec3::Z*0.1,rotation:Quat::IDENTITY});BASE
+        };
+        *ctl(&mut stage)=r;
+        for local in PlayerId::ALL {
+            // Component placements: the same combat controller used by each
+            // real client must aim ordinary Cards input at the native enemy.
+            let body=&mut roster.players[local.index()];body.player=Player::new(vec3(-200.,0.,0.1));
+            let mut keys=Input::default();
+            combat_controls(&w,&stage.interactions,vec![],body,true,|_|false,&mut keys);
+            ensure!(keys.weapon==Some(1) && keys.primary && !keys.alternate,
+                "Route driver ignored native {kind:?} for {local:?}");
+            let aim=vec3(keys.yaw.cos()*keys.pitch.cos(),keys.yaw.sin()*keys.pitch.cos(),keys.pitch.sin());
+            let targets=stage.interactions.levels_targets();
+            let context=crate::combat::Context{world:&w,targets:&targets};let eye=body.player.eye();
+            ensure!(crate::combat::contact(&context,eye,eye+aim*1000.,1.).is_some_and(|(hit,_)|hit==id),
+                "Route driver aimed away from native {kind:?}");
+            let blocked=floor(true);body.player=Player::new(vec3(200.,0.,0.1));
+            let mut hidden=Input::default();
+            combat_controls(&blocked,&stage.interactions,vec![],body,true,|_|false,&mut hidden);
+            ensure!(hidden.weapon.is_none() && !hidden.primary && !hidden.alternate,
+                "Route driver shot through the occluding wall");
+            println!("PASS Checkmate route driver {kind:?} {local:?}: ordinary Cards aim and wall occlusion");
+        }
+    }Ok(())
+}
 pub(super) fn check(a:&mut Assets)->Result<()> {
     let map=Bsp::parse(&a.read("maps/rchess1.bsp")?)?;let mut failures=Vec::new();
     for (label,result) in [("selection",selection(a,&map)),("attacks",attacks(a,&map)),
-        ("healing/clocks",pickups_and_clocks(a,&map)),("saves/victory",saves_and_victory(a,&map))] {
+        ("healing/clocks",pickups_and_clocks(a,&map)),("saves/victory",saves_and_victory(a,&map)),
+        ("route combat",route_combat(a,&map))] {
         if let Err(e)=result {failures.push(format!("{label}: {e:#}"));}
     }
     for phase in [Phase::Beheading,Phase::Intro,Phase::Killed] {for first in PlayerId::ALL {for skip in [false,true] {for dead in [false,true] {

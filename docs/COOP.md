@@ -37,6 +37,15 @@ healing, shared clocks and all three original scenes with either owner. Both
 single-player logs remain identical to baseline. These earn bounded combat and
 progression credit; full two-client traversal and recovery remain open.
 
+The first independent Checkmate replay exposed a test-controller omission: its
+attack logic did not include enemies owned by native campaign controllers. Blue
+waited at the second waypoint beside an undamaged pawn and died. The failed run
+is retained. Native target selection is now included in the test driver. Frozen
+source `fe1505f` passes all 94 Checkmate native checks, including ten ordinary
+attack/occlusion cases, all 847 active units, unchanged single-player logs and
+the shared-world/entrance checks. A fresh full internet replay remains pending;
+this test-controller repair adds no completion credit.
+
 Real combat recovery passes for either player: both clients agree on the
 1,200-tick spectator delay, nearby 25-health revival and retained personal items.
 The unchanged team-wipe encounter also passes separation and shared restoration

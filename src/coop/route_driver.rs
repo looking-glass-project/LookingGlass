@@ -434,6 +434,33 @@ fn attack_target<'a>(world: &World, targets: &'a [crate::combat::Target], eye: V
         .min_by(|(a,_),(b,_)| a.center.distance_squared(eye).total_cmp(&b.center.distance_squared(eye)))
 }
 
+/// Shared by the diagnostic driver and native data checks; only emits ordinary
+/// weapon controls. The checks need no renderer or authoritative state writes.
+pub(crate) fn combat_controls(world:&World,interactions:&crate::interaction::Interactions,
+    mut targets:Vec<crate::combat::Target>,body:&super::world::Body,prefer_cards:bool,
+    idle_guard:impl Fn(usize)->bool,keys:&mut Input) {
+    if body.stats.copies(0)==0 {return;}
+    if let Some(cast)=&interactions.encounters {targets.extend(cast.targets());}
+    if let Some(school)=&interactions.school2 {targets.extend(school.targets());}
+    // Native campaign controllers own chess pieces and bosses. Leaving them
+    // out makes an attack-enabled replay stand idle beside an attacking pawn.
+    targets.extend(interactions.levels_targets());
+    targets.extend(interactions.shot_targets());
+    // Retain non-hostile/idle bodies for occlusion, but do not attack them.
+    if let Some((_,point))=attack_target(world,&targets,body.player.eye(),|id|
+        crate::level::hit_owner(&interactions.levels,id)
+            .is_none_or(|slot|interactions.levels[slot].ctl.hostile_target(id))
+        && (!prefer_cards || !idle_guard(id))) {
+        let delta=point-body.player.eye();
+        let cards=prefer_cards && body.stats.copies(1)>0 && body.stats.will()>=crate::route::fight::CARD_COST;
+        keys.weapon=Some(if cards {1} else {0});
+        keys.primary=cards || delta.length()<80.;keys.alternate=!keys.primary;
+        let aim=if keys.alternate {crate::route::fight::lead(body.player.eye(),point,Vec3::ZERO)}
+            else {delta.normalize_or_zero()};
+        keys.yaw=aim.y.atan2(aim.x);keys.pitch=aim.z.asin().clamp(-1.56,1.56);
+    }
+}
+
 pub struct Driver {
     path: PathBuf,
     command: Option<Command>,
@@ -825,26 +852,9 @@ impl Driver {
             if keys.wish.length() > 0. { keys.yaw = keys.wish.y.atan2(keys.wish.x); keys.pitch = 0.; }
             return;
         }
-        if command.attack && body.stats.copies(0) > 0 {
-            let mut targets = arena.npcs.targets();
-            if let Some(cast) = &arena.stage.interactions.encounters { targets.extend(cast.targets()); }
-            if let Some(school) = &arena.stage.interactions.school2 { targets.extend(school.targets()); }
-            targets.extend(arena.stage.interactions.shot_targets());
-            // Match the native route's active-fight policy. A distant idle
-            // guard may be visible beyond its engagement range; do not waste
-            // Will on it before approaching. Keep every body in hit testing.
-            if let Some((_,point)) = attack_target(world,&targets,body.player.eye(),|id|
-                !command.prefer_cards || !self.report.guards.iter().any(|guard|
-                    guard.id == id && guard.state == crate::combat::State::Idle)) {
-                let delta = point-body.player.eye();
-                let cards = command.prefer_cards && body.stats.copies(1) > 0
-                    && body.stats.will() >= crate::route::fight::CARD_COST;
-                keys.weapon = Some(if cards { 1 } else { 0 });
-                keys.primary = cards || delta.length()<80.; keys.alternate = !keys.primary;
-                let aim=if keys.alternate {crate::route::fight::lead(body.player.eye(),point,Vec3::ZERO)}
-                    else {delta.normalize_or_zero()};
-                keys.yaw=aim.y.atan2(aim.x); keys.pitch=aim.z.asin().clamp(-1.56,1.56);
-            }
+        if command.attack {
+            combat_controls(world,&arena.stage.interactions,arena.npcs.targets(),body,command.prefer_cards,
+                |id|self.report.guards.iter().any(|g|g.id==id && g.state==crate::combat::State::Idle),keys);
         }
         if let Some(index) = command.beyond_step {
             let Some(beyond) = &arena.stage.interactions.beyond else {

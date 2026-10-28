@@ -134,3 +134,22 @@ recovery/rejoin and complete rendered-effects gates. They add 0.25 combat and
 0.25 progression points to the weighted estimate, with no completed campaign row.
 Evidence remains local under `private/coop-rchess1-build.json` and
 `private/coop-rchess1-native59.log`. No screenshots were needed for these checks.
+
+## Independent-client automation follow-up
+
+The first public-internet attempt passed its first approach waypoint, then Blue
+died beside a pawn while waiting for Red. The pawn remained at 75 health: the
+generic test driver omitted targets owned by native campaign controllers. Its
+attack controls now include those targets and retain non-hostile bodies for
+occlusion without selecting them for attack. Gameplay damage and resources are
+unchanged. The retained failure is not a full-route pass.
+
+Frozen source `fe1505f81cabc4ad87fe2f5069e80e4114363e4796dfa78fef991f4065e7cf72`
+passes 94 native records. Ten added checks exercise the same combat-control
+function used by the independent clients against the original King and four
+chess families, from each player slot. They require normal Cards aim/contact
+and no firing through an intervening wall. All 847 active units, the release
+build, both unchanged single-player logs, 82 shared-world checks and 43
+campaign entrance/recovery checks pass. One existing unit remains ignored.
+These diagnostics add no campaign completion credit. A fresh full two-client
+replay is pending. Evidence: `private/coop-rchess1-native62.log`.

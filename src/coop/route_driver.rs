@@ -174,14 +174,15 @@ impl Runup {
 #[serde(tag="action", rename_all="snake_case", deny_unknown_fields)]
 enum RopeCommand {
     Approach { goal: Vec2 },
-    Climb { rise: f32 },
-    Release { goal: Vec2 },
+    Climb { rise: f32, #[serde(default)] wish: Vec2 },
+    Release { goal: Vec2, #[serde(default)] jump: bool },
 }
 impl RopeCommand {
     fn validate(&self) -> Result<()> {
         match self {
-            Self::Approach { goal } | Self::Release { goal } => ensure!(goal.is_finite() && goal.abs().max_element() < 1_000_000., "Invalid rope goal"),
-            Self::Climb { rise } => ensure!(rise.is_finite() && rise.abs() <= 1., "Invalid rope climb input"),
+            Self::Approach { goal } | Self::Release { goal, .. } => ensure!(goal.is_finite() && goal.abs().max_element() < 1_000_000., "Invalid rope goal"),
+            Self::Climb { rise, wish } => ensure!(rise.is_finite() && rise.abs() <= 1.
+                && wish.is_finite() && wish.length_squared() <= 1.001, "Invalid rope climb input"),
         }
         Ok(())
     }
@@ -196,11 +197,14 @@ impl RopeCommand {
                 if !*used && player.rope_prompt(world).is_some() { keys.uses += 1; *used = true; }
                 ("approaching rope", false)
             }
-            Self::Climb { rise } => {
-                keys.rise = *rise;
+            Self::Climb { rise, wish } => {
+                keys.rise = *rise; keys.wish = *wish;
                 ("climbing rope", player.rope.is_some())
             }
-            Self::Release { goal } => {
+            Self::Release { goal, jump } => {
+                // Space + E is the native jump-off gesture. Keep its held rise
+                // while a delayed grip is visible, but emit only one use edge.
+                if *jump && player.rope.is_some() { keys.rise = 1.; }
                 if player.rope.is_some() && !*used { keys.uses += 1; *used = true; }
                 if player.rope.is_none() && player.grounded { return ("landed from rope", true); }
                 // Steer away during the drop, otherwise the automatic nearby
@@ -1419,16 +1423,56 @@ mod tests {
         Driver::neutral(&mut keys);
         assert!(approach.sample(&player,&world,&mut keys,&mut jumped,&mut used).1);
         assert_eq!(keys.wish,Vec2::ZERO);
-        let release = RopeCommand::Release { goal:Vec2::X*300. }; used=false;
+        let release = RopeCommand::Release { goal:Vec2::X*300., jump:true }; used=false;
         for _ in 0..30 { Driver::neutral(&mut keys); release.sample(&player,&world,&mut keys,&mut jumped,&mut used); }
         assert_eq!(keys.uses,2);
+        assert_eq!(keys.rise,1.);
         player.rope=None; player.grounded=false;
         Driver::neutral(&mut keys);
         assert!(!release.sample(&player,&world,&mut keys,&mut jumped,&mut used).1);
         assert!(keys.run && keys.wish.x>0.);
+        assert_eq!(keys.rise,0.);
         player.grounded=true; Driver::neutral(&mut keys);
         assert!(release.sample(&player,&world,&mut keys,&mut jumped,&mut used).1);
         assert_eq!(keys.wish,Vec2::ZERO);
+    }
+    #[test]
+    fn rope_jump_off_reaches_a_higher_landing_using_native_controls() {
+        let mut world=World::fixture(&[
+            (vec3(-1000.,-1000.,-192.),vec3(1000.,1000.,-128.)),
+            (vec3(80.,-100.,-128.),vec3(400.,100.,64.))]);
+        // Begin directly below the strand, as in the captured Checkmate run.
+        // Establish outward momentum with ordinary swing input before letting
+        // go. Jump-off must clear the upper landing; an ordinary drop cannot.
+        let anchor=Vec3::Z*322.;
+        world.traversal.ropes.push(crate::traversal::Rope{id:crate::entity::Id(1),model:1,enabled:true,
+            origin:Vec3::ZERO,anchor,length:400.});
+        for jump in [false,true] {
+            let json=if jump {serde_json::json!({"action":"release","goal":[200,0],"jump":true})}
+                else {serde_json::json!({"action":"release","goal":[200,0]})};
+            let release: RopeCommand=serde_json::from_value(json).unwrap();release.validate().unwrap();
+            let mut player=Player::new(Vec3::ZERO);
+            player.rope=Some(crate::movement::RopeGrip{id:crate::entity::Id(1),length:(anchor-Vec3::Z*40.).length(),rise:1.});
+            let (mut jumped,mut used)=(false,false);let mut keys=Input::default();let mut landed=false;
+            let swing: RopeCommand=serde_json::from_value(serde_json::json!({
+                "action":"climb","rise":0,"wish":[1,0]})).unwrap();swing.validate().unwrap();
+            for _ in 0..120 {
+                Driver::neutral(&mut keys);swing.sample(&player,&world,&mut keys,&mut jumped,&mut used);
+                player.tick(&world,Controls{wish:keys.wish,rise:keys.rise,..Default::default()});
+                if player.feet.x>12. {break;}
+            }
+            assert!(player.rope.is_some() && player.feet.x>12. && player.velocity.x>0.);
+            for _ in 0..240 {
+                let old_uses=keys.uses;Driver::neutral(&mut keys);
+                release.sample(&player,&world,&mut keys,&mut jumped,&mut used);
+                player.tick(&world,Controls{wish:keys.wish,run:keys.run,rise:keys.rise,
+                    use_pressed:keys.uses!=old_uses,..Default::default()});
+                assert!(world.body_clear(player.feet));
+                landed|=player.grounded && player.feet.z>=64. && player.feet.x>80.;
+            }
+            assert_eq!(keys.uses,1,"Repeated release edge");
+            assert_eq!(landed,jump,"Jump-off {jump}: final feet {:?}",player.feet);
+        }
     }
     #[test]
     fn legacy_route_commands_remain_valid_and_rope_inputs_are_bounded() {
@@ -1468,7 +1512,9 @@ mod tests {
         assert!(serde_json::from_value::<Command>(jumping.clone()).unwrap().validate().is_ok());
         jumping["navigate"]=true.into();
         assert!(serde_json::from_value::<Command>(jumping).unwrap().validate().is_err());
-        for invalid in [serde_json::json!({"action":"climb","rise":2}),serde_json::json!({"action":"release","goal":[1e9,0]})] {
+        for invalid in [serde_json::json!({"action":"climb","rise":2}),
+            serde_json::json!({"action":"climb","rise":0,"wish":[2,0]}),
+            serde_json::json!({"action":"release","goal":[1e9,0]})] {
             let mut input=base.clone(); input["rope"]=invalid;
             assert!(serde_json::from_value::<Command>(input).unwrap().validate().is_err());
         }

@@ -18,6 +18,15 @@ historical; the current weighted estimate is **47.3% (about 47%)**. Six of 39
 campaign visits have combined evidence, with earlier contact-system repeats
 still required. Repeated component tests do not increase this total.
 
+Latest Checkmate checkpoint: two independent local clients now pass the rope
+climb, upper landing and onward waypoint (steps 7-10), at 92/100 health with
+243 matching player/world/native states. This uses an unchanged normal save
+from the earlier internet water approach and keeps body separation checks.
+The 848 active unit tests and native checks pass. Two internet retries failed
+before gameplay during invite hostname resolution; full Checkmate traversal,
+internet replay and recovery remain open. See [Checkmate evidence](RCHESS1.md).
+The total stays at 47.3%; a local segment is not a completed campaign visit.
+
 Castling's earlier Blue-led and Red-led public internet runs pass all 203 legs.
 After the sloped-wall collision fix, Blue passes the full route again with 8,793
 matching player/world/native states and a 75/100-health Checkmate arrival. The

@@ -153,3 +153,56 @@ build, both unchanged single-player logs, 82 shared-world checks and 43
 campaign entrance/recovery checks pass. One existing unit remains ignored.
 These diagnostics add no campaign completion credit. A fresh full two-client
 replay is pending. Evidence: `private/coop-rchess1-native62.log`.
+
+## Replaying the two-client approach
+
+`tools/test_coop_checkmate.py` drives two independent profiles through normal
+Host/Join invites, with public internet transport by default and 40 ms delay /
+20 ms jitter. It retains commands, exact build identity, executable and fixture
+hashes, normal checkpoints and state comparisons without opening screenshots.
+A failed run cannot emit a full-route pass.
+
+The optional `--checkpoint PATH --start-step 7 --last-step 10 --save-before 10`
+mode restores the unchanged pre-rope checkpoint and verifies the native exact
+resume receipt before replaying that segment. Segment results explicitly say
+`full_route: false`; fresh entrance-to-Funhouse traversal remains a separate
+requirement. Without checkpoint/segment options, the runner attempts all 45
+approach steps, the original scenes, King fight and Funhouse arrival.
+
+Rope controls use independent per-player phases. The follower swims to the base
+before grabbing; the leader completes its own climb, jump-off and landing
+without waiting underwater for the follower. The diagnostic input format accepts
+an optional bounded `wish` vector while climbing and an optional `jump` on
+release. Both default to the previous behavior. The game still handles the
+actual pendulum, jump, collision, damage and resource consumption.
+
+## Verified rope segment and remaining limits
+
+Frozen source `e7dc397035d7605e7ea953c78902c2c13b4786153bb1f242a6e2247bd9ce67c9`
+passes 848 active unit tests (one existing ignored), the release build, all 94
+Checkmate native records, 82 shared-world and 43 campaign entrance/recovery
+checks. Both complete single-player logs remain identical to baseline. The new
+rope regression uses real movement physics: swing from a vertical strand,
+then require a jump-off to reach an elevated platform where a plain drop fails.
+
+The two-client Blue-led local replay now passes steps 7 through 10 with 40 ms
+delay and 20 ms jitter. It restores the unchanged checkpoint from the earlier
+public-internet water approach, checks the native exact resume receipt, and
+uses ordinary swim, grip, climb, jump, ledge pull-up and movement inputs. Both
+players land with 92/100 health, remain clear of solid geometry and each other,
+and reach the onward waypoint. All three replicated state hashes match at
+243 sampled ticks. A normal checkpoint is saved before step 10. The result is
+explicitly `full_route: false` and `internet: false`.
+
+Earlier attempts are retained as failures: an enemy hit interrupted a pull-up,
+a follower re-grab needed another deliberate release, and waiting positions
+blocked the onward goal or met the original map geometry. The final runner
+parks players along the platform centre with enough clearance. No collision,
+health, enemy strength or progression checks were relaxed.
+
+Two public-internet rope replays failed during invite hostname resolution,
+before gameplay. They do not establish a traversal failure or an internet pass.
+Internet retry/reliability, the full fresh route in both arrival orders, recovery
+and rendered-effects coverage remain open. This segment adds no campaign-row
+or percentage credit. Local evidence: `private/coop-rchess1-native65.log` and
+`private/coop/checkmate-route-4be55339a1224afc92509f1925227e52/result.json`.

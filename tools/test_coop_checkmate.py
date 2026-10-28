@@ -16,6 +16,8 @@ from test_coop_village import Pair
 from test_coop_chess import ChessPair
 from test_coop_castling import verify_presence
 from test_coop_chess_resume import verify_resume_body, verify_resume_receipt
+from coop_recovery import read_trace, verify_views, verify_northern_coverage
+from coop_recovery import verify_presence as verify_recovery_presence
 
 
 HEALING = [(3968, 3392, 0), (3968, 2624, 0), (4352, 3008, 0)]
@@ -23,13 +25,13 @@ CORNERS = [(3940, 2630, 0), (4470, 2630, 0), (4470, 3370, 0), (3940, 3370, 0)]
 SCENES = {'cinema_beheading_thread', 'cinema_king_battle_thread', 'cinema_king_killed_thread'}
 
 
-def verify_beheading(rows, first, role):
+def verify_beheading(rows, first, role, presence=verify_presence):
     scene = [r for r in rows if r['scene'] == 'cinema_beheading_thread']
     assert scene, 'Original beheading scene was not observed'
     assert {r['owner'] for r in scene} == {first.title()}, 'Wrong beheading owner'
     partner = 1 if first == 'blue' else 0
     assert all(not r['presentation']['visible_players'][partner] for r in scene), 'Scene displayed the waiting partner'
-    verify_presence(rows, role)
+    presence(rows, role)
     final = rows[-1]
     assert final['owner'] is None and final['checkmate']['beheaded'], 'Beheading did not finish'
     # The follow camera can legitimately hide its own body against a wall.
@@ -56,6 +58,9 @@ class CheckmatePair(Pair):
     evidence_prefix, capture_scenes = 'checkmate-route-', False
 
     def __init__(self, args):
+        self.allow_revival = getattr(args, 'allow_revival', False)
+        if self.allow_revival:
+            self.evidence_prefix = 'checkmate-recovery-route-'
         self.minimum_lead = min(1.5, .05 + 2 * (args.delay_ms + args.jitter_ms) / 1000)
         self.lead = self.minimum_lead
         self.last_valid, self.completed = {}, []
@@ -75,7 +80,7 @@ class CheckmatePair(Pair):
         dependencies.mkdir()
         self.evidence['fixture_dependencies'] = {}
         for name in ('test_coop_play.py', 'test_coop_village.py', 'test_coop_chess.py',
-                     'test_coop_castling.py', 'test_coop_chess_resume.py', 'coop_diagnostics.py'):
+                     'test_coop_castling.py', 'test_coop_chess_resume.py', 'coop_diagnostics.py', 'coop_recovery.py'):
             raw = (Path(__file__).parent / name).read_bytes()
             (dependencies / name).write_bytes(raw)
             self.evidence['fixture_dependencies'][name] = hashlib.sha256(raw).hexdigest()
@@ -103,6 +108,8 @@ class CheckmatePair(Pair):
         self.commands[role].update(swim=swim and swimming, prefer_cards=True, watch_dialogue=True,
             skip_scene=self.args.skip_scenes, input_lead=self.lead if role == 'guest' else 0,
             arrival_radius=8)
+        if self.allow_revival:
+            self.commands[role]['recovery_trace'] = role == 'host'
 
     def body(self, role):
         return self.reports[role]['frame']['players'][0 if role == 'host' else 1]
@@ -119,10 +126,15 @@ class CheckmatePair(Pair):
 
     def validate_report(self, role, report):
         try:
-            super().validate_report(role, report)
+            if self.allow_revival:
+                assert report['frame']['checkpoint_generation'] == 0, 'Unexpected team wipe; separate checkpoint verification required'
+                assert report['route_driver'].get('recovery_trace_error') is None, 'Host recovery trace failed: ' + str(report['route_driver'].get('recovery_trace_error'))
+            else:
+                super().validate_report(role, report)
             bodies = report['frame']['players']
-            assert all(p['spawned_at'] == 0 and not p['stats']['god'] and not p['stats']['notarget'] for p in bodies), 'Respawn or cheats'
-            if report['combat']['stage']['owner'] is None:
+            assert all(not p['stats']['god'] and not p['stats']['notarget'] for p in bodies), 'Route used cheats'
+            assert self.allow_revival or all(p['spawned_at'] == 0 for p in bodies), 'Strict route respawned a player'
+            if report['combat']['stage']['owner'] is None and all(p['stats']['sanity'] > 0 for p in bodies):
                 a, b = [p['player']['feet'] for p in bodies]
                 assert distance(a[:2], b[:2]) >= 35.95 or abs(a[2]-b[2]) >= 55.95, 'Players overlap'
                 if report['visit']['map'] == self.map_name and report['route_driver']['scene'] is None:
@@ -140,6 +152,15 @@ class CheckmatePair(Pair):
         if report['visit']['map'] == self.map_name:
             self.last_valid[role] = report
 
+    def validate_clear(self, role, report):
+        if not self.allow_revival:
+            return super().validate_clear(role, report)
+        assert all(clear for clear, body in zip(report['route_driver']['clear'], report['frame']['players'])
+                   if body['stats']['sanity'] > 0), f'{role}: obstructed living body'
+
+    def verify_presence(self, rows, role):
+        (verify_recovery_presence if self.allow_revival else verify_presence)(rows, role)
+
     def pump(self):
         if (self.folder / 'stop-test').exists():
             raise RuntimeError('Checkmate stopped; evidence retained')
@@ -149,6 +170,7 @@ class CheckmatePair(Pair):
                 # an already swimming body and never changes its movement mode.
                 self.commands[role]['swim'] = self.body(role)['player']['swimming']
         super().pump()
+        self.clear_dead_northern_commands()
         guest = self.reports.get('guest')
         if guest:
             rtt = (guest.get('network_timing') or {}).get('round_trip_ms')
@@ -159,6 +181,19 @@ class CheckmatePair(Pair):
             row = self.history[role][-1]
             row['checkmate'] = self.state(role)
             row['presentation'] = report.get('presentation')
+
+    def clear_dead_northern_commands(self):
+        # Deliver neutral input during the countdown. A revived body may be
+        # beside its partner on another floor, where its old goal is unreachable.
+        # northern_course assigns the next goal after verifying the spawn stamp.
+        if not self.allow_revival or not 33 <= self.step <= 44:
+            return
+        for role in self.reports:
+            command = self.commands[role]
+            if self.body(role)['stats']['sanity'] <= 0 and (
+                    command.get('goal') is not None or command.get('navigate')
+                    or command.get('rope') is not None or command.get('attack')):
+                self.set(role, attack=False)
 
     def until(self, predicate, seconds=120):
         end = time.monotonic() + seconds
@@ -316,6 +351,8 @@ class CheckmatePair(Pair):
         self.retain('northern-regrouped')
         progress = dict.fromkeys(self.commands, 33)
         events = self.evidence.setdefault('northern_steps', {r: [] for r in self.commands})
+        skips = self.evidence.setdefault('revival_skips', [])
+        spawned = {r: self.body(r)['spawned_at'] for r in self.commands}
         parked = None
 
         def command(role):
@@ -332,6 +369,27 @@ class CheckmatePair(Pair):
             assert not self.arrived() and not self.busy(), 'Northern course was interrupted by a scene'
             for role in (self.first, self.partner):
                 index = progress[role]
+                personal = self.body(role)
+                if personal['stats']['sanity'] <= 0:
+                    continue
+                if personal['spawned_at'] != spawned[role]:
+                    assert self.allow_revival, 'Strict northern route revived a player'
+                    spawned[role] = personal['spawned_at']
+                    other = self.partner if role == self.first else self.first
+                    if progress[other] > index:
+                        skipped = list(range(index, progress[other]))
+                        assert set(skipped) <= {e['step'] for e in events[other]}, 'Revival would skip untraversed team ground'
+                        skips.append(dict(role=role, epoch=self.reports[role]['frame']['epoch'],
+                                          spawn_tick=spawned[role], steps=skipped))
+                        progress[role] = progress[other]
+                        index = progress[role]
+                        print('RECOVERY northern waypoints carried by survivor', role, skipped, flush=True)
+                    if index <= 44:
+                        command(role)
+                    elif parked == role:
+                        self.set(role, [3376, 2944, 0], navigate=True, run=True)
+                    else:
+                        self.set(role, attack=True)
                 if index > 44:
                     continue
                 body = self.body(role)['player']
@@ -362,11 +420,12 @@ class CheckmatePair(Pair):
                 else:
                     self.set(role, attack=True)
             self.step = min(min(progress.values()), 44)
-            return all(i == 45 for i in progress.values()) and self.reached(parked)
+            return all(i == 45 for i in progress.values()) and self.reached(parked) \
+                and all(self.body(r)['stats']['sanity'] > 0 for r in self.commands)
 
         self.until(advance, 240)
+        verify_northern_coverage(events, skips)
         for role in self.commands:
-            assert [e['step'] for e in events[role]] == list(range(33, 45)), 'Incomplete personal northern route'
             self.set(role, attack=True)
         self.completed.extend(range(33, 45))
         self.retain('northern-finished')
@@ -429,7 +488,7 @@ class CheckmatePair(Pair):
                 expected_scenes.remove('cinema_beheading_thread')
         for role, rows in self.history.items():
             route = [r for r in rows if r['map'] == self.map_name and r['epoch'] == 1]
-            verify_presence(route, role)
+            self.verify_presence(route, role)
             owners = {}
             for row in route:
                 if row['scene'] and row['owner']:
@@ -485,7 +544,7 @@ class CheckmatePair(Pair):
             else:
                 raise AssertionError('Unknown Checkmate route input')
             if index == 26 and self.args.start_step < 26:
-                self.evidence['beheading'] = {role: verify_beheading(rows, self.args.first, role)
+                self.evidence['beheading'] = {role: verify_beheading(rows, self.args.first, role, self.verify_presence)
                                              for role, rows in self.history.items()}
             self.completed.append(index)
             print('PASS Checkmate approach', index, 'health', [self.body(r)['stats']['sanity'] for r in self.commands], flush=True)
@@ -499,7 +558,7 @@ class CheckmatePair(Pair):
         else:
             assert self.completed == list(range(self.args.start_step, self.args.last_step+1))
             for role, rows in self.history.items():
-                verify_presence(rows, role)
+                self.verify_presence(rows, role)
                 if 7 in self.completed:
                     assert all(any(row['players'][i]['rope'] is not None for row in rows) for i in (0, 1))
             for field, metric in [('sha256', 'matching_player_states'), ('world_sha256', 'matching_world_states'),
@@ -510,7 +569,16 @@ class CheckmatePair(Pair):
             self.until(lambda: self.processes[role].poll() is not None, 30)
             assert self.processes[role].returncode == 0
         self.evidence['completed_steps'] = self.completed
+        if self.allow_revival:
+            recovery = read_trace(self.folder / 'host' / 'recovery-trace.jsonl', self.build, self.args.require_revival)
+            recovery['rendered_revivals'] = verify_views(recovery['revivals'], self.history)
+            for skip in self.evidence.get('revival_skips', []):
+                player = 0 if skip['role'] == 'host' else 1
+                assert any(e['player'] == player and e['epoch'] == skip['epoch'] and e['spawn_tick'] == skip['spawn_tick']
+                           for e in recovery['revivals']), 'Waypoint skip has no verified native revival'
+            self.evidence['recovery'] = recovery
         (self.folder / 'result.json').write_text(json.dumps(dict(passed=True, full_route=full_route,
+            mode='verified-individual-revival' if self.allow_revival else 'strict-no-death',
             through_exit=through_exit,
             internet=not self.args.local, build=self.build, first=self.args.first,
             delay_ms=self.args.delay_ms, jitter_ms=self.args.jitter_ms, evidence=self.evidence), indent=2))
@@ -532,6 +600,8 @@ if __name__ == '__main__':
     parser.add_argument('--first', choices=('blue', 'red'), default='blue')
     parser.add_argument('--local', action='store_true')
     parser.add_argument('--skip-scenes', action='store_true')
+    parser.add_argument('--allow-revival', action='store_true', help='Verify ordinary individual revivals during the route; team wipes remain a separate gate')
+    parser.add_argument('--require-revival', action='store_true', help='Require an actual death, survivor camera and exact ten-second/25-health revival')
     parser.add_argument('--checkpoint', type=Path)
     parser.add_argument('--start-step', type=int, default=0)
     parser.add_argument('--last-step', type=int, default=44)
@@ -540,6 +610,8 @@ if __name__ == '__main__':
     parser.add_argument('--delay-ms', type=int, default=40)
     parser.add_argument('--jitter-ms', type=int, default=20)
     args = parser.parse_args()
+    if args.require_revival and not args.allow_revival:
+        parser.error('--require-revival requires --allow-revival')
     if not (0 <= args.delay_ms <= 500 and 0 <= args.jitter_ms <= 500):
         parser.error('Delay/jitter must be between 0 and 500 ms')
     if not (0 <= args.start_step <= args.last_step < 45) or args.start_step in (8, 9):

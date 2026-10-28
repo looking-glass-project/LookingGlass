@@ -486,7 +486,15 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                             anyhow::ensure!(checkpoint_store.save(&visit, roster, &mut arena, &scene.world, &campaign).is_err(),
                                 "A dead team replaced its checkpoint");
                         }
+                        let was_cinematic=arena.stage.busy();
+                        if let Some(driver)=&mut route_driver {
+                            driver.record_recovery(roster,&arena,&scene.world,visit.epoch,&visit.map,was_cinematic);
+                        }
                         arena.step(roster, &scene.map, &mut scene.world, [local_latch.sample(now), host.controls(now)])?;
+                        if let Some(driver)=&mut route_driver {
+                            driver.record_recovery(roster,&arena,&scene.world,visit.epoch,&visit.map,
+                                was_cinematic || arena.stage.busy());
+                        }
                         if check_wipe {
                             let saved = resumed.as_ref().unwrap();
                             super::checkpoint::verify_restored(&saved.checkpoint, roster, &arena)?;

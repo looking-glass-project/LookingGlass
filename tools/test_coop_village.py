@@ -126,7 +126,7 @@ class Pair:
             assert self.build == report['build'], 'Client build identities differ'
             self.validate_report(role, report)
             if stage['owner'] is None:
-                assert all(driver['clear']), f'{role}: obstructed body'
+                self.validate_clear(role, report)
             row = {'tick': frame['tick'], 'epoch': frame['epoch'], 'map': report['visit']['map'],
                    'network_timing': report.get('network_timing'), 'frame_timing': report.get('frame_timing'),
                    'checkpoint_generation': frame['checkpoint_generation'], 'lives': frame['lives'],
@@ -171,6 +171,9 @@ class Pair:
     def validate_report(self, role, report):
         assert all(b['stats']['sanity'] > 0 for b in report['frame']['players']), f'{role}: player died'
         assert report['frame']['checkpoint_generation'] == 0, 'Unexpected team wipe during clean traversal'
+
+    def validate_clear(self, role, report):
+        assert all(report['route_driver']['clear']), f'{role}: obstructed body'
 
     def until(self, predicate, seconds=240):
         end = time.monotonic() + seconds

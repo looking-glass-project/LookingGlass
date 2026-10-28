@@ -18,6 +18,15 @@ historical; the current weighted estimate is **48.1% (about 48%)**. Six of 39
 campaign visits have combined evidence, with earlier contact-system repeats
 still required. Repeated component tests do not increase this total.
 
+Latest automated recovery milestone: Checkmate's northern checkpoint segment
+(steps 33-44) passes in two independent internet clients with 40 ms delay and
+20 ms jitter. Red dies naturally, spectates Blue for exactly 1,200 ticks, then
+revives safely nearby at 25 health with her carried resources preserved. Camera
+return and player/world/native network state agree. Blue walked every waypoint;
+Red's six remaining waypoints are explicitly carried by revival beside her.
+This resumed segment adds no completed visit or percentage credit. The strict
+zero-death mode remains available. See [recovery test evidence](COOP_RECOVERY_TESTS.md).
+
 Latest Funhouse milestone: source `e1b17cb` passes 37 scene-check records
 covering 32 original cinematic combinations and four personal Jacks pickup /
 ordinary-speech cases. Both actors, watched/skipped playback, living/dead partners,
@@ -41,7 +50,8 @@ This adds 0.25 shared-progression points, taking the estimate from 47.8% to 48.1
 Six campaign visits retain combined evidence; 33 remain open. Funhouse's full
 two-client traversal, recovery and rendered effects remain unverified. Its earlier
 single-player route still fails at step 142; this update does not establish a
-new full-route pass. Checkmate still loses Red near northern waypoint 39.
+new full-route pass. Checkmate now verifies recovery from Red's northern death;
+its complete traversal and King battle remain open.
 Repeated tests alone do not increase the estimate.
 
 Latest Checkmate checkpoint: two independent local clients now pass the rope

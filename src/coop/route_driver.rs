@@ -17,6 +17,9 @@ struct Command {
     heartbeat: u64,
     epoch: u64,
     goal: Option<Vec3>,
+    /// Opt-in host evidence, separate from gameplay state and the network wire.
+    #[serde(default)]
+    recovery_trace: bool,
     #[serde(default)]
     marker: Option<usize>,
     #[serde(default)]
@@ -225,6 +228,7 @@ pub struct Report {
     pub checkpoint: Option<CheckpointReport>,
     pub replans: usize,
     pub error: Option<String>,
+    pub recovery_trace_error: Option<String>,
     pub observed_epoch: u64,
     pub observed_tick: u64,
     pub scene: Option<String>,
@@ -531,6 +535,7 @@ pub(crate) fn combat_controls(world:&World,interactions:&crate::interaction::Int
 
 pub struct Driver {
     path: PathBuf,
+    recovery_trace: Option<super::recovery_trace::Trace>,
     command: Option<Command>,
     modified: Option<SystemTime>,
     polled: Instant,
@@ -559,6 +564,18 @@ pub struct Driver {
     pub report: Report,
 }
 impl Driver {
+    pub fn record_recovery(&mut self, roster:&super::world::Roster, arena:&Arena, world:&World,
+        epoch:u64, map:&str, cinematic:bool) {
+        if !self.command.as_ref().is_some_and(|c|c.recovery_trace) || self.report.recovery_trace_error.is_some() {return;}
+        let result=(||->Result<()> {
+            if self.recovery_trace.is_none() {
+                self.recovery_trace=Some(super::recovery_trace::Trace::new(self.path.with_file_name("recovery-trace.jsonl"))?);
+            }
+            self.recovery_trace.as_mut().unwrap().record(roster,world,epoch,map,cinematic,
+                arena.stage.interactive_actor().is_some(),|at|!arena.stage.interactions.hazardous(at))
+        })();
+        if let Err(error)=result {self.report.recovery_trace_error=Some(error.to_string());}
+    }
     /// Compare actual sent/restored states, independent of the two report clocks.
     /// Only the opt-in local harness keeps this bounded diagnostic history.
     pub fn record_state(&mut self, frame: &Frame, arena: &Arena) -> Result<()> {
@@ -579,7 +596,7 @@ impl Driver {
     }
     pub fn new(path: PathBuf) -> Self {
         let now = Instant::now();
-        Self { path, command: None, modified: None, polled: now, refreshed: now, used: now,
+        Self { path, recovery_trace:None, command: None, modified: None, polled: now, refreshed: now, used: now,
             door_requests: BTreeSet::new(), door_context: None,
             worker: None, plan: VecDeque::new(), walking_plan:false, step_tick: 0, step_at: now,
             walking_progress:WalkingProgress::new(Vec3::ZERO,now),

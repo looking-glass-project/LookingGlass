@@ -321,6 +321,9 @@ pub trait LevelController: Any {
     fn coop_reunion_limits(&self, _player: &Player) -> Option<(f32, f32)> { None }
     /// Shared ride activation waits for every living player on its deck.
     fn coop_boarding_ready(&self, _thread: &str, _feet: &[Vec3]) -> Option<bool> { None }
+    /// A shared transport may itself be a level-change volume. Keep its first
+    /// arrival waiting without consuming the exit until all living riders board.
+    fn coop_exit_boarding_ready(&self, _map: &str, _feet: &[Vec3]) -> Option<bool> { None }
     /// Script-owned lethal volumes also exclude checkpoint/reunion placement.
     fn hazardous(&self, _feet: Vec3) -> bool { false }
     /// The pose of a trigger volume that rides a mover.

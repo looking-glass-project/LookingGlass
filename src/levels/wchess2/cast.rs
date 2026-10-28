@@ -350,9 +350,6 @@ impl Castle {
     }
     pub(super) fn fight_pair(&mut self, dt:f32, world:&World, players:[PlayerTarget;2]) -> Feedback {
         if !dt.is_finite() || dt<=0. || self.scripted() {return Feedback::default();}
-        // Until the paired world adapter owns this clock, scripted approaches
-        // advance once in the shared cast step, never once for each player.
-        self.move_cast(dt.min(0.1));
         self.fight_cast(dt,world,players[0].eye,false,None,Some(players),&|_|false)
     }
     fn fight_cast(&mut self, dt:f32, world:&World, eye:Vec3, notarget:bool,

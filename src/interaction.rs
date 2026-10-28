@@ -2430,6 +2430,7 @@ impl Interactions {
             }
         }
         self.sync_entity_flags();
+        self.level_trigger_poses(map)?;
         Ok(())
     }
 }

@@ -2,6 +2,8 @@
 mod art;
 mod cast;
 mod coop_check;
+mod coop_world;
+mod coop_world_check;
 mod check;
 pub(crate) use check::drive as drive_route;
 mod data;
@@ -182,6 +184,22 @@ impl Castle {
                 .contains(&format!("enemy_group{}{c}_thread", number as char))
         })
     }
+    fn advance_clock(&mut self, dt: f32) {
+        self.saved.age += dt;
+        if let Some(t) = &mut self.saved.queen_release {
+            *t = (*t - dt).max(0.);
+            if *t == 0. {
+                self.saved.queen_release = None;
+                for n in ["r_knight_queen1", "r_knight_queen2"] {
+                    if let Some(a) = self.actor_mut(n) { a.piece.script_wait = false; }
+                }
+                self.spawn("r_rook_attack1_spawn");
+                self.spawn("r_rook_attack2_spawn");
+            }
+        }
+        self.saved.fade = (self.saved.fade - dt).max(0.);
+        self.saved.exit.advance(dt);
+    }
 }
 impl LevelController for Castle {
     fn id(&self) -> &'static str {
@@ -257,6 +275,16 @@ impl LevelController for Castle {
             .flatten()
             .map(|_| "E: open door")
     }
+    fn coop_advance(&mut self, dt: f32, map: &Bsp, w: &mut World,
+        players: &mut [&mut Player], fixed: &[Collider]) -> Result<()> {
+        self.advance_pair(dt, map, w, players, fixed)
+    }
+    fn coop_update(&mut self, _: usize, w: &mut World, p: &Player, aim: Vec3, use_pressed: bool) -> Events {
+        self.update(w, p, aim, use_pressed)
+    }
+    fn coop_exit_boarding_ready(&self, map: &str, feet: &[Vec3]) -> Option<bool> {
+        (map == EXIT.map).then(|| !feet.is_empty() && feet.iter().all(|at| self.portal_boarded(*at)))
+    }
     fn advance(
         &mut self,
         dt: f32,
@@ -271,22 +299,7 @@ impl LevelController for Castle {
         let dt = dt.min(0.1);
         let old = self.portal_pose();
         let support = self.portal_support(p);
-        self.saved.age += dt;
-        if let Some(t) = &mut self.saved.queen_release {
-            *t = (*t - dt).max(0.);
-            if *t == 0. {
-                self.saved.queen_release = None;
-                for n in ["r_knight_queen1", "r_knight_queen2"] {
-                    if let Some(a) = self.actor_mut(n) {
-                        a.piece.script_wait = false;
-                    }
-                }
-                self.spawn("r_rook_attack1_spawn");
-                self.spawn("r_rook_attack2_spawn");
-            }
-        }
-        self.saved.fade = (self.saved.fade - dt).max(0.);
-        self.saved.exit.advance(dt);
+        self.advance_clock(dt);
         self.step_doors(dt, p);
         self.step_scene(dt, map, w, p)?;
         self.move_cast(dt);
@@ -577,6 +590,11 @@ pub static REGISTRATION: Registration = Registration {
         },
     ],
     checks: &[
+        Check {
+            flag: "--wchess2-coop-world-check",
+            help: "Verify Castling paired doors, portal boarding/carry and royal scene handoffs.",
+            run: Run::Headless(coop_world_check::check),
+        },
         Check {
             flag: "--wchess2-coop-cast-check",
             help: "Verify Castling paired enemy targeting, damage, duels and saved attacks.",

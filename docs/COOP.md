@@ -4,7 +4,7 @@ Development branch: `coop`, based on public main `0220970`.
 This is work in progress. A policy test or a connected pair of windows does not
 establish campaign support. Single-player behavior and saves must remain supported.
 
-Current milestone: **46.3% estimated overall; six campaign visits have combined
+Current milestone: **46.8% estimated overall; six campaign visits have combined
 verification evidence, 33 remain open.** Earlier contact-system repeats are still
 required as detailed in the campaign matrix. Pool of Tears has 38 passing native
 component cases plus public two-client opening and bank checkpoint segments.
@@ -13,8 +13,8 @@ personal fish deaths, guards and moving pickups. Full two-client traversal and
 recovery remain open for both visits. Report these smaller milestones alongside
 the total; a successful component or segment is not a completed campaign visit.
 
-Status checked on **27 October 2026**: the older approximately 42% figure is
-historical; the current weighted estimate is **46.3% (about 46%)**. The current
+Status checked on **28 October 2026**: the older approximately 42% figure is
+historical; the current weighted estimate is **46.8% (about 47%)**. The current
 gate is a fresh, uninterrupted Pale Realm traversal in both leader orders.
 Focused combat, swimming, recovery and rejoin passes below are useful progress,
 but do not satisfy that gate. The timed spike corridor and its following four
@@ -42,12 +42,19 @@ to the previous supported footing; both player slots pass 120 ordinary movement
 ticks with separation, support and resources retained. Fresh full repeats remain
 open. The repaired build's fresh Red-led route passes 0–80 without sampled overlap,
 then stalls during the step-81 combat clear with both players alive. Its exact
-normal checkpoint is retained for diagnosis; the Blue-led full repeat is running.
+normal checkpoint is retained for diagnosis. The Blue-led repeat passes 0–125,
+then Blue dies in combat during the step-126 rush. Its 8,388 matching states agree
+with no sampled overlaps; the exact pre-126 checkpoint and damage reports are
+retained. Neither fresh route satisfies the full-level gate.
 See [stair contact repair](WCHESS1.md#retreat-at-a-stair-support-boundary).
-Castling now has 48 passing paired combat component cases, with personal targeting
-and damage, saved attacks and preserved faction duels. Its three single-player
-logs match baseline and all 834 active unit tests pass. Paired world/portal/scenes
-and full internet traversal remain open; see [Castling combat](WCHESS2.md#paired-combat-components).
+Castling now has 48 passing paired combat cases and 45 world/scene cases: personal
+targets and saved attacks, shared doors and safe portal carry, both original royal
+scenes with either owner, and saved first-arrival exit boarding. The moving exit
+volume now follows its visible platform in both paired updates and after restore.
+Its three single-player logs match baseline and all 834 active unit tests pass;
+the broad shared-world, campaign entrance/recovery and Pale Realm component suites
+also pass. Full paired traversal, independent internet clients and recovery remain
+open; see [Castling machinery](WCHESS2.md#paired-machinery-and-royal-scenes).
 See [descent recovery](WCHESS1.md#rejoining-a-recorded-descent).
 The earlier Pale Realm combat stall is resolved by a supported sidestep after repeated
 misses. A public two-client replay passes all 26 approach steps (100–125), then
@@ -483,9 +490,9 @@ movement viewer both wait for helper shutdown before exiting.
 After tightening cancellation and the forged-message regression, all 21 focused
 co-op tests passed again. This final focused run includes the latest source changes.
 
-Overall estimate after completing the village, Pandemonium, both Fortress visits, Beyond and return-school verification rows, plus native-rope recovery, Herbaceous components, the Rolling Stones/Icy Reception/Flora/Sanctum/both Caterpillar's Plot shared-world adapters, Pale Realm cast/world components, replicated weapon sparks/trails and Castling combat components: **about 46.3%**. Credited
+Overall estimate after completing the village, Pandemonium, both Fortress visits, Beyond and return-school verification rows, plus native-rope recovery, Herbaceous components, the Rolling Stones/Icy Reception/Flora/Sanctum/both Caterpillar's Plot shared-world adapters, Pale Realm cast/world components, replicated weapon sparks/trails and Castling combat/world components: **about 46.8%**. Credited
 points are 8/10 for foundation/diagnostics, 7/15 for internet Host/Join,
-9.75/15 for two-player movement/presentation, paired school supports, dry/swimming arrival placement, complete delayed village/Pandemonium traversal in separate clients, rendered independent rope controls, Pale Realm's native paired lift and replicated weapon sparks/trails, and 8.75/20 for native targeting, host-owned
+10/15 for two-player movement/presentation, paired school supports, dry/swimming arrival placement, complete delayed village/Pandemonium traversal in separate clients, rendered independent rope controls, Pale Realm's native paired lift, Castling's portal boarding/carry and replicated weapon sparks/trails, and 8.75/20 for native targeting, host-owned
 weapons/damage, personal resources, timed respawns and full saved-state team wipes.
 The additional 0.5 points credit tested recovery beside a survivor hanging on an
 active native rope: both-role unit coverage plus a captured fall/revival through
@@ -503,12 +510,16 @@ native shields and preserved scripted NPC duels. That remains isolated cast
 coverage; the later world milestone does not add further combat credit. Castling
 adds 0.25 combat points for the same bounded scope: native personal targeting,
 attacks and saved ownership, with preserved faction duels and single-player
-routes. It adds no world, internet or completed-campaign-row credit. Credit also includes
-9.75/20 for shared world replication, ordered contacts, the verified theatre
+routes. That combat slice adds no world, internet or completed-campaign-row credit.
+The separate Castling world milestone adds 0.25 movement points for native portal
+boarding/atomic carry and 0.25 progression points for shared doors, all original
+royal scene combinations and saved moving-exit ownership. It adds no full route,
+independent-client or campaign-row credit. Credit also includes
+10/20 for shared world replication, ordered contacts, the verified theatre
 ownership/reunion slice, school boarding barriers, visit history and restart/backup
 restoration of shared checkpoints, and native traversal of all six village scenes
 and all four Pandemonium scenes with either player arriving first (also verified through public internet clients).
-The latest 0.25 shared-progression points cover Pale Realm's original puzzles,
+The preceding 0.25 shared-progression points cover Pale Realm's original puzzles,
 scenes, levers and shared machinery, alongside its 0.25 movement credit for
 two-rider lift boarding/carry. The preceding 0.5 points cover both Caterpillar's Plot visits' verified shared gates,
 wall/secret progression and original scene handoffs (0.25 per visit). The preceding
@@ -518,8 +529,8 @@ original ambush ownership/reunion, following 0.25 points each for Icy Reception'
 hazards/portal and the Rolling Stones chase adapter. They do not credit a full
 paired route, internet play or a completed campaign row.
 Full-campaign verification now earns 120/39 points (about 3.08/20), for those six
-visits' complete combined evidence. Total credited points are about 46.33, reported
-as 46.3%, up from 46.08 before Castling's paired combat checks. The preceding 0.25
+visits' complete combined evidence. Total credited points are about 46.83, reported
+as 46.8%, up from 46.33 before Castling's paired world checks. The earlier 0.25
 presentation points require both native visible-pixel comparisons and real
 public-client delivery of impact sparks, swing trails and projectile trails.
 They do not cover every other effect or count as a completed visit. Updates include

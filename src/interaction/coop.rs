@@ -130,6 +130,9 @@ impl Interactions {
     }
 
     fn boarding_ready(&self, trigger: usize, feet: &[Vec3]) -> Option<bool> {
+        if let TriggerKind::Exit(map, _) = &self.triggers[trigger].kind {
+            return self.levels.iter().find_map(|s| s.ctl.coop_exit_boarding_ready(map, feet));
+        }
         let TriggerKind::Script(thread) = &self.triggers[trigger].kind else {
             return None;
         };
@@ -171,6 +174,7 @@ impl Interactions {
                     .flat_map(|(_, s)| s.ctl.colliders())).collect::<Vec<_>>();
             self.levels[index].ctl.coop_advance_roster(dt, map, world, players, &fixed)?;
         }
+        self.level_trigger_poses(map)?;
         self.sync_coop(world);
         Ok(())
     }
@@ -249,6 +253,7 @@ impl Interactions {
                     .flat_map(|(_, s)| s.ctl.colliders())).collect::<Vec<_>>();
             self.levels[index].ctl.coop_advance(dt, map, world, players, &fixed)?;
         }
+        self.level_trigger_poses(map)?;
         self.sync_coop(world);
         Ok(())
     }

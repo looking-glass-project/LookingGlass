@@ -259,6 +259,12 @@ impl Interactions {
         for s in &mut self.levels {
             s.ctl.advance(dt, map, world, player, &fixed)?;
         }
+        self.level_trigger_poses(map)
+    }
+    /// Rebuild bound volumes from the same saved pose used by their visible
+    /// machinery, including paired updates and an immediate snapshot restore.
+    pub(super) fn level_trigger_poses(&mut self, map: &Bsp) -> Result<()> {
+        if self.levels.is_empty() { return Ok(()); }
         for t in &mut self.triggers {
             let e = &map.entities[t.id.0];
             let Some(base) = e.get("origin").and_then(|s| super::vector(s)) else {

@@ -44,10 +44,45 @@ single-player component, watched-route and skipped-route logs match the
 pre-change `d7bbc99` baselines. Evidence is retained in the private Castling build
 manifest and `coop-wchess2-*-025b004.log` files.
 
-This verifies combat components only. Paired doors, portal boarding/carry, royal
-scene handoffs, full internet traversal and recovery/rejoin remain open. Scripted
-cast movement currently advances once from paired combat; the future shared
-world adapter must take over that clock without advancing it a second time.
+Those checks verify combat components only. The shared world adapter below now
+owns scripted cast movement once per world update; paired combat does not advance
+it again. Full traversal, internet clients and recovery/rejoin remain open.
+
+### Paired machinery and royal scenes
+
+The paired adapter advances the original door, cast, Queen-release, fade and
+portal clocks once. Either living player can activate proximity doors or use the
+manual secret. A moving door checks its swept leaf against both living bodies,
+including intermediate rotations; an obstruction holds the last safe pose and
+reopens a closing leaf. Dead players do not block machinery.
+
+The portal waits while one rider boards and the living partner remains outside
+its boarding area. Carry is atomic: a blocked rider holds the shared slab and
+both bodies, then both resume when the obstruction clears. Its bound exit also
+waits for all living players, preserves the first waiting owner through save/load,
+and transfers ownership if that player dies. Ordinary exits without an explicit
+transport guard retain their existing first-arrival behavior.
+
+Registered trigger volumes now follow their controllers after either paired
+update path and immediately after restoration. Previously the paired path could
+move Castling's visible platform while leaving its exit volume at the editor pose.
+The native boundary checks distinguish those two positions.
+
+Source `ac3a080c59aa00cd300a918fed0c38ebe78e51019b9b12637c59a67c3bd5aa1f`
+passes **45 staged native cases** with `--wchess2-coop-world-check`: three
+single-player clock comparisons (30/60/144 Hz), four paired portal rides with
+living/dead partners, two blocked-rider/resumption cases, ten door cases, sixteen
+royal scene combinations, six saved waiting-exit cases and four moving-volume
+checks across both update paths and restoration. Scene cases cross the original
+approach triggers with either Alice first, watch or skip both original scenes,
+keep the partner frozen, save mid-scene and verify supported, separated reunion
+with personal resources retained. These are staged components, not a full route.
+The final repeat also passes all **48 cast cases**, **834 active unit tests**
+(one existing ignored), **82 shared-world cases**, **39 campaign entrance/four
+underwater-recovery cases**, and **119 Pale Realm world cases**. All three complete
+Castling single-player logs match the `d7bbc99` baseline. Build identity and binary
+hash are retained in `private/coop-wchess2-world-build.json`; individual logs use
+the suffix `ac3a080`. No new complete campaign row is credited by this milestone.
 
 `--wchess2-check` exercises real approach triggers, both royal outcomes, dialogue, pause, save futures, moving-platform support, bound exits, ambush alternatives and migration. `--wchess2-route-check` and `--wchess2-route-skip-check` traverse from the real entrance with Normal combat into a loaded Checkmate visit. Route checkpoints are private diagnostics; they do not change player saves. `--wchess2-render-check` captures eight staged views. Native save fixtures are `wchess2-queen-mid`, `wchess2-king-mid`, and `wchess2-exit-open`.
 

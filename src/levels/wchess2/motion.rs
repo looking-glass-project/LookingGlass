@@ -195,6 +195,9 @@ impl Castle {
         })
     }
     pub(super) fn step_doors(&mut self, dt: f32, p: &Player) {
+        self.step_doors_players(dt, &[p]);
+    }
+    pub(super) fn step_doors_players(&mut self, dt: f32, players: &[&Player]) {
         for o in &self.objects {
             let Some(k) = o.door else {
                 continue;
@@ -202,8 +205,10 @@ impl Castle {
             let d = &mut self.saved.doors[k];
             let lo = o.bounds.0 - vec3(60., 60., 8.) - PLAYER_HALF;
             let hi = o.bounds.1 + vec3(60., 60., 8.) + PLAYER_HALF;
-            let at = p.feet + PLAYER_CENTER;
-            let touch = at.cmpge(lo).all() && at.cmple(hi).all();
+            let touch = players.iter().any(|p| {
+                let at = p.feet + PLAYER_CENTER;
+                at.cmpge(lo).all() && at.cmple(hi).all()
+            });
             let actor_touch = o.flags & 16 == 0
                 && self.saved.cast.iter().any(|a| {
                     a.piece.active && a.piece.health > 0. && {
@@ -228,7 +233,10 @@ impl Castle {
                         + Quat::from_rotation_z(std::f32::consts::FRAC_PI_2) * local;
                     let minus = o.base.translation
                         + Quat::from_rotation_z(-std::f32::consts::FRAC_PI_2) * local;
-                    d.sign = if plus.distance_squared(p.eye()) >= minus.distance_squared(p.eye()) {
+                    let eye = players.iter().min_by(|a,b| a.eye().distance_squared(o.base.translation)
+                        .total_cmp(&b.eye().distance_squared(o.base.translation)))
+                        .map_or(o.base.translation, |p| p.eye());
+                    d.sign = if plus.distance_squared(eye) >= minus.distance_squared(eye) {
                         1.
                     } else {
                         -1.

@@ -1107,6 +1107,14 @@ The cause still needs diagnosis. An exact normal checkpoint from before that
 step is retained for focused reproduction; no enemy or progression rule was
 weakened. Evidence: `private/coop/chess-route-428c58e515a640328743871b9385417b/`
 and `private/coop-wchess1-clear81-export32/coop-checkpoint.json`.
-This is a failed full route. The Blue-led full repeat remains in progress.
+This is a failed full route. The Blue-led repeat on the same source passes
+**0–125**, including the step-81 encounter, then Blue dies in combat during
+the step-126 rush. Blue entered that section at 45 health and takes three
+20-damage hits; Red remains at 68 health. Its **8,388** matching states agree,
+with no sampled overlaps across **2,384 host/2,357 guest** presence observations.
+The ordinary checkpoint before 126 and damage reports are retained in
+`private/coop/chess-route-d6bdc9658d5747f893cb353b1fa68393/`.
+This also fails the full-route gate; it does not establish the remaining stair
+section or post-revival continuation.
 These segments and the captured physics regression do not complete the campaign
 row or increase its credit.

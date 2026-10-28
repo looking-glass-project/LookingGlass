@@ -2004,6 +2004,10 @@ closest visible living player selection, personal attacks, saved attack ownershi
 scripted faction duels and legacy save compatibility. It does not replace the
 Castling world, route, scene, recovery or independent-client checks.
 
+`--wchess2-coop-world-check` reserves staged paired Castling machinery and
+royal-scene checks: shared clocks, personal door use, portal boarding/carry,
+saved first-arrival ownership and safe reunion. Full routes remain separate.
+
 `--wchess1-coop-combat-check` reserves isolated paired Pale Realm cast checks:
 targeting, personal attacks, scripted faction fights and gate death callbacks.
 It uses the native roster and timings; paired puzzles, machinery, traversal and

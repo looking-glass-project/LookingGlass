@@ -2014,6 +2014,12 @@ compressed guest replicas and resource-preserving Checkmate arrival. It uses
 ordinary movement/weapon inputs and records failed states; staged component
 checks and independent internet runs remain separate evidence.
 
+`--funhouse-coop-check` reserves staged paired Funhouse battle components:
+nearest-visible living Tweedle targets, personal knife/grenade/ground-pound
+damage, separate healing, saved battle continuation and the post-damage
+victory owner. Shared machinery, full scene combinations, traversal,
+rendered effects and independent internet coverage remain separate.
+
 `--rchess1-coop-check` reserves staged paired Checkmate components: native King
 and chess-piece targeting/attacks, personal healing, one shared clock, saved
 attack ownership and the three original scene handoffs with either actor.

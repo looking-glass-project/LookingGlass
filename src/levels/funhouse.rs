@@ -2,6 +2,8 @@
 mod art;
 mod battle;
 mod check;
+mod coop;
+mod coop_check;
 mod data;
 mod motion;
 mod presentation_check;
@@ -77,6 +79,8 @@ struct Saved {
     essence_wait: f32,
     essence_generation: u32,
     exit: ExitState,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    coop: Option<coop::State>,
 }
 impl state::State for Saved {
     const VERSION: u8 = 1;
@@ -173,6 +177,7 @@ impl state::State for Saved {
         if let Some(s) = &self.scene {
             s.validate()?;
         }
+        if let Some(s) = &self.coop { s.validate(self)?; }
         Ok(())
     }
 }
@@ -223,6 +228,7 @@ impl Funhouse {
                 essence_wait: 0.,
                 essence_generation: 0,
                 exit: Default::default(),
+                coop: None,
             },
             data,
             objects,
@@ -249,6 +255,17 @@ impl Funhouse {
 impl LevelController for Funhouse {
     fn id(&self) -> &'static str {
         "funhouse"
+    }
+    fn coop_prepare(&mut self, players:&mut [crate::level::CoopPlayer<'_>;2]) { self.pair_prepare(players); }
+    fn coop_scene_step(&mut self, owner:usize, _player:&mut Player, stats:&mut Stats) { self.pair_scene(owner,stats); }
+    fn coop_contacts(&mut self, _dt:f32, players:&mut [crate::level::CoopPlayer<'_>;2])->Option<usize> {
+        self.pair_actor(players)
+    }
+    fn coop_combat_roster(&mut self, dt:f32, world:&World, players:&mut [crate::level::CoopPlayer<'_>;2])->Feedback {
+        self.pair_fight(dt,world,players)
+    }
+    fn coop_update(&mut self, _index:usize, world:&mut World, player:&Player, aim:Vec3, use_pressed:bool)->Events {
+        self.update(world,player,aim,use_pressed)
     }
     fn facts(&self) -> Facts {
         let mut f = Facts::default();
@@ -657,6 +674,11 @@ pub static REGISTRATION: Registration = Registration {
         ),
     ],
     checks: &[
+        Check {
+            flag: "--funhouse-coop-check",
+            help: "Verify paired Tweedle targeting, attacks, healing and saved combat state.",
+            run: Run::Headless(coop_check::check),
+        },
         Check {
             flag: "--funhouse-route-check",
             help: "Walk the Normal Mirror Image route with native enemies.",

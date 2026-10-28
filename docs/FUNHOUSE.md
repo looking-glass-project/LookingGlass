@@ -48,3 +48,22 @@ The headless fixture checks all six lamps, production synchronization, and
 watched/skipped/restored arrival returns at 30, 60 and 144 Hz. Native entrance
 captures cover 36 return frames and two views of the lamps. These checks run
 as part of `--funhouse-check` and `--funhouse-render-check`.
+
+## Co-op battle components (28 October 2026)
+
+Source `ffaea18a57d1d15ac129ce72630ad9973c0e2f74ff5783c75fb127d3b9e9f486`
+passes 63 staged native cases through `--funhouse-coop-check`: both Tweedle
+families and miniatures choose the nearest visible living player; knife hits,
+grenade contact/splash and ground pounds damage the actual personal bodies.
+Healing locations and cooldowns are individual, including joining during an old
+save's cooldown. Saved attacks continue exactly, invalid personal states are
+rejected, and victory selects the living actor after damage. Both original
+victory completions remain saveable and hide healing after the ending.
+
+All 855 active unit tests pass (one pre-existing ignored test); the locked release
+build succeeds. The eight single-player component records match the preceding
+baseline, excluding only two measured rebuild-performance timings. The original
+single-player full-route baseline already fails at step 142; no new full-route
+pass is claimed. Shared co-op machinery, automatic scene ownership, full scene
+combinations, independent internet traversal, recovery and rendered effects
+remain open. This component check does not complete a campaign visit.

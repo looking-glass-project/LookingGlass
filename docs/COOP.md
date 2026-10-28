@@ -18,6 +18,19 @@ historical; the current weighted estimate is **47.3% (about 47%)**. Six of 39
 campaign visits have combined evidence, with earlier contact-system repeats
 still required. Repeated component tests do not increase this total.
 
+Current blockers: Checkmate's paired northern route still fails when Red dies
+after waypoint 38, even though Blue reaches the bridge. Funhouse's paired
+combat and personal-healing adapter is in development; its shared machinery,
+scene ownership and full traversal are not yet verified. These open gates
+keep the estimate unchanged. The estimate is not a live build progress bar.
+
+Funhouse now passes 63 staged paired battle checks for personal damage/healing,
+target selection and saved battle/victory continuation. All 855 active unit
+tests and the locked release build pass. Existing single-player component
+output matches its baseline except for measured benchmark timings. These
+checks do not verify shared machinery or a complete paired route; the
+overall estimate remains 47.3%. See [Funhouse evidence](FUNHOUSE.md).
+
 Latest Checkmate checkpoint: two independent local clients now pass the rope
 climb, upper landing and onward waypoint (steps 7-10), at 92/100 health with
 243 matching player/world/native states. This uses an unchanged normal save

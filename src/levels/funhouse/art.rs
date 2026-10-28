@@ -1,6 +1,7 @@
 use super::*;
 use crate::{npc::Puppet, particles::Attached, weapons::Prop};
 pub struct Art {
+    local_player: Option<usize>,
     actors: BTreeMap<String, Puppet>,
     weapons: BTreeMap<String, Prop>,
     grenade: Prop,
@@ -34,6 +35,7 @@ impl Art {
             weapons.insert(n.into(), Prop::load(a, n, &materials)?);
         }
         Ok(Self {
+            local_player: None,
             actors,
             weapons,
             grenade: Prop::load(a, "prj_grenade", &materials)?,
@@ -45,6 +47,7 @@ impl Art {
     }
 }
 impl LevelArt for Art {
+    fn coop_view(&mut self, local:usize) { self.local_player=Some(local.min(1)); }
     fn story_pose(&mut self, s: &Story) {
         for (m, n) in [
             ("alice", &["fakeplayer", "alice"][..]),
@@ -108,8 +111,8 @@ impl LevelArt for Art {
                 }
             }
         }
-        if o.saved.essence {
-            self.essence.draw(crate::loot::Grade::Medium, o.essence_position(), atm, camera, o.saved.time);
+        if let Some(at) = o.visible_essence(self.local_player) {
+            self.essence.draw(crate::loot::Grade::Medium, at, atm, camera, o.saved.time);
         }
         if o.saved.fight {
             for b in o.saved.bosses.iter().chain(&o.saved.minis) {

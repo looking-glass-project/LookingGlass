@@ -53,6 +53,8 @@ pub struct Boss {
     pub attacks: u8,
     pub quake: f32,
     pub weapon: Weapon,
+    #[serde(skip)]
+    pub(super) opponents: combat::Opponents,
     serial: u32,
     random: u32,
     pain: f32,
@@ -81,6 +83,7 @@ impl Boss {
             attacks: 0,
             quake: 0.,
             weapon: Weapon::None,
+            opponents: Default::default(),
             serial: 0,
             random: 0x715a3 + id as u32,
             pain: 0.,
@@ -222,11 +225,7 @@ impl Boss {
         Ok(())
     }
     fn projectiles(&mut self, w: &World, eye: Vec3, out: &mut Feedback) {
-        let target = Target {
-            id: crate::dice::ALICE,
-            center: eye - Vec3::Z * 20.,
-            half: PLAYER_HALF,
-        };
+        let targets = self.opponents.bodies(eye);
         self.grenades.retain_mut(|g| {
             g.age += STEP;
             if let Some(end) = g.ended {
@@ -238,15 +237,15 @@ impl Boss {
             let direct = combat::contact(
                 &combat::Context {
                     world: w,
-                    targets: &[target],
+                    targets: &targets,
                 },
                 g.at,
                 to,
                 8.,
             );
-            if let Some((_, f)) = direct {
+            if let Some((id, f)) = direct {
                 g.at = g.at.lerp(to, f);
-                out.damage += 5.;
+                out.strike(id,5.,Vec3::ZERO,DamageKind::Other);
                 g.ended = Some(g.age);
             } else if g.age >= 2. || wall.start_solid {
                 g.ended = Some(g.age);
@@ -257,12 +256,13 @@ impl Boss {
                 g.at = to;
             }
             if g.ended.is_some() {
-                let delta = target.center - g.at;
-                let r = w.sweep(g.at, target.center, Vec3::ZERO);
-                if direct.is_none() && delta.length() < 140. && !r.start_solid && r.fraction >= 1. {
-                    let f = 1. - delta.length() / 140.;
-                    out.damage += 80. * f;
-                    out.impulse += delta.normalize_or_zero() * 100. * f;
+                for target in &targets {
+                    let delta = target.center - g.at;
+                    let r = w.sweep(g.at, target.center, Vec3::ZERO);
+                    if direct.is_none_or(|(id,_)|id!=target.id) && delta.length() < 140. && !r.start_solid && r.fraction >= 1. {
+                        let f = 1. - delta.length() / 140.;
+                        out.strike(target.id,80.*f,delta.normalize_or_zero()*100.*f,DamageKind::Other);
+                    }
                 }
             }
             true
@@ -281,6 +281,12 @@ impl Boss {
         self.time += STEP;
         self.pain_wait = (self.pain_wait - STEP).max(0.);
         self.quake = (self.quake - STEP).max(0.);
+        let range=if self.family==0 && !self.mini {800.} else {1000.};
+        let at=self.at;
+        let center=self.target().center;
+        let (eye,notarget,target_id)=self.opponents.aim_with(w,center,eye,notarget,
+            !matches!(self.action,Action::Idle|Action::Ready|Action::Walk|Action::Run),
+            |eye|(eye-Vec3::Z*56.-at).truncate().length()<=range);
         self.projectiles(w, eye, out);
         let rig = &d.rigs[self.model()];
         let clip = self.clip();
@@ -397,8 +403,7 @@ impl Boss {
                     && distance <= 100.
                     && delta.z.abs() < 100.
                 {
-                    out.damage += 10.;
-                    out.impulse += aim * 50.;
+                    out.strike(target_id,10.,aim*50.,DamageKind::Knife);
                     self.attacks |= 1;
                 }
                 if done {
@@ -508,18 +513,17 @@ impl Boss {
                 let tr = w.sweep(body.center, body.center + delta, body.half);
                 self.at += delta * tr.fraction;
                 if tr.fraction < 1. && tr.normal.z > 0.65 && self.time > 0.2 {
-                    let ground_eye = eye - Vec3::Z * 56.;
-                    let d = ground_eye - self.at;
-                    let ray = w.sweep(
-                        self.at + Vec3::Z * 16.,
-                        ground_eye + Vec3::Z * 16.,
-                        Vec3::ZERO,
-                    );
-                    if d.length() < 300. && !ray.start_solid && ray.fraction >= 1. {
-                        // Native radiusattack -> RadiusDamage: linear distance falloff.
-                        let fraction = 1. - d.length() / 300.;
-                        out.damage += 50. * fraction;
-                        out.impulse += (d.normalize_or_zero() * 180. + Vec3::Z * 200.) * fraction;
+                    for target in self.opponents.bodies(eye) {
+                        let ground_eye=if target.id==crate::dice::ALICE {eye-Vec3::Z*56.}
+                            else {target.center-Vec3::Z*36.};
+                        let d=ground_eye-self.at;
+                        let ray=w.sweep(self.at+Vec3::Z*16.,ground_eye+Vec3::Z*16.,Vec3::ZERO);
+                        if d.length()<300. && !ray.start_solid && ray.fraction>=1. {
+                            // Preserve the native radius and falloff for each exposed body.
+                            let fraction=1.-d.length()/300.;
+                            out.strike(target.id,50.*fraction,
+                                (d.normalize_or_zero()*180.+Vec3::Z*200.)*fraction,DamageKind::Other);
+                        }
                     }
                     self.quake = if self.family == 0 { 3. } else { 2.5 };
                     self.attacks |= 8;

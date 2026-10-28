@@ -380,8 +380,15 @@ none is counted as passing.
 
 The same build passes 82 shared-world, 43 campaign entrance/recovery and 119 Pale
 Realm cases, the Castling native cast/world checks, and all three single-player
-logs remain identical to baseline. The fixed full Red-led route still needs a
-fresh repeat; this six-leg checkpoint segment adds no completed campaign row.
+logs remain identical to baseline. The subsequent fresh full Red-led repeat on
+the same frozen `cc2388e` build passes all 203 legs over the public internet path
+with 40/20 ms injected delay/jitter. Both royal scenes belong to Red; both
+players reach Checkmate at 100 health. All 6,519 common player, world and native
+resident states match. Presence checks pass for 2,798 host and 2,544 guest
+samples; minimum health during the route is 100/30. The retained evidence is
+`private/coop/castling-route-76622a44563446b98cd81a28b69eec0a/verification-summary.json`.
+This closes the failed leg-128 route repeat. Broader effects checks and the
+remaining campaign gates still prevent completed-row credit.
 
 `--wchess2-check` exercises real approach triggers, both royal outcomes, dialogue, pause, save futures, moving-platform support, bound exits, ambush alternatives and migration. `--wchess2-route-check` and `--wchess2-route-skip-check` traverse from the real entrance with Normal combat into a loaded Checkmate visit. Route checkpoints are private diagnostics; they do not change player saves. `--wchess2-render-check` captures eight staged views. Native save fixtures are `wchess2-queen-mid`, `wchess2-king-mid`, and `wchess2-exit-open`.
 

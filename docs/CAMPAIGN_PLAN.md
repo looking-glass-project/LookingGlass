@@ -2014,6 +2014,12 @@ compressed guest replicas and resource-preserving Checkmate arrival. It uses
 ordinary movement/weapon inputs and records failed states; staged component
 checks and independent internet runs remain separate evidence.
 
+`--rchess1-coop-check` reserves staged paired Checkmate components: native King
+and chess-piece targeting/attacks, personal healing, one shared clock, saved
+attack ownership and the three original scene handoffs with either actor.
+It does not replace continuous co-op traversal, internet, recovery or rendered
+effects checks.
+
 `--wchess1-coop-combat-check` reserves isolated paired Pale Realm cast checks:
 targeting, personal attacks, scripted faction fights and gate death callbacks.
 It uses the native roster and timings; paired puzzles, machinery, traversal and

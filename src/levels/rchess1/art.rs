@@ -2,6 +2,7 @@ use super::*;
 use crate::{npc::Puppet, particles::Attached, weapons::Prop};
 use std::collections::BTreeMap;
 pub(super) struct Art {
+    local_player: Option<usize>,
     beams: std::rc::Rc<crate::npc::attack_fx::Art>,
     actors: BTreeMap<String, Puppet>,
     pieces: Vec<Puppet>,
@@ -56,6 +57,7 @@ impl Art {
             a.attenuate(0.3);
         }
         Ok(Self {
+            local_player: None,
             beams: crate::npc::attack_fx::Art::load(a, &specs)?,
             actors,
             pieces,
@@ -74,6 +76,7 @@ impl Art {
     }
 }
 impl LevelArt for Art {
+    fn coop_view(&mut self,local:usize) {self.local_player=Some(local.min(1));}
     fn draw(
         &mut self,
         l: &dyn LevelController,
@@ -104,8 +107,9 @@ impl LevelArt for Art {
                 bright,
             );
         }
-        if o.saved.phase == Phase::Fight && o.saved.essence_wait == 0. {
-            self.essence.draw(crate::loot::Grade::Medium, o.essence_position(), atm, camera, o.saved.clock);
+        let (essence_at,essence_wait)=o.visible_essence(self.local_player);
+        if o.saved.phase == Phase::Fight && essence_wait == 0. {
+            self.essence.draw(crate::loot::Grade::Medium, essence_at, atm, camera, o.saved.clock);
         }
         for s in &o.saved.boss.shots {
             if s.ended.is_some() {

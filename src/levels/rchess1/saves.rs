@@ -29,6 +29,7 @@ pub(super) async fn run(a: &mut Assets, write: bool) -> Result<()> {
                 o.saved.boss.time = 0.7;
                 o.saved.boss.health = 750.;
                 o.saved.boss.shots.push(battle::Shot {
+                    player: None,
                     id: 1,
                     kind: battle::Kind::Ball,
                     at: o.saved.boss.at + vec3(-100., 0., 100.),

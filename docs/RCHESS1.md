@@ -92,3 +92,45 @@ playtest saves. The default player launcher and existing saves are untouched.
 Validation on 30 September 2026: 627 unit tests pass, including four new King
 regressions; the shared chess audit passes. Native captures and all seven
 separate-process Store cases pass. Audio was disabled.
+
+
+## Co-op component validation, 28 October 2026
+
+Frozen source `26b913484fee7be2cba4ca7a06ee98b4ec1accb408923c99873ab813783388cb`
+adds one shared Checkmate clock and two personal healing cycles. The King and
+the native pawn, knight, bishop and rook select visible living players; melee,
+beam and projectile contacts damage the body they hit. Saved attack ownership
+survives restoration. Explosions can reach both players without double-hitting
+the direct victim, respect walls, and ignore dead bodies. A seeker retains its
+saved target and becomes ballistic if that player dies.
+
+The three original scenes retain one actor. Trigger contacts bind the first
+arrival; the victory scene binds the nearest living survivor after combat
+damage has been applied. Entering that scene during combat would allow the next
+shared event to bind the previous speaker first, so activation and ownership
+now happen together in the contact phase. The other Alice remains frozen and
+hidden until the existing safe reunion or Funhouse transition.
+
+`--rchess1-coop-check` passes **84 records** against the original local map and
+animations: 40 target-selection cases; eight chess-piece and four King attack
+cases; two personal-healing cases; three clock-rate cases; legacy/rejected-save
+and dead-team-victory guards; 24 scene combinations; and the aggregate result.
+Scenes cover both owners, watched or owner-held skipped, living or dead partner,
+pause and save restoration. The waiting partner cannot skip the owner's scene.
+Per-view healing presentation uses that player's saved location and cooldown.
+
+Four additional unit regressions cover projectile body interception/splash,
+walls/dead bodies, seeker target restoration and legacy/invalid target saves.
+Both complete single-player logs, `--rchess1-check` and
+`--rchess1-route-check`, match the pre-adapter baseline exactly. The latter now
+passes from the normal entrance through the King and into Funhouse; the older
+September route failures above remain historical evidence. The broader
+82 shared-world and 43 campaign entrance/recovery checks also pass. All 847 active
+unit tests and the release build pass; one existing unit remains ignored.
+
+These co-op checks use staged actors and contacts. **A continuous two-client
+Checkmate playthrough is still unverified**, as are its public-internet,
+recovery/rejoin and complete rendered-effects gates. They add 0.25 combat and
+0.25 progression points to the weighted estimate, with no completed campaign row.
+Evidence remains local under `private/coop-rchess1-build.json` and
+`private/coop-rchess1-native59.log`. No screenshots were needed for these checks.

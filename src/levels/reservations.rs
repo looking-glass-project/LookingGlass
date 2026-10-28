@@ -324,7 +324,11 @@ pub static RESERVATIONS: [Reservation; 39] = [
         contract: &["--wchess2-check", "--wchess2-floor-survey", "--wchess2-coop-cast-check", "--wchess2-coop-world-check"], route: &["--wchess2-route-check", "--wchess2-coop-route-check"],
         skip: &["--wchess2-skip-route-check", "--wchess2-route-skip-check"], render: &["--wchess2-render-check"],
     }), ..visit(20, "wchess2") },
-    visit(21, "rchess1"),
+    Reservation { flags: Some(VisitFlags {
+        contract: &["--rchess1-check", "--rchess1-coop-check"],
+        route: &["--rchess1-route-check"], skip: &["--rchess1-skip-route-check"],
+        render: &["--rchess1-render-check"],
+    }), ..visit(21, "rchess1") },
     Reservation { flags: Some(VisitFlags {
         contract: &["--funhouse-check", "--funhouse-traversal-probe"],
         route: &["--funhouse-route-check"], skip: &["--funhouse-skip-route-check"],

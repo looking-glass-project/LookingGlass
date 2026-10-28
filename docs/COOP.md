@@ -4,7 +4,7 @@ Development branch: `coop`, based on public main `0220970`.
 This is work in progress. A policy test or a connected pair of windows does not
 establish campaign support. Single-player behavior and saves must remain supported.
 
-Current milestone: **46.8% estimated overall; six campaign visits have combined
+Current milestone: **47.3% estimated overall; six campaign visits have combined
 verification evidence, 33 remain open.** Earlier contact-system repeats are still
 required as detailed in the campaign matrix. Pool of Tears has 38 passing native
 component cases plus public two-client opening and bank checkpoint segments.
@@ -14,25 +14,33 @@ recovery remain open for both visits. Report these smaller milestones alongside
 the total; a successful component or segment is not a completed campaign visit.
 
 Status checked on **28 October 2026**: the older approximately 42% figure is
-historical; the current weighted estimate is **46.8% (about 47%)**. Six of 39
+historical; the current weighted estimate is **47.3% (about 47%)**. Six of 39
 campaign visits have combined evidence, with earlier contact-system repeats
 still required. Repeated component tests do not increase this total.
 
 Castling's earlier Blue-led and Red-led public internet runs pass all 203 legs.
 After the sloped-wall collision fix, Blue passes the full route again with 8,793
 matching player/world/native states and a 75/100-health Checkmate arrival. The
-new Red run passes 0–127 and both original scenes but **stalls at leg 128**;
+first post-fix Red run passes 0–127 and both original scenes but **stalls at leg 128**;
 it remains failed despite 9,378 matching states and passing presence samples.
 Its host has about one second of queued controls while the guest reports about
 206 ms round-trip time. Diagnosis traces the backlog onset to a 561 ms host
 pause followed by delayed old input batches. An ordered control reset now passes
 a real forced-pause internet replay through legs 124–129, with 145 matching
-states and both players at 100 health; a fresh full Red repeat remains open.
+states and both players at 100 health. The subsequent fresh Red-led run on
+`cc2388e` passes all 203 legs, both original royal scenes and the Checkmate
+arrival at 100/100 health, with 6,519 matching player/world/native states.
+The earlier failed run remains recorded; broader effects checks and other
+campaign gates remain open. Checkmate now passes 84 native paired component
+checks on frozen source `26b9134`: targeting and personal attacks, separate
+healing, shared clocks and all three original scenes with either owner. Both
+single-player logs remain identical to baseline. These earn bounded combat and
+progression credit; full two-client traversal and recovery remain open.
 
 Real combat recovery passes for either player: both clients agree on the
 1,200-tick spectator delay, nearby 25-health revival and retained personal items.
 The unchanged team-wipe encounter also passes separation and shared restoration
-after the sloped-wall repair. The current build adds the original held Enter/A
+after the sloped-wall repair. The verified `cc2388e` build includes the original held Enter/A
 scene-skip control for the scene owner, with a fresh 0.65-second hold and the
 existing safe reunion. All **843 active unit tests** and the broader native
 checks pass. All four independent internet scene-skip cases also pass: both
@@ -522,9 +530,9 @@ movement viewer both wait for helper shutdown before exiting.
 After tightening cancellation and the forged-message regression, all 21 focused
 co-op tests passed again. This final focused run includes the latest source changes.
 
-Overall estimate after completing the village, Pandemonium, both Fortress visits, Beyond and return-school verification rows, plus native-rope recovery, Herbaceous components, the Rolling Stones/Icy Reception/Flora/Sanctum/both Caterpillar's Plot shared-world adapters, Pale Realm cast/world components, replicated weapon sparks/trails and Castling combat/world components: **about 46.8%**. Credited
+Overall estimate after completing the village, Pandemonium, both Fortress visits, Beyond and return-school verification rows, plus native-rope recovery, Herbaceous components, the Rolling Stones/Icy Reception/Flora/Sanctum/both Caterpillar's Plot shared-world adapters, Pale Realm cast/world components, replicated weapon sparks/trails, Castling combat/world components and Checkmate combat/scene components: **about 47.3%**. Credited
 points are 8/10 for foundation/diagnostics, 7/15 for internet Host/Join,
-10/15 for two-player movement/presentation, paired school supports, dry/swimming arrival placement, complete delayed village/Pandemonium traversal in separate clients, rendered independent rope controls, Pale Realm's native paired lift, Castling's portal boarding/carry and replicated weapon sparks/trails, and 8.75/20 for native targeting, host-owned
+10/15 for two-player movement/presentation, paired school supports, dry/swimming arrival placement, complete delayed village/Pandemonium traversal in separate clients, rendered independent rope controls, Pale Realm's native paired lift, Castling's portal boarding/carry and replicated weapon sparks/trails, and 9/20 for native targeting, host-owned
 weapons/damage, personal resources, timed respawns and full saved-state team wipes.
 The additional 0.5 points credit tested recovery beside a survivor hanging on an
 active native rope: both-role unit coverage plus a captured fall/revival through
@@ -547,7 +555,7 @@ The separate Castling world milestone adds 0.25 movement points for native porta
 boarding/atomic carry and 0.25 progression points for shared doors, all original
 royal scene combinations and saved moving-exit ownership. It adds no full route,
 independent-client or campaign-row credit. Credit also includes
-10/20 for shared world replication, ordered contacts, the verified theatre
+10.25/20 for shared world replication, ordered contacts, the verified theatre
 ownership/reunion slice, school boarding barriers, visit history and restart/backup
 restoration of shared checkpoints, and native traversal of all six village scenes
 and all four Pandemonium scenes with either player arriving first (also verified through public internet clients).
@@ -561,8 +569,13 @@ original ambush ownership/reunion, following 0.25 points each for Icy Reception'
 hazards/portal and the Rolling Stones chase adapter. They do not credit a full
 paired route, internet play or a completed campaign row.
 Full-campaign verification now earns 120/39 points (about 3.08/20), for those six
-visits' complete combined evidence. Total credited points are about 46.83, reported
-as 46.8%, up from 46.33 before Castling's paired world checks. The earlier 0.25
+visits' complete combined evidence. Checkmate adds 0.25 combat points for native
+paired King/chess attacks, saved target ownership and personal healing, plus
+0.25 progression points for the original three scenes with either actor, watched
+or held-skipped, paused/restored, safe reunion or Funhouse departure. The
+84 staged native component records add no full-route, internet or campaign-row
+credit. Total credited points are about 47.33, reported as 47.3%, up from 46.83
+before Checkmate's combat/scene checks. The earlier 0.25
 presentation points require both native visible-pixel comparisons and real
 public-client delivery of impact sparks, swing trails and projectile trails.
 They do not cover every other effect or count as a completed visit. Updates include

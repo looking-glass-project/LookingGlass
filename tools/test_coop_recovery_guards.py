@@ -138,6 +138,71 @@ class RecoveryGuards(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError, 'Missing rendered'):
             verify_views(events, dict(host=[row(2, 0, 'Red')]))
 
+    def test_camera_uses_actual_interpolated_body_and_cuts_at_revival(self):
+        row = dict(epoch=1, tick=50, checkpoint_generation=0, owner=None,
+            camera_player='Red', camera_target=[64, 0, 48], camera_subject_feet=[64, 0, 0],
+            players=[dict(health=50, feet=[0, 0, 0], spawned_at=0, warped_at=0),
+                     dict(health=25, feet=[100, 0, 0], spawned_at=0, warped_at=0)],
+            presentation=dict(player_feet=[[0, 0, 0], [64, 0, 0]], elapsed=.005,
+                previous_players=[[[0, 0, 0], 0, 0, True], [[60, 0, 0], 0, 0, True]]))
+        from coop_recovery import verify_presence
+        verify_presence([row], 'guest')
+        broken = copy.deepcopy(row); broken['presentation']['player_feet'][1][0] += 1
+        with self.assertRaisesRegex(AssertionError, 'interpolation'): verify_presence([broken], 'guest')
+        broken = copy.deepcopy(row); broken['camera_subject_feet'][0] += .5
+        with self.assertRaisesRegex(AssertionError, 'rendered player'): verify_presence([broken], 'guest')
+        row['players'][1]['spawned_at'] = 50
+        with self.assertRaisesRegex(AssertionError, 'interpolation'): verify_presence([row], 'guest')
+        row['camera_target'][0] = row['camera_subject_feet'][0] = 100
+        row['presentation']['player_feet'][1][0] = 100
+        verify_presence([row], 'guest')
+
+    def test_duplicate_network_tick_keeps_one_coherent_render_sample(self):
+        from unittest.mock import patch
+        from test_coop_village import Pair
+        with tempfile.TemporaryDirectory() as folder:
+            pair = CheckmatePair.__new__(CheckmatePair)
+            pair.folder, pair.allow_revival = Path(folder), False
+            pair.swim_requested = {}
+            first = dict(player_feet=[[0, 0, 0], [64, 0, 0]])
+            pair.reports = {'guest': dict(presentation=first)}
+            pair.history = {'guest': [dict(tick=50, camera_subject_feet=[64, 0, 0])]}
+            pair.state = lambda role: dict(phase='Fight')
+            with patch.object(Pair, 'pump'):
+                pair.pump()
+                pair.reports['guest']['presentation'] = dict(player_feet=[[0, 0, 0], [72, 0, 0]])
+                pair.pump()
+            self.assertEqual(pair.history['guest'][0]['presentation'], first)
+            self.assertEqual(pair.history['guest'][0]['camera_subject_feet'], [64, 0, 0])
+
+    def test_follower_keeps_delayed_leaders_backtrack_lane_clear(self):
+        pair = CheckmatePair.__new__(CheckmatePair)
+        pair.first, pair.partner, pair.step = 'guest', 'host', 23
+        pair.commands = {}
+        pair.reports = {r: dict(route_driver={}) for r in ('host', 'guest')}
+        bodies = {'guest': dict(player=dict(feet=[300, 2432, 256])),
+                  'host': dict(player=dict(feet=[200, 2432, 256]))}
+        pair.body = bodies.__getitem__
+        pair.scene_end = lambda: None
+        pair.arrived = pair.busy = lambda: False
+        pair.reached = lambda role: False
+        def command(role, goal=None, navigate=False, **kwargs):
+            pair.commands[role] = dict(goal=goal, navigate=navigate, **kwargs)
+        pair.set = command
+        def advance(predicate):
+            self.assertFalse(predicate())
+            self.assertIsNone(pair.commands['host']['goal'])
+            bodies['guest']['player']['feet'] = [274, 2432, 256]
+            self.assertFalse(predicate())
+            self.assertIsNone(pair.commands['host']['goal'])
+            bodies['guest']['player']['feet'] = [370, 2432, 256]
+            self.assertFalse(predicate())
+            self.assertEqual(pair.commands['host']['goal'], [300, 2432, 256])
+            pair.reached = lambda role: True
+            self.assertTrue(predicate())
+        pair.until = advance
+        pair.go([576, 2496, 256], navigate=True)
+
     def test_recovery_mode_preserves_strict_mode_and_living_body_checks(self):
         with tempfile.TemporaryDirectory() as folder:
             pair = CheckmatePair.__new__(CheckmatePair)

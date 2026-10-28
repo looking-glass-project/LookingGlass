@@ -18,6 +18,16 @@ historical; the current weighted estimate is **48.1% (about 48%)**. Six of 39
 campaign visits have combined evidence, with earlier contact-system repeats
 still required. Repeated component tests do not increase this total.
 
+Latest full-route milestone: a fresh Blue-led Checkmate run now passes through
+the King and into Funhouse over the public internet, including Red's verified
+ten-second revival and all three watched original scenes. There are 5,765
+matching player/world/native states. Sustained paired hits previously lifted the
+King out of reach; co-op recoil now keeps him on supported ground. All 857 active
+Rust units and the native Checkmate/shared-world/campaign checks pass, and both
+single-player Checkmate logs match baseline. Opposite arrival order, skipped
+playback, team wipe and rejoin/effects coverage remain open; the campaign row
+is still partial and the overall estimate stays 48.1%. See [Checkmate evidence](RCHESS1.md).
+
 Latest automated recovery milestone: Checkmate's northern checkpoint segment
 (steps 33-44) passes in two independent internet clients with 40 ms delay and
 20 ms jitter. Red dies naturally, spectates Blue for exactly 1,200 ticks, then
@@ -51,7 +61,8 @@ Six campaign visits retain combined evidence; 33 remain open. Funhouse's full
 two-client traversal, recovery and rendered effects remain unverified. Its earlier
 single-player route still fails at step 142; this update does not establish a
 new full-route pass. Checkmate now verifies recovery from Red's northern death;
-its complete traversal and King battle remain open.
+its fresh Blue-led full traversal and King battle now pass; the remaining
+campaign-matrix cases are still open.
 Repeated tests alone do not increase the estimate.
 
 Latest Checkmate checkpoint: two independent local clients now pass the rope

@@ -120,7 +120,25 @@ def verify_presence(rows, role):
         assert row['camera_player'] == ('Blue', 'Red')[watched], 'Wrong personal/survivor camera'
         subject = row['camera_subject_feet']
         assert distance(row['camera_target'][:2], subject[:2]) < 1, 'Camera missed its rendered subject'
-        assert distance(subject, row['players'][watched]['feet']) < 24, 'Camera subject drifted from its player'
+        presentation = row.get('presentation') or {}
+        if 'player_feet' in presentation:
+            # The guest draws an interpolated body, which can legitimately lag
+            # a running authoritative body by more than 24 units. Verify that
+            # actual drawn position against its recorded interpolation inputs.
+            rendered = presentation['player_feet']
+            previous = presentation['previous_players']
+            alpha = max(0, min(1, presentation['elapsed'] * 20))
+            for i, body in enumerate(row['players']):
+                expected = body['feet']
+                if previous:
+                    old, spawn, warp, alive = previous[i]
+                    if spawn == body['spawned_at'] and warp == body['warped_at'] \
+                            and alive == (body['health'] > 0) and distance(old, expected) < 128:
+                        expected = [a + (b-a)*alpha for a, b in zip(old, expected)]
+                assert distance(rendered[i], expected) < .01, 'Rendered body does not match interpolation inputs'
+            assert distance(subject, rendered[watched]) < .01, 'Camera missed its rendered player'
+        else:
+            assert distance(subject, row['players'][watched]['feet']) < 24, 'Camera subject drifted from its player'
     for old, row in zip(rows, rows[1:]):
         if old['epoch'] != row['epoch']:
             continue

@@ -571,6 +571,10 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
             clear_background(BLACK);
             if let Some(frame) = &display {
                 let mut visual = frame.clone();
+                let presentation_previous = if launch.host { None } else {
+                    presented.as_ref().map(|p| p.players.each_ref().map(|b|
+                        (b.player.feet, b.spawned_at, b.warped_at, b.stats.alive())))
+                };
                 if !launch.host {
                     if let Some(previous) = &presented {
                         for (body, old) in visual.players.iter_mut().zip(&previous.players) {
@@ -673,6 +677,8 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                         "camera_subject_feet": camera_subject_feet,
                         "audio": audio.report,
                         "presentation": { "visible_players": visible_players,
+                            "player_feet": presented.as_ref().map(|p| p.players.each_ref().map(|b| b.player.feet)),
+                            "previous_players": presentation_previous, "elapsed": elapsed,
                             "particles": effects.steam.counts(), "effect_batches": effect_batches },
                         "network_timing": guest.as_ref().map(|g| g.input_timing())
                             .or_else(||host.as_ref().map(|h|h.input_timing())),

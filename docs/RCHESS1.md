@@ -396,3 +396,60 @@ passes the native and unchanged single-player checks. Its actual internet
 replay advances beyond the former corner but still loses Red near step 39
 after Blue reaches the bridge with 4 health; the paired route remains failed.
 Evidence: `private/coop/checkmate-route-5fbc69e2285b4731a7c2600913276bca/`.
+
+
+## Paired King knockback regression (28 October 2026)
+
+A real two-client fight on source `df108e9` stalled with the King at 225 health:
+repeated hits accumulated upward knockback until his feet were about 934 units
+off the arena floor. The ordinary walking support check could not bring him
+back down. The failed replay is retained as
+`checkmate-recovery-route-76f37ce9f0a44589956486b7b3e9e984`.
+
+Source `e11e75c` commits co-op recoil through the existing supported walking
+collision path. Horizontal push, incoming damage, recoil damping and saved
+velocity are retained; the single-player recoil path is unchanged. A regression
+first reproduced the lift, then passed 2,400 ticks of paired hits against wall
+and cliff boundaries, including restoration of saved recoil. All 857 active Rust
+units, 94 Checkmate components, 82 shared-world cases and 43 campaign checks pass.
+Both complete single-player Checkmate logs remain exactly equal to baseline.
+
+The fixed-build checkpoint replay reached Funhouse with both players alive.
+Across 207 host and 206 guest fight observations, the King's feet remained at
+floor height (0.03125). The replay still failed its final camera audit because
+the test reader mixed two render samples with the same network tick. That failed
+attempt remains recorded as `checkmate-recovery-route-0ce98667338446e0b8cc773c6deb8a37`;
+it is not a passing route. The reader now keeps each camera and presentation
+sample together, with a regression for duplicate ticks. Camera checks verify
+actual interpolation inputs and revival cuts instead of assuming every drawn
+body is within 24 units of the newest network position. All 59 Python guards pass.
+
+The runner also walks the waiting partner aside before entering the arena,
+prints battle progress every ten simulation seconds, and fails a fight with no
+damage progress for 120 simulation seconds. These are ordinary-input test
+controls and diagnostics; they do not alter combat or progression.
+
+The fresh Blue-led, watched-scenes internet run now passes from the entrance
+through the King and into Funhouse, with 40 ms input delay and 20 ms jitter.
+Evidence: `checkmate-recovery-route-037d1550f8a8415bb86754ce19172e98`.
+All 45 requested route steps are covered by the team, all three original scenes
+retain Blue ownership, and 5,765 player/world/native states match independently.
+Red died at tick 24967 and revived safely at 26167 with exactly 25 health;
+her spectator camera and return, unchanged carried resources and placement pass.
+Blue traversed northern waypoints 34-43 while Red was dead; those are explicitly
+recorded as revival-carried coverage for Red, who resumes ordinary movement.
+This is a full team route with legitimate revival, not a zero-death personal
+traversal by both players. Red-first/skipped playback, Checkmate-specific team
+wipe and rejoin/effects coverage remain open. No completed campaign row or
+percentage credit is added yet.
+
+Red-led skipped-scene repeats remain failed and are retained separately. The
+ordinary-input runner now holds the follower until the delayed leader clears
+its starting lane, plans the narrow doorway approach, swims either player to
+the rope base and swings before release. The latest unchanged-checkpoint replay
+(`checkmate-recovery-route-5734634c58664b8ab0644b337a866c18`) passes both rope
+climbs and steps 7-24, then stalls at 25: Blue waits at (560, 2736) and blocks
+Red at (560.43, 2700.00) from reaching (560, 2720). Both remain alive at 100/59
+health. This is a remaining test-driver coordination failure, not a passing
+segment or Red-owned scene proof. The next route check must clear the waiting
+partner from the approach, then repeat the fresh Red-led run.

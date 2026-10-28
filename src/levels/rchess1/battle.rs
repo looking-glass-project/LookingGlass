@@ -36,6 +36,38 @@ mod tests {
         }
     }
     #[test]
+    fn paired_sustained_knockback_keeps_the_king_supported_and_inside_the_arena() {
+        for wall in [false, true] {
+            let mut boxes = vec![(vec3(-1000., -1000., -64.), vec3(100., 1000., 0.))];
+            if wall { boxes.push((vec3(100., -1000., 0.), vec3(120., 1000., 240.))); }
+            let world = World::fixture(&boxes);
+            let mut b = king();
+            b.at.z = 0.03125;
+            b.opponents.players = Some([combat::PlayerTarget {
+                eye: vec3(-200., 0., 48.), alive: true, hidden: false,
+            }; 2]);
+            for tick in 0..2400 {
+                if tick % 30 == 0 {
+                    // Two ordinary damage events, including upward impulse.
+                    for _ in 0..2 { b.hit(Hit { damage: 7., knockback: vec3(30., 0., 60.),
+                        ..hit(DamageKind::Cards, Vec3::ZERO) }); }
+                }
+                if tick == 1200 {
+                    let mut restored: Boss = serde_json::from_value(serde_json::to_value(&b).unwrap()).unwrap();
+                    restored.opponents.players = b.opponents.players;
+                    restored.step_recoil(&world);
+                    b.step_recoil(&world);
+                    assert_eq!(serde_json::to_value(&b).unwrap(), serde_json::to_value(restored).unwrap());
+                } else { b.step_recoil(&world); }
+                assert!(b.at.z.abs() < 0.05, "Knockback lifted the King: {:?}", b.at);
+                assert!(b.at.x <= 77. && b.at.x >= 0., "Knockback escaped the supported arena: {:?}", b.at);
+                assert!(!world.sweep(b.target().center, b.target().center, b.target().half).start_solid);
+            }
+            assert!(b.at.x > 5., "Grounded recoil removed horizontal knockback");
+            assert_eq!(b.health, 180., "Grounded recoil changed incoming damage");
+        }
+    }
+    #[test]
     fn counter_guard_has_direction_and_an_expiring_window() {
         let mut b = king();
         b.set(Action::Shield);
@@ -397,6 +429,17 @@ impl Boss {
             player: self.player,
         });
     }
+    fn step_recoil(&mut self, world: &World) {
+        let push = self.recoil.step(STEP, world, self.target());
+        if self.opponents.players.is_some() {
+            // Sustained paired hits otherwise accumulate height indefinitely:
+            // this walking boss has no airborne gravity step. Keep the original
+            // impulse/damping, but commit displacement through supported motion.
+            self.at = combat::walk_body(world, self.at, push.truncate().extend(0.), self.target().half);
+        } else {
+            self.at += push;
+        }
+    }
     pub fn step(
         &mut self,
         w: &World,
@@ -440,7 +483,7 @@ impl Boss {
         if self.health == 0. {
             return;
         }
-        self.at += self.recoil.step(STEP, &d.arena, self.target());
+        self.step_recoil(&d.arena);
         let to = eye - (self.at + Vec3::Z * 96.);
         let distance = to.truncate().length();
         let trace = w.sweep(self.at + Vec3::Z * 112., eye, Vec3::ZERO);

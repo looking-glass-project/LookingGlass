@@ -179,8 +179,10 @@ class CheckmatePair(Pair):
                 self.commands['guest']['input_lead'] = self.lead
         for role, report in self.reports.items():
             row = self.history[role][-1]
-            row['checkmate'] = self.state(role)
-            row['presentation'] = report.get('presentation')
+            # Several render frames may share a network tick. Keep these
+            # fields with the camera sample first stored by Pair.pump().
+            row.setdefault('checkmate', self.state(role))
+            row.setdefault('presentation', report.get('presentation'))
 
     def clear_dead_northern_commands(self):
         # Deliver neutral input during the countdown. A revived body may be
@@ -222,7 +224,9 @@ class CheckmatePair(Pair):
         trail = [list(previous)]
         follow_trail = navigate and self.step >= 27
         active = [self.first]
-        if distance(previous, goal) >= 96 and distance(self.body(self.partner)['player']['feet'], previous) > 48:
+        follow_previous = distance(previous, goal) >= 96 and distance(self.body(self.partner)['player']['feet'], previous) > 48
+        deferred_follower = follow_previous and not follow_trail
+        if follow_previous and not deferred_follower:
             self.set(self.partner, previous, navigate, swim=swim, run=True)
             active.append(self.partner)
         else:
@@ -241,9 +245,16 @@ class CheckmatePair(Pair):
                 and driver['command'] == command['id']
                 and distance(body['feet'], command['goal']) < 18)
         def arrived_together():
+            nonlocal deferred_follower
             if self.arrived() or self.busy():
                 return True
             leader = self.body(self.first)['player']
+            if deferred_follower and distance(leader['feet'], previous) >= 64:
+                # The delayed leader may first backtrack to line up a step.
+                # Keep their starting lane clear until they actually leave it.
+                self.set(self.partner, previous, navigate, swim=swim, run=True)
+                active.append(self.partner)
+                deferred_follower = False
             if follow_trail:
                 feet = leader['feet']
                 if leader['grounded'] and distance(trail[-1], feet) >= 96:
@@ -258,7 +269,7 @@ class CheckmatePair(Pair):
                         if self.partner not in active:
                             active.append(self.partner)
                         self.evidence['following_footings'] = self.evidence.get('following_footings', 0) + 1
-            return all(at_waypoint(r) for r in active)
+            return not deferred_follower and all(at_waypoint(r) for r in active)
         self.until(arrived_together)
         self.scene_end()
 
@@ -266,14 +277,16 @@ class CheckmatePair(Pair):
         # Each client advances on its own acknowledged state. A slow follower
         # must not keep the leader climbing through its exit, and an underwater
         # follower must swim to the base before switching to dry approach input.
-        phases = {self.first: 'approach', self.partner: 'waiting'}
+        phases = {self.first: 'base', self.partner: 'waiting'}
         left_rope = dict.fromkeys(phases, False)
         # Wait along the platform's clear centre line. Sideways waiting spots
         # either meet the original walls or leave the partner blocking step 10.
         parking = {self.first: [-1536, 1408, 256], self.partner: [-1600, 1408, 256]}
         events = self.evidence.setdefault('rope_events', [])
         self.set(self.partner, [-1648, 1408, -486], swim=True, run=True)
-        self.set(self.first, rope=dict(action='approach', goal=[-1728, 1408]))
+        # Saving can leave the leader drifting a little away from the base.
+        # Both slots need the same real swim approach before dry rope controls.
+        self.set(self.first, [-1728, 1408, -486], swim=True, run=True)
 
         def phase(role, value):
             phases[role] = value
@@ -304,7 +317,7 @@ class CheckmatePair(Pair):
                 elif current == 'waiting' and self.body(self.first)['player']['feet'][2] > -380:
                     self.set(role, [-1728, 1408, -486], swim=True, run=True)
                     phase(role, 'base')
-                elif current == 'base' and distance(body['feet'], [-1728, 1408, -486]) < 18:
+                elif current == 'base' and (body['rope'] is not None or distance(body['feet'], [-1728, 1408, -486]) < 18):
                     self.set(role, rope=dict(action='approach', goal=[-1728, 1408]))
                     phase(role, 'approach')
                 elif current == 'approach' and body['rope'] is not None:
@@ -313,13 +326,11 @@ class CheckmatePair(Pair):
                 elif current == 'hold' or (current == 'climb' and body['feet'][2] >= 190):
                     assert body['rope'] is not None, 'Lost grip before the rope exit'
                     if role == self.first or self.body(self.first)['player']['feet'][0] > -1660:
-                        if role == self.first:
-                            self.set(role, rope=dict(action='release', goal=[-1504, 1408], jump=True))
-                            left_rope[role] = False
-                            phase(role, 'release')
-                        else:
-                            self.set(role, rope=dict(action='climb', rise=0, wish=[1, 0]))
-                            phase(role, 'swing')
+                        # Build horizontal swing before either slot releases.
+                        # A delayed leader's vertical jump from the rope centre
+                        # can hit the landing face before crossing its edge.
+                        self.set(role, rope=dict(action='climb', rise=0, wish=[1, 0]))
+                        phase(role, 'swing')
                     elif current != 'hold':
                         self.set(role, rope=dict(action='climb', rise=0))
                         phase(role, 'hold')
@@ -453,6 +464,8 @@ class CheckmatePair(Pair):
     def boss(self):
         corner = {'host': 0, 'guest': 2}
         chosen = {}
+        logged_tick = None
+        damage_progress = None
         end = time.monotonic() + 600
         while not self.arrived():
             assert time.monotonic() < end, 'King fight/outro timed out'
@@ -478,6 +491,22 @@ class CheckmatePair(Pair):
                     self.set(role, goal, run=True, attack=True)
                     chosen[role] = goal
             self.pump()
+            host_tick = self.reports['host']['frame']['tick']
+            state = self.state()
+            if state and state['phase'] == 'Fight':
+                health = state['boss']['health']
+                if damage_progress is None or health < damage_progress[0]:
+                    damage_progress = (health, host_tick)
+                assert host_tick - damage_progress[1] <= 120 * 120, (
+                    'King fight made no damage progress for 120 simulation seconds: '
+                    + json.dumps(state['boss']))
+            tick = host_tick // 1200
+            if tick != logged_tick:
+                state = self.state()
+                if state:
+                    print('King progress', state['phase'], 'boss health', state['boss']['health'],
+                          'players', [self.body(r)['stats']['sanity'] for r in self.commands], flush=True)
+                logged_tick = tick
 
     def verify(self):
         assert self.completed == list(range(self.args.start_step, len(self.steps))), 'Incomplete requested approach'
@@ -535,7 +564,9 @@ class CheckmatePair(Pair):
             elif 'nav' in step:
                 self.go(step['nav'], navigate=True)
             elif 'steer' in step:
-                self.go(step['steer'][:3], swim=index in (4, 5, 6))
+                # The narrow doorway needs a planned line from either client's
+                # actual approach position; straight steering can meet its edge.
+                self.go(step['steer'][:3], navigate=index == 22, swim=index in (4, 5, 6))
             elif 'clear' in step:
                 self.clear()
             elif 'beheading' in step:
@@ -552,6 +583,14 @@ class CheckmatePair(Pair):
         through_exit = full_route or self.args.through_exit
         if through_exit:
             self.step = len(self.steps)
+            # A revival can leave the partner directly ahead on the bridge.
+            # Walk them aside before following the leader's observed footings;
+            # standing still here blocks the leader against the contact body.
+            self.set(self.first, attack=True)
+            aside = list(self.body(self.partner)['player']['feet'])
+            aside[1] += 64
+            self.set(self.partner, aside, navigate=True)
+            self.until(lambda: self.reached(self.partner) or self.busy(), 45)
             self.go([3936, 2944, 0], navigate=True)
             self.boss()
             self.verify()

@@ -36,6 +36,13 @@ camera follows the survivor and returns after revival. Later damage need not
 leave the next sampled client report at exactly 25 health: that value is proved
 at the exact host spawn tick.
 
+New builds report both drawn player positions, the previous presentation state
+and the frame duration. The recovery camera check verifies the exact native
+interpolation from these inputs and follows the drawn player. This permits
+normal visual smoothing behind a newer network position without treating an
+arbitrary distance as proof. Death, revival and scene-warp stamps must cut that
+interpolation. Older captured reports retain their original distance check.
+
 On Checkmate's northern course, a revived Alice may legitimately appear beside
 a partner who is farther along. The result records her skipped waypoint IDs and
 requires that the surviving partner actually traversed each one. Every skip

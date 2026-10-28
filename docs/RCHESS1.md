@@ -443,7 +443,7 @@ traversal by both players. The remaining route orders, recovery and effect cases
 are tracked in the follow-up evidence below. No completed campaign row or
 percentage credit is added yet.
 
-Red-led skipped-scene repeats remain failed and are retained separately. The
+Earlier Red-led skipped-scene attempts are retained separately as failures. The
 ordinary-input runner now holds the follower until the delayed leader clears
 its starting lane, plans the narrow doorway approach, swims either player to
 the rope base and swings before release. Checkpoint replay
@@ -456,7 +456,7 @@ observed scene and records step 25 as superseded, rather than walking backwards.
 The original failed result remains failed. A subsequent fresh Red run
 (`checkmate-recovery-route-9a417cfd415f4a19aa6f6c8bf69d2d3f`) instead failed the
 rope landing after two enemy hits knocked Red off her grip and ledge approach.
-Rope-combat input and the fresh Red-led route remain follow-up work.
+The rope-combat and fresh-route follow-up is recorded below.
 
 ### Shared checkpoint and effect-delivery follow-up
 
@@ -487,6 +487,43 @@ with 25 health; the exact timer, spectator camera and safe placement pass.
 Blue traverses northern waypoints 35-43 while Red is dead; they remain explicitly
 revival-carried coverage for Red. Both clients reach Funhouse. This starts from
 the unchanged normal checkpoint after the first scene and is a resumed segment,
-not another full entrance route. The fresh Red-led route, other reconnect order,
-abrupt disconnects and broader effect visibility remain open. Progress stays
-48.1% with no newly completed campaign row.
+not another full entrance route. At that milestone the fresh Red-led route,
+other reconnect order, abrupt disconnects and broader effect visibility remained
+open. The subsequent Red route is recorded below; progress stays 48.1% with no
+newly completed campaign row.
+
+### Rope combat driver follow-up
+
+Source `afe78ef` lets diagnostic rope commands also issue ordinary weapon
+controls. Movement is sampled first and weapon aim afterward, so swinging does
+not redirect a shot. Checkmate's rope runner opts into attacks; no enemy,
+resource, human-input or save behavior changes. All 857 active Rust tests,
+94 native Checkmate records, 82 shared-world cases and 43 campaign cases pass.
+Both complete single-player Checkmate logs still match baseline exactly.
+
+The first new-build run reaches both upper rope landings, but remains a failure:
+`checkmate-recovery-route-9b4813fec6cb4378a2d7d45de001ba43` times out while the
+delayed guest continually corrects around an eight-unit waiting point. Both
+players are supported and alive at 60/83 health. The runner now releases movement
+within the waiting area and requires acknowledged neutral input, support and
+speed below one unit/second before continuing. It replans if the body drifts out
+of that area. Ordinary body clearance and player separation checks stay active.
+
+The fresh Red-led skipped-scenes internet run now passes on `afe78ef`, with
+40 ms delay and 20 ms jitter. Evidence:
+`checkmate-recovery-route-6e982980bd2a45169c7e1ba34372af1a`.
+Both clients complete the rope landing, all three original scenes retain Red
+ownership, the King is defeated and both players arrive in Funhouse. There are
+5,777 matching player/world/native states and 1,618 host/1,608 guest route samples.
+Red dies at tick 26565 and safely revives at 27765 with 25 health. Her spectator
+camera, exact 1,200 active ticks and unchanged carried resources pass. Blue
+traverses northern waypoints 38-44 while Red is dead; those remain explicitly
+revival-carried coverage. This is a fresh full team route with legitimate revival.
+
+The same run delivers all three weapon effect types from both players to both
+clients. On this exact build, all six native GPU positive/negative checks pass:
+776 swing-trail pixels, 1,265 projectile-trail pixels and 184 spark pixels for
+each skin, with three matching restores per case. These cover shared weapon
+buffers; native King and environmental effect visibility and the remaining
+recovery/reconnect cases stay open. No completed campaign row or new percentage
+credit is claimed from this follow-up.

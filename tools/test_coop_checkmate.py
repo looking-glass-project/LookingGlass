@@ -97,7 +97,7 @@ class CheckmatePair(Pair):
 
     def set(self, role, goal=None, navigate=False, *, swim=False, attack=None, **kwargs):
         if attack is None:
-            attack = goal is not None
+            attack = goal is not None or kwargs.get('rope') is not None
         if navigate:
             # Run the exposed late approach; timed jumps and final landing
             # braking retain their own inputs in the native controller.
@@ -344,8 +344,20 @@ class CheckmatePair(Pair):
                     assert body['feet'][2] > 250, 'Rope jump missed the upper landing'
                     self.set(role, parking[role], navigate=True)
                     phase(role, 'parking')
-                elif current == 'parking' and self.reached(role):
-                    phase(role, 'done')
+                elif current == 'parking' and body['grounded'] and distance(body['feet'], parking[role]) < 24:
+                    # This is a waiting area, not a precise trigger. A delayed
+                    # steering correction can orbit an eight-unit point forever.
+                    # Release movement normally and require its acknowledgement
+                    # plus a supported, stationary body before continuing.
+                    self.set(role, attack=False)
+                    phase(role, 'braking')
+                elif current == 'braking' and body['grounded']:
+                    if distance(body['feet'], parking[role]) > 32:
+                        self.set(role, parking[role], navigate=True, attack=False)
+                        phase(role, 'parking')
+                    elif self.reports[role]['route_driver']['command'] == self.commands[role]['id'] \
+                            and distance(body['velocity'][:2], [0, 0]) < 1:
+                        phase(role, 'done')
             return all(value == 'done' for value in phases.values())
 
         self.until(advance, 60)

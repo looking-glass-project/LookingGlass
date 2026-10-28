@@ -940,12 +940,14 @@ impl Driver {
             let (phase, reached) = rope.sample(&body.player, world, keys, &mut self.jumped, &mut self.rope_used);
             self.report.phase = phase; self.report.reached = reached;
             if keys.wish.length() > 0. { keys.yaw = keys.wish.y.atan2(keys.wish.x); keys.pitch = 0.; }
-            return;
         }
         if command.attack {
             combat_controls(world,&arena.stage.interactions,arena.npcs.targets(),body,command.prefer_cards,
                 |id|self.report.guards.iter().any(|g|g.id==id && g.state==crate::combat::State::Idle),keys);
         }
+        // Rope movement can be combined with ordinary weapon input. Apply aim
+        // after movement-facing so a swing does not redirect an intended shot.
+        if command.rope.is_some() { return; }
         if let Some(index) = command.beyond_step {
             let Some(beyond) = &arena.stage.interactions.beyond else {
                 self.report.error = Some("Moving-step command requires Beyond the Wall".into()); return;

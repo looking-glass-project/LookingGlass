@@ -57,3 +57,20 @@ Logs: `private/coop-weapon-effects-{build18,unit18}.log`.
 This verifies the three shared transient buffers. Other weapon, enemy, attached
 emitter and environmental effects still need their own coverage; the result
 does not certify every particle in every campaign visit.
+
+## Checkmate repeat on 28 October 2026
+
+Source `afe78ef49fcd940d037fb41d0c62d346b55d4fe1fe556668ab65af78db158156`
+passes the same six GPU cases again: 776 swing-trail pixels, 1,265 projectile-trail
+pixels and 184 spark pixels for each Alice, with three matching restores each.
+An isolated native profile contains `coop-weapon-effects.json`; the numerical
+checks require no model image inspection. Local evidence is under
+`private/coop-rope-combat-render-afe78ef/`.
+
+The fresh Red-led Checkmate internet route on that build also passes the existing
+effect-delivery verifier for all three types and both emitting players in both
+clients. Evidence is the retained route
+`checkmate-recovery-route-6e982980bd2a45169c7e1ba34372af1a`, with a supplemental
+history/verifier hash record at `private/coop-checkmate-effects-afe78ef.json`.
+This adds current Checkmate weapon coverage. It does not extend the claim to
+native King attacks, attached emitters or all environmental particles.

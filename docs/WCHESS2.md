@@ -163,9 +163,60 @@ world and native-resident hashes** match, and 2,570 host/2,549 guest presence sa
 pass. Normal checkpoints before steps 2, 42, 110, 186 and 202 are retained alongside
 the reports under `private/coop/castling-route-048ce8d9a3d94f7ba36ef842980980bb`.
 Both processes exit successfully; the run takes 554 seconds without screenshot
-inspection. The Red-led internet route, skipped scenes over the network and
-recovery/rejoin remain separate open requirements. No completed-row credit is
-assigned yet.
+inspection.
+
+The fresh **Red-led run on the same frozen source also passes all 203 legs**,
+with both original scenes owned by Red and both players at 100 health throughout.
+Its 7,680 common player/world/native-resident hashes match, and 2,236 host/2,221
+guest presence samples pass. Both clients reach Checkmate and exit successfully
+in 482 seconds. Evidence and the same five normal checkpoints are retained under
+`private/coop/castling-route-ed4b32971db5400d9be6d63aabb04798`. Both leader orders
+therefore pass the full watched-scene route over the public internet. Skipped
+scenes over the network, death/wipe recovery and broader rendered effects remain
+separate requirements; no completed-row credit is assigned yet.
+
+### Checkpoint resume and guest rejoin
+
+`tools/test_coop_castling_resume.py` copies an unchanged ordinary checkpoint into
+an isolated host profile, requires the native exact-state restoration receipt,
+and traverses the selected course segment. With `--rejoin`, the guest exits
+gracefully and a new process joins the same host. The checks require unchanged
+positions, personal resources, royal progression, completed scenes and native
+actor identities/health, plus at least 20 matching player/world/native states
+after the new guest joins. Four negative-control tests reject progression loss,
+forgotten scenes, actor resets and duplicate residents. A passing resumed segment
+does not count as a fresh full route or as an abrupt network-loss test.
+
+The initial Red-led exit replay on `e54bc16` preserved the reconnect state but
+failed to board the portal. The delayed controller's endpoint floor probe could
+look across the gap onto the far platform and omit the jump. Red fell to the
+lower floor, lost 17 health and stalled. The failure remains recorded under
+`private/coop/castling-resume-5120abe42d1b422789d0bc93de704d36`.
+
+The diagnostic driver now samples the whole approach and accounts for acceleration
+while input travels. A native movement test uses the captured starting position,
+the level's ledge bounds and delayed observation/input queues: the old controls
+omit the jump, while the new controls jump once and land. Its simplified deck
+allows step-up recovery, so the real arched-platform repeat remains the stronger
+evidence. Production physics, boarding guards and progression are unchanged.
+
+Source `c1a202c287c47d15cf3ac5fd3b8b44bc0ea9a6d870bffbf03de000c3f6c1fa45`
+passes the real exit replay from both unchanged step-202 checkpoints with public
+internet joining and 40/20 ms delay/jitter:
+
+| Saved leader | Exact restored tick | Matching states / after rejoin | Arrival Blue / Red health |
+| --- | ---: | ---: | ---: |
+| Blue | 61,967 | 55 / 35 | 75 / 100 |
+| Red | 54,206 | 49 / 29 | 100 / 100 |
+
+The counts apply separately to player, world and native-resident hashes. Both
+players make one ordinary jump, retain their health and arrive in Checkmate;
+both processes exit successfully. Evidence is in
+`private/coop/castling-resume-52741abcb7624bafab98c0b855c6b724` (Blue) and
+`private/coop/castling-resume-94aaab2959fb4ab586bfc9135b4c7648` (Red). All **837
+active unit tests** pass on this source, with one existing ignored test. These
+checks use state/log evidence without screenshot inspection. Death, timed
+revival, team wipe and broader effects checks remain open for this visit.
 
 `--wchess2-check` exercises real approach triggers, both royal outcomes, dialogue, pause, save futures, moving-platform support, bound exits, ambush alternatives and migration. `--wchess2-route-check` and `--wchess2-route-skip-check` traverse from the real entrance with Normal combat into a loaded Checkmate visit. Route checkpoints are private diagnostics; they do not change player saves. `--wchess2-render-check` captures eight staged views. Native save fixtures are `wchess2-queen-mid`, `wchess2-king-mid`, and `wchess2-exit-open`.
 

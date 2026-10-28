@@ -11,6 +11,17 @@ fn steering(delta:Vec2,velocity:Vec2,lead:f32)->Vec2 {
     // a breadcrumb before either its observation or its new input catches up.
     ((delta-velocity*lead)/(48.+640.*lead)).clamp_length_max(1.)
 }
+fn approach_gap(world:&World,feet:Vec3,direction:Vec2,lead:f32)->bool {
+    // A latency-length probe can land on the far platform and miss the gap.
+    // Check the whole approach and allow for acceleration while input travels.
+    let distance=40.+320.*lead;
+    let samples=(distance/12.).ceil().max(1.) as usize;
+    (1..=samples).any(|n| {
+        let at=feet+direction.extend(0.)*(distance*n as f32/samples as f32);
+        let floor=world.body_trace(at,at-Vec3::Z*32.);
+        floor.start_solid || floor.fraction==1. || floor.normal.z<0.65
+    })
+}
 fn follow_ground_trail(trail:&mut VecDeque<Vec3>,world:&World,p:&Player,lead:f32,
     hazardous:impl Fn(Vec3)->bool) {
     if !p.grounded || p.swimming || p.ledge.is_some() || p.climbing() || p.rope.is_some() {return;}
@@ -65,6 +76,47 @@ mod tests {
             let (error,speed)=delayed_arrival(delay,false);
             assert!(error<2. && speed<5.,"delay {delay}: error {error}, speed {speed}");
         }
+    }
+    fn delayed_boarding(old_probe:bool)->(bool,u64) {
+        let world=World::fixture(&[
+            // Bounds of the solid exit-approach brush in the level geometry.
+            (vec3(-1312.,-160.,496.),vec3(-1184.,32.,512.)),
+            (vec3(-1088.,-200.,200.),vec3(-960.,200.,512.)),
+            (vec3(-2000.,-1000.,100.),vec3(0.,1000.,216.))]);
+        let mut p=Player::new(vec3(-1231.4225,-69.87011,512.03125));p.grounded=true;
+        let goal=vec3(-1024.,-100.,512.03125);
+        let delay=17;let lead=(2*delay+6) as f32*FIXED_DT;
+        let mut observations=VecDeque::from(vec![p.clone();delay+1]);
+        let mut inputs=VecDeque::from(vec![Controls::default();delay+1]);
+        let mut command=Controls::default();let mut jumped=None;let mut boarded=false;
+        for tick in 0..480 {
+            let seen=observations.pop_front().unwrap();
+            if tick%6==0 {
+                let d=(goal-seen.feet).truncate();let direction=d.normalize_or_zero();
+                let gap=if old_probe {
+                    let at=seen.feet+direction.extend(0.)*(40.+seen.velocity.truncate().length()*lead);
+                    let floor=world.body_trace(at,at-Vec3::Z*32.);
+                    floor.start_solid || floor.fraction==1. || floor.normal.z<0.65
+                } else {approach_gap(&world,seen.feet,direction,lead)};
+                let jump=seen.grounded && seen.feet.x< -1103. && gap
+                    && jumped.is_none_or(|last|tick-last>=120);
+                if jump {jumped=Some(tick);}
+                command=Controls{wish:steering(d,seen.velocity.truncate(),lead),run:true,jump,..Default::default()};
+            }
+            inputs.push_back(command);p.tick(&world,inputs.pop_front().unwrap());
+            observations.push_back(p.clone());
+            boarded |= p.grounded && p.feet.x> -1103. && (p.feet.z-512.03125).abs()<1.;
+        }
+        (boarded,p.jumps)
+    }
+    #[test]
+    fn delayed_castling_boarding_emits_a_jump_before_crossing_the_gap() {
+        let old=delayed_boarding(true);
+        let (boarded,jumps)=delayed_boarding(false);
+        // The simple deck permits step-up recovery; the live arched platform
+        // does not. Reproduce the missing jump here, and require an actual
+        // jump/landing from the repair. The network replay verifies the arch.
+        assert!(old.1==0 && boarded && jumps==1,"Old result {old:?}; new boarded {boarded}, jumps {jumps}");
     }
     #[test]
     fn castling_trail_lookahead_requires_a_clear_supported_safe_path() {
@@ -235,10 +287,8 @@ impl NetworkDriver {
         }
         let d=target-p.feet;
         // Anticipate the arrival of a jump input, without moving the observed body.
-        let ahead=p.feet+d.truncate().normalize_or_zero().extend(0.)*(40.+p.velocity.truncate().length()*lead);
-        let floor=world.body_trace(ahead,ahead-Vec3::Z*32.);
         let board_jump=portal && p.grounded && !castle.portal_support(p) && d.truncate().length()<330.
-            && (floor.start_solid || floor.fraction==1. || floor.normal.z<0.65);
+            && approach_gap(world,p.feet,d.truncate().normalize_or_zero(),lead);
         Ok((Controls{wish:steering(d.truncate(),p.velocity.truncate(),lead),run:true,
             jump:board_jump || p.ledge.as_ref().is_some_and(|h|!h.pulling),..Default::default()},false))
     }

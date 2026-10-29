@@ -51,7 +51,12 @@ Native support diagnostics verify actual standing on the tilted board during
 101 and 103; falling onto a lower floor cannot count as arrival. The clear check
 now includes visible resident Boojums and their remaining attacks. The run fails
 at 104 when both riders load the rear and its next target loses support. A normal
-checkpoint before 103 is retained for a coordinated upper exit. Later machinery,
+checkpoint before 103 is retained for a coordinated upper exit. A subsequent
+queued replay verifies Blue's 103/104 supported approaches, actual 105 upper jump
+and 200-tick hold at 106, with 296 matching states and both players at 100 health.
+Red reaches the solo approach after the raised window closes, so the paired
+section remains failed. Red needs correctly timed continuous movement; reducing
+remote braking alone caused oscillation and was reverted. Later machinery,
 scenes, combat and exit remain open. The total stays 48.1%.
 
 The latest frozen build passes 866 active Rust tests and native Funhouse

@@ -535,3 +535,33 @@ two measured benchmark durations. The **26 Funhouse guards**, **13 recovery guar
 and **seven source-package tests** pass. No screenshots were opened.
 Overall remains **48.1%**, six combined campaign rows and 33 open; earlier contact
 repeats, full traversal, recovery/rejoin combinations and broader effects remain required.
+
+
+### Queued upper-exit timing, 29 October 2026
+
+The normal checkpoint before 103 was replayed on the same frozen `0d43ade`
+build, with 40 ms delay and 20 ms jitter. The first attempt, evidence
+`46c2865748d543aa87eb71e914aa7d38`, still asks for 104 before the real brush
+supports it and fails. Waiting for the board to reach -30 degrees instead lets
+Blue complete both supported approaches, an actual upper jump and the 200-tick
+hold. The waiting partner stays forward as a counterweight until Blue lands.
+
+Evidence `d397e9ce9bea45acbc7d0bc4368d5028` independently verifies Blue's
+103/104/105 receipts at ticks 87781/88397/88898 and the 106 hold from 88922 to
+89171. All **296 shared player/world/native states** match. Both players remain
+alive at **100/100 health**, with unchanged spawn stamps. This is deliberately
+a single-rider result: the full personal-arrival verifier rejects the incomplete
+pair. The run fails after 40.943 seconds when Red reaches 103 with the board
+already at -19.56 degrees, after the raised approach window has closed.
+
+The guest controller begins slowing more than 200 units before its target,
+while its own weight is lowering the tip. A separate reduced-braking experiment,
+`73c1596059bd4151861b3dba802997f4`, oscillates around the target and fails after
+55.350 seconds, with Red down to 13 health. That experiment was reverted;
+all eight current fixture dependency hashes match the retained 100/100 run.
+No production physics, collision, networking or arrival acceptance was changed.
+
+Next: make the guest's ordinary input sequence continuous and correctly timed
+through the approach and jump, then require both personal upper-exit receipts.
+The full 103-117 segment, Funhouse visit and campaign acceptance remain open.
+Overall remains **48.1%**. No screenshots were opened for these runs.

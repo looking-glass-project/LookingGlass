@@ -37,11 +37,16 @@ five personal essence pickups and 1,139 matching player/world/native network sta
 Both finish at 100 health, without deaths. The test uses ordinary counterbalancing,
 actual native brush-support checks and visibility-aware resident enemy checks.
 
-Current blocker: the upper exit from the final seesaw. The run stops at 104 because
-both players loading the rear remove support beneath the next target. A normal
-checkpoint before 103 is retained. The next test must coordinate the riders so one
-reaches the upper ledge before both move to the rear. The full section and campaign
-visit remain open, so the overall estimate stays 48.1%.
+Latest upper-exit test: keeping the waiting rider forward lets Blue complete both
+supported approaches, the upper jump and the 200-tick hold at steps 103-106.
+There are 296 matching player/world/native states, with both players still alive
+at 100 health. This is a Blue-only segment, not a paired section pass.
+
+Current blocker: Red's solo approach takes too long while the seesaw tips down.
+The delayed controller slows early; reducing its braking alone caused oscillation
+and was reverted. The next test needs continuous, correctly timed ordinary inputs
+through the moving approach. No game physics or arrival checks were relaxed.
+The full section and campaign visit remain open, so the estimate stays 48.1%.
 
 Tests run as two independent clients through the public network path on Anode,
 with injected delay and jitter. Routine diagnosis uses state and log assertions.

@@ -654,6 +654,44 @@ class FunhousePair(Pair):
         self.completed.extend([95, 96, 97, 98])
         print('PASS Funhouse fulcrums 95..98: both personal approaches, exit jumps and final pivot arrivals', flush=True)
 
+    def seesaw_exit(self):
+        """Keep the waiting rider forward until the other reaches the upper ledge."""
+        assert self.steps[103] == dict(pos=[1920, -3820, 150])
+        assert self.steps[104] == dict(pos=[1920, -3860, 195])
+        assert self.steps[105] == dict(pos=[1920, -4050, 256], mode='jump')
+        assert self.steps[106] == dict(pos=[1920, -4050, 256], mode='hold', frames=200)
+        first = min(self.commands, key=lambda r: distance(self.body(r)['player']['feet'], self.steps[103]['pos'])
+                    + (0 if r == self.first else 16))
+        other = 'guest' if first == 'host' else 'host'
+        spawn = self.body(first)['spawned_at']
+        self.set(other, list(self.body(other)['player']['feet']), surface=460, run=True, attack=True)
+        for role in (first, other):
+            # Load the front using actual movement. A lateral offset keeps the
+            # waiting partner's footing free during the first rider's setup.
+            x = 1920
+            if role == first:
+                x += 64 if self.body(role)['player']['feet'][0] >= x else -64
+            self.move(role, [x, -3400, 0], surface=460)
+            self.until(lambda: self.state(role)['fulcrums'][62][0] <= -43, 30)
+            self.step = 103
+            self.record_arrival(role, self.steps[103]['pos'], surface=460)
+            # At maximum tilt the rear target lies beyond the brush footprint.
+            # Keep standing on 103 until ordinary loading opens that approach.
+            self.until(lambda: self.state(role)['fulcrums'][62][0] >= -30, 30)
+            assert self.state(role)['fulcrums'][62][0] < -20, 'Missed the raised seesaw approach window'
+            self.step = 104
+            self.record_arrival(role, self.steps[104]['pos'], surface=460)
+            self.step = 105
+            self.record_arrival(role, self.steps[105]['pos'], jump=True)
+            self.step = 106
+            self.hold_roles([role], self.steps[106]['pos'], self.steps[106]['frames'])
+            self.retain(f'upper-seesaw-{role}')
+            if role == first:
+                self.park(first, other, self.steps[105]['pos'])
+        assert self.body(first)['stats']['sanity'] > 0 and self.body(first)['spawned_at'] == spawn, 'Upper waiting rider died during the handoff'
+        self.completed.extend(range(103, 107))
+        print('PASS Funhouse seesaw exit 103..106: both personal approaches, upper jumps and timed holds', flush=True)
+
     def clear(self, roles=None):
         roles = tuple(self.commands) if roles is None else tuple(roles)
         for role in roles:
@@ -768,6 +806,9 @@ class FunhousePair(Pair):
             if self.step == 95:
                 self.fulcrum_course()
                 continue
+            if self.step == 103:
+                self.seesaw_exit()
+                continue
             if mode == 'wait':
                 self.wait(step['frames'] / 120)
             elif mode == 'clear':
@@ -840,6 +881,8 @@ if __name__ == '__main__':
         parser.error('The queued mirror sequence must include steps 29..32 together')
     if 95 < args.start_step < 99 or 94 < args.last_step < 98:
         parser.error('The queued fulcrum crossing must include steps 95..98 together')
+    if 103 < args.start_step < 107 or 102 < args.last_step < 106:
+        parser.error('The queued seesaw exit must include steps 103..106 together')
     if not (0 <= args.delay_ms <= 500 and 0 <= args.jitter_ms <= 500):
         parser.error('Delay/jitter must be between 0 and 500 ms')
     pair = FunhousePair(args)

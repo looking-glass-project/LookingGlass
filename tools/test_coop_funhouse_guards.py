@@ -55,6 +55,7 @@ class PersonalArrivalGuards(unittest.TestCase):
         pair.serial, pair.lead = 0, .3
         pair.args = type('Args', (), {'skip_scenes': False})()
         pair.allow_revival, pair.suspended, pair.commands = True, {}, {}
+        pair.survivor_wait, pair.moving_role = {}, None
         body = dict(stats=dict(sanity=0), player=dict(feet=[100, 0, 0]), spawned_at=0)
         pair.reports = dict(host=dict(frame=dict(players=[body])))
         pair.set('host', [400, 0, 0], run=True)
@@ -76,6 +77,25 @@ class PersonalArrivalGuards(unittest.TestCase):
         self.assertTrue(pair.commands['host']['attack'])
         self.assertGreater(pair.commands['host']['id'], neutral_id)
         self.assertFalse(pair.suspended)
+
+    def test_waiting_survivor_can_dodge_then_resumes_the_parked_goal(self):
+        pair = FunhousePair.__new__(FunhousePair)
+        pair.serial, pair.lead = 0, .3
+        pair.args = type('Args', (), {'skip_scenes': False})()
+        pair.allow_revival, pair.suspended, pair.commands = True, {}, {}
+        pair.survivor_wait, pair.moving_role = {}, 'host'
+        bodies = [dict(stats=dict(sanity=0)), dict(stats=dict(sanity=70))]
+        pair.reports = {role: dict(frame=dict(players=bodies)) for role in ('host', 'guest')}
+        pair.set('host', [400, 0, 0], run=True)
+        pair.set('guest', [300, 48, 0], run=True)
+        pair.resume_after_death()
+        self.assertIsNone(pair.commands['guest']['goal'])
+        self.assertTrue(pair.commands['guest']['attack'] and pair.commands['guest']['combat_tactics'])
+        self.assertEqual(bodies[1]['stats']['sanity'], 70)
+        bodies[0]['stats']['sanity'] = 25
+        pair.resume_after_death()
+        self.assertEqual(pair.commands['guest']['goal'], [300, 48, 0])
+        self.assertFalse(pair.survivor_wait)
 
     def test_waiting_point_keeps_clearance_after_arrival_tolerance(self):
         # Captured step 34: the old target 41.6 units from the waypoint let

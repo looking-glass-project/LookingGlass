@@ -96,6 +96,10 @@ struct Command {
     /// player's actual Will; old fixtures retain their Blade-only behavior.
     #[serde(default)]
     prefer_cards: bool,
+    /// Opt-in ordinary-input combat planning: actual melee reach, led throws
+    /// and safe strafing while a route command waits without a movement goal.
+    #[serde(default)]
+    combat_tactics: bool,
     #[serde(default)]
     checkpoint: bool,
     capture: bool,
@@ -588,6 +592,67 @@ impl SwitchAim {
     }
 }
 
+#[derive(Default)]
+struct CombatAim {
+    tracker: crate::route::fight::Tracker,
+    sampled: Option<(u64,u64)>,
+}
+impl CombatAim {
+    fn sample(&mut self, stamp:(u64,u64), context:&crate::combat::Context<'_>,
+        foes:&[crate::combat::Target], eye:Vec3, cards:bool, keys:&mut Input)
+        -> Option<crate::combat::Target> {
+        if self.sampled!=Some(stamp) {
+            let dt=match self.sampled {
+                Some((epoch,tick)) if epoch==stamp.0 && stamp.1>tick => (stamp.1-tick) as f32/120.,
+                _=>{self.tracker=Default::default();1./120.},
+            };
+            self.tracker.observe(context.targets,dt);self.sampled=Some(stamp);
+        }
+        let closing=foes.iter().filter_map(|target|crate::route::fight::aim_point(context,eye,target)
+                .map(|point|(*target,point)))
+            .filter(|(_,point)|point.distance(eye)<220.)
+            .min_by(|(_,a),(_,b)|a.distance_squared(eye).total_cmp(&b.distance_squared(eye)));
+        // A near attacker can reach Alice before the thrown Blade returns.
+        // With no Cards to fund, retain it and close using ordinary movement.
+        self.tracker.hold_blade=!cards && closing.is_some();
+        let mut plan=crate::route::fight::plan(context,eye,foes,&self.tracker,cards);
+        if plan.target.is_none() && self.tracker.hold_blade {
+            if let Some((target,point))=closing {
+                plan=crate::route::fight::Plan{target:Some(target.id),aim:(point-eye).normalize_or_zero(),weapon:0,alternate:false};
+            }
+        }
+        let target=foes.iter().find(|t|Some(t.id)==plan.target).copied()?;
+        keys.weapon=Some(plan.weapon as u8);keys.primary=!plan.alternate;keys.alternate=plan.alternate;
+        keys.yaw=plan.aim.y.atan2(plan.aim.x);keys.pitch=plan.aim.z.asin().clamp(-1.56,1.56);
+        Some(target)
+    }
+}
+
+fn combat_dodge(world:&World, player:&Player, home:Vec3, enemy:Vec3, tick:u64,
+    other:Option<Vec3>, melee:bool, safe:impl Fn(Vec3)->bool)->Vec2 {
+    if !player.grounded || player.swimming || player.rope.is_some() {return Vec2::ZERO;}
+    let delta=(enemy-player.eye()).truncate();let toward=delta.normalize_or_zero();
+    let across=vec2(-toward.y,toward.x)*if (tick/96)%2==0 {1.} else {-1.};
+    let radial=if melee {(delta.length()-60.).mul_add(1./120.,0.).clamp(-0.5,1.)}
+        else if delta.length()>300. {0.6} else if delta.length()<120. {-0.5} else {0.};
+    let retreat=(home-player.feet).truncate().normalize_or_zero();
+    let wish=if (player.feet-home).truncate().length()>120. {retreat}
+        else {(across*if melee {0.3} else {0.9}+toward*radial).normalize_or_zero()};
+    let leash=160_f32.max((player.feet-home).truncate().length());
+    for wish in [wish,-wish,retreat] {
+        if wish==Vec2::ZERO {continue;}
+        let mut trial=player.clone();
+        let clear=(0..72).all(|step| {
+            trial.tick(world,Controls{wish:if step<24 {wish} else {Vec2::ZERO},run:true,..Default::default()});
+            world.body_clear(trial.feet) && trial.feet.z>=player.feet.z-12.
+                && (trial.feet-home).truncate().length()<=leash && safe(trial.feet)
+                && other.is_none_or(|at| (trial.feet-at).truncate().length()>=36. || (trial.feet.z-at.z).abs()>=56.)
+        });
+        if clear {return wish;}
+    }
+    Vec2::ZERO
+}
+
 pub struct Driver {
     path: PathBuf,
     recovery_trace: Option<super::recovery_trace::Trace>,
@@ -609,6 +674,9 @@ pub struct Driver {
     rope_used: bool,
     control_used: bool,
     switch_aim: SwitchAim,
+    combat_aim: CombatAim,
+    combat_home: Option<(u64,Vec3)>,
+    combat_location: Option<(u64,u64,u64)>,
     step_height: Option<f32>,
     swim_goal: Option<(u64, Vec3)>,
     swim_worker: Option<SwimWorker>,
@@ -657,7 +725,8 @@ impl Driver {
             worker: None, plan: VecDeque::new(), walking_plan:false, step_tick: 0, step_at: now,
             walking_progress:WalkingProgress::new(Vec3::ZERO,now),
             navigation_clock:NavigationClock::new(now), jumped: false, rope_used: false,
-            control_used: false, switch_aim:SwitchAim::default(), step_height: None, swim_goal: None, swim_worker: None,
+            control_used: false, switch_aim:SwitchAim::default(), combat_aim:CombatAim::default(),combat_home:None,combat_location:None,
+            step_height: None, swim_goal: None, swim_worker: None,
             garden_course: None, sanctum_course: None, chess_course: None, castling_course: None, location: None, report: Report::default() }
     }
     pub fn poll(&mut self, now: Instant) {
@@ -806,6 +875,11 @@ impl Driver {
         self.observe_doors((frame.epoch, frame.checkpoint_generation, body.warped_at, body.spawned_at),
             &arena.stage.interactions);
         let location = (frame.epoch, body.warped_at, body.spawned_at);
+        // Ordinary waypoint commands reset path planning, but must not erase
+        // the velocity observations used to lead the next thrown Blade.
+        if self.combat_location!=Some(location) {
+            self.combat_aim=Default::default();self.combat_home=None;self.combat_location=Some(location);
+        }
         if self.location != Some(location) {
             self.plan.clear(); self.jumped = false; self.location = Some(location);
             self.swim_goal = None;
@@ -1014,8 +1088,38 @@ impl Driver {
             if keys.wish.length() > 0. { keys.yaw = keys.wish.y.atan2(keys.wish.x); keys.pitch = 0.; }
         }
         if command.attack {
-            combat_controls(world,&arena.stage.interactions,arena.npcs.targets(),body,command.prefer_cards,command.avoid_switches,
-                |id|self.report.guards.iter().any(|g|g.id==id && g.state==crate::combat::State::Idle),keys);
+            if command.combat_tactics && body.stats.copies(0)>0 {
+                let interactions=&arena.stage.interactions;
+                let npcs=arena.npcs.targets();
+                let mut targets=combat_targets(interactions,npcs.clone());
+                let switches=if command.avoid_switches {interactions.shot_targets()} else {Vec::new()};
+                let foes=targets.iter().filter(|t|
+                    crate::level::hit_owner(&interactions.levels,t.id)
+                        .is_none_or(|slot|interactions.levels[slot].ctl.hostile_target(t.id))
+                    && !self.report.guards.iter().any(|g|g.id==t.id && g.state==crate::combat::State::Idle)
+                    && (!npcs.iter().any(|n|n.id==t.id) || arena.npcs.route_engaged(t.id,body.player.eye()))
+                    && !switches.iter().any(|s|s.id==t.id)).copied().collect::<Vec<_>>();
+                let other=&frame.players[1-local.index()];
+                if other.stats.alive() {
+                    targets.push(crate::combat::Target{id:if local.index()==0 {crate::combat::COOP_RED} else {crate::combat::COOP_BLUE},
+                        center:other.player.feet+crate::collision::PLAYER_CENTER,half:crate::collision::PLAYER_HALF});
+                }
+                let context=crate::combat::Context{world,targets:&targets};
+                let cards=command.prefer_cards && body.stats.copies(1)>0 && body.stats.will()>=crate::route::fight::CARD_COST;
+                if let Some(target)=self.combat_aim.sample((frame.epoch,frame.tick),&context,&foes,body.player.eye(),cards,keys) {
+                    if command.goal.is_none() && command.marker.is_none() && command.rope.is_none()
+                        && command.use_aim.is_none() && command.beyond_step.is_none() {
+                        if self.combat_home.is_none_or(|(id,_)|id!=command.id) {self.combat_home=Some((command.id,body.player.feet));}
+                        keys.wish=combat_dodge(world,&body.player,self.combat_home.unwrap().1,target.center,frame.tick,
+                            other.stats.alive().then_some(other.player.feet),keys.weapon==Some(0)&&keys.primary,
+                            |at|!interactions.hazardous(at));
+                        keys.run=keys.wish!=Vec2::ZERO;
+                    }
+                }
+            } else {
+                combat_controls(world,&arena.stage.interactions,arena.npcs.targets(),body,command.prefer_cards,command.avoid_switches,
+                    |id|self.report.guards.iter().any(|g|g.id==id && g.state==crate::combat::State::Idle),keys);
+            }
         }
         // Rope movement can be combined with ordinary weapon input. Apply aim
         // after movement-facing so a swing does not redirect an intended shot.
@@ -1209,6 +1313,85 @@ impl Driver {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn combat_tactics_uses_actual_melee_reach_and_respects_occluders() {
+        let world=World::fixture(&[]);let eye=vec3(0.,0.,48.);
+        // The broad body overlaps the actual melee volume although its centre
+        // lies beyond the old 80-unit shortcut. Cards must not displace it.
+        let enemy=crate::combat::Target{id:7,center:vec3(90.,0.,48.),half:vec3(40.,16.,32.)};
+        let targets=[enemy];let context=crate::combat::Context{world:&world,targets:&targets};
+        let mut aim=CombatAim::default();let mut keys=Input::default();
+        assert_eq!(aim.sample((1,1),&context,&targets,eye,true,&mut keys).unwrap().id,7);
+        assert_eq!(keys.weapon,Some(0));assert!(keys.primary && !keys.alternate);
+        assert!(crate::weapons::blade_melee(&context,eye,Vec3::X).iter().any(|h|h.id==7 && h.damage>0.));
+        let wall=World::fixture(&[(vec3(20.,-100.,-100.),vec3(30.,100.,200.))]);
+        let blocked=crate::combat::Context{world:&wall,targets:&targets};
+        let mut keys=Input::default();
+        assert!(aim.sample((1,2),&blocked,&targets,eye,true,&mut keys).is_none());
+        assert!(keys.weapon.is_none() && !keys.primary && !keys.alternate);
+        let friend=crate::combat::Target{id:crate::combat::COOP_RED,center:vec3(30.,0.,48.),half:Vec3::splat(20.)};
+        let both=[enemy,friend];let blocked=crate::combat::Context{world:&world,targets:&both};
+        assert!(aim.sample((1,3),&blocked,&targets,eye,true,&mut keys).is_none());
+    }
+    #[test]
+    fn combat_tactics_leads_actual_moving_blade_hits_without_resampling_stale_frames() {
+        let world=World::fixture(&[]);let eye=vec3(0.,0.,48.);
+        let mut aim=CombatAim::default();let mut keys=Input::default();
+        let mut target=crate::combat::Target{id:7,center:vec3(400.,-200.,48.),half:Vec3::splat(8.)};
+        for i in 0..=40 {
+            target.center.y=-200.+i as f32*5.;
+            let targets=[target];let context=crate::combat::Context{world:&world,targets:&targets};
+            aim.sample((1,i*6),&context,&targets,eye,false,&mut keys);
+        }
+        let velocity=aim.tracker.velocity(7);
+        let targets=[target];let context=crate::combat::Context{world:&world,targets:&targets};
+        for _ in 0..20 {aim.sample((1,240),&context,&targets,eye,false,&mut keys);}
+        assert_eq!(aim.tracker.velocity(7),velocity);
+        assert!(velocity.y>99. && keys.alternate && keys.yaw>0.05);
+        let direction=vec3(keys.pitch.cos()*keys.yaw.cos(),keys.pitch.cos()*keys.yaw.sin(),keys.pitch.sin());
+        let mut led=crate::weapons::Projectile::thrown_blade(eye,direction);
+        let mut old=crate::weapons::Projectile::thrown_blade(eye,crate::route::fight::lead(eye,target.center,Vec3::ZERO));
+        let (mut hit,mut old_hit)=(false,false);
+        for _ in 0..100 {
+            target.center.y+=100./120.;
+            let targets=[target];let context=crate::combat::Context{world:&world,targets:&targets};
+            hit|=led.contact_step(1./120.,&context).0.is_some_and(|h|h.id==7);
+            old_hit|=old.contact_step(1./120.,&context).0.is_some_and(|h|h.id==7);
+        }
+        assert!(hit && !old_hit,"Led throw must hit the moving body that static aim misses");
+        aim.sample((2,0),&context,&targets,eye,false,&mut keys);
+        assert_eq!(aim.tracker.velocity(7),Vec3::ZERO);
+    }
+    #[test]
+    fn combat_dodge_uses_supported_safe_space_without_entering_the_partner() {
+        let world=World::fixture(&[(vec3(-250.,-250.,-100.),vec3(250.,250.,0.))]);
+        let mut p=Player::new(vec3(0.,0.,0.03125));p.grounded=true;
+        let home=p.feet;let enemy=vec3(200.,0.,48.);let other=vec3(0.,80.,0.03125);
+        let wish=combat_dodge(&world,&p,home,enemy,0,Some(other),false,|at|at.x<100.);
+        assert!(wish.y<0.,"Unsafe first direction should reverse away from the partner");
+        assert_eq!(p.feet,home,"Prediction changed the real body");
+        for i in 0..72 {
+            p.tick(&world,Controls{wish:if i<24 {wish} else {Vec2::ZERO},run:true,..Default::default()});
+            assert!(p.grounded && world.body_clear(p.feet) && (p.feet-other).truncate().length()>=36.);
+        }
+        assert_eq!(combat_dodge(&world,&p,home,enemy,0,None,false,|_|false),Vec2::ZERO);
+    }
+    #[test]
+    fn combat_tactics_retains_a_dry_blade_for_an_approaching_enemy() {
+        let world=World::fixture(&[(vec3(-400.,-400.,-100.),vec3(400.,400.,0.))]);
+        let mut player=Player::new(vec3(0.,0.,0.03125));player.grounded=true;
+        let target=crate::combat::Target{id:7,center:vec3(200.,0.,43.),half:crate::clockwork::HALF};
+        let targets=[target];let context=crate::combat::Context{world:&world,targets:&targets};
+        let mut aim=CombatAim::default();let mut keys=Input::default();
+        aim.sample((1,1),&context,&targets,player.eye(),false,&mut keys);
+        assert_eq!(keys.weapon,Some(0));assert!(keys.primary && !keys.alternate);
+        assert!(crate::weapons::blade_melee(&context,player.eye(),Vec3::X).is_empty(),"No invented out-of-reach hit");
+        let wish=combat_dodge(&world,&player,player.feet,target.center,1,None,true,|_|true);
+        assert!(wish.x>0.8,"Dry melee should close toward the real hit volume");
+        let mut funded=Input::default();
+        aim.sample((1,2),&context,&targets,player.eye(),true,&mut funded);
+        assert_eq!(funded.weapon,Some(1));assert!(funded.primary && !funded.alternate);
+    }
     #[test]
     fn timed_hold_keeps_normal_input_against_a_blocked_authored_point() {
         let world=World::fixture(&[(vec3(-100.,-100.,-100.),vec3(200.,100.,0.)),

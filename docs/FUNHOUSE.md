@@ -298,3 +298,43 @@ The earlier continued-following run
 Red dead. The first recovery-enabled attempt
 `funhouse-route-3c591bd67e694b0994b1d4bcaab9ff33` failed at step 35 during the
 neutral parking interval. Neither is reclassified. Overall stays **48.1%**.
+
+
+## Ordinary-input combat automation (29 October 2026)
+
+Source `c946266` adds an opt-in `combat_tactics` command for the local diagnostic
+controller. It reuses the route combat planner: actual Blade melee volume takes
+priority over Cards, and observed target velocity leads thrown attacks. A
+repeated received frame does not alter that velocity estimate. Waypoint changes
+retain it; actual relocation or a new epoch resets it. Living partners remain
+occluders and cannot become attack targets. Old fixtures keep their default
+controls, and human gameplay is unchanged.
+
+When waiting without a movement goal, the controller predicts normal movement
+on a cloned player before choosing a short defensive strafe or close approach.
+It rejects walls, unsupported drops, hazards and approaches into the partner.
+When Cards are unfunded and an attacker is nearby, it retains the Blade for
+ordinary melee rather than starting the long throw recovery. The real weapon
+hit test still decides whether a swing reaches the enemy. A waiting survivor
+may temporarily leave the parking goal during the partner's countdown, then
+resume it after the game's own revival. No body, resource or progression state
+is written by these tactics.
+
+All **865 active Rust tests** pass (one ignored), including actual moving-target
+projectile contact, melee occlusion, safe predicted movement and retaining the
+Blade for an approaching Automaton. The locked release build passes. Native
+Funhouse checks repeat **63 battle / 35 world / 37 scene** records, and
+Checkmate repeats **94**. All eight single-player component records match the
+baseline gameplay log, excluding only its two benchmark durations. The Python
+suites pass **15 Funhouse / 13 shared recovery / 7 source-package** tests.
+
+The unchanged Normal checkpoint before step 35 was replayed with independent
+public-internet clients, 40 ms delay and 20 ms jitter. Both personally reached
+steps 35 and 36, but the run still failed at step **37** after both died. It is
+retained as a failure in
+`private/coop/funhouse-route-3cbc004991fd47c981ee1fd7bdfb81b9/`.
+The preceding `e96a9d3` tactic build also failed at 37; neither is a corridor
+pass. The frozen final executable SHA-256 is
+`d5b4422a06cf2808eb9a442be085c3346c143b4ccf7adefd19f0805458374b39`.
+Further combat-route coordination is needed before the machinery segment can
+be reached and verified from this checkpoint. Overall remains **48.1%**.

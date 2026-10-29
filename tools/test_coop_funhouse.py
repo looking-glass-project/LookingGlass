@@ -139,6 +139,8 @@ class FunhousePair(Pair):
     def __init__(self, args):
         self.allow_revival = getattr(args, 'allow_revival', False)
         self.suspended = {}
+        self.survivor_wait = {}
+        self.moving_role = None
         self.minimum_lead = min(1.5, .05 + 2 * (args.delay_ms + args.jitter_ms) / 1000)
         self.lead, self.lead_tick = self.minimum_lead, None
         self.step, self.completed = -1, []
@@ -176,7 +178,8 @@ class FunhousePair(Pair):
         super().set(role, *args, **kwargs)
         self.commands[role].update(input_lead=self.lead if role == 'guest' else 0,
             watch_dialogue=True, skip_scene=self.args.skip_scenes, prefer_cards=True,
-            avoid_switches=True, shoot_switch=shoot_switch, hold_goal=hold_goal)
+            avoid_switches=True, shoot_switch=shoot_switch, hold_goal=hold_goal,
+            combat_tactics=True)
         if getattr(self, 'allow_revival', False):
             self.commands[role]['recovery_trace'] = role == 'host'
 
@@ -227,6 +230,21 @@ class FunhousePair(Pair):
                 self.serial += 1
                 pending.update(id=self.serial, input_lead=self.lead if role == 'guest' else 0)
                 self.commands[role] = pending
+        alive = [role for role in self.reports if self.body(role)['stats']['sanity'] > 0]
+        if len(alive) == 1 and len(self.reports) == 2:
+            survivor = alive[0]
+            command = self.commands[survivor]
+            if survivor != self.moving_role and command.get('goal') is not None and not command.get('hold_goal'):
+                # A waiting survivor must be able to dodge through the ten-second
+                # countdown. The native tactic predicts safe ordinary movement.
+                self.survivor_wait[survivor] = dict(command)
+                self.set(survivor, attack=True)
+        elif len(alive) == len(self.reports):
+            for role, pending in self.survivor_wait.items():
+                self.serial += 1
+                pending.update(id=self.serial, input_lead=self.lead if role == 'guest' else 0)
+                self.commands[role] = pending
+            self.survivor_wait.clear()
 
     def pump(self):
         if (self.folder / 'stop-test').exists():
@@ -304,7 +322,11 @@ class FunhousePair(Pair):
                 navigate = True
                 self.set(role, goal, navigate=True, run=True)
             return False
-        self.until(done)
+        self.moving_role = role
+        try:
+            self.until(done)
+        finally:
+            self.moving_role = None
         assert not self.busy(), 'Unexpected scene during opening corridor movement'
         body = self.body(role)['player']
         assert body['grounded'], 'Waypoint has no supported landing'

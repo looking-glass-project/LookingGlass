@@ -41,6 +41,15 @@ exactly, but continued play after that wipe remains unverified. The return
 corridor, transports, pendulums, later combat and the exit remain open. Overall
 stays **48.1%**, with six combined campaign rows. See [Funhouse evidence](FUNHOUSE.md).
 
+The latest automated combat controller, source `c946266`, uses actual Blade
+melee reach, observed target motion for throws and ordinary defensive movement.
+It can keep a waiting survivor moving during the partner's revival countdown.
+All 865 active Rust tests pass, as do the Funhouse battle/world/scene checks and
+94 native Checkmate records; the single-player component log still matches.
+The two-client replay nevertheless ends in a team wipe at step 37. Its normal
+checkpoint, reports and failure are retained. These controller improvements
+do not establish a corridor pass or increase the completion estimate.
+
 Latest full-route milestone: a fresh Blue-led Checkmate run now passes through
 the King and into Funhouse over the public internet, including Red's verified
 ten-second revival and all three watched original scenes. There are 5,765

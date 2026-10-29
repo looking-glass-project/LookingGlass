@@ -7,9 +7,36 @@ from test_coop_funhouse import fulcrum_waiting_point, fulcrum_balance_goal, fulc
 from test_coop_funhouse import resident_boojum_threats
 from test_coop_funhouse import verify_exit_arrival
 from test_coop_funhouse import forward_waiting_point, verify_forward_waits
+from test_coop_funhouse import ice_preference
+from test_coop_funhouse import verify_waiting_footings
 
 
 class ForwardWaitingGuards(unittest.TestCase):
+    def test_waiter_must_still_be_alive_supported_and_at_its_stopping_point(self):
+        entry = dict(role='host', tick=10, command=7, goal=[0, 0, 0])
+        row = dict(tick=10, owner=None, driver=dict(command=7),
+                   players=[dict(feet=[0, 0, 0], health=100, grounded=True)])
+        verify_waiting_footings([entry], dict(host=[row]))
+        for change in ('fall', 'dead', 'lower_floor', 'displaced', 'command'):
+            bad = copy.deepcopy(row)
+            if change == 'fall': bad['players'][0]['grounded'] = False
+            if change == 'dead': bad['players'][0]['health'] = 0
+            if change == 'lower_floor': bad['players'][0]['feet'][2] = -36
+            if change == 'displaced': bad['players'][0]['feet'][0] = 24
+            if change == 'command': bad['driver']['command'] = 8
+            with self.assertRaises(AssertionError):
+                verify_waiting_footings([entry], dict(host=[bad]))
+
+    def test_ice_preference_restores_only_prior_authored_switches(self):
+        steps = [dict(pos=[0, 0, 0]), dict(mode='ice', pos=[1, 0, 0]),
+                 dict(mode='cards', pos=[0, 0, 0]), dict(mode='ice', pos=[0, 0, 0])]
+        self.assertFalse(ice_preference(steps, 1))
+        self.assertTrue(ice_preference(steps, 2))
+        self.assertTrue(ice_preference(steps, 3))
+        self.assertFalse(ice_preference(steps, 4))
+        with self.assertRaises(AssertionError):
+            ice_preference([dict(mode='ice', pos=[2, 0, 0])], 1)
+
     def test_waiting_cannot_skip_a_jump_hold_or_distant_waypoint(self):
         for step in (dict(pos=[120, 0, 0], mode='jump'), dict(pos=[120, 0, 0], mode='hold'),
                      dict(pos=[600, 0, 0]), dict(pos=[120, 0, 80])):

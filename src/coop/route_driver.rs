@@ -102,6 +102,9 @@ struct Command {
     /// player's actual Will; old fixtures retain their Blade-only behavior.
     #[serde(default)]
     prefer_cards: bool,
+    /// Ordinary Ice Wand primary fire when owned, funded, dry and in range.
+    #[serde(default)]
+    prefer_ice: bool,
     /// Opt-in ordinary-input combat planning: actual melee reach, led throws
     /// and safe strafing while a route command waits without a movement goal.
     #[serde(default)]
@@ -512,7 +515,7 @@ impl NavigationClock {
 // A broad planner landing is not a settled destination. Correct it at input
 // sampling frequency; the outer harness reports only every 200 ms and can miss
 // a brief landing entirely while delayed movement carries Alice over its edge.
-fn landing_control(world: &World, player: &Player, goal: Vec3, lead: f32, radius: f32) -> Option<(Vec2, bool)> {
+pub(crate) fn landing_control(world: &World, player: &Player, goal: Vec3, lead: f32, radius: f32) -> Option<(Vec2, bool)> {
     let delta = goal-player.feet;
     // Waiting for a delayed grounded snapshot is too late on a small pad.
     // Brake on the final descent, once above and near the destination, with
@@ -532,7 +535,24 @@ fn landing_control(world: &World, player: &Player, goal: Vec3, lead: f32, radius
                 && !support.start_solid && support.fraction < 1. && support.normal.z >= 0.65
                 && (player.feet.lerp(down,support.fraction).z-goal.z).abs() < height_tolerance
         };
-    if !(player.grounded && delta.length()<42.) && !descent { return None; }
+    // Approximate waypoint heights can put a short ordinary walk outside the
+    // spherical planner handoff. A 32-unit-high marker over a flat floor can
+    // never satisfy the planner's first 22-unit search, wasting a full search.
+    // Keep the walking height bound and require a clear, continuously supported
+    // approach before extending only the handoff (not the arrival tolerance).
+    let nearby_walk=player.grounded && delta.truncate().length()<42. && delta.z.abs()<height_tolerance && {
+        let end=vec3(goal.x,goal.y,player.feet.z);
+        let trace=world.body_trace(player.feet,end);
+        let samples=(delta.truncate().length()/8.).ceil().max(1.) as u32;
+        !trace.start_solid && trace.fraction>=1. && (1..=samples).all(|i| {
+            let at=player.feet.lerp(end,i as f32/samples as f32);
+            let floor=world.body_trace(at,at-Vec3::Z*2.);
+            let centre=world.sweep(at+Vec3::Z*0.1,at-Vec3::Z*2.,Vec3::ZERO);
+            !floor.start_solid && floor.fraction<1. && floor.normal.z>=0.65
+                && !centre.start_solid && centre.fraction<1. && centre.normal.z>=0.65
+        })
+    };
+    if !(player.grounded && delta.length()<42.) && !nearby_walk && !descent { return None; }
     let settled = player.grounded && delta.truncate().length() < radius && player.velocity.truncate().length() < 20.;
     let steering = delta.truncate()-player.velocity.truncate()*lead;
     let wish = if settled { Vec2::ZERO } else { steering.normalize_or_zero()*(steering.length()/48.).min(1.) };
@@ -636,6 +656,21 @@ struct CombatAim {
     tracker: crate::route::fight::Tracker,
     sampled: Option<(u64,u64)>,
 }
+fn ice_aim(context:&crate::combat::Context<'_>, foes:&[crate::combat::Target],
+    body:&super::world::Body, enabled:bool, keys:&mut Input) -> Option<crate::combat::Target> {
+    if !enabled || body.stats.copies(4)==0 || body.stats.will()<0.75 || body.player.immersion.level!=0 {
+        return None;
+    }
+    let eye=body.player.eye();
+    let (target,point)=foes.iter().filter_map(|target|
+        crate::route::fight::aim_point(context,eye,target).map(|point|(*target,point)))
+        .filter(|(_,point)|point.distance(eye)<360.)
+        .min_by(|a,b|a.1.distance_squared(eye).total_cmp(&b.1.distance_squared(eye)))?;
+    let aim=(point-eye).normalize_or_zero();
+    keys.weapon=Some(4);keys.primary=true;keys.alternate=false;
+    keys.yaw=aim.y.atan2(aim.x);keys.pitch=aim.z.asin().clamp(-1.56,1.56);
+    Some(target)
+}
 impl CombatAim {
     fn sample(&mut self, stamp:(u64,u64), context:&crate::combat::Context<'_>,
         foes:&[crate::combat::Target], eye:Vec3, cards:bool, keys:&mut Input)
@@ -667,7 +702,7 @@ impl CombatAim {
     }
 }
 
-fn combat_dodge(world:&World, player:&Player, home:Vec3, enemy:Vec3, tick:u64,
+fn combat_dodge(world:&World, player:&Player, home:Vec3, enemy:Vec3, tick:u64, lead:f32,
     other:Option<Vec3>, melee:bool, safe:impl Fn(Vec3)->bool)->Vec2 {
     if !player.grounded || player.swimming || player.rope.is_some() {return Vec2::ZERO;}
     let delta=(enemy-player.eye()).truncate();let toward=delta.normalize_or_zero();
@@ -678,11 +713,18 @@ fn combat_dodge(world:&World, player:&Player, home:Vec3, enemy:Vec3, tick:u64,
     let wish=if (player.feet-home).truncate().length()>120. {retreat}
         else {(across*if melee {0.3} else {0.9}+toward*radial).normalize_or_zero()};
     let leash=160_f32.max((player.feet-home).truncate().length());
-    for wish in [wish,-wish,retreat] {
+    let delay=(lead.clamp(0.,1.5)*120.).ceil() as u32;
+    // Remote snapshots describe an earlier body. Cover its in-flight motion,
+    // the time a new input can remain unseen, and its ordinary braking tail.
+    // Shorter analogue sidesteps remain available on a narrow supported strip.
+    let pending=player.velocity.truncate()/320.;
+    for wish in [wish,-wish,retreat,wish*0.35,-wish*0.35,retreat*0.35] {
         if wish==Vec2::ZERO {continue;}
         let mut trial=player.clone();
-        let clear=(0..72).all(|step| {
-            trial.tick(world,Controls{wish:if step<24 {wish} else {Vec2::ZERO},run:true,..Default::default()});
+        let clear=(0..72+2*delay).all(|step| {
+            let input=if step<delay {pending.clamp_length_max(1.)}
+                else if step<24+2*delay {wish} else {Vec2::ZERO};
+            trial.tick(world,Controls{wish:input,run:true,..Default::default()});
             world.body_clear(trial.feet) && trial.feet.z>=player.feet.z-12.
                 && (trial.feet-home).truncate().length()<=leash && safe(trial.feet)
                 && other.is_none_or(|at| (trial.feet-at).truncate().length()>=36. || (trial.feet.z-at.z).abs()>=56.)
@@ -1170,11 +1212,13 @@ impl Driver {
                 }
                 let context=crate::combat::Context{world,targets:&targets};
                 let cards=command.prefer_cards && body.stats.copies(1)>0 && body.stats.will()>=crate::route::fight::CARD_COST;
-                if let Some(target)=self.combat_aim.sample((frame.epoch,frame.tick),&context,&foes,body.player.eye(),cards,keys) {
+                let normal=self.combat_aim.sample((frame.epoch,frame.tick),&context,&foes,body.player.eye(),cards,keys);
+                let target=ice_aim(&context,&foes,body,command.prefer_ice,keys).or(normal);
+                if let Some(target)=target {
                     if command.goal.is_none() && command.marker.is_none() && command.rope.is_none()
                         && command.use_aim.is_none() && command.beyond_step.is_none() && !command.funhouse_exit {
                         if self.combat_home.is_none_or(|(id,_)|id!=command.id) {self.combat_home=Some((command.id,body.player.feet));}
-                        keys.wish=combat_dodge(world,&body.player,self.combat_home.unwrap().1,target.center,frame.tick,
+                        keys.wish=combat_dodge(world,&body.player,self.combat_home.unwrap().1,target.center,frame.tick,command.input_lead,
                             other.stats.alive().then_some(other.player.feet),keys.weapon==Some(0)&&keys.primary,
                             |at|!interactions.hazardous(at));
                         keys.run=keys.wish!=Vec2::ZERO;
@@ -1399,6 +1443,34 @@ impl Driver {
 mod tests {
     use super::*;
     #[test]
+    fn ice_preference_requires_own_resources_range_and_a_clear_target() {
+        use crate::inventory::{PickupKind,Stats};
+        let world=World::fixture(&[]);
+        let mut body=super::super::world::Body {player:Player::new(Vec3::ZERO),stats:Stats::default(),
+            yaw:0.,pitch:0.,running:false,spawned_at:0,warped_at:0};
+        let enemy=crate::combat::Target {id:7,center:body.player.eye()+Vec3::X*200.,half:Vec3::splat(16.)};
+        let targets=[enemy];let context=crate::combat::Context{world:&world,targets:&targets};
+        let mut keys=Input::default();
+        assert!(ice_aim(&context,&targets,&body,true,&mut keys).is_none());
+        assert!(body.stats.apply(PickupKind::Weapon(4),1.));
+        let saved=serde_json::to_value(&body.stats).unwrap();
+        assert!(ice_aim(&context,&targets,&body,false,&mut keys).is_none());
+        assert_eq!(ice_aim(&context,&targets,&body,true,&mut keys).unwrap().id,7);
+        assert_eq!(keys.weapon,Some(4));assert!(keys.primary && !keys.alternate);
+        assert_eq!(serde_json::to_value(&body.stats).unwrap(),saved,"Input selection must not grant/spend resources");
+        let friend=crate::combat::Target{id:crate::combat::COOP_RED,center:body.player.eye()+Vec3::X*80.,half:Vec3::splat(24.)};
+        let both=[enemy,friend];let blocked=crate::combat::Context{world:&world,targets:&both};
+        assert!(ice_aim(&blocked,&targets,&body,true,&mut keys).is_none());
+        let wall=World::fixture(&[(vec3(60.,-100.,-100.),vec3(70.,100.,200.))]);
+        assert!(ice_aim(&crate::combat::Context{world:&wall,targets:&targets},&targets,&body,true,&mut keys).is_none());
+        let far=[crate::combat::Target{center:body.player.eye()+Vec3::X*500.,..enemy}];
+        assert!(ice_aim(&crate::combat::Context{world:&world,targets:&far},&far,&body,true,&mut keys).is_none());
+        body.player.immersion.level=1;
+        assert!(ice_aim(&context,&targets,&body,true,&mut keys).is_none());
+        body.player.immersion.level=0;assert!(body.stats.spend_will(100.));
+        assert!(ice_aim(&context,&targets,&body,true,&mut keys).is_none());
+    }
+    #[test]
     fn combat_tactics_uses_actual_melee_reach_and_respects_occluders() {
         let world=World::fixture(&[]);let eye=vec3(0.,0.,48.);
         // The broad body overlaps the actual melee volume although its centre
@@ -1452,14 +1524,34 @@ mod tests {
         let world=World::fixture(&[(vec3(-250.,-250.,-100.),vec3(250.,250.,0.))]);
         let mut p=Player::new(vec3(0.,0.,0.03125));p.grounded=true;
         let home=p.feet;let enemy=vec3(200.,0.,48.);let other=vec3(0.,80.,0.03125);
-        let wish=combat_dodge(&world,&p,home,enemy,0,Some(other),false,|at|at.x<100.);
+        let wish=combat_dodge(&world,&p,home,enemy,0,0.,Some(other),false,|at|at.x<100.);
         assert!(wish.y<0.,"Unsafe first direction should reverse away from the partner");
         assert_eq!(p.feet,home,"Prediction changed the real body");
         for i in 0..72 {
             p.tick(&world,Controls{wish:if i<24 {wish} else {Vec2::ZERO},run:true,..Default::default()});
             assert!(p.grounded && world.body_clear(p.feet) && (p.feet-other).truncate().length()>=36.);
         }
-        assert_eq!(combat_dodge(&world,&p,home,enemy,0,None,false,|_|false),Vec2::ZERO);
+        assert_eq!(combat_dodge(&world,&p,home,enemy,0,0.,None,false,|_|false),Vec2::ZERO);
+    }
+    #[test]
+    fn combat_dodge_keeps_delayed_inputs_on_a_narrow_platform() {
+        let world=World::fixture(&[(vec3(-64.,-300.,-100.),vec3(64.,300.,0.))]);
+        for delay in [0,12,24] {
+            let mut p=Player::spawn(&world,vec3(16.,0.,crate::movement::EYE_HEIGHT+0.03125)).unwrap();
+            let home=p.feet;let enemy=vec3(200.,180.,48.);
+            let mut views=VecDeque::from(vec![p.clone();delay+1]);
+            let mut inputs=VecDeque::from(vec![Controls::default();delay]);
+            let mut movement=0.;
+            for tick in 0..1200 {
+                let view=views.pop_front().unwrap();
+                let wish=combat_dodge(&world,&view,home,enemy,tick,2.*delay as f32/120.,None,false,|_|true);
+                inputs.push_back(Controls {wish,run:true,..Default::default()});
+                let old=p.feet;p.tick(&world,inputs.pop_front().unwrap());movement+=p.feet.distance(old);
+                assert!(p.grounded && p.feet.z.abs()<0.1,"Delayed dodge left support: delay{delay},tick{tick},feet{:?}",p.feet);
+                views.push_back(p.clone());
+            }
+            assert!(movement>24.,"Safe prediction disabled all useful dodging");
+        }
     }
     #[test]
     fn combat_tactics_retains_a_dry_blade_for_an_approaching_enemy() {
@@ -1471,7 +1563,7 @@ mod tests {
         aim.sample((1,1),&context,&targets,player.eye(),false,&mut keys);
         assert_eq!(keys.weapon,Some(0));assert!(keys.primary && !keys.alternate);
         assert!(crate::weapons::blade_melee(&context,player.eye(),Vec3::X).is_empty(),"No invented out-of-reach hit");
-        let wish=combat_dodge(&world,&player,player.feet,target.center,1,None,true,|_|true);
+        let wish=combat_dodge(&world,&player,player.feet,target.center,1,0.,None,true,|_|true);
         assert!(wish.x>0.8,"Dry melee should close toward the real hit volume");
         let mut funded=Input::default();
         aim.sample((1,2),&context,&targets,player.eye(),true,&mut funded);
@@ -1913,6 +2005,37 @@ mod tests {
         let corrected=run(true);
         assert!(corrected.grounded && corrected.feet.distance(goal)<8.,
             "Landing correction abandoned the lateral approach: {:?}",corrected.feet);
+    }
+    #[test]
+    fn navigation_finishes_a_nearby_approximate_height_without_a_full_search() {
+        let floor=(vec3(-100.,-100.,-100.),vec3(100.,100.,0.));
+        let world=World::fixture(&[floor]);
+        let goal=vec3(0.,0.,32.);
+        for delay in [0,12,24] {
+            let mut player=Player::spawn(&world,vec3(28.4505,-15.4922,
+                crate::movement::EYE_HEIGHT+0.03125)).unwrap();
+            assert!(player.feet.distance(goal)>42. && (player.feet-goal).truncate().length()<42.);
+            let mut views=VecDeque::from(vec![player.clone();delay+1]);
+            let mut inputs=VecDeque::from(vec![Controls::default();delay]);
+            for _ in 0..600 {
+                let view=views.pop_front().unwrap();
+                let (wish,_) = landing_control(&world,&view,goal,2.*delay as f32/120.,8.)
+                    .expect("Nearby supported approach incorrectly needs full path search");
+                inputs.push_back(Controls {wish,..Default::default()});
+                player.tick(&world,inputs.pop_front().unwrap());
+                assert!(player.grounded && player.feet.z.abs()<0.1);
+                views.push_back(player.clone());
+            }
+            assert!(landing_control(&world,&player,goal,0.,8.).unwrap().1);
+            assert!((player.feet-goal).truncate().length()<8.);
+        }
+        let player=Player::spawn(&world,vec3(28.4505,-15.4922,
+            crate::movement::EYE_HEIGHT+0.03125)).unwrap();
+        let wall=World::fixture(&[floor,(vec3(5.,-100.,0.),vec3(6.,100.,100.))]);
+        assert!(landing_control(&wall,&player,goal,0.,8.).is_none(),"Approach crosses a wall");
+        let edge=World::fixture(&[(vec3(20.,-100.,-100.),vec3(100.,100.,0.))]);
+        assert!(landing_control(&edge,&player,goal,0.,8.).is_none(),"Approach leaves support");
+        assert!(landing_control(&world,&player,Vec3::Z*36.,0.,8.).is_none(),"Height bound widened");
     }
     #[test]
     fn navigation_settles_a_fast_edge_landing_before_reporting_arrival() {

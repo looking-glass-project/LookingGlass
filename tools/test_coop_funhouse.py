@@ -1,6 +1,6 @@
 """Play Funhouse's opening, mirror and cell machinery in independent clients.
 
-This runner covers the authored entrance through step 117. It sends only ordinary
+This runner covers the authored entrance through step 127. It sends only ordinary
 inputs and normal save requests, including actual Blade throws at switches.
 Every movement waypoint needs a separate arrival receipt for each player.
 Full traversal, recovery, machinery and the exit remain separate work.
@@ -200,6 +200,17 @@ def forward_waiting_point(steps, index, goal):
     return point if 72 <= distance(point[:2], goal[:2]) <= 512 and abs(point[2]-goal[2]) <= 52 else None
 
 
+def verify_waiting_footings(entries, history):
+    observed = {role: {row['tick']: row for row in rows} for role, rows in history.items()}
+    for entry in entries:
+        row = observed[entry['role']].get(entry['tick'])
+        assert row and row['owner'] is None, 'Waiting footing was not observed in free play'
+        body = row['players'][0 if entry['role'] == 'host' else 1]
+        assert body['health'] > 0 and body['grounded'], 'Waiting partner fell or died during handoff'
+        assert distance(body['feet'][:2], entry['goal'][:2]) < 24 and abs(body['feet'][2] - entry['goal'][2]) < 35, 'Waiting partner left the supported stopping point'
+        assert row['driver']['command'] == entry['command'], 'Waiting command was not acknowledged'
+
+
 def verify_forward_waits(entries, steps, history):
     observed = {role: {row['tick']: row for row in rows} for role, rows in history.items()}
     for entry in entries:
@@ -290,11 +301,29 @@ def nearby_drops(body):
     return sorted(drops, key=lambda d: distance(feet, d['origin']))
 
 
+def combat_pending(report, role):
+    driver, slot = report['route_driver'], 0 if role == 'host' else 1
+    return (driver['native_threats'][slot] is not None or bool(clock_threats(report, role))
+            or bool(resident_boojum_threats(report, role))
+            or any(e['active'] and e['health'] > 0 and e['distance'][slot] <= 700
+                   and e['line_of_sight'][slot] for kind in ('guards', 'boojums', 'snarks')
+                   for e in driver[kind]))
+
+
 def cards_preference(steps, before):
     enabled = True
     for step in steps[:before]:
         if step.get('mode') == 'cards':
             assert step['pos'][0] in (0, 1), 'Invalid authored Cards preference'
+            enabled = bool(step['pos'][0])
+    return enabled
+
+
+def ice_preference(steps, before):
+    enabled = False
+    for step in steps[:before]:
+        if step.get('mode') == 'ice':
+            assert step['pos'][0] in (0, 1), 'Invalid authored Ice preference'
             enabled = bool(step['pos'][0])
     return enabled
 
@@ -352,8 +381,9 @@ class FunhousePair(Pair):
         raw = (ROOT / 'src/levels/funhouse/route_steps.json').read_bytes()
         self.steps = json.loads(raw)
         self.prefer_cards = cards_preference(self.steps, args.start_step)
+        self.prefer_ice = ice_preference(self.steps, args.start_step)
         assert len(self.steps) == 1077, 'Review changed authored course'
-        assert all(s.get('mode', '') in ('', 'wait', 'clear', 'jump', 'shot', 'hold', 'cards')
+        assert all(s.get('mode', '') in ('', 'wait', 'clear', 'jump', 'shot', 'hold', 'cards', 'ice')
                    for s in self.steps[args.start_step:args.last_step + 1])
         (self.folder / 'course.json').write_bytes(raw)
         self.evidence.update(course_sha256=hashlib.sha256(raw).hexdigest(),
@@ -381,6 +411,7 @@ class FunhousePair(Pair):
         super().set(role, *args, **kwargs)
         self.commands[role].update(input_lead=self.lead if role == 'guest' else 0,
             watch_dialogue=True, skip_scene=self.args.skip_scenes, prefer_cards=getattr(self, 'prefer_cards', True),
+            prefer_ice=getattr(self, 'prefer_ice', False),
             avoid_switches=True, shoot_switch=shoot_switch, hold_goal=hold_goal,
             combat_tactics=True, runup=runup, surface=surface, funhouse_exit=funhouse_exit)
         if getattr(self, 'allow_revival', False):
@@ -465,6 +496,10 @@ class FunhousePair(Pair):
             row = self.history[role][-1]
             row.setdefault('presentation', report['presentation'])
             row.setdefault('funhouse', self.state(role))
+            # Paid primary-emission intervals are native weapon state, retained
+            # separately for each player on both clients (not a visibility claim).
+            row.setdefault('ice_primary_pulses', [sum(not pulse[2] for pulse in
+                c['projectiles'].get('ice', {}).get('pulses', [])) for c in report['combat']['characters']])
         balance = getattr(self, 'fulcrum_balance', None)
         if balance:
             role = balance['role']
@@ -521,6 +556,24 @@ class FunhousePair(Pair):
             body, tick = self.body(role)['player'], self.reports[role]['frame']['tick']
             if self.body(role)['stats']['sanity'] <= 0:
                 return False
+            if 116 <= self.step <= 127 and body['grounded'] and not self.busy():
+                threats = {r: combat_pending(self.reports[r], r) for r in self.commands}
+                if any(threats.values()):
+                    # New attackers become visible while descending. Stop on
+                    # the current footing and fight with normal dodge/weapon
+                    # inputs before continuing across the narrow ledge.
+                    waiting = {r: dict(self.commands[r]) for r in self.commands if r != role}
+                    self.clear()
+                    self.evidence.setdefault('combat_pauses', []).append(dict(
+                        step=self.step, role=role, start_tick=tick,
+                        tick=self.reports[role]['frame']['tick'], threats=threats))
+                    for waiter, old in waiting.items():
+                        if old.get('goal') is not None:
+                            self.set(waiter, old['goal'], navigate=old['navigate'], run=old.get('run', False),
+                                     attack=old['attack'], hold_goal=old.get('hold_goal', False), surface=old.get('surface'))
+                    self.set(role, goal, navigate=navigate, run=True, jump=jump, runup=runup, surface=surface)
+                    body, tick = self.body(role)['player'], self.reports[role]['frame']['tick']
+                    best = distance(body['feet'], goal), tick
             if follow and self.body(follow)['stats']['sanity'] > 0 and not self.busy():
                 if body['grounded'] and (not trail or distance(trail[-1]['feet'], body['feet']) >= 96):
                     trail.append(dict(tick=tick, feet=list(body['feet'])))
@@ -607,6 +660,7 @@ class FunhousePair(Pair):
         # Keep steering through the handoff; a neutral settling interval lets
         # incoming punches knock the player back into the lane before it ends.
         self.set(role, parking, run=True, attack=True, surface=surface)
+        return parking
 
     def go(self, goal, jump=False, surface=None):
         # On a return along a narrow hall, the player already in front leads.
@@ -619,10 +673,27 @@ class FunhousePair(Pair):
         for role in (first, other):
             # On the narrow descent a follower can occupy the leader's target
             # after a death/respawn. Queue personal arrivals and parking there.
-            follow = other if surface is None and role == first and not jump and not 111 <= self.step <= 117 and distance(self.body(role)['player']['feet'], goal) > 192 else None
+            follow = other if surface is None and role == first and not jump and not 111 <= self.step <= 127 and distance(self.body(role)['player']['feet'], goal) > 192 else None
             self.record_arrival(role, goal, jump, follow=follow, surface=surface)
             if role == first:
-                self.park(first, other, goal, surface=surface)
+                parking = self.park(first, other, goal, surface=surface)
+        if 111 <= self.step <= 127:
+            # An earlier personal arrival is not a safe handoff if the waiter
+            # has since been knocked off the ledge while the partner approaches.
+            def waiter_settled():
+                body = self.body(first)
+                feet = body['player']['feet']
+                assert body['stats']['sanity'] > 0 and body['player']['grounded'], 'Waiting partner fell or died during handoff'
+                assert abs(feet[2] - parking[2]) < 35, 'Waiting partner fell below the supported stopping point'
+                return (distance(feet[:2], parking[:2]) < 24
+                        and self.reports[first]['route_driver']['command'] == self.commands[first]['id'])
+            # A hit can displace a still-supported waiter while its existing
+            # walking command brings it back. Observe that return, not a timer.
+            self.until(waiter_settled, 15)
+            entry = dict(step=self.step, role=first, goal=parking,
+                         command=self.commands[first]['id'], tick=self.reports[first]['frame']['tick'])
+            verify_waiting_footings([entry], self.history)
+            self.evidence.setdefault('waiting_footings', []).append(entry)
         self.set(other, attack=True)
 
     def record_arrival(self, role, goal, jump=False, follow=None, crossing=False, running_jump=False, surface=None):
@@ -817,11 +888,7 @@ class FunhousePair(Pair):
                 report = self.reports[role]
                 driver, slot = report['route_driver'], 0 if role == 'host' else 1
                 quiet &= driver['command'] == self.commands[role]['id'] and driver['native_threats'][slot] is None
-                quiet &= not clock_threats(report, role)
-                quiet &= not resident_boojum_threats(report, role)
-                for kind in ('guards', 'boojums', 'snarks'):
-                    quiet &= not any(e['active'] and e['health'] > 0 and e['distance'][slot] <= 700
-                                     and e['line_of_sight'][slot] for e in driver[kind])
+                quiet &= not combat_pending(report, role)
             tick = self.reports['host']['frame']['tick']
             since = (tick if since is None else since) if quiet else None
             return since is not None and tick - since >= 120
@@ -869,13 +936,20 @@ class FunhousePair(Pair):
                 print('PASS personal essence', role, key, 'health', self.body(role)['stats']['sanity'], flush=True)
             self.set(role, attack=True)
 
-    save_checkpoint = ChessPair.save_checkpoint
+    def save_checkpoint(self, step):
+        # The ordinary menu correctly refuses a save while either player is
+        # dead. Let the real revival finish before requesting that same save;
+        # a team wipe still fails validate_report instead of becoming a resume.
+        if self.allow_revival:
+            self.until(lambda: all(self.body(role)['stats']['sanity'] > 0 for role in self.commands), 30)
+        ChessPair.save_checkpoint(self, step)
 
     def verify(self):
         assert self.completed == list(range(self.args.start_step, self.args.last_step + 1))
         verify_arrivals(self.steps, self.completed, self.evidence['arrivals'], self.history, self.allow_revival)
         verify_following(self.evidence.get('following_footings', []), self.history)
         verify_forward_waits(self.evidence.get('forward_waits', []), self.steps, self.history)
+        verify_waiting_footings(self.evidence.get('waiting_footings', []), self.history)
         verify_loot(self.evidence.get('loot', []), self.history)
         verify_holds(self.steps, self.completed, self.evidence.get('holds', []), self.history)
         shots = self.evidence.get('switches', [])
@@ -893,6 +967,8 @@ class FunhousePair(Pair):
         for field, metric in [('sha256', 'matching_player_states'), ('world_sha256', 'matching_world_states'),
                               ('native_sha256', 'matching_native_residents')]:
             self.verify_network_states(field, metric)
+        self.evidence['ice_primary_views'] = {role: [sum(row.get('ice_primary_pulses', [0, 0])[slot] > 0
+            for row in rows) for slot in range(2)] for role, rows in self.history.items()}
 
     def run(self):
         self.start_pair()
@@ -934,9 +1010,12 @@ class FunhousePair(Pair):
             elif mode == 'cards':
                 assert step['pos'][0] in (0, 1), 'Invalid authored Cards preference'
                 self.prefer_cards = bool(step['pos'][0])
+            elif mode == 'ice':
+                assert step['pos'][0] in (0, 1), 'Invalid authored Ice preference'
+                self.prefer_ice = bool(step['pos'][0])
             else:
                 self.go(step['pos'], jump=mode == 'jump', surface=460 if self.step in (101, 103, 104) else None)
-            if self.step in (107, 109, 112):
+            if self.step in (107, 109, 112, 116):
                 # Defeat the visible upper-corridor attackers before walking
                 # onto the narrow descent. Moving-goal steering cannot dodge
                 # their punches/waves. These are normal, resource-costed fights.
@@ -997,8 +1076,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
     if args.require_revival and not args.allow_revival:
         parser.error('--require-revival requires --allow-revival')
-    if not 0 <= args.start_step <= args.last_step <= 117 or args.last_step < 1:
-        parser.error('The runner currently supports steps 0..117')
+    if not 0 <= args.start_step <= args.last_step <= 127 or args.last_step < 1:
+        parser.error('The runner currently supports steps 0..127')
     if bool(args.checkpoint) != (args.start_step > 0):
         parser.error('A later start requires an unchanged checkpoint; a fresh run starts at zero')
     if 29 < args.start_step < 33 or 28 < args.last_step < 32:

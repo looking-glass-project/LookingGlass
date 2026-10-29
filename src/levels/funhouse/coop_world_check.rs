@@ -246,12 +246,37 @@ fn sloped_revival_evidence(a:&mut Assets,map:&Bsp)->Result<()> {
     }
     Ok(())
 }
+fn corridor_approach(a:&mut Assets,map:&Bsp)->Result<()> {
+    let o=free(a,map)?;let w=world(map,&o)?;
+    let start=vec3(60.4505,-4475.4922,64.03125);let goal=vec3(32.,-4460.,96.);
+    for delay in [0,12,24] {
+        let mut p=Player::spawn(&w,start+Vec3::Z*crate::movement::EYE_HEIGHT)
+            .context("Recorded corridor footing has no spawn support")?;
+        ensure!(p.feet.distance(start)<0.1,"Recorded corridor start changed");
+        let mut views=std::collections::VecDeque::from(vec![p.clone();delay+1]);
+        let mut inputs=std::collections::VecDeque::from(vec![Controls::default();delay]);
+        for _ in 0..600 {
+            let view=views.pop_front().unwrap();
+            let (wish,_)=crate::coop::route_driver::landing_control(&w,&view,goal,2.*delay as f32/120.,8.)
+                .context("Recorded supported approach incorrectly requests a full path search")?;
+            inputs.push_back(Controls {wish,..Default::default()});
+            p.tick(&w,inputs.pop_front().unwrap());
+            ensure!(p.grounded && w.body_clear(p.feet),"Corridor approach left its supported floor");
+            views.push_back(p.clone());
+        }
+        ensure!((p.feet-goal).truncate().length()<8. && (p.feet.z-goal.z).abs()<35.
+            && p.velocity.truncate().length()<20.,"Corridor did not reach original walking bounds");
+        ensure!(p.feet.distance(goal)>22.,"Fixture no longer reproduces impossible first planner tolerance");
+        println!("PASS Funhouse recorded corridor approach with {delay}-tick observation/input delay");
+    }
+    Ok(())
+}
 pub(super) fn check(a:&mut Assets)->Result<()> {
     let map=Bsp::parse(&a.read("maps/funhouse.bsp")?)?;
     let mut failures=Vec::new();
     for (label,result) in [("fulcrums",tilts(a,&map)),("surface goals",surface_goals(a,&map)),("pendulums",pendulums(a,&map)),("doors/tube",doors_and_tube(a,&map)),
         ("dead/blocked",dead_and_blocked(a,&map)),("boarding",boarding(a,&map)),("gas",gas(a,&map)),
-        ("sloped revival evidence",sloped_revival_evidence(a,&map))] {
+        ("sloped revival evidence",sloped_revival_evidence(a,&map)),("corridor approach",corridor_approach(a,&map))] {
         if let Err(e)=result {failures.push(format!("{label}: {e:#}"));}
     }
     ensure!(failures.is_empty(),"Funhouse paired world failures:\n{}",failures.join("\n"));

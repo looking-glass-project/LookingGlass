@@ -43,22 +43,36 @@ Latest upper-exit milestone: both players now pass steps **103-109** on source
 passes 22 personal arrivals, six own pickups and 1,524 matching states, without
 new deaths. These are separate checkpoint segments, not a fresh full route.
 
-The latest source, `94488e1`, verifies the narrow descent **111-116**, including
+Source `94488e1`, verifies the narrow descent **111-116**, including
 12 personal arrivals, one actual forward waiting move, three own pickups and
 1,010 matching states. Red dies naturally and revives after exactly 1,200 active
 ticks at 25 health, with safe placement, preserved resources and verified camera
 handoff/return. The co-op recovery logger now uses the actual slope-aware placement
 rules; its old flat-ground test falsely rejected supported sloped revivals.
 
-Current blocker: that latest replay stalls at **117** with Red's navigation
-worker still planning. Both players are alive at the stop. The earlier successful
-107-117 run remains separate evidence and does not turn this replay into a pass.
-The next work is a reliable repeat through 117, then the later weapons, pendulums,
-scenes and exit. The full visit remains open, so the estimate stays **48.1%**.
+The waypoint-117 stall is resolved in the test controller: it now finishes a
+nearby clear, supported approach within the existing walking height and arrival
+bounds. A separate **116-121** prefix has six personal arrivals, three safe
+waiting handoffs, one own pickup and 422 matching states, ending at 100/65 health.
+
+Source `c8f333c` then verifies **121-125**: ten personal arrivals, five safe waiting
+handoffs, two own pickups and **1,033 matching states**, ending at 90/30 health
+with no deaths. The dodge controller now predicts network delay and braking;
+the earlier version could walk the guest off the ledge before taking damage.
+
+A further **121-125** replay passes with **1,079 matching states**, ten personal
+arrivals, five safe waiting handoffs and two own pickups. Both finish at 70 health
+without deaths. Normal checkpoints before 125 and 126 are retained, allowing
+the next crossing test to resume without repeating the earlier fights.
+
+Current blocker: at **126**, the leading player waits in the only supported
+approach lane. The other stops at the required 36-unit player separation. The
+next work must coordinate this narrow bank and the following pendulum crossings.
+Full traversal, later scenes and exit remain open. Overall stays **48.1%**.
 
 Tests run as two independent clients through the public network path on Anode,
 with injected delay and jitter. Routine diagnosis uses state and log assertions.
-Screenshots are not needed for each run. The current source also has 870 passing
+Screenshots are not needed for each run. The current source also has 873 passing
 active Rust tests and native Funhouse battle, machinery and scene checks; those
 component results do not prove a full campaign route.
 

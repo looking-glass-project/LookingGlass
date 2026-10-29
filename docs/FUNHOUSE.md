@@ -638,3 +638,102 @@ tests** pass. Current fixture dependencies match the captured latest run. No
 screenshots were opened. Next: resolve the 117 navigation stall, then weapons and
 pendulums from 118 onward. Full fresh traversal and remaining acceptance cases
 are open; overall remains **48.1%**, six combined visits and 33 open.
+
+
+### Delayed navigation and combat on the descent, 29 October 2026
+
+The recorded waypoint-117 stop is about 32 horizontal units from its target but
+also 32 below the approximate marker. It falls outside the test controller's
+42-unit spherical handoff, while a grounded body on that floor can never satisfy
+the planner's first 22-unit search. A new regression first fails on that recorded
+offset. The controller now finishes a nearby walk only with a clear body sweep,
+continuous floor support and the existing 35-unit walking height bound. Arrival
+still requires eight horizontal units. Unit and real-map cases cover zero, 100 ms
+and 200 ms observation/input delays, walls, unsupported edges and excessive height.
+
+The runner also reads the authored Ice preference on resume and can send normal
+Ice Wand primary inputs when the individual player owns it, has sufficient Will,
+is dry, and has a visible target within 360 units. Tests reject missing funds or
+ownership, water, excessive range, walls and a blocking partner. Input selection
+does not modify inventory; the actual weapon simulation spends the resources.
+
+Source `8a6352f3478d0f24a2442a2cc867b1a561af81dd44e656c0cd94a47ec3b61ba5`
+passes 872 active units and battle63/world46/scene37/SP8/Checkmate94. The first
+replay (`8beb1841f0484574a829a48f8f0d7d3d`) reaches 117 but Blue is knocked off
+while waiting; the run later wipes. A normal fight on the wider footing before
+117 resolves that handoff. Prefix **116-121** in
+`657d979b12444c33a53edc2c66ac47be` independently passes six personal arrivals,
+three safe waiting handoffs, one own pickup and 422 matching player/world/native
+states. Both finish the scope alive and grounded at 100/65 health. The normal
+checkpoint before 121 has SHA-256
+`de7e1c3ce9b7441f8241bed94e1613b28b02504c0e4dc43d0b26034d66ba19c9`.
+The full run later wipes at 124 and is not promoted to a segment pass.
+
+The waiting-footing audit rejects a partner who has fallen, died or left its
+supported stopping point. An acknowledged walking command may bring a displaced
+but still supported waiter back; the runner observes that return within 15 seconds
+before continuing. It also pauses normal static-corridor movement to fight newly
+visible enemies, then resumes both ordinary movement commands. Attempts
+`8036d07fb6db43c898ed866d5632cd4f` and `830da397dd5c456f81d7ffa9ec5194c1`
+remain failed: the former catches an unsettled waiter, and the latter wipes at 123.
+The latter receives actual paid primary Ice emission intervals for both players
+on both clients (host sample counts 50/19; guest 45/18). This is replicated-state
+evidence from a failed run, not a rendered-particle comparison or route pass.
+
+That last trace isolates a second input-controller defect: Red keeps 65 health
+while her dodge takes her off the bank. Its old 24-tick input plus 48-tick braking
+prediction ignored the roughly 200-230 ms round trip. The revised prediction
+includes in-flight motion, delayed observations/inputs and the braking tail;
+shorter analogue sidesteps are available when a full-speed one is unsafe.
+A regression simulates 1,200 ticks on a narrow platform for zero, 100 ms and
+200 ms observation/input delays, requiring continuous ground contact and useful
+movement. Authoritative player physics, enemy behavior and save formats are unchanged.
+
+Frozen source `c8f333c7757edb6a01e20018f4a5dee8b582f9e055058e29f6b5eaf4a09ded57`
+has executable SHA-256
+`62a23773a8c042fbfeae05c9f6a3fbf8245b9378256a9965fc436b6b537fb68a`.
+It passes **873 active units** (one ignored), locked release,
+**63 battle / 46 world / 37 scene / 8 single-player / 94 Checkmate** records.
+Single-player gameplay matches baseline except two measured benchmark timings.
+
+On this source, `87c4d6f9ce4943b2a06e4160d8ea7f9b` independently verifies
+**121-125**: ten personal arrivals, five safe waiting handoffs, two own pickups
+and **1,033 matching player/world/native states**, with final health 90/30 and no
+deaths or revivals. No paid Ice emission is claimed for this prefix. At 126 the
+full run stops: Blue is at approximately [-287.17, -3545.22, -30.94] and Red waits
+at [-287.83, -3509.23, -31.97], exactly the required 36-unit separation. The real
+neighbor diagnostics offer only forward/backward points on this narrow bank.
+Moving the leader backward into this lane blocks the follower's approach to
+[-288, -3460, 0]. The bank and subsequent pendulums require a coordinated sequence;
+player separation and personal arrival checks must remain intact.
+
+The Python suites pass **34 Funhouse / 13 recovery / seven source-package** tests.
+All live tests use independent clients over the public internet with 40 ms injected
+delay and 20 ms jitter. No screenshots were opened. The full visit remains open,
+and overall progress remains **48.1%**, six combined visits and 33 open.
+
+
+### Normal descent checkpoints, 29 October 2026
+
+Run `9123ca8df2dc4a2e877aa4d64424a3d5` fails when it requests the normal
+checkpoint while Red is dead. The menu correctly refuses. The runner now waits
+for the ordinary revival, when enabled, before requesting that same save;
+shared wipes still fail validation. This branch of the runner remains without
+a successful live death-before-save replay.
+
+The next run, `8263668a24884f27b056502c2c86522a`, passes the complete requested
+**121-125** segment on the same frozen `c8f333c` source. It verifies ten personal
+arrivals, five safe waiting handoffs, two own essence pickups, one forward wait
+and **1,079 matching player/world/native states**. Eight normal combat pauses
+occur. Both finish at 70 health, with no new deaths or revivals. No paid Ice
+emission intervals occur in this replay, so it adds no particle-rendering proof.
+
+Normal checkpoints are retained before 125 (SHA-256
+`24dafa706db3b14f0ee3092b39adb5b9e0c3e8554d27cb3849646b4fad7d1fd1`)
+and before 126 (SHA-256
+`7c95be3c71f9786703969f876e8e372fd5958876a04bccb4bde9728deb09e831`).
+Both bodies are alive in each save. All eight captured Python fixture dependency
+hashes match the tested current files; source and executable identities match the
+frozen build. These checkpoints let the next bank/pendulum test resume through
+the normal restore path. The narrow-bank coordination at 126 and the full visit
+remain open; there is no additional campaign-row or percentage credit.

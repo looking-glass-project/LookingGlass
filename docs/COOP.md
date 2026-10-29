@@ -59,22 +59,36 @@ each brief approach/landing receipt must match actual sent and restored frames
 on both clients. No game physics or arrival bounds were relaxed.
 
 A separate resumed **107-117** run on that source passes 22 personal arrivals,
-six own pickups and 1,524 matching states, without new deaths. The current
+six own pickups and 1,524 matching states, without new deaths. The subsequent
 `94488e1` replay verifies **111-116** with 12 arrivals, one actual forward waiting
 move, three own pickups and 1,010 matching states. Red's natural death also gives
 an exact ten-second, 25-health revival with preserved resources, safe placement
 and spectator/return camera proof. The recovery logger uses co-op's actual
 slope-aware support rules, with floating/airborne/edge rejection checks.
-The replay then stalls at 117 while Red's navigation worker keeps planning;
-the earlier successful segment does not cover this failure. Reliable repetition,
-later weapons, pendulums, scenes, combat and exit remain open.
+That replay's waypoint-117 stall is resolved by retaining the existing walking
+arrival bounds while finishing a nearby, clear, supported approach. Source
+`8a6352f` has scoped **116-121** proof: six arrivals, three safe waiting handoffs,
+one own pickup and 422 matching states, with no deaths and final health 100/65.
 
-The latest frozen build passes **870 active Rust tests** and native Funhouse
-**battle63/world43/scene37**, plus **Checkmate94**. Single-player component
-gameplay matches the baseline apart from two measured benchmark durations.
-The **32 Funhouse guards**, **13 recovery guards** and **seven source-package
-tests** pass. Overall stays **48.1%**, with six combined campaign rows. See
-[Funhouse evidence](FUNHOUSE.md).
+Source `c8f333c` verifies **121-125** with ten personal arrivals, five safe waiting
+handoffs, two own pickups and 1,033 matching player/world/native states. Both
+survive at 90/30 health. The ordinary-input dodge controller accounts for network
+delay, pending motion and braking, with shorter sidesteps on narrow supports.
+It previously walked the guest off a ledge before taking damage. The run now stops
+at 126 where the first player's waiting point blocks the only supported approach
+lane. A coordinated bank/pendulum sequence and the rest of the visit remain open.
+
+A further resumed **121-125** run passes with ten personal arrivals, five safe
+waiting handoffs, two own pickups and **1,079 matching states**. Both finish at
+70 health without deaths; normal checkpoints before 125 and 126 are retained
+for the next coordinated crossing test. This is another bounded segment pass.
+
+The latest frozen build passes **873 active Rust tests** and native Funhouse
+**battle63/world46/scene37**, plus **Checkmate94**. Single-player component
+gameplay matches baseline except two benchmark durations. **34 Funhouse guards**,
+**13 recovery guards** and **seven source-package tests** pass. These are separate
+resumed segments, not a fresh full route. Overall remains **48.1%**, with six
+combined campaign rows. See [Funhouse evidence](FUNHOUSE.md).
 
 Latest full-route milestone: a fresh Blue-led Checkmate run now passes through
 the King and into Funhouse over the public internet, including Red's verified

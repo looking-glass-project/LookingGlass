@@ -16,9 +16,11 @@ from test_coop_village import Pair
 from test_coop_chess import ChessPair
 from test_coop_castling import verify_presence
 from test_coop_chess_resume import verify_resume_body, verify_resume_receipt
+from coop_recovery import read_trace, verify_views
+from coop_recovery import verify_presence as verify_recovery_presence
 
 
-def verify_arrivals(steps, completed, receipts, history):
+def verify_arrivals(steps, completed, receipts, history, allow_revival=False):
     """Require each claimed arrival to match an immutable client observation."""
     observed = {role: {row['tick']: row for row in rows} for role, rows in history.items()}
     expected = {step for step in completed if steps[step].get('mode', '') in ('', 'jump')}
@@ -33,7 +35,7 @@ def verify_arrivals(steps, completed, receipts, history):
             body = row['players'][0 if role == 'host' else 1]
             goal = steps[step]['pos']
             assert receipt['goal'] == goal and receipt['feet'] == body['feet'], 'Arrival differs from observed body'
-            assert body['grounded'] and body['health'] > 0 and body['spawned_at'] == 0, 'Invalid arrival body'
+            assert body['grounded'] and body['health'] > 0 and (allow_revival or body['spawned_at'] == 0), 'Invalid arrival body'
             jump = steps[step].get('mode') == 'jump'
             # The authored jump controller (funhouse/route.rs) accepts these
             # supported landing bounds. Corridor walks keep their tighter gate.
@@ -98,11 +100,45 @@ def waiting_point(neighbors, at, incoming, goal):
     return max(candidates, key=score)
 
 
+def clock_threats(report, role):
+    """Awake nearby Automatons and their in-flight fists from the real snapshot."""
+    feet = report['frame']['players'][0 if role == 'host' else 1]['player']['feet']
+    threats = []
+    for index, actor in enumerate(report['combat']['npcs']['actors']):
+        clock = actor.get('clock')
+        if not clock or not clock['active']:
+            continue
+        if clock['fists'] or (clock['health'] > 0 and clock['phase'] != 'Idle' and distance(feet, clock['feet']) <= 700):
+            threats.append(index)
+    return threats
+
+
+def following_point(trail, leader, follower):
+    # Follow actual supported positions, leaving a body-length margin even
+    # while the next delayed input is in transit. Never invent a ledge offset.
+    return next((entry for entry in trail
+                 if distance(entry['feet'], leader) >= 96
+                 and distance(entry['feet'], follower) >= 24), None)
+
+
+def verify_following(footings, history):
+    observed = {role: {row['tick']: row for row in rows} for role, rows in history.items()}
+    for entry in footings:
+        role = entry['leader']
+        assert entry['follower'] != role, 'Follower followed itself'
+        row = observed[role].get(entry['tick'])
+        assert row and row['owner'] is None, 'Following position was not observed in free play'
+        body = row['players'][0 if role == 'host' else 1]
+        assert body['health'] > 0 and body['grounded'] and body['feet'] == entry['feet'], 'Following position was not a living supported body'
+
+
 class FunhousePair(Pair):
     map_name, entry, next_map = 'funhouse', 'funhouse_start1', 'hatter1'
     evidence_prefix, capture_scenes = 'funhouse-route-', False
 
     def __init__(self, args):
+        self.allow_revival = getattr(args, 'allow_revival', False)
+        self.suspended = {}
         self.minimum_lead = min(1.5, .05 + 2 * (args.delay_ms + args.jitter_ms) / 1000)
         self.lead, self.lead_tick = self.minimum_lead, None
         self.step, self.completed = -1, []
@@ -120,7 +156,7 @@ class FunhousePair(Pair):
         dependencies = self.folder / 'fixture-dependencies'
         dependencies.mkdir()
         for name in ('test_coop_funhouse.py', 'test_coop_play.py', 'test_coop_village.py',
-                     'test_coop_chess.py', 'test_coop_castling.py', 'test_coop_chess_resume.py', 'coop_diagnostics.py'):
+                     'test_coop_chess.py', 'test_coop_castling.py', 'test_coop_chess_resume.py', 'coop_diagnostics.py', 'coop_recovery.py'):
             raw = (Path(__file__).parent / name).read_bytes()
             (dependencies / name).write_bytes(raw)
             self.evidence.setdefault('fixture_sha256', {})[name] = hashlib.sha256(raw).hexdigest()
@@ -141,6 +177,8 @@ class FunhousePair(Pair):
         self.commands[role].update(input_lead=self.lead if role == 'guest' else 0,
             watch_dialogue=True, skip_scene=self.args.skip_scenes, prefer_cards=True,
             avoid_switches=True, shoot_switch=shoot_switch, hold_goal=hold_goal)
+        if getattr(self, 'allow_revival', False):
+            self.commands[role]['recovery_trace'] = role == 'host'
 
     def body(self, role):
         return self.reports[role]['frame']['players'][0 if role == 'host' else 1]
@@ -156,19 +194,45 @@ class FunhousePair(Pair):
             completed=self.completed, reports=self.reports, commands=self.commands, evidence=self.evidence)))
 
     def validate_report(self, role, report):
-        super().validate_report(role, report)
+        if self.allow_revival:
+            assert report['frame']['checkpoint_generation'] == 0, 'Unexpected team wipe; separate restore proof required'
+            assert report['route_driver'].get('recovery_trace_error') is None, 'Host recovery trace failed'
+        else:
+            super().validate_report(role, report)
         bodies = report['frame']['players']
         assert all(not b['stats']['god'] and not b['stats']['notarget'] for b in bodies), 'Cheated route'
-        assert all(b['spawned_at'] == 0 for b in bodies), 'Strict route silently revived a player'
-        if report['combat']['stage']['owner'] is None:
+        assert self.allow_revival or all(b['spawned_at'] == 0 for b in bodies), 'Strict route silently revived a player'
+        if report['combat']['stage']['owner'] is None and all(b['stats']['sanity'] > 0 for b in bodies):
             a, b = [p['player']['feet'] for p in bodies]
             assert distance(a[:2], b[:2]) >= 35.95 or abs(a[2] - b[2]) >= 55.95, 'Players overlap'
             assert report['presentation']['visible_players'][1 if role == 'host' else 0], 'Free-play partner hidden'
+
+    def validate_clear(self, role, report):
+        assert all(clear for clear, body in zip(report['route_driver']['clear'], report['frame']['players'])
+                   if body['stats']['sanity'] > 0), f'{role}: obstructed living body'
+
+    def resume_after_death(self):
+        if not self.allow_revival:
+            return
+        for role in self.reports:
+            command = self.commands[role]
+            if self.body(role)['stats']['sanity'] <= 0:
+                if command.get('goal') is not None or command.get('attack') or command.get('shoot_switch'):
+                    self.suspended[role] = dict(command)
+                    self.set(role, attack=False)
+            elif role in self.suspended:
+                # This restores only the requested input after the game's real
+                # spawn. The body, timer, resources and spawn remain untouched.
+                pending = self.suspended.pop(role)
+                self.serial += 1
+                pending.update(id=self.serial, input_lead=self.lead if role == 'guest' else 0)
+                self.commands[role] = pending
 
     def pump(self):
         if (self.folder / 'stop-test').exists():
             raise RuntimeError('Funhouse stopped; evidence retained')
         super().pump()
+        self.resume_after_death()
         guest = self.reports.get('guest')
         if guest and guest['frame']['tick'] != self.lead_tick:
             self.lead_tick = guest['frame']['tick']
@@ -197,16 +261,32 @@ class FunhousePair(Pair):
             self.set(role)
         self.until(lambda: not self.busy(), 120)
 
-    def move(self, role, goal, navigate=False, jump=False):
+    def move(self, role, goal, navigate=False, jump=False, follow=None):
         jumps_before = self.body(role)['player']['jumps']
         start_tick = self.reports[role]['frame']['tick']
         radius, height = (20, 52) if jump else (8, 35)
         self.set(role, goal, navigate=navigate, run=True, jump=jump)
         best = (distance(self.body(role)['player']['feet'], goal), self.reports[role]['frame']['tick'])
         ledge_jump = None
+        trail, following = [], None
         def done():
-            nonlocal best, navigate, ledge_jump
+            nonlocal best, navigate, ledge_jump, following
             body, tick = self.body(role)['player'], self.reports[role]['frame']['tick']
+            if self.body(role)['stats']['sanity'] <= 0:
+                return False
+            if follow and self.body(follow)['stats']['sanity'] > 0 and not self.busy():
+                if body['grounded'] and (not trail or distance(trail[-1]['feet'], body['feet']) >= 96):
+                    trail.append(dict(tick=tick, feet=list(body['feet'])))
+                follower = self.body(follow)['player']['feet']
+                if following is not None and distance(follower, following['feet']) < 24:
+                    trail[:] = [entry for entry in trail if entry['tick'] > following['tick']]
+                    following = None
+                if following is None:
+                    following = following_point(trail, body['feet'], follower)
+                    if following is not None:
+                        self.set(follow, following['feet'], navigate=True, run=True)
+                        self.evidence.setdefault('following_footings', []).append(dict(
+                            leader=role, follower=follow, **following))
             at_goal = distance(body['feet'][:2], goal[:2]) < radius and abs(body['feet'][2] - goal[2]) < height
             acknowledged = self.reports[role]['route_driver']['command'] == self.commands[role]['id']
             arrived = acknowledged and body['jumps'] > jumps_before if jump else self.reached(role)
@@ -239,29 +319,30 @@ class FunhousePair(Pair):
         at, incoming = self.body(role)['player']['feet'], self.body(other)['player']['feet']
         parking = waiting_point(self.reports[role]['route_driver']['neighbors'][slot], at, incoming, goal)
         self.move(role, parking)
-        self.set(role, attack=True)
-        self.until(lambda: self.reports[role]['route_driver']['command'] == self.commands[role]['id']
-                   and distance(self.body(role)['player']['velocity'][:2], [0, 0]) < 1, 20)
         assert distance(self.body(role)['player']['feet'][:2], goal[:2]) >= 36
         # Continue defending this waiting point. An enemy hit can otherwise
         # push the idle waiter into the partner's destination and block it.
+        # Keep steering through the handoff; a neutral settling interval lets
+        # incoming punches knock the player back into the lane before it ends.
         self.set(role, parking, run=True, attack=True)
 
     def go(self, goal, jump=False):
         # On a return along a narrow hall, the player already in front leads.
         # Record the real order; do not make the bodies pass through each other.
+        self.until(lambda: all(self.body(r)['stats']['sanity'] > 0 for r in self.commands))
         first = min(self.commands, key=lambda r: distance(self.body(r)['player']['feet'], goal)
                     + (0 if r == self.first else 16))
         other = 'guest' if first == 'host' else 'host'
         self.set(other, attack=True)
         for role in (first, other):
-            self.record_arrival(role, goal, jump)
+            follow = other if role == first and not jump and distance(self.body(role)['player']['feet'], goal) > 192 else None
+            self.record_arrival(role, goal, jump, follow=follow)
             if role == first:
                 self.park(first, other, goal)
         self.set(other, attack=True)
 
-    def record_arrival(self, role, goal, jump=False):
-        movement = self.move(role, goal, jump=jump)
+    def record_arrival(self, role, goal, jump=False, follow=None):
+        movement = self.move(role, goal, jump=jump, follow=follow)
         report = self.reports[role]
         self.evidence['arrivals'].append(dict(step=self.step, role=role, goal=goal,
             tick=report['frame']['tick'], feet=self.body(role)['player']['feet'],
@@ -345,6 +426,7 @@ class FunhousePair(Pair):
             for role, report in self.reports.items():
                 driver, slot = report['route_driver'], 0 if role == 'host' else 1
                 quiet &= driver['command'] == self.commands[role]['id'] and driver['native_threats'][slot] is None
+                quiet &= not clock_threats(report, role)
                 for kind in ('guards', 'boojums', 'snarks'):
                     quiet &= not any(e['active'] and e['health'] > 0 and e['distance'][slot] <= 700
                                      and e['line_of_sight'][slot] for e in driver[kind])
@@ -357,14 +439,15 @@ class FunhousePair(Pair):
 
     def verify(self):
         assert self.completed == list(range(self.args.start_step, self.args.last_step + 1))
-        verify_arrivals(self.steps, self.completed, self.evidence['arrivals'], self.history)
+        verify_arrivals(self.steps, self.completed, self.evidence['arrivals'], self.history, self.allow_revival)
+        verify_following(self.evidence.get('following_footings', []), self.history)
         verify_holds(self.steps, self.completed, self.evidence.get('holds', []), self.history)
         shots = self.evidence.get('switches', [])
         assert [e['step'] for e in shots] == [i for i in self.completed if self.steps[i].get('mode') == 'shot']
         for entry in shots:
             verify_switch_receipt(entry, self.history)
         for role, rows in self.history.items():
-            verify_presence(rows, role)
+            (verify_recovery_presence if self.allow_revival else verify_presence)(rows, role)
             if not self.saved:
                 opening = [r for r in rows if r['scene'] == 'Funhouse_Start']
                 assert opening and {r['owner'] for r in opening} == {'Blue'}, 'Missing original opening owner'
@@ -418,11 +501,16 @@ class FunhousePair(Pair):
             self.until(lambda: self.processes[role].poll() is not None, 30)
             assert self.processes[role].returncode == 0
         self.evidence['completed_steps'] = self.completed
+        if self.allow_revival:
+            recovery = read_trace(self.folder / 'host/recovery-trace.jsonl', self.build, self.args.require_revival)
+            recovery['rendered_revivals'] = verify_views(recovery['revivals'], self.history)
+            self.evidence['recovery'] = recovery
         (self.folder / 'result.json').write_text(json.dumps(dict(passed=True, full_route=False,
             through_exit=False, build=self.build, internet=not self.args.local,
             first=self.args.first, skip_scenes=self.args.skip_scenes,
             delay_ms=self.args.delay_ms, jitter_ms=self.args.jitter_ms,
-            scope=f'Funhouse steps {self.args.start_step}..{self.args.last_step}; both personal arrivals; no deaths',
+            scope=f'Funhouse steps {self.args.start_step}..{self.args.last_step}; both personal arrivals',
+            mode='verified-individual-revival' if self.allow_revival else 'strict-no-death',
             fresh_entrance=self.saved is None,
             evidence=self.evidence), indent=2))
         print('PASS Funhouse segment; full route remains open', flush=True)
@@ -444,10 +532,14 @@ if __name__ == '__main__':
     parser.add_argument('--checkpoint', type=Path)
     parser.add_argument('--save-before', nargs='*', type=int, default=[])
     parser.add_argument('--skip-scenes', action='store_true')
+    parser.add_argument('--allow-revival', action='store_true')
+    parser.add_argument('--require-revival', action='store_true')
     parser.add_argument('--local', action='store_true')
     parser.add_argument('--delay-ms', type=int, default=40)
     parser.add_argument('--jitter-ms', type=int, default=20)
     args = parser.parse_args()
+    if args.require_revival and not args.allow_revival:
+        parser.error('--require-revival requires --allow-revival')
     if not 0 <= args.start_step <= args.last_step <= 88 or args.last_step < 1:
         parser.error('The runner currently supports steps 0..88')
     if bool(args.checkpoint) != (args.start_step > 0):

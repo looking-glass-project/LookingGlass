@@ -250,3 +250,51 @@ has a regression guard. The second replay
 (`funhouse-route-d1422e6ff9254213b771cb8cf7107481`) passes steps 33-35, but Red
 dies during step 36. It remains failed. These attempts do not establish a
 complete return-corridor pass or earn further progress credit.
+
+## Natural combat revival and retained route failure (29 October 2026)
+
+The independent-client replay on the same frozen `b703a7a` build now exercises
+the game's normal revival in Funhouse. Starting from an unchanged checkpoint
+before step 35, both players personally complete steps 35 and 36. Red dies at
+host tick **35382** and respawns beside Blue at **36582**: exactly **1,200** active
+ticks, **25 health**, no cinematic pause or placement delay. The exact native
+trace verifies preserved personal resources and safe, supported, separate spawn
+placement. The recorded spectator and returning-player views pass; the scoped
+presence check includes 160 host and 152 guest observations.
+
+The replay then fails at step 37 after both players die. At tick **37831**, the
+host restores both players simultaneously with their exact saved positions,
+health (83/72), inventory and scene stamps. This is exact host-boundary evidence,
+not verification of both clients' subsequent play or all restored world state.
+The original run remains failed; no full-corridor or completed-visit credit is
+claimed. The evidence and verifier hashes are retained in
+`private/coop-funhouse-recovery-prefix-b703a7a.json`, derived from
+`private/coop/funhouse-route-fd5b2cbdcad64d1b8d02a5d991f4666c/`.
+The unchanged input checkpoint SHA-256 is
+`ab47a181651b5026a07b1aa0695b3be6fc39e0b1fa72f29e39eb1b37452b0399`.
+
+The damaging enemies are Clockwork Automatons. The captured state contains an
+active punch attacker and a homing fist targeting Red. Earlier clear checks
+covered guards, Boojums, Snarks and native level actors but omitted these NPCs.
+The fixture now checks awake nearby Automatons and remaining fists, including
+fists still live after their owner's death. Long walking legs let the partner
+follow actual recorded, supported footings with a gap; every authored waypoint
+still needs each player's separate arrival. Parking retains steering through
+the handoff, removing the neutral interval in which punches pushed a waiting
+body into the destination. These are test-controller changes only.
+
+`--allow-revival` opts into exact host tracing and the shared recovery verifier;
+`--require-revival` additionally requires a real death and completed revival.
+The default remains strict. During death the fixture suspends input, then
+resumes the requested controls after the game's own spawn. It never writes
+bodies, health, timers or progress, and it does not omit missed waypoints.
+An incomplete countdown, incorrect spawn, missing rendered evidence or team
+wipe fails this route mode. Fourteen Funhouse guards, thirteen shared recovery
+guards and seven source-package tests pass. No Rust source changed in this
+follow-up, so the frozen build's 861-unit and native-check results are unchanged.
+
+The earlier continued-following run
+`funhouse-route-fa2369815bbc4f4b97e3cdd29cc1bd10` still failed at step 36 with
+Red dead. The first recovery-enabled attempt
+`funhouse-route-3c591bd67e694b0994b1d4bcaab9ff33` failed at step 35 during the
+neutral parking interval. Neither is reclassified. Overall stays **48.1%**.

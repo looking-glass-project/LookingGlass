@@ -33,8 +33,12 @@ the Blade activates the mirror, and both perform the authored timed hold. Its
 attempt remains failed at step 35, where enemy knockback pushed the waiting
 player into the other player's destination. A correction to the automated
 waiting controls now gets both players through step 35. The next run fails
-at step 36 when Red dies, so the return corridor is still unverified. Transports,
-pendulums, later combat, recovery and the exit remain open. Overall
+at step 36 when Red dies. A subsequent recovery-enabled replay reaches step
+37 and records a correct Red revival: exactly 1,200 ticks, 25 health, preserved
+resources and verified spectator/return cameras in the recorded client views.
+It later ends in a team wipe; the host restores both saved bodies and inventories
+exactly, but continued play after that wipe remains unverified. The return
+corridor, transports, pendulums, later combat and the exit remain open. Overall
 stays **48.1%**, with six combined campaign rows. See [Funhouse evidence](FUNHOUSE.md).
 
 Latest full-route milestone: a fresh Blue-led Checkmate run now passes through

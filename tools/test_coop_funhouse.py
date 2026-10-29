@@ -1,6 +1,6 @@
 """Play Funhouse's opening, mirror and cell machinery in independent clients.
 
-This runner covers the authored entrance through step 146. It sends only ordinary
+This runner covers the authored entrance through step 150. It sends only ordinary
 inputs and normal save requests, including actual Blade throws at switches.
 Every movement waypoint needs a separate arrival receipt for each player; the
 arena entrance instead verifies its first-entrant scene and shared reunion.
@@ -243,6 +243,32 @@ def verify_tweedle_handoff(entry, history):
         assert after['presentation']['visible_players'][1 if peer == 'host' else 0], 'Reunited partner remains hidden'
         warps.append(a['warped_at'])
     assert len(warps) == 2 and len(set(warps)) == 1, 'Clients disagree on the reunion'
+
+
+def verify_input_jumps(steps, completed, receipts, history):
+    expected = {s for s in completed if steps[s].get('mode') == 'inputjump'}
+    assert {r['step'] for r in receipts} == expected, 'Missing or extra timed jump'
+    for step in expected:
+        assert step in (147, 151) and steps[step] == dict(mode='inputjump', pos=[.001, 0, 0], frames=120)
+        entries = [r for r in receipts if r['step'] == step]
+        assert len(entries) == 2 and {r['role'] for r in entries} == {'host', 'guest'}, 'Missing personal timed jump'
+        for entry in entries:
+            rows = {r['tick']: r for r in history[entry['role']]}
+            before, after = rows.get(entry['start_tick']), rows.get(entry['tick'])
+            assert before and after and before['owner'] is None and after['owner'] is None, 'Unobserved timed jump'
+            active = rows.get(entry['input_start_tick'])
+            assert active and active['driver']['command'] == entry['command'], 'Jump input was not acknowledged'
+            slot = 0 if entry['role'] == 'host' else 1
+            a, b = before['players'][slot], after['players'][slot]
+            origin = steps[146 if step == 147 else 149]['pos']
+            assert a['grounded'] and distance(a['feet'][:2], origin[:2]) < 8 and abs(a['feet'][2]-origin[2]) < 52, 'Jump did not start on its personal pad'
+            assert entry['jumps_before'] == a['jumps'] and entry['jumps_after'] == b['jumps'] == a['jumps']+1, 'Timed jump lacks its actual jump'
+            assert before['tick'] <= active['tick'] and active['players'][slot]['jumps'] == a['jumps']+1, 'No observed active jump'
+            assert after['tick']-active['tick'] >= steps[step]['frames'], 'Timed jump ended too early'
+            assert after['driver']['command'] == entry['command'] and b['grounded'], 'Jump has no acknowledged landing'
+            for row in (r for t, r in rows.items() if before['tick'] <= t <= after['tick']):
+                p = row['players'][slot]
+                assert row['owner'] is None and p['health'] > 0 and all(p[k] == a[k] for k in ('spawned_at', 'warped_at')), 'Timed jump used death or relocation'
 
 
 def verify_switch_receipt(entry, history):
@@ -499,7 +525,7 @@ class FunhousePair(Pair):
         self.prefer_cards = cards_preference(self.steps, args.start_step)
         self.prefer_ice = ice_preference(self.steps, args.start_step)
         assert len(self.steps) == 1077, 'Review changed authored course'
-        assert all(s.get('mode', '') in ('', 'wait', 'clear', 'jump', 'shot', 'hold', 'cards', 'ice', 'holdjump', 'pendulum')
+        assert all(s.get('mode', '') in ('', 'wait', 'clear', 'jump', 'shot', 'hold', 'cards', 'ice', 'holdjump', 'pendulum', 'inputjump')
                    for s in self.steps[args.start_step:args.last_step + 1])
         (self.folder / 'course.json').write_bytes(raw)
         self.evidence.update(course_sha256=hashlib.sha256(raw).hexdigest(),
@@ -857,6 +883,112 @@ class FunhousePair(Pair):
             command=report['route_driver']['command'], crossing=crossing, surface=surface,
             target=report['route_driver']['surface']['goal'] if surface is not None else goal, **movement))
 
+    def arena_climb(self):
+        """Keep both players moving up the boss arena's ordinary ramp."""
+        assert self.step == 144 and self.args.last_step >= 146
+        assert all(self.state(r)['fight'] for r in self.commands) and not self.busy()
+        starts = {r: self.reports[r]['frame']['tick'] for r in self.commands}
+        lives = {r: (self.body(r)['spawned_at'], self.body(r)['warped_at']) for r in self.commands}
+        pending, issued, parking = {r: 144 for r in self.commands}, {}, None
+        leader = min(self.commands, key=lambda r: distance(self.body(r)['player']['feet'], self.steps[144]['pos']))
+        follower = 'guest' if leader == 'host' else 'host'
+        trail, following = [], None
+
+        def issue(role):
+            step = pending[role]
+            # Ordinary ramp jumps keep the moving players above incoming
+            # ground-level attacks; every waypoint still needs a real landing.
+            self.set(role, self.steps[step]['pos'], run=True, jump=True)
+            issued[role] = dict(start_tick=self.reports[role]['frame']['tick'],
+                                jumps_before=self.body(role)['player']['jumps'])
+
+        issue(leader)
+        initial = dict(tick=self.reports[leader]['frame']['tick'], feet=list(self.body(leader)['player']['feet']))
+        assert self.body(leader)['player']['grounded'], 'Ramp leader has no initial footing'
+        self.set(follower, initial['feet'], run=True, jump=True)
+        self.evidence.setdefault('following_footings', []).append(dict(leader=leader, follower=follower, **initial))
+
+        def follow_ramp():
+            nonlocal following
+            if pending[follower] > 146:
+                return
+            goal = self.steps[pending[follower]]['pos']
+            if pending[follower] < pending[leader]:
+                if self.commands[follower]['goal'] != goal:
+                    issue(follower)
+                following = None
+                return
+            # Do not crowd the leader while it brakes at the same waypoint.
+            # Advance through actual grounded breadcrumbs at least 96 units
+            # behind it, then visit the authored target after it has moved on.
+            ahead = self.body(leader)['player']
+            if ahead['grounded'] and (not trail or distance(trail[-1]['feet'], ahead['feet']) >= 64):
+                trail.append(dict(tick=self.reports[leader]['frame']['tick'], feet=list(ahead['feet'])))
+            feet = self.body(follower)['player']['feet']
+            if following is not None and distance(feet, following['feet']) < 24:
+                following = None
+            if following is None:
+                candidates = [p for p in trail if distance(p['feet'], goal) < distance(feet, goal)-16]
+                following = following_point(candidates, ahead['feet'], feet)
+                if following is not None:
+                    self.set(follower, following['feet'], run=True)
+                    self.evidence.setdefault('following_footings', []).append(dict(
+                        leader=leader, follower=follower, **following))
+
+        def climbed():
+            nonlocal parking
+            assert not self.busy(), 'Unexpected scene during arena climb'
+            for role in self.commands:
+                body = self.body(role)
+                assert body['stats']['sanity'] > 0 and (body['spawned_at'], body['warped_at']) == lives[role], 'Arena climb interrupted by death or relocation'
+                step = pending[role]
+                if step > 146:
+                    continue
+                goal, player = self.steps[step]['pos'], body['player']
+                driver = self.reports[role]['route_driver']
+                if (self.commands[role]['goal'] == goal and role in issued
+                        and driver['command'] == self.commands[role]['id'] and driver['phase'] in ('walking', 'reached')
+                        and player['grounded'] and distance(player['feet'][:2], goal[:2]) < 8
+                        and abs(player['feet'][2]-goal[2]) < 52):
+                    self.evidence['arrivals'].append(dict(step=step, role=role, goal=goal,
+                        tick=self.reports[role]['frame']['tick'], feet=player['feet'], command=driver['command'],
+                        crossing=False, surface=None, target=goal, jumps_after=player['jumps'], **issued[role]))
+                    pending[role] += 1
+                    print('PASS arena climb personal arrival', role, step, flush=True)
+                    if pending[role] <= 146:
+                        if role == leader or pending[role] < pending[leader]:
+                            issue(role)
+                        else:
+                            self.set(role, list(player['feet']), run=True)
+            follow_ramp()
+            # Only stop after the full ramp. Clear the final destination while
+            # the other player continues, using a real supported neighboring point.
+            if parking is None:
+                first = next((r for r in self.commands if pending[r] > 146), None)
+                if first is not None:
+                    other = 'guest' if first == 'host' else 'host'
+                    self.step = 146
+                    parking = first, self.park(first, other, self.steps[146]['pos'])
+            return all(step > 146 for step in pending.values())
+
+        self.until(climbed)
+        role, goal = parking
+        self.until(lambda: self.body(role)['player']['grounded']
+                   and distance(self.body(role)['player']['feet'][:2], goal[:2]) < 24
+                   and abs(self.body(role)['player']['feet'][2]-goal[2]) < 35
+                   and self.reports[role]['route_driver']['command'] == self.commands[role]['id'], 15)
+        for peer, rows in self.history.items():
+            for row in (r for r in rows if r['tick'] >= starts[peer]):
+                for slot, who in enumerate(('host', 'guest')):
+                    p = row['players'][slot]
+                    assert p['health'] > 0 and (p['spawned_at'], p['warped_at']) == lives[who], 'Arena climb used a death or relocation'
+        footing = dict(step=146, role=role, goal=goal, command=self.commands[role]['id'],
+                       tick=self.reports[role]['frame']['tick'])
+        verify_waiting_footings([footing], self.history)
+        self.evidence.setdefault('waiting_footings', []).append(footing)
+        self.completed.extend(range(144, 147))
+        print('PASS paired arena climb 144..146: both personal arrivals without deaths', flush=True)
+
     def hold_roles(self, roles, goal, frames):
         for role in roles:
             self.set(role, goal, run=True, hold_goal=True)
@@ -870,6 +1002,57 @@ class FunhousePair(Pair):
         self.evidence.setdefault('holds', []).append(dict(step=self.step, goal=goal, frames=frames, starts=starts,
             commands={r: self.commands[r]['id'] for r in roles},
             ends={r: self.reports[r]['frame']['tick'] for r in roles}))
+
+    def timed_jump(self, role):
+        assert self.step in (147, 151) and self.steps[self.step]['mode'] == 'inputjump'
+        body = self.body(role)['player']
+        start, jumps = self.reports[role]['frame']['tick'], body['jumps']
+        # A nearby goal above the body requests one ordinary jump, even when
+        # horizontal movement is nearly zero. It cannot change position or
+        # invent an upper landing; the native collision still decides that.
+        goal = [body['feet'][0]+.32, body['feet'][1], body['feet'][2]+100]
+        self.set(role, goal, run=True, jump=True)
+        command = self.commands[role]['id']
+        self.until(lambda: self.reports[role]['route_driver']['command'] == command
+                   and self.body(role)['player']['jumps'] > jumps, 20)
+        input_start = self.reports[role]['frame']['tick']
+        def landed():
+            p = self.body(role)
+            assert p['stats']['sanity'] > 0, 'Player died during timed jump'
+            return (self.reports[role]['route_driver']['command'] == command
+                    and self.reports[role]['frame']['tick']-input_start >= self.steps[self.step]['frames']
+                    and p['player']['jumps'] > jumps and p['player']['grounded'])
+        self.until(landed, 20)
+        self.evidence.setdefault('input_jumps', []).append(dict(step=self.step, role=role, command=command,
+            start_tick=start, input_start_tick=input_start, tick=self.reports[role]['frame']['tick'], jumps_before=jumps,
+            jumps_after=self.body(role)['player']['jumps']))
+
+    def upper_bridge(self):
+        assert self.step == 147 and self.args.last_step >= 149
+        first = min(self.commands, key=lambda r: distance(self.body(r)['player']['feet'], self.steps[146]['pos']))
+        other = 'guest' if first == 'host' else 'host'
+        for role in (first, other):
+            # The second player uses the same actual takeoff pad only after
+            # the first has crossed and cleared the far landing.
+            self.step = 146
+            self.move(role, self.steps[146]['pos'])
+            self.step = 147
+            self.timed_jump(role)
+            for self.step in (148, 149):
+                self.record_arrival(role, self.steps[self.step]['pos'])
+            if role == first:
+                parking = self.park(first, other, self.steps[149]['pos'])
+        self.until(lambda: self.reports[first]['route_driver']['command'] == self.commands[first]['id']
+                   and self.body(first)['player']['grounded']
+                   and distance(self.body(first)['player']['feet'][:2], parking[:2]) < 24
+                   and abs(self.body(first)['player']['feet'][2]-parking[2]) < 35, 15)
+        footing = dict(step=149, role=first, goal=parking, command=self.commands[first]['id'],
+                       tick=self.reports[first]['frame']['tick'])
+        verify_waiting_footings([footing], self.history)
+        self.evidence.setdefault('waiting_footings', []).append(footing)
+        verify_input_jumps(self.steps, [147], self.evidence.get('input_jumps', []), self.history)
+        self.completed.extend(range(147, 150))
+        print('PASS upper bridge 147..149: both actual jumps and personal crossings', flush=True)
 
     def hold(self, goal, frames):
         # Authored holds press toward a point for a fixed duration, including
@@ -1155,6 +1338,7 @@ class FunhousePair(Pair):
         verify_following(self.evidence.get('following_footings', []), self.history)
         verify_forward_waits(self.evidence.get('forward_waits', []), self.steps, self.history)
         verify_waiting_footings(self.evidence.get('waiting_footings', []), self.history)
+        verify_input_jumps(self.steps, self.completed, self.evidence.get('input_jumps', []), self.history)
         verify_loot(self.evidence.get('loot', []), self.history)
         courses = self.evidence.get('pendulum_courses', [])
         assert len(courses) == (2 if 128 in self.completed else 0), 'Missing personal pendulum course'
@@ -1212,6 +1396,12 @@ class FunhousePair(Pair):
                 continue
             if self.step == 103:
                 self.seesaw_exit()
+                continue
+            if self.step == 144:
+                self.arena_climb()
+                continue
+            if self.step == 147:
+                self.upper_bridge()
                 continue
             if self.step == 138:
                 self.tweedle_entry()
@@ -1292,8 +1482,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
     if args.require_revival and not args.allow_revival:
         parser.error('--require-revival requires --allow-revival')
-    if not 0 <= args.start_step <= args.last_step <= 146 or args.last_step < 1:
-        parser.error('The runner currently supports steps 0..146')
+    if not 0 <= args.start_step <= args.last_step <= 150 or args.last_step < 1:
+        parser.error('The runner currently supports steps 0..150')
     if bool(args.checkpoint) != (args.start_step > 0):
         parser.error('A later start requires an unchanged checkpoint; a fresh run starts at zero')
     if 29 < args.start_step < 33 or 28 < args.last_step < 32:
@@ -1304,6 +1494,10 @@ if __name__ == '__main__':
         parser.error('The queued seesaw exit must include steps 103..106 together')
     if 126 < args.start_step < 135 or 125 < args.last_step < 134:
         parser.error('The queued bank and pendulums must include steps 126..134 together')
+    if 144 < args.start_step < 147 or 143 < args.last_step < 146:
+        parser.error('The paired arena climb must include steps 144..146 together')
+    if 147 < args.start_step < 150 or 146 < args.last_step < 149:
+        parser.error('The queued upper bridge must include steps 147..149 together')
     if not (0 <= args.delay_ms <= 500 and 0 <= args.jitter_ms <= 500):
         parser.error('Delay/jitter must be between 0 and 500 ms')
     pair = FunhousePair(args)

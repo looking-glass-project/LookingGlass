@@ -11,6 +11,52 @@ from test_coop_funhouse import ice_preference
 from test_coop_funhouse import verify_waiting_footings
 from test_coop_funhouse import verify_pendulum_course
 from test_coop_funhouse import verify_tweedle_handoff
+from test_coop_funhouse import verify_input_jumps
+
+
+def input_jump_fixture():
+    steps = [dict(pos=[0, 0, 0], mode='wait') for _ in range(148)]
+    steps[146] = dict(pos=[656, -2560, 160])
+    steps[147] = dict(pos=[.001, 0, 0], mode='inputjump', frames=120)
+    entries, history = [], {}
+    for slot, role in enumerate(('host', 'guest')):
+        start, command = 100+slot*300, 9+slot
+        body = dict(feet=[656, -2560, 160], grounded=True, health=70,
+                    jumps=4, spawned_at=0, warped_at=5)
+        before = dict(tick=start, owner=None, players=[copy.deepcopy(body), copy.deepcopy(body)],
+                      driver=dict(command=command-1))
+        after = copy.deepcopy(before)
+        after.update(tick=start+160, driver=dict(command=command))
+        after['players'][slot].update(feet=[656.3, -2560, 256], jumps=5)
+        active = copy.deepcopy(after)
+        active['tick'] = start+20
+        active['players'][slot]['grounded'] = False
+        history[role] = [before, active, after]
+        entries.append(dict(step=147, role=role, start_tick=start, input_start_tick=start+20, tick=start+160,
+                            command=command, jumps_before=4, jumps_after=5))
+    return steps, [147], entries, history
+
+
+class TimedJumpGuards(unittest.TestCase):
+    def test_each_player_needs_an_actual_jump_from_the_pad_and_landing(self):
+        verify_input_jumps(*input_jump_fixture())
+
+    def test_missing_short_unacknowledged_or_relocated_jumps_fail(self):
+        for mistake in ('missing', 'short', 'no_jump', 'extra_jump', 'airborne', 'command', 'start_command', 'warp', 'death', 'wrong_pad'):
+            steps, completed, entries, history = input_jump_fixture()
+            before, active, after = history['guest']
+            if mistake == 'missing': entries.pop()
+            elif mistake == 'short': after['tick'] = entries[1]['tick'] = active['tick']+119
+            elif mistake == 'no_jump': after['players'][1]['jumps'] = entries[1]['jumps_after'] = 4
+            elif mistake == 'extra_jump': after['players'][1]['jumps'] = entries[1]['jumps_after'] = 6
+            elif mistake == 'airborne': after['players'][1]['grounded'] = False
+            elif mistake == 'command': after['driver']['command'] = 99
+            elif mistake == 'start_command': active['driver']['command'] = 99
+            elif mistake == 'warp': after['players'][1]['warped_at'] += 1
+            elif mistake == 'death': after['players'][1]['health'] = 0
+            else: before['players'][1]['feet'][0] += 8
+            with self.subTest(mistake=mistake), self.assertRaises(AssertionError):
+                verify_input_jumps(steps, completed, entries, history)
 
 
 def scene_fixture(role='host'):

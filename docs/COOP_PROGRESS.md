@@ -86,9 +86,22 @@ ending at 60/70 health without deaths. It then wipes at 144: Blue dies while
 waiting below the climb, and Red dies before Blue's revival. A normal checkpoint
 before 144 is retained; the complete 139-146 run failed.
 
-Next is survival and coordinated movement at **144**, then later machinery,
-scenes and exit. Fresh full traversal and the opposite crossing order remain
-unverified. These segments add no completed campaign row. Overall stays **48.1%**.
+The climb now passes as a coordinated **144-146** sequence: six personal
+arrivals, two observed following footings, one safe final waiting handoff and
+**203 matching states**. Both move and jump normally, with the follower keeping
+space while the leader brakes. Neither dies; final health is about 6.8/59.5.
+
+A subsequent **147-150** replay passes both actual pad jumps, four personal
+bridge arrivals, the paired 900-tick hold and **479 matching states**. Jump
+durations are measured after the game acknowledges each actual jump, excluding
+command-delivery delay. Each player collects their own arena essence: each gets
+25 health and Will, with no shared consumption or partner healing. Both survive
+at about 31.8/38.1 health. A normal checkpoint before 151 is retained.
+
+Next are the opposite pad jump and descent from **151**, the remaining boss
+fight, later scenes and exit. Fresh full traversal and the opposite crossing
+order remain unverified. These segments add no completed campaign row.
+Overall stays **48.1%**.
 
 Tests run as two independent clients through the public network path on Anode,
 with injected delay and jitter. Routine diagnosis uses state and log assertions.

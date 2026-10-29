@@ -856,3 +856,83 @@ checkpoint before 144 has SHA-256
 The next scope is coordinated movement and survival at **144**. These remain
 checkpoint segments, not fresh full traversal or a completed campaign visit.
 Overall stays **48.1%**.
+
+
+### Co-op arena climb, upper bridge and personal essence, 29 October 2026
+
+The test controller now coordinates the ordinary **144-146** ramp movements.
+Both players advance while fighting. Subsequent following goals are actual
+grounded leader positions, selected at least 96 units behind the current leader
+while they share a pending target. The follower still visits every authored waypoint itself. Ordinary jumps reduce exposure
+to ground attacks. The first finisher clears the upper destination using a
+native supported neighbor. No positions, resources, enemy damage or combat state
+are changed by the test controller.
+
+The first concurrent attempt, `a9dce1d06dce44c2bd27e39e4289308b`, records all six
+arrivals but fails its final unacknowledged waiting command. The wait now requires
+the actual native command receipt. Run `56d8fef2587d4e168897f9487eccb572` exposes
+crowding while both brake at 144, and Blue dies. The spaced walking attempt
+`f7b74150213e44329721eef7649fdaca` advances both past 144 but still loses Blue to
+attacks. These remain failed runs, not completed climb evidence.
+
+Run `cfe35e7dc64f4b178ad0bb1d6ab282be` then passes **144-146** with six personal
+arrivals, two observed follower footings, one safe final waiting handoff and
+**203 matching player/world/native states** (206 including shutdown). Blue makes
+four ordinary jumps and Red three. Neither dies or relocates. Final health is
+Blue **6.8084** / Red **59.4828**. The normal checkpoint before 147 has SHA-256
+`0f85623177527c1dc48d5334bbf70f0e0da5ff879b8dd9df3125a69235366ab4`.
+The low final health remains part of the recorded test state.
+
+The next bridge sequence is queued so each player uses the actual takeoff pad,
+performs one ordinary jump and independently crosses both upper waypoints. A
+nearby goal above the body requests the jump; native physics determines whether
+an upper landing exists. The receipt requires the correct grounded pad start,
+a real personal jump count, at least the authored 120 ticks, an acknowledged
+landing and no death, scene or relocation during the action. The first player
+clears the far landing before the other uses the pad.
+
+Run `119ad58422a94b80896d476eb4b20725` passes **147-149**: two such pad jumps,
+four personal bridge arrivals, a safe far-side waiting handoff and **342 matching
+states** (345 including shutdown). Blue's observed jump interval is 140 ticks,
+Red's 184; each has exactly one actual jump. These early intervals start at
+command issue; the final replay below excludes delivery delay by starting after
+an acknowledged actual jump. Both peers independently observe
+personal arena-essence generations change from [0,0] to [1,0], then [1,1].
+Blue gains exactly 25 health (6.8084 to 31.8084) and Red separately gains 25
+(59.4828 to 84.4828), with corresponding personal Will gains. Each pickup flips
+only its owner's next pad and starts only their cooldown; the partner receives
+no health or essence-sized Will increase. Red subsequently takes normal damage.
+Both survive at **31.8084 / 38.2388**. The normal checkpoint before 150 is
+`9617deb0f9efbb2140d8f681e9ea9cab19d2cc32a03652b0a97cf0eef7a38339`.
+
+Run `7823bebb917d4b94b6bf53c34d7def27` separately passes the **150** hold: both
+acknowledged holding commands remain active for at least 900 ticks (951 host,
+965 guest). There are **141 matching states** (144 including shutdown), unchanged
+health and no deaths. Both next personal essence pads are ready; this run does
+not claim a cooldown transition because both were already ready at its first
+observation. Boss health remains 125.8698 / 480.775, so defeat is not claimed.
+The normal checkpoint before 151 has SHA-256
+`a88d9f8eead038ccc9332204b6ea6ad0ccfbabbae11d2a68d88f45a3f055692a`.
+
+The final combined **147-150** replay, `487f9a93e20e45f3b8305e70b6e4e8c2`, uses
+the stricter jump timer. Blue's acknowledged jump is observed at 134755 and its
+landing/hold endpoint at 134890 (135 ticks); Red's are 135838 and 135977 (139).
+Command delivery cannot satisfy the 120-tick input period. The run passes both
+personal jumps, all four arrivals, the final waiting handoff, and the paired
+hold for 942 host / 957 guest ticks. There are **479 matching states** (483
+including shutdown), no deaths or relocations and final health **31.8084 /
+38.0889**. A separate audit again verifies both personal 25-health/Will pickups,
+the unchanged partner resources and independent pad/cooldown state. Both next
+pads are ready. The latest normal checkpoint before 151 has SHA-256
+`d4f5826ce9786017958bb58a29a53b1e7823b355e231b75d0f09963a558bb366`.
+
+These successful runs use unchanged source `c79ac85`, separate public-internet
+clients, 40 ms injected delay and 20 ms jitter. Independent retained-state audits
+repeat the receipts and player/world/native hashes; each test's captured fixture
+hashes matched its current files when audited. **46 Funhouse guards**, 13 recovery
+guards and seven source-package tests pass. Native source and executable remain
+unchanged, retaining the earlier 875-unit and 63/46/37/8/94 component results.
+No screenshots were opened; particle simulation observations are not a new
+rendered-effects claim. These resumed segments do not prove fresh full traversal,
+the opposite order, boss defeat, later scenes or exit. Next starts at **151**;
+no completed campaign row or percentage is added. Overall remains **48.1%**.

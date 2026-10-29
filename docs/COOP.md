@@ -99,12 +99,18 @@ A further resumed attempt independently verifies **139-143** with ten personal
 arrivals, five waiting handoffs and **505 matching states**, ending at 60/70 health
 without deaths. It then wipes at 144 while the players take turns on the climb;
 the full 139-146 attempt remains failed. A normal checkpoint before 144 is retained.
-Coordinated survival on that climb, later machinery/scenes/exit, fresh full route
-and opposite lead order are still open.
+The coordinated **144-146** climb now passes six personal arrivals, ordinary
+jumps, observed follower spacing and **203 matching states**, without deaths.
+The subsequent **147-150** replay passes both personal pad jumps, four arrivals,
+the paired 900-tick hold and **479 matching states**. Jump timing starts after
+acknowledgment of the actual jump. Each player receives their own 25-health/Will
+arena essence without healing or consuming the partner's copy. Both survive at
+31.8/38.1 health, with a normal checkpoint before 151. The opposite descent, boss defeat, later scenes/exit,
+fresh full route and opposite lead order remain open.
 
 The latest frozen build passes **875 active Rust tests** and native Funhouse
 **battle63/world46/scene37**, plus **Checkmate94**. Single-player component
-gameplay matches baseline except two benchmark durations. **44 Funhouse guards**,
+gameplay matches baseline except two benchmark durations. **46 Funhouse guards**,
 **13 recovery guards** and **seven source-package tests** pass. These are separate
 resumed segments, not a fresh full route. Overall remains **48.1%**, with six
 combined campaign rows. See [Funhouse evidence](FUNHOUSE.md).

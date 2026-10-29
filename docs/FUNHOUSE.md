@@ -177,8 +177,9 @@ python tools/test_coop_funhouse.py --data "C:\path\to\Alice\base" --first blue -
 `--checkpoint` together with `--start-step` requires an unchanged normal co-op
 checkpoint and verifies the exact resume receipt. That path is available for
 future segment tests; the run above starts at the entrance and does not claim a
-resume pass. The runner currently rejects requests beyond step 28. Full paired
-traversal, the mirror and cell switches, tube/gear/pendulum routes, later scenes,
+resume pass. The runner has since been extended through step 88, but supported
+commands do not establish successful traversal. Full paired traversal, the cell
+switches, tube/gear/pendulum routes, later scenes,
 recovery/rejoin, rendered environment effects and the exit remain unverified.
 The existing single-player full-route failure at step 142 remains separate.
 
@@ -199,3 +200,53 @@ matches baseline apart from the two benchmark timings. Four Python guards reject
 missing/duplicate personal arrivals, unobserved or invalid bodies, and the old
 non-neutral save request. The overall estimate remains **48.1%**; no completed
 campaign row is added for this opening segment.
+
+## Independent-client mirror sequence (29 October 2026)
+
+Source `b703a7ac1ee5cd7481da6efc6e7806b1cc4b0b074b4c04ba3ba2e1ceb4a7c6fd`
+verifies authored steps **29-32** from the unchanged normal checkpoint above.
+Both independent public-internet clients use 40 ms delay and 20 ms jitter. The
+small lower perch requires the players to go one at a time. Both make actual
+downward and return jumps, and Blue throws the owned Blade at the active mirror
+target. Both clients observe the switch changing; both players perform the
+authored 120-tick directional hold (157 and 167 observed ticks respectively).
+All four jump arrivals match supported bodies and increased jump counters.
+There are **615** matching player/world/native states in this scoped segment.
+
+The evidence is `private/coop-funhouse-mirror-prefix-b703a7a.json`, extracted
+through the normal checkpoint at tick 31989 from the immutable history in
+`private/coop/funhouse-route-21d88baebe1447e0bba12a81d640772c/`.
+Checkpoint-before-033 SHA-256 is
+`6060c01f178dcbae5ee01c6f14a6aa0511ef76ad27f93f3d71d641028de25a64`.
+The original requested 29-42 run **remains failed at step 35**. Enemy hits pushed
+the waiting Red Alice into Blue's destination. Neither player died. The next
+test resumes from the normal post-mirror checkpoint and makes the waiting player
+defend and return to her safe waiting point using ordinary movement controls.
+
+Earlier attempts exposed test-controller assumptions: the perch had no adjacent
+waiting space, a previous-tick reached flag did not prove current arrival, an
+authored directional hold was mistaken for a destination, and the generic
+eight-unit arrival radius rejected a valid jump landing. Jump verification now
+uses the original route's grounded 20-unit horizontal / 52-unit vertical bounds
+and still requires a newly observed jump. Walks retain the stricter eight-unit
+bound. No health, position or progression is forced; failed runs are retained.
+
+New diagnostic commands emit ordinary Blade aiming/throwing and timed steering.
+Switch completion requires observing the same active target before it disappears;
+missing or changed targets fail. Explicitly avoiding puzzle switches in generic
+combat is opt-in, preserving existing callers. Holds do not claim arrival.
+The locked build passes **861 active Rust tests** (one existing ignored test),
+63 battle / 35 machinery / 37 scene / 8 single-player component records, and
+unchanged single-player component gameplay apart from two benchmark timings.
+Ten Python guards cover personal arrivals, actual jumps, switch transitions,
+uninterrupted timed holds and waiting clearance including stopping tolerance. No screenshots were opened. This segment earns no
+completed campaign row; the overall estimate remains **48.1%**.
+
+The first post-mirror replay (`funhouse-route-0884aa9ed4374dd5b7a81e1ca1866af0`)
+failed at step 34 because a waiting target 41.6 units from the destination let
+the body stop only 34.4 units away. Waiting-point selection now reserves both
+body clearance and the eight-unit stopping tolerance; the captured geometry
+has a regression guard. The second replay
+(`funhouse-route-d1422e6ff9254213b771cb8cf7107481`) passes steps 33-35, but Red
+dies during step 36. It remains failed. These attempts do not establish a
+complete return-corridor pass or earn further progress credit.

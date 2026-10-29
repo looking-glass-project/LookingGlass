@@ -13,7 +13,7 @@ personal fish deaths, guards and moving pickups. Full two-client traversal and
 recovery remain open for both visits. Report these smaller milestones alongside
 the total; a successful component or segment is not a completed campaign visit.
 
-Status checked on **28 October 2026**: the older approximately 42% figure is
+Status checked on **29 October 2026**: the older approximately 42% figure is
 historical; the current weighted estimate is **48.1% (about 48%)**. Six of 39
 campaign visits have combined evidence, with earlier contact-system repeats
 still required. Repeated component tests do not increase this total.
@@ -26,8 +26,15 @@ player/world/native states, no deaths, and final health is Blue 86 / Red 75.
 Normal checkpoints are retained before steps 7, 28 and 29. Delayed diagnostic
 steering now settles at small stopping points; all 858 active Rust tests and the
 Funhouse battle/world/scene checks pass. Single-player component gameplay still
-matches baseline. This is an opening segment, not a complete visit: mirrors,
-transports, pendulums, later combat, recovery and the exit remain open. Overall
+matches baseline. This is an opening segment, not a complete visit. The resumed mirror sequence
+now also passes separately on source `b703a7a`: both players jump down and back,
+the Blade activates the mirror, and both perform the authored timed hold. Its
+615 matching player/world/native states come from steps 29-32 only. The longer
+attempt remains failed at step 35, where enemy knockback pushed the waiting
+player into the other player's destination. A correction to the automated
+waiting controls now gets both players through step 35. The next run fails
+at step 36 when Red dies, so the return corridor is still unverified. Transports,
+pendulums, later combat, recovery and the exit remain open. Overall
 stays **48.1%**, with six combined campaign rows. See [Funhouse evidence](FUNHOUSE.md).
 
 Latest full-route milestone: a fresh Blue-led Checkmate run now passes through

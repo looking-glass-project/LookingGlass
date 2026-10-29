@@ -269,7 +269,7 @@ fn route_combat(a:&mut Assets,map:&Bsp)->Result<()> {
             ensure!(native_threat(&w,&stage.interactions,vec![],body)==Some(id),
                 "Visible native threat missing for {kind:?} {local:?}");
             let mut keys=Input::default();
-            combat_controls(&w,&stage.interactions,vec![],body,true,|_|false,&mut keys);
+            combat_controls(&w,&stage.interactions,vec![],body,true,false,|_|false,&mut keys);
             ensure!(keys.weapon==Some(1) && keys.primary && !keys.alternate,
                 "Route driver ignored native {kind:?} for {local:?}");
             let aim=vec3(keys.yaw.cos()*keys.pitch.cos(),keys.yaw.sin()*keys.pitch.cos(),keys.pitch.sin());
@@ -279,7 +279,7 @@ fn route_combat(a:&mut Assets,map:&Bsp)->Result<()> {
                 "Route driver aimed away from native {kind:?}");
             let blocked=floor(true);body.player=Player::new(vec3(200.,0.,0.1));
             let mut hidden=Input::default();
-            combat_controls(&blocked,&stage.interactions,vec![],body,true,|_|false,&mut hidden);
+            combat_controls(&blocked,&stage.interactions,vec![],body,true,false,|_|false,&mut hidden);
             ensure!(hidden.weapon.is_none() && !hidden.primary && !hidden.alternate,
                 "Route driver shot through the occluding wall");
             ensure!(native_threat(&blocked,&stage.interactions,vec![],body).is_none(),

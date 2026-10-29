@@ -2,7 +2,7 @@
 import copy
 import unittest
 
-from test_coop_funhouse import FunhousePair, verify_arrivals
+from test_coop_funhouse import FunhousePair, verify_arrivals, verify_switch_receipt, verify_holds, waiting_point
 
 
 def fixture():
@@ -18,6 +18,15 @@ def fixture():
 
 
 class PersonalArrivalGuards(unittest.TestCase):
+    def test_waiting_point_keeps_clearance_after_arrival_tolerance(self):
+        # Captured step 34: the old target 41.6 units from the waypoint let
+        # Alice stop just 34.4 units away, inside the partner's destination.
+        at, incoming, goal = [802.83, 1493.52, .03], [757.70, 1492.52, .03], [800, 1500, 0]
+        unsafe, safe = [802.83, 1541.52, .03], [802.83, 1445.52, .03]
+        self.assertEqual(waiting_point([unsafe, safe], at, incoming, goal), safe)
+        with self.assertRaises(AssertionError):
+            waiting_point([unsafe], at, incoming, goal)
+
     def test_both_observed_arrivals_pass(self):
         verify_arrivals(*fixture())
 
@@ -54,6 +63,93 @@ class PersonalArrivalGuards(unittest.TestCase):
         pair.commands['host']['checkpoint'] = True
         self.assertFalse(pair.commands['host']['attack'])
         self.assertIsNone(pair.commands['host']['goal'])
+
+    def test_jump_arrival_requires_a_new_observed_jump(self):
+        args = fixture()
+        args[0][1]['mode'] = 'jump'
+        for receipt in args[2]:
+            role = receipt['role']
+            slot = 0 if role == 'host' else 1
+            earlier = copy.deepcopy(args[3][role][0])
+            earlier['tick'] = 9
+            earlier['players'][slot]['jumps'] = 0
+            args[3][role].insert(0, earlier)
+            args[3][role][-1]['players'][slot]['jumps'] = 1
+            receipt.update(start_tick=9, jumps_before=0, jumps_after=1)
+        verify_arrivals(*args)
+        # A supported 14-unit offset is inside the original jump controller's
+        # 20-unit limit; the exact boundary must still fail.
+        args[3]['guest'][-1]['players'][1]['feet'] = [114, 100, 0]
+        args[2][1]['feet'] = [114, 100, 0]
+        verify_arrivals(*args)
+        args[3]['guest'][-1]['players'][1]['feet'] = [120, 100, 0]
+        args[2][1]['feet'] = [120, 100, 0]
+        with self.assertRaises(AssertionError):
+            verify_arrivals(*args)
+        args[3]['guest'][-1]['players'][1]['feet'] = [100, 100, 0]
+        args[2][1]['feet'] = [100, 100, 0]
+        args[3]['guest'][-1]['players'][1]['jumps'] = 0
+        with self.assertRaises(AssertionError):
+            verify_arrivals(*args)
+
+
+def shot_fixture():
+    def row(tick, active, phase='idle', command=None, reached=False, expected=None):
+        return dict(tick=tick, funhouse=dict(mirror=active, cells=2),
+                    driver=dict(command=command, phase=phase, reached=reached, expected=expected))
+    entry = dict(role='host', command=7, thread='MirrorTrigger', before_ticks=dict(host=10, guest=10))
+    history = dict(host=[row(10, False), row(11, False, 'shooting switch', 7, expected=[10, 20, 30]),
+                         row(12, True, 'switch completed', 7, True)],
+                   guest=[row(10, False), row(12, True)])
+    return entry, history
+
+
+class SwitchReceiptGuards(unittest.TestCase):
+    def test_observed_target_and_both_shared_states_pass(self):
+        verify_switch_receipt(*shot_fixture())
+
+    def test_missing_target_completed_command_or_partner_state_fails(self):
+        for mutation in ('target', 'completed', 'partner', 'already'):
+            entry, history = shot_fixture()
+            if mutation == 'target':
+                history['host'].pop(1)
+            elif mutation == 'completed':
+                history['host'][-1]['driver']['reached'] = False
+            elif mutation == 'partner':
+                history['guest'][-1]['funhouse']['mirror'] = False
+            else:
+                history['guest'][0]['funhouse']['mirror'] = True
+            with self.assertRaises(AssertionError):
+                verify_switch_receipt(entry, history)
+
+
+def hold_fixture():
+    goal = [665, 775, -104]
+    steps = [dict(mode='hold', pos=goal, frames=120)]
+    entries = [dict(step=0, goal=goal, frames=120, starts=dict(host=100, guest=100),
+                    ends=dict(host=220, guest=220), commands=dict(host=1, guest=2))]
+    history = {role: [dict(tick=tick, driver=dict(command=command, phase='holding toward goal', expected=goal))
+                      for tick in (100, 160, 220)] for role, command in [('host', 1), ('guest', 2)]}
+    return steps, [0], entries, history
+
+
+class HoldGuards(unittest.TestCase):
+    def test_both_players_hold_toward_the_authored_point_for_the_required_ticks(self):
+        verify_holds(*hold_fixture())
+
+    def test_short_interrupted_or_missing_partner_hold_fails(self):
+        for mutation in ('short', 'interrupted', 'partner', 'direction'):
+            args = hold_fixture()
+            if mutation == 'short':
+                args[2][0]['ends']['guest'] = 219
+            elif mutation == 'interrupted':
+                args[3]['guest'][1]['driver']['phase'] = 'scene'
+            elif mutation == 'partner':
+                args[2][0]['starts'].pop('guest')
+            else:
+                args[3]['host'][-1]['driver']['expected'] = [0, 0, 0]
+            with self.assertRaises(AssertionError):
+                verify_holds(*args)
 
 
 if __name__ == '__main__':

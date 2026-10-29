@@ -1,7 +1,7 @@
-"""Play Funhouse's opening corridor in independent internet clients.
+"""Play Funhouse's opening, mirror and cell machinery in independent clients.
 
-This runner covers the authored entrance through step 28, before the mirror
-switch and machinery. It sends only ordinary inputs and normal save requests.
+This runner covers the authored entrance through step 88. It sends only ordinary
+inputs and normal save requests, including actual Blade throws at switches.
 Every movement waypoint needs a separate arrival receipt for each player.
 Full traversal, recovery, machinery and the exit remain separate work.
 """
@@ -21,7 +21,7 @@ from test_coop_chess_resume import verify_resume_body, verify_resume_receipt
 def verify_arrivals(steps, completed, receipts, history):
     """Require each claimed arrival to match an immutable client observation."""
     observed = {role: {row['tick']: row for row in rows} for role, rows in history.items()}
-    expected = {step for step in completed if not steps[step].get('mode')}
+    expected = {step for step in completed if steps[step].get('mode', '') in ('', 'jump')}
     assert {r['step'] for r in receipts} == expected, 'Missing or extra movement receipts'
     for step in expected:
         entries = [r for r in receipts if r['step'] == step]
@@ -34,7 +34,68 @@ def verify_arrivals(steps, completed, receipts, history):
             goal = steps[step]['pos']
             assert receipt['goal'] == goal and receipt['feet'] == body['feet'], 'Arrival differs from observed body'
             assert body['grounded'] and body['health'] > 0 and body['spawned_at'] == 0, 'Invalid arrival body'
-            assert distance(body['feet'][:2], goal[:2]) < 8 and abs(body['feet'][2] - goal[2]) < 35, 'Missed waypoint'
+            jump = steps[step].get('mode') == 'jump'
+            # The authored jump controller (funhouse/route.rs) accepts these
+            # supported landing bounds. Corridor walks keep their tighter gate.
+            radius, height = (20, 52) if jump else (8, 35)
+            assert distance(body['feet'][:2], goal[:2]) < radius and abs(body['feet'][2] - goal[2]) < height, 'Missed waypoint'
+            if jump:
+                earlier = observed[role].get(receipt['start_tick'])
+                assert earlier and earlier['players'][0 if role == 'host' else 1]['jumps'] == receipt['jumps_before'], 'Jump start was not observed'
+                assert body['jumps'] == receipt['jumps_after'], 'Jump count differs from observed body'
+                assert receipt['jumps_after'] > receipt['jumps_before'], 'Jump waypoint has no actual jump'
+
+
+def switched(state, thread):
+    if thread == 'MirrorTrigger':
+        return state['mirror']
+    assert thread.startswith('cell') and len(thread) == 5 and thread[4] in '12345678', 'Unknown authored switch'
+    return bool(state['cells'] & (1 << (int(thread[4:]) - 1)))
+
+
+def verify_switch_receipt(entry, history):
+    rows = history[entry['role']]
+    commanded = [r for r in rows if r['driver']['command'] == entry['command']]
+    assert any(r['driver']['phase'] == 'shooting switch' and r['driver']['expected'] is not None
+               for r in commanded), 'No observed active switch target'
+    assert any(r['driver']['phase'] == 'switch completed' and r['driver']['reached']
+               for r in commanded), 'No acknowledged switch completion'
+    for role, states in history.items():
+        relevant = [r for r in states if r['tick'] >= entry['before_ticks'][role]]
+        assert relevant and not switched(relevant[0]['funhouse'], entry['thread']), 'Switch was already active'
+        assert any(switched(r['funhouse'], entry['thread']) for r in relevant), 'Switch did not reach both clients'
+
+
+def verify_holds(steps, completed, holds, history):
+    expected = {i for i in completed if steps[i].get('mode') == 'hold'}
+    assert {e['step'] for e in holds} == expected, 'Missing or extra timed holds'
+    for index in expected:
+        covered = []
+        for entry in (e for e in holds if e['step'] == index):
+            assert entry['goal'] == steps[index]['pos'] and entry['frames'] == steps[index]['frames']
+            for role, start in entry['starts'].items():
+                covered.append(role)
+                rows = [r for r in history[role] if start <= r['tick'] <= entry['ends'][role]]
+                assert all(r['driver']['command'] == entry['commands'][role]
+                           and r['driver']['phase'] == 'holding toward goal'
+                           and r['driver']['expected'] == entry['goal'] for r in rows), 'Timed hold was interrupted'
+                assert rows and rows[-1]['tick'] - rows[0]['tick'] >= entry['frames'], 'Timed hold lacked observed simulation ticks'
+        assert sorted(covered) == ['guest', 'host'], 'Each player must perform the timed hold once'
+
+
+def waiting_point(neighbors, at, incoming, goal):
+    # Reserve the eight-unit arrival tolerance as well as the 36-unit body
+    # spacing. A target only 40 units away may stop the body inside the lane.
+    candidates = [p for p in neighbors
+                  if distance(p[:2], goal[:2]) >= 48 and distance(p[:2], incoming[:2]) >= 48]
+    assert candidates, 'No safe ordinary walking space beside waypoint'
+    direction = [goal[i] - incoming[i] for i in range(2)]
+    length = max(1, distance(goal[:2], incoming[:2]))
+    def score(point):
+        offset = [point[i] - at[i] for i in range(2)]
+        lateral = abs(offset[0]*direction[1] - offset[1]*direction[0]) / length
+        return lateral + .1*distance(point[:2], incoming[:2])
+    return max(candidates, key=score)
 
 
 class FunhousePair(Pair):
@@ -51,7 +112,7 @@ class FunhousePair(Pair):
         raw = (ROOT / 'src/levels/funhouse/route_steps.json').read_bytes()
         self.steps = json.loads(raw)
         assert len(self.steps) == 1077, 'Review changed authored course'
-        assert all(s.get('mode', '') in ('', 'wait', 'clear')
+        assert all(s.get('mode', '') in ('', 'wait', 'clear', 'jump', 'shot', 'hold')
                    for s in self.steps[args.start_step:args.last_step + 1])
         (self.folder / 'course.json').write_bytes(raw)
         self.evidence.update(course_sha256=hashlib.sha256(raw).hexdigest(),
@@ -74,11 +135,12 @@ class FunhousePair(Pair):
             self.evidence.update(checkpoint_sha256=hashlib.sha256(raw).hexdigest(),
                                  checkpoint_tick=self.saved['frame']['tick'])
 
-    def set(self, role, *args, **kwargs):
+    def set(self, role, *args, shoot_switch=None, hold_goal=False, **kwargs):
         kwargs.setdefault('attack', bool(args and args[0] is not None or kwargs.get('goal') is not None))
         super().set(role, *args, **kwargs)
         self.commands[role].update(input_lead=self.lead if role == 'guest' else 0,
-            watch_dialogue=True, skip_scene=self.args.skip_scenes, prefer_cards=True)
+            watch_dialogue=True, skip_scene=self.args.skip_scenes, prefer_cards=True,
+            avoid_switches=True, shoot_switch=shoot_switch, hold_goal=hold_goal)
 
     def body(self, role):
         return self.reports[role]['frame']['players'][0 if role == 'host' else 1]
@@ -135,14 +197,25 @@ class FunhousePair(Pair):
             self.set(role)
         self.until(lambda: not self.busy(), 120)
 
-    def move(self, role, goal, navigate=False):
-        self.set(role, goal, navigate=navigate, run=True)
+    def move(self, role, goal, navigate=False, jump=False):
+        jumps_before = self.body(role)['player']['jumps']
+        start_tick = self.reports[role]['frame']['tick']
+        radius, height = (20, 52) if jump else (8, 35)
+        self.set(role, goal, navigate=navigate, run=True, jump=jump)
         best = (distance(self.body(role)['player']['feet'], goal), self.reports[role]['frame']['tick'])
+        ledge_jump = None
         def done():
-            nonlocal best, navigate
-            if self.reached(role) or self.busy():
-                return True
+            nonlocal best, navigate, ledge_jump
             body, tick = self.body(role)['player'], self.reports[role]['frame']['tick']
+            at_goal = distance(body['feet'][:2], goal[:2]) < radius and abs(body['feet'][2] - goal[2]) < height
+            acknowledged = self.reports[role]['route_driver']['command'] == self.commands[role]['id']
+            arrived = acknowledged and body['jumps'] > jumps_before if jump else self.reached(role)
+            if self.busy() or arrived and body['grounded'] and at_goal:
+                return True
+            if body.get('ledge') and not body['ledge']['pulling'] and (ledge_jump is None or tick - ledge_jump > 120):
+                self.set(role, goal, run=True, jump=True)
+                ledge_jump = tick
+                navigate = False
             gap = distance(body['feet'], goal)
             if gap < best[0] - 2:
                 best = gap, tick
@@ -155,29 +228,26 @@ class FunhousePair(Pair):
         assert not self.busy(), 'Unexpected scene during opening corridor movement'
         body = self.body(role)['player']
         assert body['grounded'], 'Waypoint has no supported landing'
-        assert distance(body['feet'][:2], goal[:2]) < 8 and abs(body['feet'][2] - goal[2]) < 35
+        assert distance(body['feet'][:2], goal[:2]) < radius and abs(body['feet'][2] - goal[2]) < height
+        if jump:
+            assert body['jumps'] > jumps_before, 'No actual jump at authored jump step'
+        return dict(start_tick=start_tick, jumps_before=jumps_before, jumps_after=body['jumps'])
 
     def park(self, role, other, goal):
         """Walk to a native clear/supported neighbor, keeping the approach open."""
         slot = 0 if role == 'host' else 1
         at, incoming = self.body(role)['player']['feet'], self.body(other)['player']['feet']
-        direction = [goal[i] - incoming[i] for i in range(2)]
-        length = max(1, distance(goal[:2], incoming[:2]))
-        candidates = [p for p in self.reports[role]['route_driver']['neighbors'][slot]
-                      if distance(p[:2], goal[:2]) >= 40 and distance(p[:2], incoming[:2]) >= 40]
-        assert candidates, 'No safe ordinary walking space beside waypoint'
-        def score(point):
-            offset = [point[i] - at[i] for i in range(2)]
-            lateral = abs(offset[0]*direction[1] - offset[1]*direction[0]) / length
-            return lateral + .1*distance(point[:2], incoming[:2])
-        parking = max(candidates, key=score)
+        parking = waiting_point(self.reports[role]['route_driver']['neighbors'][slot], at, incoming, goal)
         self.move(role, parking)
         self.set(role, attack=True)
         self.until(lambda: self.reports[role]['route_driver']['command'] == self.commands[role]['id']
                    and distance(self.body(role)['player']['velocity'][:2], [0, 0]) < 1, 20)
         assert distance(self.body(role)['player']['feet'][:2], goal[:2]) >= 36
+        # Continue defending this waiting point. An enemy hit can otherwise
+        # push the idle waiter into the partner's destination and block it.
+        self.set(role, parking, run=True, attack=True)
 
-    def go(self, goal):
+    def go(self, goal, jump=False):
         # On a return along a narrow hall, the player already in front leads.
         # Record the real order; do not make the bodies pass through each other.
         first = min(self.commands, key=lambda r: distance(self.body(r)['player']['feet'], goal)
@@ -185,14 +255,85 @@ class FunhousePair(Pair):
         other = 'guest' if first == 'host' else 'host'
         self.set(other, attack=True)
         for role in (first, other):
-            self.move(role, goal)
-            report = self.reports[role]
-            self.evidence['arrivals'].append(dict(step=self.step, role=role, goal=goal,
-                tick=report['frame']['tick'], feet=self.body(role)['player']['feet'],
-                command=report['route_driver']['command']))
+            self.record_arrival(role, goal, jump)
             if role == first:
                 self.park(first, other, goal)
         self.set(other, attack=True)
+
+    def record_arrival(self, role, goal, jump=False):
+        movement = self.move(role, goal, jump=jump)
+        report = self.reports[role]
+        self.evidence['arrivals'].append(dict(step=self.step, role=role, goal=goal,
+            tick=report['frame']['tick'], feet=self.body(role)['player']['feet'],
+            command=report['route_driver']['command'], **movement))
+
+    def hold_roles(self, roles, goal, frames):
+        for role in roles:
+            self.set(role, goal, run=True, hold_goal=True)
+        def sampled():
+            return all(self.history[r][-1]['driver']['command'] == self.commands[r]['id']
+                       and self.history[r][-1]['driver']['phase'] == 'holding toward goal' for r in roles)
+        self.until(sampled)
+        starts = {r: self.history[r][-1]['tick'] for r in roles}
+        self.until(lambda: all(self.reports[r]['frame']['tick'] >= starts[r] + frames + int(self.lead*120)
+                               for r in roles) and sampled(), max(90, frames/120 + 60))
+        self.evidence.setdefault('holds', []).append(dict(step=self.step, goal=goal, frames=frames, starts=starts,
+            commands={r: self.commands[r]['id'] for r in roles},
+            ends={r: self.reports[r]['frame']['tick'] for r in roles}))
+
+    def hold(self, goal, frames):
+        # Authored holds press toward a point for a fixed duration, including
+        # points inside walls. They are directional inputs, not arrival goals.
+        self.hold_roles(list(self.commands), goal, frames)
+
+    def shoot(self, thread, role=None):
+        assert all(not switched(self.state(r), thread) for r in self.commands), 'Puzzle switch activated before its shot command'
+        before = {r: self.reports[r]['frame']['tick'] for r in self.commands}
+        vantage = self.steps[self.step - 1]['pos']
+        role = role or min(self.commands, key=lambda r: distance(self.body(r)['player']['feet'], vantage))
+        for r in self.commands:
+            self.set(r)
+        self.set(role, shoot_switch=thread)
+        command = self.commands[role]['id']
+        self.until(lambda: self.reached(role), 90)
+        self.until(lambda: all(switched(self.state(r), thread) for r in self.commands)
+                   and any(r['driver']['command'] == command and r['driver']['phase'] == 'switch completed'
+                           and r['driver']['reached'] for r in self.history[role][-8:]), 20)
+        entry = dict(step=self.step, role=role, thread=thread, command=command, before_ticks=before)
+        verify_switch_receipt(entry, self.history)
+        self.evidence.setdefault('switches', []).append(entry)
+        self.set(role)
+
+    def mirror_course(self):
+        """Queue the narrow mirror perch; both players traverse it personally."""
+        other = 'guest' if self.first == 'host' else 'host'
+        assert [self.steps[i].get('mode') for i in range(29, 33)] == ['jump', 'shot', 'hold', 'jump']
+        assert self.steps[30]['thread'] == 'MirrorTrigger'
+        returning = self.steps[32]['pos']
+        # Clear the original top landing before the first player jumps back.
+        # This uses the waiting player's observed supported neighbors.
+        self.park(other, self.first, returning)
+        for role in (self.first, other):
+            # Parking is outside the authored takeoff position. Return to the
+            # original upper approach before each player's downwards jump.
+            self.move(role, self.steps[28]['pos'])
+            for index in (29, 31, 32):
+                self.step = index
+                step = self.steps[index]
+                if index == 31:
+                    self.hold_roles([role], step['pos'], step['frames'])
+                else:
+                    self.record_arrival(role, step['pos'], jump=step['mode'] == 'jump')
+                self.retain(f'mirror-{role}-{index:03d}')
+                if index == 29 and role == self.first:
+                    self.step = 30
+                    self.shoot(self.steps[30]['thread'], role)
+            if role == self.first:
+                self.park(role, other, returning)
+            else:
+                self.set(role, attack=True)
+        self.completed.extend(range(29, 33))
+        print('PASS Funhouse mirror sequence 29..32: both personal jumps/holds; one actual shared switch', flush=True)
 
     def clear(self):
         for role in self.commands:
@@ -217,6 +358,11 @@ class FunhousePair(Pair):
     def verify(self):
         assert self.completed == list(range(self.args.start_step, self.args.last_step + 1))
         verify_arrivals(self.steps, self.completed, self.evidence['arrivals'], self.history)
+        verify_holds(self.steps, self.completed, self.evidence.get('holds', []), self.history)
+        shots = self.evidence.get('switches', [])
+        assert [e['step'] for e in shots] == [i for i in self.completed if self.steps[i].get('mode') == 'shot']
+        for entry in shots:
+            verify_switch_receipt(entry, self.history)
         for role, rows in self.history.items():
             verify_presence(rows, role)
             if not self.saved:
@@ -242,17 +388,26 @@ class FunhousePair(Pair):
                     verify_resume_body(body, old, elapsed)
         self.scene_end()
         for self.step in range(self.args.start_step, self.args.last_step + 1):
+            if self.step in self.completed:
+                continue
             self.retain(f'before-{self.step:03d}')
             if self.step in self.args.save_before:
                 self.save_checkpoint(self.step)
             step = self.steps[self.step]
             mode = step.get('mode', '')
+            if self.step == 29 and self.args.last_step >= 32:
+                self.mirror_course()
+                continue
             if mode == 'wait':
                 self.wait(step['frames'] / 120)
             elif mode == 'clear':
                 self.clear()
+            elif mode == 'shot':
+                self.shoot(step['thread'])
+            elif mode == 'hold':
+                self.hold(step['pos'], step['frames'])
             else:
-                self.go(step['pos'])
+                self.go(step['pos'], jump=mode == 'jump')
             self.completed.append(self.step)
             print('PASS Funhouse step', self.step, mode or 'walk', 'health',
                   [self.body(r)['stats']['sanity'] for r in self.commands], flush=True)
@@ -270,7 +425,7 @@ class FunhousePair(Pair):
             scope=f'Funhouse steps {self.args.start_step}..{self.args.last_step}; both personal arrivals; no deaths',
             fresh_entrance=self.saved is None,
             evidence=self.evidence), indent=2))
-        print('PASS Funhouse opening segment; full route remains open', flush=True)
+        print('PASS Funhouse segment; full route remains open', flush=True)
 
     def close(self):
         try:
@@ -284,7 +439,7 @@ if __name__ == '__main__':
     parser.add_argument('--exe', type=Path, default=ROOT / 'target/release/looking-glass.exe')
     parser.add_argument('--data', type=Path, required=True)
     parser.add_argument('--first', choices=('blue', 'red'), default='blue')
-    parser.add_argument('--last-step', type=int, default=28)
+    parser.add_argument('--last-step', type=int, default=88)
     parser.add_argument('--start-step', type=int, default=0)
     parser.add_argument('--checkpoint', type=Path)
     parser.add_argument('--save-before', nargs='*', type=int, default=[])
@@ -293,10 +448,12 @@ if __name__ == '__main__':
     parser.add_argument('--delay-ms', type=int, default=40)
     parser.add_argument('--jitter-ms', type=int, default=20)
     args = parser.parse_args()
-    if not 0 <= args.start_step <= args.last_step <= 28 or args.last_step < 1:
-        parser.error('The opening runner currently supports steps 0..28')
+    if not 0 <= args.start_step <= args.last_step <= 88 or args.last_step < 1:
+        parser.error('The runner currently supports steps 0..88')
     if bool(args.checkpoint) != (args.start_step > 0):
         parser.error('A later start requires an unchanged checkpoint; a fresh run starts at zero')
+    if 29 < args.start_step < 33 or 28 < args.last_step < 32:
+        parser.error('The queued mirror sequence must include steps 29..32 together')
     if not (0 <= args.delay_ms <= 500 and 0 <= args.jitter_ms <= 500):
         parser.error('Delay/jitter must be between 0 and 500 ms')
     pair = FunhousePair(args)

@@ -33,10 +33,22 @@ struct Command {
     run: bool,
     #[serde(default)]
     jump: bool,
+    /// Timed authored steering toward a point, including points beyond a wall.
+    /// The outer runner measures duration; this never claims point arrival.
+    #[serde(default)]
+    hold_goal: bool,
     #[serde(default)]
     runup: Option<Runup>,
     #[serde(default)]
     use_aim: Option<Vec2>,
+    /// Aim and throw the owned Blade at an active authored shootable trigger.
+    /// Completion requires observing that same target before it disappears.
+    #[serde(default)]
+    shoot_switch: Option<String>,
+    /// Leave puzzle targets for explicit shooting commands in authored routes.
+    /// Legacy diagnostics retain their existing target selection by default.
+    #[serde(default)]
+    avoid_switches: bool,
     #[serde(default)]
     watch_dialogue: bool,
     /// Ordinary held skip input; authoritative scene ownership still applies.
@@ -90,6 +102,10 @@ struct Command {
     finish: bool,
 }
 fn default_arrival_radius() -> f32 { 8. }
+fn hold_wish(delta:Vec2)->Vec2 {
+    let wish=(delta*(4./320.)).clamp_length_max(1.);
+    if wish.length_squared()<0.000001 {vec2(0.001,0.)} else {wish}
+}
 
 fn straight_wish(delta: Vec2, velocity: Vec2, lead: f32, run: bool, limit: Option<f32>) -> Vec2 {
     let steering = delta - velocity * lead;
@@ -147,6 +163,22 @@ impl Command {
                 "Invalid moving-step command");
         }
         let courses=[self.temple_follow,self.garden_follow,self.sanctum_follow,self.chess_follow,self.castling_follow].iter().filter(|c|c.is_some()).count();
+        if self.hold_goal {
+            ensure!(self.goal.is_some() && self.marker.is_none() && self.run && !self.jump
+                && !self.navigate && !self.swim && self.rope.is_none() && self.runup.is_none()
+                && self.use_aim.is_none() && self.shoot_switch.is_none() && self.beyond_step.is_none()
+                && self.speed_limit.is_none() && courses==0 && !self.checkpoint && !self.finish,
+                "A timed hold requires its own running goal");
+        }
+        if let Some(thread)=&self.shoot_switch {
+            ensure!(!thread.is_empty() && thread.len()<=128
+                && thread.bytes().all(|c|c.is_ascii_alphanumeric() || c==b'_')
+                && self.goal.is_none() && self.marker.is_none() && self.rope.is_none()
+                && self.use_aim.is_none() && self.beyond_step.is_none() && self.speed_limit.is_none()
+                && self.runup.is_none() && courses==0 && !self.swim && !self.navigate
+                && !self.attack && !self.run && !self.jump && !self.checkpoint && !self.finish,
+                "Shooting a switch requires its own neutral route command");
+        }
         if courses>0 {
             ensure!(self.goal.is_none() && self.marker.is_none() && self.rope.is_none()
                 && self.use_aim.is_none() && self.beyond_step.is_none() && self.speed_limit.is_none()
@@ -516,15 +548,16 @@ pub(crate) fn native_threat(world:&World,interactions:&crate::interaction::Inter
 /// Shared by the diagnostic driver and native data checks; only emits ordinary
 /// weapon controls. The checks need no renderer or authoritative state writes.
 pub(crate) fn combat_controls(world:&World,interactions:&crate::interaction::Interactions,
-    targets:Vec<crate::combat::Target>,body:&super::world::Body,prefer_cards:bool,
+    targets:Vec<crate::combat::Target>,body:&super::world::Body,prefer_cards:bool,avoid_switches:bool,
     idle_guard:impl Fn(usize)->bool,keys:&mut Input) {
     if body.stats.copies(0)==0 {return;}
     let targets=combat_targets(interactions,targets);
+    let switches=if avoid_switches {interactions.shot_targets()} else {Vec::new()};
     // Retain non-hostile/idle bodies for occlusion, but do not attack them.
     if let Some((_,point))=attack_target(world,&targets,body.player.eye(),|id|
         crate::level::hit_owner(&interactions.levels,id)
             .is_none_or(|slot|interactions.levels[slot].ctl.hostile_target(id))
-        && (!prefer_cards || !idle_guard(id))) {
+        && (!prefer_cards || !idle_guard(id)) && !switches.iter().any(|t|t.id==id)) {
         let delta=point-body.player.eye();
         let cards=prefer_cards && body.stats.copies(1)>0 && body.stats.will()>=crate::route::fight::CARD_COST;
         keys.weapon=Some(if cards {1} else {0});
@@ -532,6 +565,26 @@ pub(crate) fn combat_controls(world:&World,interactions:&crate::interaction::Int
         let aim=if keys.alternate {crate::route::fight::lead(body.player.eye(),point,Vec3::ZERO)}
             else {delta.normalize_or_zero()};
         keys.yaw=aim.y.atan2(aim.x);keys.pitch=aim.z.asin().clamp(-1.56,1.56);
+    }
+}
+
+#[derive(Default)]
+struct SwitchAim { seen:Option<usize> }
+impl SwitchAim {
+    fn sample(&mut self,context:&crate::combat::Context<'_>,target:Option<crate::combat::Target>,
+        eye:Vec3,keys:&mut Input)->Result<bool> {
+        let Some(target)=target else {
+            ensure!(self.seen.is_some(),"Switch missing or already used before this command");
+            return Ok(true);
+        };
+        ensure!(self.seen.is_none_or(|id|id==target.id),"Switch target changed during shooting");
+        self.seen=Some(target.id);
+        if let Some(point)=attack_point(context,eye,&target) {
+            let aim=crate::route::fight::lead(eye,point,Vec3::ZERO);
+            keys.weapon=Some(0);keys.primary=false;keys.alternate=true;
+            keys.yaw=aim.y.atan2(aim.x);keys.pitch=aim.z.asin().clamp(-1.56,1.56);
+        }
+        Ok(false)
     }
 }
 
@@ -555,6 +608,7 @@ pub struct Driver {
     jumped: bool,
     rope_used: bool,
     control_used: bool,
+    switch_aim: SwitchAim,
     step_height: Option<f32>,
     swim_goal: Option<(u64, Vec3)>,
     swim_worker: Option<SwimWorker>,
@@ -603,7 +657,7 @@ impl Driver {
             worker: None, plan: VecDeque::new(), walking_plan:false, step_tick: 0, step_at: now,
             walking_progress:WalkingProgress::new(Vec3::ZERO,now),
             navigation_clock:NavigationClock::new(now), jumped: false, rope_used: false,
-            control_used: false, step_height: None, swim_goal: None, swim_worker: None,
+            control_used: false, switch_aim:SwitchAim::default(), step_height: None, swim_goal: None, swim_worker: None,
             garden_course: None, sanctum_course: None, chess_course: None, castling_course: None, location: None, report: Report::default() }
     }
     pub fn poll(&mut self, now: Instant) {
@@ -626,9 +680,10 @@ impl Driver {
                 if self.command.as_ref().is_none_or(|old|old.chess_follow!=command.chess_follow || old.epoch!=command.epoch) {
                     self.chess_course=None;self.report.chess_course=None;
                 }
-                if self.command.as_ref().is_none_or(|old| old.id != command.id) {
+                if self.command.as_ref().is_none_or(|old| old.id != command.id || old.shoot_switch!=command.shoot_switch) {
                     self.plan.clear(); self.jumped = false; self.rope_used = false; self.location = None;
                     self.control_used = false;
+                    self.switch_aim=SwitchAim::default();
                     self.step_height = None;
                     self.swim_goal = None;
                     self.garden_course = None; self.report.garden_course = None;
@@ -932,6 +987,21 @@ impl Driver {
             self.report.phase = "following temple guide";
             return;
         }
+        if let Some(thread)=&command.shoot_switch {
+            let target=arena.stage.interactions.switch_target(thread);
+            self.report.expected=target.map(|t|t.center);
+            self.report.phase="shooting switch";
+            if body.stats.copies(0)==0 {
+                self.report.error=Some("Shooting a switch requires an owned Blade".into());return;
+            }
+            let targets=combat_targets(&arena.stage.interactions,arena.npcs.targets());
+            let context=crate::combat::Context{world,targets:&targets};
+            match self.switch_aim.sample(&context,target,body.player.eye(),keys) {
+                Ok(reached)=>{self.report.reached=reached;if reached {self.report.phase="switch completed";}},
+                Err(error)=>self.report.error=Some(error.to_string()),
+            }
+            return;
+        }
         if let Some(aim) = command.use_aim {
             keys.yaw = aim.x; keys.pitch = aim.y;
             if !self.control_used { keys.uses += 1; self.control_used = true; }
@@ -944,7 +1014,7 @@ impl Driver {
             if keys.wish.length() > 0. { keys.yaw = keys.wish.y.atan2(keys.wish.x); keys.pitch = 0.; }
         }
         if command.attack {
-            combat_controls(world,&arena.stage.interactions,arena.npcs.targets(),body,command.prefer_cards,
+            combat_controls(world,&arena.stage.interactions,arena.npcs.targets(),body,command.prefer_cards,command.avoid_switches,
                 |id|self.report.guards.iter().any(|g|g.id==id && g.state==crate::combat::State::Idle),keys);
         }
         // Rope movement can be combined with ordinary weapon input. Apply aim
@@ -988,6 +1058,14 @@ impl Driver {
         } else { command.goal };
         let Some(goal) = goal else { return; };
         let delta = goal-body.player.feet;
+        if command.hold_goal {
+            keys.wish=hold_wish(delta.truncate());keys.run=true;
+            if !keys.primary && !keys.alternate {
+                keys.yaw=keys.wish.y.atan2(keys.wish.x);keys.pitch=0.;
+            }
+            self.report.expected=Some(goal);self.report.phase="holding toward goal";
+            return;
+        }
         let landing = if command.navigate {
             landing_control(world,&body.player,goal,command.input_lead,command.arrival_radius)
         } else { None };
@@ -1131,6 +1209,75 @@ impl Driver {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn timed_hold_keeps_normal_input_against_a_blocked_authored_point() {
+        let world=World::fixture(&[(vec3(-100.,-100.,-100.),vec3(200.,100.,0.)),
+            (vec3(84.,-100.,0.),vec3(100.,100.,200.))]);
+        let mut p=Player::new(vec3(40.,0.,0.03125));p.grounded=true;
+        let goal=vec2(100.,0.);
+        for _ in 0..120 {
+            let wish=hold_wish(goal-p.feet.truncate());
+            assert!(wish.x>0. && wish.length()<=1.);
+            p.tick(&world,Controls{wish,run:true,..Default::default()});
+            assert!(world.body_clear(p.feet) && p.grounded);
+        }
+        let boundary=84.-crate::collision::PLAYER_HALF.x;
+        assert!(p.feet.x>40. && (p.feet.x-boundary).abs()<0.1
+            && goal.distance(p.feet.truncate())>30.,"Unexpected blocked footing: {:?}",p.feet);
+        assert_eq!(hold_wish(Vec2::ZERO),vec2(0.001,0.));
+        let base=serde_json::json!({"id":1,"heartbeat":1,"epoch":1,"goal":[100,0,0],
+            "run":true,"hold_goal":true,"navigate":false,"attack":true,"capture":false,"finish":false});
+        assert!(serde_json::from_value::<Command>(base.clone()).unwrap().validate().is_ok());
+        for (field,value) in [("goal",serde_json::Value::Null),("run",false.into()),
+            ("navigate",true.into()),("jump",true.into()),("checkpoint",true.into()),
+            ("shoot_switch","MirrorTrigger".into())] {
+            let mut invalid=base.clone();invalid[field]=value;
+            assert!(serde_json::from_value::<Command>(invalid).unwrap().validate().is_err());
+        }
+    }
+    #[test]
+    fn switch_aim_uses_a_real_blade_path_and_requires_an_observed_target() {
+        let clear=World::fixture(&[]);
+        let wall=World::fixture(&[(vec3(40.,-100.,-100.),vec3(60.,100.,200.))]);
+        let eye=vec3(0.,0.,48.);
+        let target=crate::combat::Target{id:7,center:vec3(150.,0.,48.),half:Vec3::splat(16.)};
+        let targets=[target];
+        let mut aim=SwitchAim::default();let mut keys=Input::default();
+        let context=crate::combat::Context{world:&clear,targets:&targets};
+        assert!(aim.sample(&context,None,eye,&mut keys).is_err());
+        let blocked=crate::combat::Context{world:&wall,targets:&targets};
+        assert!(!aim.sample(&blocked,Some(target),eye,&mut keys).unwrap());
+        assert!(!keys.primary && !keys.alternate && keys.weapon.is_none());
+        assert!(!aim.sample(&context,Some(target),eye,&mut keys).unwrap());
+        assert_eq!(keys.weapon,Some(0));assert!(keys.alternate && !keys.primary);
+        assert_eq!(keys.wish,Vec2::ZERO);assert_eq!(keys.jumps,0);assert_eq!(keys.uses,0);
+        let direction=vec3(keys.pitch.cos()*keys.yaw.cos(),keys.pitch.cos()*keys.yaw.sin(),keys.pitch.sin());
+        let mut shot=crate::weapons::Projectile::thrown_blade(eye,direction);
+        let mut hit=None;
+        for _ in 0..120 {hit=hit.or(shot.contact_step(1./120.,&context).0);}
+        assert_eq!(hit.unwrap().id,target.id);
+        let wrong=crate::combat::Target{id:8,..target};
+        assert!(aim.sample(&context,Some(wrong),eye,&mut Input::default()).is_err());
+        assert!(aim.sample(&context,None,eye,&mut Input::default()).unwrap());
+    }
+    #[test]
+    fn shooting_switch_commands_exclude_other_actions_and_bound_names() {
+        let base=serde_json::json!({"id":1,"heartbeat":1,"epoch":1,"goal":null,
+            "navigate":false,"attack":false,"capture":false,"finish":false,
+            "shoot_switch":"MirrorTrigger","avoid_switches":true});
+        assert!(serde_json::from_value::<Command>(base.clone()).unwrap().validate().is_ok());
+        for (field,value) in [("goal",serde_json::json!([0,0,0])),("marker",1.into()),
+            ("attack",true.into()),("navigate",true.into()),("checkpoint",true.into()),
+            ("finish",true.into()),("jump",true.into()),("run",true.into()),
+            ("use_aim",serde_json::json!([0,0])),("temple_follow","Blue".into())] {
+            let mut invalid=base.clone();invalid[field]=value;
+            assert!(serde_json::from_value::<Command>(invalid).unwrap().validate().is_err(),"Accepted {field}");
+        }
+        for name in [String::new(),"a".repeat(129),"../other".into()] {
+            let mut invalid=base.clone();invalid["shoot_switch"]=name.into();
+            assert!(serde_json::from_value::<Command>(invalid).unwrap().validate().is_err());
+        }
+    }
     #[test]
     fn delayed_straight_movement_settles_at_a_small_side_step() {
         let world=World::fixture(&[(vec3(500.,2800.,-100.),vec3(1000.,3300.,0.))]);

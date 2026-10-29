@@ -1,6 +1,6 @@
 """Play Funhouse's opening, mirror and cell machinery in independent clients.
 
-This runner covers the authored entrance through step 150. It sends only ordinary
+This runner covers the authored entrance through step 155. It sends only ordinary
 inputs and normal save requests, including actual Blade throws at switches.
 Every movement waypoint needs a separate arrival receipt for each player; the
 arena entrance instead verifies its first-entrant scene and shared reunion.
@@ -883,14 +883,15 @@ class FunhousePair(Pair):
             command=report['route_driver']['command'], crossing=crossing, surface=surface,
             target=report['route_driver']['surface']['goal'] if surface is not None else goal, **movement))
 
-    def arena_climb(self):
-        """Keep both players moving up the boss arena's ordinary ramp."""
-        assert self.step == 144 and self.args.last_step >= 146
+    def arena_ramp(self, first_step, last_step):
+        """Keep both players moving through an ordinary boss-arena ramp."""
+        assert (first_step, last_step) in ((144, 146), (153, 155))
+        assert self.step == first_step and self.args.last_step >= last_step
         assert all(self.state(r)['fight'] for r in self.commands) and not self.busy()
         starts = {r: self.reports[r]['frame']['tick'] for r in self.commands}
         lives = {r: (self.body(r)['spawned_at'], self.body(r)['warped_at']) for r in self.commands}
-        pending, issued, parking = {r: 144 for r in self.commands}, {}, None
-        leader = min(self.commands, key=lambda r: distance(self.body(r)['player']['feet'], self.steps[144]['pos']))
+        pending, issued, parking = {r: first_step for r in self.commands}, {}, None
+        leader = min(self.commands, key=lambda r: distance(self.body(r)['player']['feet'], self.steps[first_step]['pos']))
         follower = 'guest' if leader == 'host' else 'host'
         trail, following = [], None
 
@@ -910,7 +911,7 @@ class FunhousePair(Pair):
 
         def follow_ramp():
             nonlocal following
-            if pending[follower] > 146:
+            if pending[follower] > last_step:
                 return
             goal = self.steps[pending[follower]]['pos']
             if pending[follower] < pending[leader]:
@@ -942,7 +943,7 @@ class FunhousePair(Pair):
                 body = self.body(role)
                 assert body['stats']['sanity'] > 0 and (body['spawned_at'], body['warped_at']) == lives[role], 'Arena climb interrupted by death or relocation'
                 step = pending[role]
-                if step > 146:
+                if step > last_step:
                     continue
                 goal, player = self.steps[step]['pos'], body['player']
                 driver = self.reports[role]['route_driver']
@@ -955,7 +956,7 @@ class FunhousePair(Pair):
                         crossing=False, surface=None, target=goal, jumps_after=player['jumps'], **issued[role]))
                     pending[role] += 1
                     print('PASS arena climb personal arrival', role, step, flush=True)
-                    if pending[role] <= 146:
+                    if pending[role] <= last_step:
                         if role == leader or pending[role] < pending[leader]:
                             issue(role)
                         else:
@@ -964,12 +965,12 @@ class FunhousePair(Pair):
             # Only stop after the full ramp. Clear the final destination while
             # the other player continues, using a real supported neighboring point.
             if parking is None:
-                first = next((r for r in self.commands if pending[r] > 146), None)
+                first = next((r for r in self.commands if pending[r] > last_step), None)
                 if first is not None:
                     other = 'guest' if first == 'host' else 'host'
-                    self.step = 146
-                    parking = first, self.park(first, other, self.steps[146]['pos'])
-            return all(step > 146 for step in pending.values())
+                    self.step = last_step
+                    parking = first, self.park(first, other, self.steps[last_step]['pos'])
+            return all(step > last_step for step in pending.values())
 
         self.until(climbed)
         role, goal = parking
@@ -982,12 +983,12 @@ class FunhousePair(Pair):
                 for slot, who in enumerate(('host', 'guest')):
                     p = row['players'][slot]
                     assert p['health'] > 0 and (p['spawned_at'], p['warped_at']) == lives[who], 'Arena climb used a death or relocation'
-        footing = dict(step=146, role=role, goal=goal, command=self.commands[role]['id'],
+        footing = dict(step=last_step, role=role, goal=goal, command=self.commands[role]['id'],
                        tick=self.reports[role]['frame']['tick'])
         verify_waiting_footings([footing], self.history)
         self.evidence.setdefault('waiting_footings', []).append(footing)
-        self.completed.extend(range(144, 147))
-        print('PASS paired arena climb 144..146: both personal arrivals without deaths', flush=True)
+        self.completed.extend(range(first_step, last_step+1))
+        print('PASS paired arena ramp', first_step, last_step, 'both personal arrivals without deaths', flush=True)
 
     def hold_roles(self, roles, goal, frames):
         for role in roles:
@@ -1058,6 +1059,35 @@ class FunhousePair(Pair):
         # Authored holds press toward a point for a fixed duration, including
         # points inside walls. They are directional inputs, not arrival goals.
         self.hold_roles(list(self.commands), goal, frames)
+
+    def left_pad(self):
+        assert self.step == 151 and self.args.last_step >= 152
+        pad = self.steps[149]['pos']
+        first = min(self.commands, key=lambda r: distance(self.body(r)['player']['feet'], pad))
+        other = 'guest' if first == 'host' else 'host'
+        # The preceding paired hold can leave the partner in the approach lane.
+        # Move it to an observed clear neighbor before the first personal jump.
+        self.park(other, first, pad)
+        for role in (first, other):
+            self.step = 149
+            self.move(role, pad)
+            self.step = 151
+            self.timed_jump(role)
+            self.step = 152
+            self.record_arrival(role, self.steps[152]['pos'])
+            if role == first:
+                parking = self.park(first, other, self.steps[152]['pos'])
+        self.until(lambda: self.reports[first]['route_driver']['command'] == self.commands[first]['id']
+                   and self.body(first)['player']['grounded']
+                   and distance(self.body(first)['player']['feet'][:2], parking[:2]) < 24
+                   and abs(self.body(first)['player']['feet'][2]-parking[2]) < 35, 15)
+        footing = dict(step=152, role=first, goal=parking, command=self.commands[first]['id'],
+                       tick=self.reports[first]['frame']['tick'])
+        verify_waiting_footings([footing], self.history)
+        self.evidence.setdefault('waiting_footings', []).append(footing)
+        verify_input_jumps(self.steps, [151], [e for e in self.evidence['input_jumps'] if e['step'] == 151], self.history)
+        self.completed.extend((151, 152))
+        print('PASS left pad 151..152: both actual jumps and personal departures', flush=True)
 
     def shoot(self, thread, role=None):
         assert all(not switched(self.state(r), thread) for r in self.commands), 'Puzzle switch activated before its shot command'
@@ -1398,10 +1428,16 @@ class FunhousePair(Pair):
                 self.seesaw_exit()
                 continue
             if self.step == 144:
-                self.arena_climb()
+                self.arena_ramp(144, 146)
                 continue
             if self.step == 147:
                 self.upper_bridge()
+                continue
+            if self.step == 151:
+                self.left_pad()
+                continue
+            if self.step == 153:
+                self.arena_ramp(153, 155)
                 continue
             if self.step == 138:
                 self.tweedle_entry()
@@ -1482,8 +1518,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
     if args.require_revival and not args.allow_revival:
         parser.error('--require-revival requires --allow-revival')
-    if not 0 <= args.start_step <= args.last_step <= 150 or args.last_step < 1:
-        parser.error('The runner currently supports steps 0..150')
+    if not 0 <= args.start_step <= args.last_step <= 155 or args.last_step < 1:
+        parser.error('The runner currently supports steps 0..155')
     if bool(args.checkpoint) != (args.start_step > 0):
         parser.error('A later start requires an unchanged checkpoint; a fresh run starts at zero')
     if 29 < args.start_step < 33 or 28 < args.last_step < 32:
@@ -1498,6 +1534,10 @@ if __name__ == '__main__':
         parser.error('The paired arena climb must include steps 144..146 together')
     if 147 < args.start_step < 150 or 146 < args.last_step < 149:
         parser.error('The queued upper bridge must include steps 147..149 together')
+    if 151 < args.start_step < 153 or 150 < args.last_step < 152:
+        parser.error('The queued left pad must include steps 151..152 together')
+    if 153 < args.start_step < 156 or 152 < args.last_step < 155:
+        parser.error('The paired arena descent must include steps 153..155 together')
     if not (0 <= args.delay_ms <= 500 and 0 <= args.jitter_ms <= 500):
         parser.error('Delay/jitter must be between 0 and 500 ms')
     pair = FunhousePair(args)

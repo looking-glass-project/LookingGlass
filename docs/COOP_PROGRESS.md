@@ -19,6 +19,15 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | Full campaign verification | 3.08 | 20 |
 | **Total** | **48.08, rounded to 48.1** | **100** |
 
+Latest verified work: Funhouse's second personal pad and descent now pass
+steps **151-155** with eight personal arrivals, both actual jumps and 396 matching
+network states. Each player gains their own second 25-health/Will pickup.
+A separate resumed combat run defeats both Tweedles, watches all eight Hatter
+scene lines, preserves the hidden/frozen partner and the original floor-collapse
+tail, then reaches **Hatter1 with both players alive**. It has 1,178 matching
+Funhouse states plus four retained matching states in the new visit. These are
+checkpoint segments; the fresh full route and remaining campaign checks stay open.
+
 Recent verified milestones, which do not yet complete another campaign visit:
 
 - Checkmate has separate fresh Blue-led watched-scene and Red-led skipped-scene

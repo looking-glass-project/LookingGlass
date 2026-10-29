@@ -105,12 +105,19 @@ The subsequent **147-150** replay passes both personal pad jumps, four arrivals,
 the paired 900-tick hold and **479 matching states**. Jump timing starts after
 acknowledgment of the actual jump. Each player receives their own 25-health/Will
 arena essence without healing or consuming the partner's copy. Both survive at
-31.8/38.1 health, with a normal checkpoint before 151. The opposite descent, boss defeat, later scenes/exit,
-fresh full route and opposite lead order remain open.
+31.8/38.1 health, with a normal checkpoint before 151.
+The subsequent **151-155** segment passes both second-pad jumps, eight personal
+arrivals and **396 matching states**. Each player gains their own second 25-health/
+Will pickup; both survive the descent at about 56.8/63.1 health.
+A separate resumed boss run now defeats both Tweedles, watches all eight lines of
+Blue's Hatter scene with Red hidden/frozen, preserves its original floor-collapse
+tail and reaches **Hatter1 with both players alive**. It verifies **1,178 matching
+Funhouse states**, plus four retained matching states in the new visit. Fresh full
+traversal, opposite lead/scene ownership and remaining recovery checks stay open.
 
 The latest frozen build passes **875 active Rust tests** and native Funhouse
 **battle63/world46/scene37**, plus **Checkmate94**. Single-player component
-gameplay matches baseline except two benchmark durations. **46 Funhouse guards**,
+gameplay matches baseline except two benchmark durations. **50 Funhouse guards**,
 **13 recovery guards** and **seven source-package tests** pass. These are separate
 resumed segments, not a fresh full route. Overall remains **48.1%**, with six
 combined campaign rows. See [Funhouse evidence](FUNHOUSE.md).

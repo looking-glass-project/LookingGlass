@@ -934,5 +934,44 @@ guards and seven source-package tests pass. Native source and executable remain
 unchanged, retaining the earlier 875-unit and 63/46/37/8/94 component results.
 No screenshots were opened; particle simulation observations are not a new
 rendered-effects claim. These resumed segments do not prove fresh full traversal,
-the opposite order, boss defeat, later scenes or exit. Next starts at **151**;
-no completed campaign row or percentage is added. Overall remains **48.1%**.
+the opposite order or the later boss ending. The next checkpoint is **151**;
+its later descent/ending evidence follows below. No completed campaign row or
+percentage is added. Overall remains **48.1%**.
+
+
+### Second pad, descent and boss ending
+
+Run `bdb6d4d0e5374eeb9c1da6e1e9ae6a9c` passes resumed **151-155** on the same
+frozen source: eight personal movement arrivals, both acknowledged actual pad
+jumps (120/130 active ticks) and **396 matching player/world/native states**
+(399 retained including shutdown). Each player's own second essence generation
+advances from one to two, gaining 25 health and Will while leaving the partner's
+health, pad side and readiness unchanged. Both survive at about **56.8/63.1**
+health, with no deaths or relocations. The normal checkpoint before 156 has
+SHA-256 `0f78b5e2449dc45431352b93fdb44a6f84d090854e213d879821747d34099dc1`.
+
+The dedicated `tools/test_coop_funhouse_boss.py` resumes that unchanged checkpoint.
+Run `2aec79c1680e44dfb0d068cbf7429e2e` uses six ordinary movement/attack commands
+to finish the remaining Tweedle. Both bosses reach zero health. Blue owns the
+original Hatter ending; both clients observe all eight dialogue lines, with Red
+hidden and stationary, personal inventories/health preserved, and the original
+floor-collapse tail. The observed ending-to-arrival intervals are 781/785 ticks,
+covering the original 6.5 seconds. Both actually enter **Hatter1, epoch 2**, alive,
+grounded, clear and separated at the same 56.8/63.1 health.
+
+The boss run verifies **1,178 matching player/world/native states** in Funhouse;
+the independent retained audit also checks **four matching states in Hatter1**.
+No deaths/revivals occur in either run. All eight descent and nine boss fixture
+hashes match their captured sources, and both independent audits pass. The boss
+controller stops on actual victory/transition: interrupted combat legs are never
+credited as personal waypoint arrivals. It does not force enemy health, progression
+or player placement. Native source/executable are unchanged; the previous native
+checks still apply. **50 Funhouse guards**, 13 recovery guards and seven package
+tests pass, including rejection of absent defeat/dialogue/tail/exit, visible or
+moving partners, changed inventories, unsafe arrivals and wrong second-pad proof.
+
+These two independent checkpoint segments do not constitute a fresh full route.
+Fresh traversal, the opposite lead order and ending owner, skipped ending, remaining
+recovery/reconnect cases and rendered environment-effects checks remain open.
+Six campaign rows retain combined evidence; overall stays **48.1%**. No screenshots
+were opened for these runs.

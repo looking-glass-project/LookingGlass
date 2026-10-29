@@ -93,8 +93,10 @@ fn default_arrival_radius() -> f32 { 8. }
 
 fn straight_wish(delta: Vec2, velocity: Vec2, lead: f32, run: bool, limit: Option<f32>) -> Vec2 {
     let steering = delta - velocity * lead;
-    let wish = steering.normalize_or_zero() * (steering.length() / 48.).min(1.);
     let full = if run { 320. } else { crate::movement::WALK_SPEED };
+    // Delayed velocity feedback also needs a smaller gain. Keeping the local
+    // gain makes a remote runner reverse repeatedly around a small waypoint.
+    let wish = (steering / (48. + 2. * full * lead)).clamp_length_max(1.);
     // The limit caps requested speed; multiplying every input by it also
     // suppresses already-slow final corrections and can stall on a slope.
     limit.map_or(wish, |speed| wish.clamp_length_max((speed / full).min(1.)))
@@ -1129,6 +1131,32 @@ impl Driver {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn delayed_straight_movement_settles_at_a_small_side_step() {
+        let world=World::fixture(&[(vec3(500.,2800.,-100.),vec3(1000.,3300.,0.))]);
+        for delay in [0,6,17,36] { for run in [false,true] {
+            // Actual Funhouse parking goal; the delayed guest circled it while
+            // the first actor waited. Model both observation and input queues.
+            let mut p=Player::new(vec3(743.6277,3000.6494,0.03125));p.grounded=true;
+            let goal=vec2(743.6277,3048.6494);
+            let mut views=VecDeque::from(vec![p.clone();delay+1]);
+            let mut pending=VecDeque::from(vec![Controls::default();delay+1]);
+            let lead=(2*delay+6) as f32/120.;
+            let mut command=Controls::default();
+            for tick in 0..2400 {
+                let seen=views.pop_front().unwrap();
+                if tick%6==0 {
+                    command=Controls {wish:straight_wish(goal-seen.feet.truncate(),
+                        seen.velocity.truncate(),lead,run,None),run,..Default::default()};
+                }
+                pending.push_back(command);p.tick(&world,pending.pop_front().unwrap());
+                views.push_back(p.clone());
+                assert!(p.grounded && world.body_clear(p.feet));
+            }
+            assert!(p.feet.truncate().distance(goal)<2. && p.velocity.truncate().length()<1.,
+                "Side step did not settle: delay={delay}, run={run}, feet={:?}, velocity={:?}",p.feet,p.velocity);
+        }}
+    }
     #[test]
     fn speed_limited_walking_finishes_small_corrections_with_delayed_input() {
         let world = World::fixture(&[(vec3(-100., -100., -100.), vec3(100., 100., 0.))]);

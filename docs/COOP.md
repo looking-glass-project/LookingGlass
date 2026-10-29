@@ -18,6 +18,18 @@ historical; the current weighted estimate is **48.1% (about 48%)**. Six of 39
 campaign visits have combined evidence, with earlier contact-system repeats
 still required. Repeated component tests do not increase this total.
 
+Latest Funhouse traversal milestone: source `b897af2` passes a fresh watched
+entrance and authored steps 0-28 in two independent public-internet clients,
+with 40 ms delay and 20 ms jitter. Both players personally reach all 22 movement
+waypoints: 44 arrivals match the recorded client bodies. There are 2,734 matching
+player/world/native states, no deaths, and final health is Blue 86 / Red 75.
+Normal checkpoints are retained before steps 7, 28 and 29. Delayed diagnostic
+steering now settles at small stopping points; all 858 active Rust tests and the
+Funhouse battle/world/scene checks pass. Single-player component gameplay still
+matches baseline. This is an opening segment, not a complete visit: mirrors,
+transports, pendulums, later combat, recovery and the exit remain open. Overall
+stays **48.1%**, with six combined campaign rows. See [Funhouse evidence](FUNHOUSE.md).
+
 Latest full-route milestone: a fresh Blue-led Checkmate run now passes through
 the King and into Funhouse over the public internet, including Red's verified
 ten-second revival and all three watched original scenes. There are 5,765

@@ -141,3 +141,61 @@ pass with the final production changes (one existing ignored test).
 The 94 Checkmate, 82 shared-world and 43 campaign checks pass on this build;
 Checkmate single-player component and full-route logs remain identical.
 No screenshots were opened.
+
+## Independent-client opening traversal (28 October 2026)
+
+Source `b897af27cf0b7ade07ed4f6a28626e400efad84b519faf337c7dbeadebb6ce29`
+passes the fresh watched entrance through authored steps **0-28** over the public
+internet, using two processes and separate profiles with 40 ms delay and 20 ms
+jitter. This is the opening corridor, before the mirror switch and machinery.
+The original Blue-owned introduction is observed in both clients (179 / 178
+samples), hides the partner and rejoins the players safely afterward. Strict
+body separation, personal cameras, visible partners and no-respawn checks pass.
+
+Each Alice personally reaches all 22 movement waypoints. The 44 arrival receipts
+match immutable client observations, including actual supported feet. The mover
+walks to a nearby collision-checked waiting point before the other player enters
+the same waypoint; there are no body, health or progression writes. Return legs
+let the player already ahead move first, recording the actual order. Six
+ordinary combat-clear steps and the initial wait also pass. Blue collects a
+normal health drop; the pair finishes at **86 / 75 health**, with no deaths.
+There are **2,734** matching sent/restored player, world and native-resident states.
+
+Evidence is `private/coop/funhouse-route-2e4c32d4c9754287910d29f369b32dea/`:
+`result.json`, `history.json`, fixture/dependency hashes, per-step reports and
+unchanged normal checkpoints before steps 7, 28 and 29. The last checkpoint has
+SHA-256 `18ce8375a8989c5db04164d0e2e95fb4e70757e347900cd85cefe54e19a373ae`.
+The numeric test ran in Anode in 255.592 seconds; all owned windows were closed
+and the desktop lease released. No screenshots were opened.
+
+The reusable command is:
+
+```powershell
+python tools/test_coop_funhouse.py --data "C:\path\to\Alice\base" --first blue --last-step 28 --save-before 7 28
+```
+
+`--checkpoint` together with `--start-step` requires an unchanged normal co-op
+checkpoint and verifies the exact resume receipt. That path is available for
+future segment tests; the run above starts at the entrance and does not claim a
+resume pass. The runner currently rejects requests beyond step 28. Full paired
+traversal, the mirror and cell switches, tube/gear/pendulum routes, later scenes,
+recovery/rejoin, rendered environment effects and the exit remain unverified.
+The existing single-player full-route failure at step 142 remains separate.
+
+The first attempt on `afe78ef`, folder
+`funhouse-route-0604eff526164b3c8028b3cf49aeaa46`, reached steps 0-6 but failed its
+checkpoint request because the diagnostic command retained attack input. It
+remains a failed run. Neutral commands now clear that input. The same attempt
+exposed delayed stopping oscillation: the new regression fails on the old
+controller while still reversing at speed after 2,400 simulated ticks. Scaling
+the diagnostic steering correction with input delay fixes both walking and
+running across four tested delay queues; zero-delay steering is unchanged.
+This does not alter human movement, gameplay physics or saves.
+
+All **858 active Rust tests** pass (one existing ignored test), the locked release
+build succeeds, and current native checks repeat **63 battle / 35 machinery /
+37 scene / 8 single-player component** records. The single-player component log
+matches baseline apart from the two benchmark timings. Four Python guards reject
+missing/duplicate personal arrivals, unobserved or invalid bodies, and the old
+non-neutral save request. The overall estimate remains **48.1%**; no completed
+campaign row is added for this opening segment.

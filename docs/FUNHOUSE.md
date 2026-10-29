@@ -418,3 +418,51 @@ below the nominal waypoint. The original run remains failed. The next route
 work is to queue the fulcrum crossing and its exit jump while preserving both
 personal receipts, rather than widening the arrival-height check. No full
 89-117 pass, new campaign-row credit or percentage increase is claimed.
+
+
+## Connected fulcrum investigation (29 October 2026)
+
+The queued runner now lets one player traverse both connected fulcrums and reach
+step 98 before the partner starts. Parking at 96 had left the first player on
+the second fulcrum. Only the two named approaches, 95 and 97, use the native
+single-player `steer()` bounds of 20 horizontal / 52 vertical units, with an
+acknowledged ordinary walking command and an observed living, grounded body.
+Other walks retain 8/35 bounds; jump 96 still requires a real jump and supported
+landing. A 150 ms ordinary run-up precedes that jump. No positions, resources,
+physics or progression are forced.
+
+The attempts are retained individually; none is a full connected-course pass:
+
+| Evidence folder suffix | Observed outcome |
+| --- | --- |
+| `cffa6eac2cdc4fda8254efddabacb39a` | Red passes through the native approach window but never satisfies the old tighter stop. A normal checkpoint before 95 is retained. |
+| `de111de4fd674a1699d21d583327c953` | Both approach/jump receipts at 95-96 pass; parking on the second fulcrum precedes a failure at 97. |
+| `970ca03f58c946729375cbdc57a8b07b` | Blue reaches 98, then is knocked off while waiting; Red fails at 96. |
+| `fe0d0a6d97c74f0bbe0075963c9c1076` | Blue reaches 98 and collects personal essence; both first jumps pass, but the subsequent waiting/crossing sequence wipes at 97. |
+| `99e2b76b4a0940c0a8e0f00bbbaf90e4` | Automation error: a new check requires `expected`, which ordinary walking leaves empty. Both remain alive at the timeout. The check is corrected to use the acknowledged command and actual body. |
+| `739ff3ffec674c558fa8ff45ffe65246` | Four personal approach/jump receipts at 95-96 pass independent verification. Blue traverses 95-98 and remains alive; Red stalls below 97. |
+
+All folders are under ignored `private/coop/funhouse-route-<suffix>/`. The latest
+run uses unchanged executable/source `c946266` and the ordinary checkpoint
+SHA-256 `89ae40cc26b6308ccfea800b3876a4a75d043b360b6078293b095ec685a3b14e`.
+Its captured fixture hashes match the tested source. It takes 137.969 seconds,
+returns failure, and leaves both players alive at 81/100 health. Red is grounded
+near `[1920, -3400, -178.295]`, outside the required landing height. The current
+arrival guard rejects this outcome. The queue currently checks saved mover
+indices 31 and 61 for reset. A full scan of the captured state reveals another
+loaded fulcrum, index 62, which reaches -45 degrees while Blue waits near
+`[1967, -3563, -15]`. The reset gate therefore misses a relevant mover. The next
+check must establish the bank's actual support and keep the waiting player off
+all connected fulcrums before admitting the partner.
+
+After collecting essence, the first player now walks back to the authored bank
+before choosing a supported waiting neighbor and using ordinary defensive
+controls. The latest run avoids the earlier waiting death; this single result
+does not establish general combat safety. The full step-99 clear remains required
+for both players. Scope verification covers 95-96 only, not the entire queue.
+
+The 22 Funhouse receipt guards, 13 recovery guards and seven source-package tests
+pass. No Rust source or game binary changed; the previously frozen 865 active
+Rust tests and native component results remain the applicable evidence. No
+screenshots were opened. Overall remains **48.1%**, six combined campaign rows
+and 33 open, with the earlier contact repeats still required.

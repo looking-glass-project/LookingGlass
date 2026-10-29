@@ -18,6 +18,34 @@ def fixture():
 
 
 class PersonalArrivalGuards(unittest.TestCase):
+    def test_moving_approach_requires_native_window_and_acknowledged_walk(self):
+        steps = [dict(pos=[0, 0, 0]) for _ in range(96)]
+        steps[95] = dict(pos=[1920, -2650, 0])
+        receipts, history = [], {}
+        for slot, role in enumerate(('host', 'guest')):
+            body = dict(feet=[1920, -2634, -14], grounded=True, health=100, spawned_at=0)
+            history[role] = [dict(tick=10+slot, owner=None, players=[body, body],
+                                 driver=dict(command=7+slot, phase='walking', expected=None))]
+            receipts.append(dict(step=95, role=role, goal=steps[95]['pos'], feet=body['feet'],
+                                 tick=10+slot, command=7+slot, crossing=True))
+        verify_arrivals(steps, [95], receipts, history)
+        for field, value in [('feet', [1920, -2634, -100]), ('grounded', False)]:
+            wrong = copy.deepcopy(history)
+            claimed = copy.deepcopy(receipts)
+            wrong['guest'][0]['players'][1][field] = value
+            if field == 'feet':
+                claimed[1]['feet'] = value
+            with self.assertRaises(AssertionError):
+                verify_arrivals(steps, [95], claimed, wrong)
+        wrong = copy.deepcopy(history)
+        wrong['guest'][0]['driver']['phase'] = 'planning'
+        with self.assertRaises(AssertionError):
+            verify_arrivals(steps, [95], receipts, wrong)
+        wrong = copy.deepcopy(history)
+        wrong['guest'][0]['driver']['command'] += 1
+        with self.assertRaises(AssertionError):
+            verify_arrivals(steps, [95], receipts, wrong)
+
     def test_resumed_course_retains_the_last_authored_cards_choice(self):
         steps = [dict(pos=[0, 0, 0]), dict(mode='cards', pos=[0, 0, 0]),
                  dict(pos=[200, 0, 0]), dict(mode='cards', pos=[1, 0, 0])]

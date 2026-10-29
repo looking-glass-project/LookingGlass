@@ -39,7 +39,13 @@ def verify_arrivals(steps, completed, receipts, history, allow_revival=False):
             jump = steps[step].get('mode') == 'jump'
             # The authored jump controller (funhouse/route.rs) accepts these
             # supported landing bounds. Corridor walks keep their tighter gate.
-            radius, height = (20, 52) if jump else (8, 35)
+            crossing = receipt.get('crossing', False)
+            if crossing:
+                goals = {95: [1920, -2650, 0], 97: [1920, -3400, 0]}
+                assert step in goals and steps[step] == dict(pos=goals[step]), 'Unknown moving-platform approach'
+                assert row['driver']['command'] == receipt['command'], 'No acknowledged crossing command'
+                assert row['driver']['phase'] in ('walking', 'settling landing', 'reached'), 'No observed crossing input'
+            radius, height = (20, 52) if jump or crossing else (8, 35)
             assert distance(body['feet'][:2], goal[:2]) < radius and abs(body['feet'][2] - goal[2]) < height, 'Missed waypoint'
             if jump:
                 earlier = observed[role].get(receipt['start_tick'])
@@ -231,13 +237,13 @@ class FunhousePair(Pair):
             self.evidence.update(checkpoint_sha256=hashlib.sha256(raw).hexdigest(),
                                  checkpoint_tick=self.saved['frame']['tick'])
 
-    def set(self, role, *args, shoot_switch=None, hold_goal=False, **kwargs):
+    def set(self, role, *args, shoot_switch=None, hold_goal=False, runup=None, **kwargs):
         kwargs.setdefault('attack', bool(args and args[0] is not None or kwargs.get('goal') is not None))
         super().set(role, *args, **kwargs)
         self.commands[role].update(input_lead=self.lead if role == 'guest' else 0,
             watch_dialogue=True, skip_scene=self.args.skip_scenes, prefer_cards=getattr(self, 'prefer_cards', True),
             avoid_switches=True, shoot_switch=shoot_switch, hold_goal=hold_goal,
-            combat_tactics=True)
+            combat_tactics=True, runup=runup)
         if getattr(self, 'allow_revival', False):
             self.commands[role]['recovery_trace'] = role == 'host'
 
@@ -337,11 +343,20 @@ class FunhousePair(Pair):
             self.set(role)
         self.until(lambda: not self.busy(), 120)
 
-    def move(self, role, goal, navigate=False, jump=False, follow=None):
+    def move(self, role, goal, navigate=False, jump=False, follow=None, crossing=False, running_jump=False):
         jumps_before = self.body(role)['player']['jumps']
         start_tick = self.reports[role]['frame']['tick']
-        radius, height = (20, 52) if jump else (8, 35)
-        self.set(role, goal, navigate=navigate, run=True, jump=jump)
+        # The native Funhouse steer() accepts 20/52 on its tilting approach.
+        # Requiring a slower eight-unit stop lets the loaded tip sink away.
+        radius, height = (20, 52) if jump or crossing else (8, 35)
+        runup = None
+        if running_jump:
+            assert jump and not navigate and not crossing
+            feet = self.body(role)['player']['feet']
+            span = distance(feet[:2], goal[:2])
+            assert span > 1
+            runup = dict(millis=150, wish=[(goal[i]-feet[i])/span for i in range(2)])
+        self.set(role, goal, navigate=navigate, run=True, jump=jump, runup=runup)
         best = (distance(self.body(role)['player']['feet'], goal), self.reports[role]['frame']['tick'])
         ledge_jump = None
         trail, following = [], None
@@ -366,16 +381,19 @@ class FunhousePair(Pair):
             at_goal = distance(body['feet'][:2], goal[:2]) < radius and abs(body['feet'][2] - goal[2]) < height
             acknowledged = self.reports[role]['route_driver']['command'] == self.commands[role]['id']
             arrived = acknowledged and body['jumps'] > jumps_before if jump else self.reached(role)
+            if crossing:
+                driver = self.reports[role]['route_driver']
+                arrived = acknowledged and driver['phase'] in ('walking', 'settling landing', 'reached')
             if self.busy() or arrived and body['grounded'] and at_goal:
                 return True
-            if body.get('ledge') and not body['ledge']['pulling'] and (ledge_jump is None or tick - ledge_jump > 120):
+            if not crossing and body.get('ledge') and not body['ledge']['pulling'] and (ledge_jump is None or tick - ledge_jump > 120):
                 self.set(role, goal, run=True, jump=True)
                 ledge_jump = tick
                 navigate = False
             gap = distance(body['feet'], goal)
             if gap < best[0] - 2:
                 best = gap, tick
-            elif not navigate and tick - best[1] > 240 and body['grounded']:
+            elif not crossing and not navigate and tick - best[1] > 240 and body['grounded']:
                 # Match the authored route's normal path-planning fallback.
                 navigate = True
                 self.set(role, goal, navigate=True, run=True)
@@ -421,12 +439,12 @@ class FunhousePair(Pair):
                 self.park(first, other, goal)
         self.set(other, attack=True)
 
-    def record_arrival(self, role, goal, jump=False, follow=None):
-        movement = self.move(role, goal, jump=jump, follow=follow)
+    def record_arrival(self, role, goal, jump=False, follow=None, crossing=False, running_jump=False):
+        movement = self.move(role, goal, jump=jump, follow=follow, crossing=crossing, running_jump=running_jump)
         report = self.reports[role]
         self.evidence['arrivals'].append(dict(step=self.step, role=role, goal=goal,
             tick=report['frame']['tick'], feet=self.body(role)['player']['feet'],
-            command=report['route_driver']['command'], **movement))
+            command=report['route_driver']['command'], crossing=crossing, **movement))
 
     def hold_roles(self, roles, goal, frames):
         for role in roles:
@@ -516,14 +534,53 @@ class FunhousePair(Pair):
         self.completed.extend(range(29, 33))
         print('PASS Funhouse mirror sequence 29..32: both personal jumps/holds; one actual shared switch', flush=True)
 
-    def clear(self):
-        for role in self.commands:
+    def fulcrum_course(self):
+        """Cross both connected fulcrums before parking and admitting the partner."""
+        assert self.steps[95] == dict(pos=[1920, -2650, 0])
+        assert self.steps[96] == dict(pos=[1920, -2950, 0], mode='jump')
+        assert self.steps[97] == dict(pos=[1920, -3400, 0])
+        assert self.steps[98] == dict(pos=[1920, -3600, -16])
+        self.until(lambda: all(self.body(r)['stats']['sanity'] > 0 for r in self.commands))
+        first = min(self.commands, key=lambda r: distance(self.body(r)['player']['feet'], self.steps[95]['pos'])
+                    + (0 if r == self.first else 16))
+        other = 'guest' if first == 'host' else 'host'
+        waiting = list(self.body(other)['player']['feet'])
+        self.set(other, waiting, run=True, attack=True)
+        for role in (first, other):
+            if role == other:
+                # The first Alice is now on the far bank. Let the unloaded
+                # authored fulcrum return before the second starts across it.
+                self.until(lambda: all(max(abs(v) for v in self.state(r)['fulcrums'][index]) < 1
+                                       for r in self.commands for index in (31, 61)), 30)
+            for index in (95, 96, 97, 98):
+                self.step = index
+                self.record_arrival(role, self.steps[index]['pos'], jump=index == 96,
+                                    crossing=index in (95, 97), running_jump=index == 96)
+            if role == first:
+                spawn = self.body(first)['spawned_at']
+                self.clear((first,))
+                self.collect_loot((first,))
+                assert self.body(first)['stats']['sanity'] > 0 and self.body(first)['spawned_at'] == spawn, 'First rider must remain on the far side'
+                # Loot can draw the fighter back toward the platform's edge.
+                # Choose the waiting neighbor from the bank, not the drop.
+                self.move(first, self.steps[98]['pos'])
+                self.park(first, other, self.steps[98]['pos'])
+                self.set(first, attack=True)
+            else:
+                self.set(role, attack=True)
+        self.completed.extend([95, 96, 97, 98])
+        print('PASS Funhouse fulcrums 95..98: both personal approaches, exit jumps and far-bank arrivals', flush=True)
+
+    def clear(self, roles=None):
+        roles = tuple(self.commands) if roles is None else tuple(roles)
+        for role in roles:
             self.set(role, attack=True)
         since = None
         def cleared():
             nonlocal since
             quiet = True
-            for role, report in self.reports.items():
+            for role in roles:
+                report = self.reports[role]
                 driver, slot = report['route_driver'], 0 if role == 'host' else 1
                 quiet &= driver['command'] == self.commands[role]['id'] and driver['native_threats'][slot] is None
                 quiet &= not clock_threats(report, role)
@@ -535,13 +592,14 @@ class FunhousePair(Pair):
             return since is not None and tick - since >= 120
         self.until(cleared, 150)
 
-    def collect_loot(self):
+    def collect_loot(self, roles=None):
         # Killing a foe without walking over its essence leaves both test
         # players starved. Each uses their own received inventory and inputs.
+        roles = tuple(self.commands) if roles is None else tuple(roles)
         attempted = set()
         for _ in range(8):
             choices = [(self.body(role)['stats']['sanity'], role, drop)
-                       for role in self.commands for drop in nearby_drops(self.body(role))
+                       for role in roles for drop in nearby_drops(self.body(role))
                        if (role, drop['key']) not in attempted]
             if not choices or self.busy():
                 break
@@ -623,6 +681,9 @@ class FunhousePair(Pair):
             if self.step == 29 and self.args.last_step >= 32:
                 self.mirror_course()
                 continue
+            if self.step == 95:
+                self.fulcrum_course()
+                continue
             if mode == 'wait':
                 self.wait(step['frames'] / 120)
             elif mode == 'clear':
@@ -693,6 +754,8 @@ if __name__ == '__main__':
         parser.error('A later start requires an unchanged checkpoint; a fresh run starts at zero')
     if 29 < args.start_step < 33 or 28 < args.last_step < 32:
         parser.error('The queued mirror sequence must include steps 29..32 together')
+    if 95 < args.start_step < 99 or 94 < args.last_step < 98:
+        parser.error('The queued fulcrum crossing must include steps 95..98 together')
     if not (0 <= args.delay_ms <= 500 and 0 <= args.jitter_ms <= 500):
         parser.error('Delay/jitter must be between 0 and 500 ms')
     pair = FunhousePair(args)

@@ -1,6 +1,8 @@
 # Two-player co-op design
 
 Development branch: `coop`, based on public main `0220970`.
+For the concise current status, see [Co-op progress](COOP_PROGRESS.md).
+
 This is work in progress. A policy test or a connected pair of windows does not
 establish campaign support. Single-player behavior and saves must remain supported.
 
@@ -40,10 +42,12 @@ holds**, **seven actual cell-switch shots** and **3,633 matching states**. There
 are no deaths and final health is 100/90. Cell3 required two ordinary walks to
 observed safe shooting footings; the other six shots completed at their first
 positions in this run. A normal checkpoint before step 89 is retained. The
-next attempt has scoped arrival/hold/pickup proof through 94, then stops at 95:
-both players remain alive on a tilted fulcrum, but the second cannot reach the
-authored landing height after the first parks. Later machinery, scenes, combat
-and the exit are still open.
+next attempt has scoped arrival/hold/pickup proof through 94, then stops at 95.
+Subsequent queued attempts now verify both personal approaches and actual jumps
+at 95-96. In the latest run, Blue traverses 95-98 and survives on the far bank;
+Red stalls at 97, about 178 units below its required landing, with 100 health.
+The first platform is a scoped pass; the connected crossing and later machinery,
+scenes, combat and exit remain open. The total stays 48.1%.
 
 The frozen build's 865 active Rust tests and native Funhouse battle63/world35/
 scene37 plus Checkmate94 results remain valid; no Rust source changed for the

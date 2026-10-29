@@ -69,6 +69,28 @@ fn tilts(a:&mut Assets,map:&Bsp)->Result<()> {
     println!("PASS Funhouse opposite riders balance the shared fulcrum");
     Ok(())
 }
+fn surface_goals(a:&mut Assets,map:&Bsp)->Result<()> {
+    for angle in [-45., 0., 45.] { for rider in 0..2 {
+        let mut o=free(a,map)?;
+        let index=o.objects.iter().position(|o|o.id==460).unwrap();
+        o.saved.fulcrums[index]=vec2(angle,0.);o.rebuild(map)?;
+        let requested=vec3(1920.,-3400.,0.);
+        let goal=o.surface_goal(460,requested).context("No projected seesaw goal")?;
+        ensure!(goal.truncate().distance(requested.truncate())<0.001,"Projection changed horizontal goal");
+        let mut p=people([vec3(1920.,-3040.,0.03125);2]);
+        p[rider].feet=goal;
+        let before=o.snapshot();let bodies=serde_json::to_value(&p)?;
+        let report=route_surface(&o,460,requested,p.each_ref()).unwrap();
+        ensure!(report.supported[rider] && !report.supported[1-rider],"Wrong seesaw support identity");
+        ensure!(o.snapshot()==before && serde_json::to_value(&p)?==bodies,"Surface query mutated gameplay");
+        p[rider].feet.z-=80.;
+        ensure!(!route_surface(&o,460,requested,p.each_ref()).unwrap().supported[rider],"Lower floor counted as board arrival");
+        p[rider].feet=goal;p[rider].grounded=false;
+        ensure!(!route_surface(&o,460,requested,p.each_ref()).unwrap().supported[rider],"Airborne body counted as board arrival");
+        ensure!(o.surface_goal(460,vec3(1920.,-2500.,0.)).is_none() && o.surface_goal(99999,requested).is_none(),"Unknown support accepted");
+        println!("PASS Funhouse live surface projection, personal support and lower-floor rejection angle={angle} rider={rider}");
+    }}Ok(())
+}
 fn pendulums(a:&mut Assets,map:&Bsp)->Result<()> {
     for reversed in [false,true] {
         let mut o=free(a,map)?;let mut w=world(map,&o)?;let mut s=stats();
@@ -212,7 +234,7 @@ fn gas(a:&mut Assets,map:&Bsp)->Result<()> {
 pub(super) fn check(a:&mut Assets)->Result<()> {
     let map=Bsp::parse(&a.read("maps/funhouse.bsp")?)?;
     let mut failures=Vec::new();
-    for (label,result) in [("fulcrums",tilts(a,&map)),("pendulums",pendulums(a,&map)),("doors/tube",doors_and_tube(a,&map)),
+    for (label,result) in [("fulcrums",tilts(a,&map)),("surface goals",surface_goals(a,&map)),("pendulums",pendulums(a,&map)),("doors/tube",doors_and_tube(a,&map)),
         ("dead/blocked",dead_and_blocked(a,&map)),("boarding",boarding(a,&map)),("gas",gas(a,&map))] {
         if let Err(e)=result {failures.push(format!("{label}: {e:#}"));}
     }

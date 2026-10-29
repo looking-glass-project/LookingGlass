@@ -32,17 +32,20 @@ Recent verified milestones, which do not yet complete another campaign visit:
   seven switch shots and 3,633 matching states. Steps 89-94 have separate scoped
   arrival, hold and pickup evidence.
 
-Current focus: the connected Funhouse fulcrums, steps 95-98. Both players have
-observed first-platform jumps, and Blue has reached the far bank. A combined
-crossing remains unverified. Earlier runs lose Blue while waiting. The latest
-run keeps both alive at 81/100 health, verifies both first jumps, then fails because
-Red is about 178 units below the second landing. The test-controller arrival check
-is corrected; the remaining second approach has exposed a third loaded fulcrum missing from
-the reset check. The waiting position and connected-mover gate need correction. These failed full-section runs receive no campaign completion credit.
+Latest milestone: Funhouse steps **95-103** now have 12 verified personal arrivals,
+five personal essence pickups and 1,139 matching player/world/native network states.
+Both finish at 100 health, without deaths. The test uses ordinary counterbalancing,
+actual native brush-support checks and visibility-aware resident enemy checks.
+
+Current blocker: the upper exit from the final seesaw. The run stops at 104 because
+both players loading the rear remove support beneath the next target. A normal
+checkpoint before 103 is retained. The next test must coordinate the riders so one
+reaches the upper ledge before both move to the rear. The full section and campaign
+visit remain open, so the overall estimate stays 48.1%.
 
 Tests run as two independent clients through the public network path on Anode,
 with injected delay and jitter. Routine diagnosis uses state and log assertions.
-Screenshots are not needed for each run. The current source also has 865 passing
+Screenshots are not needed for each run. The current source also has 866 passing
 active Rust tests and native Funhouse battle, machinery and scene checks; those
 component results do not prove a full campaign route.
 

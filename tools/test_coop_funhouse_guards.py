@@ -3,6 +3,8 @@ import copy
 import unittest
 
 from test_coop_funhouse import FunhousePair, verify_arrivals, verify_switch_receipt, verify_holds, waiting_point, clock_threats, following_point, verify_following, nearby_drops, verify_loot, shooting_neighbor, cards_preference
+from test_coop_funhouse import fulcrum_waiting_point, fulcrum_balance_goal, fulcrums_reset
+from test_coop_funhouse import resident_boojum_threats
 
 
 def fixture():
@@ -18,6 +20,71 @@ def fixture():
 
 
 class PersonalArrivalGuards(unittest.TestCase):
+    def test_clear_includes_resident_boojums_and_remaining_screams(self):
+        boojum = dict(active=True, health=56, feet=[1315, -3764, 352], waves=[])
+        report = dict(frame=dict(players=[dict(player=dict(feet=[1920, -3600, 0])),
+                                         dict(player=dict(feet=[1920, -2164, 0]))]),
+                      route_driver=dict(boojums=[dict(id=0, name='resident_boojum_0', active=True,
+                                                     health=56, distance=[702, 1700], line_of_sight=[True, False])]),
+                      combat=dict(npcs=dict(actors=[dict(resident=dict(active=True, awake=True,
+                                                                       body=dict(Boojum=boojum)))])))
+        self.assertEqual(resident_boojum_threats(report, 'host'), [0])
+        self.assertEqual(resident_boojum_threats(report, 'guest'), [])
+        report['route_driver']['boojums'][0]['line_of_sight'][0] = False
+        self.assertEqual(resident_boojum_threats(report, 'host'), [])
+        report['route_driver']['boojums'][0]['line_of_sight'][0] = True
+        boojum['health'] = 0
+        self.assertEqual(resident_boojum_threats(report, 'host'), [])
+        boojum['waves'] = [dict(position=[1920, -3550, 42])]
+        self.assertEqual(resident_boojum_threats(report, 'host'), [0])
+        report['route_driver']['boojums'] = []
+        with self.assertRaises(AssertionError):
+            resident_boojum_threats(report, 'host')
+
+    def test_tilted_arrival_needs_the_named_native_support(self):
+        steps = [dict(pos=[0, 0, 0]) for _ in range(102)]
+        steps[101] = dict(pos=[1920, -3400, 0])
+        receipts, history = [], {}
+        for slot, role in enumerate(('host', 'guest')):
+            target = [1920, -3400, -178]
+            body = dict(feet=target, grounded=True, health=100, spawned_at=0)
+            native = dict(entity=460, requested=steps[101]['pos'], goal=target, supported=[True, True])
+            history[role] = [dict(tick=10+slot, owner=None, players=[body, body],
+                                 driver=dict(command=7+slot, surface=native))]
+            receipts.append(dict(step=101, role=role, goal=steps[101]['pos'], feet=target, target=target,
+                                 tick=10+slot, command=7+slot, surface=460))
+        verify_arrivals(steps, [101], receipts, history)
+        for mutation in ('lower_floor', 'wrong_board', 'wrong_goal', 'unacknowledged'):
+            wrong = copy.deepcopy(history)
+            driver = wrong['guest'][0]['driver']
+            if mutation == 'lower_floor': driver['surface']['supported'][1] = False
+            elif mutation == 'wrong_board': driver['surface']['entity'] = 459
+            elif mutation == 'wrong_goal': driver['surface']['goal'][2] -= 80
+            else: driver['command'] += 1
+            with self.assertRaises(AssertionError):
+                verify_arrivals(steps, [101], receipts, wrong)
+
+    def test_final_seesaw_is_included_in_reset_gate(self):
+        state = dict(fulcrums=[[0, 0] for _ in range(63)])
+        self.assertTrue(fulcrums_reset([state, state]))
+        tilted = copy.deepcopy(state)
+        tilted['fulcrums'][62] = [-45, 0]
+        self.assertFalse(fulcrums_reset([state, tilted]))
+        self.assertFalse(fulcrums_reset([tilted, state]))
+
+    def test_waiter_balances_on_a_supported_lateral_pivot_approach(self):
+        points = [[1974.9, -3601.7, .03125], [1926.9, -3553.7, .03125], [1960.9, -3567.7, .03125]]
+        anchor = fulcrum_waiting_point(points, [1920, -3600, -16])
+        self.assertEqual(anchor, points[0])
+        self.assertEqual(fulcrum_balance_goal(anchor, 0), [1974.9, -3600, 0])
+        for angle in (-45, -10, 10, 45):
+            goal = fulcrum_balance_goal(anchor, angle)
+            self.assertEqual(goal[0], anchor[0])
+            self.assertGreater((goal[1] + 3600) * angle, 0)
+            self.assertLessEqual(abs(goal[1] + 3600), 220)
+        with self.assertRaises(AssertionError):
+            fulcrum_waiting_point(points[1:], [1920, -3600, -16])
+
     def test_moving_approach_requires_native_window_and_acknowledged_walk(self):
         steps = [dict(pos=[0, 0, 0]) for _ in range(96)]
         steps[95] = dict(pos=[1920, -2650, 0])

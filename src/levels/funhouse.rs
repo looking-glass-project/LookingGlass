@@ -188,6 +188,24 @@ struct Funhouse {
     data: data::Data,
     objects: Vec<motion::Object>,
 }
+
+/// Local route diagnostics only: a goal on a named, currently transformed board.
+#[derive(Clone, Debug, Serialize)]
+pub(crate) struct RouteSurface {
+    pub entity: usize,
+    pub requested: Vec3,
+    pub goal: Vec3,
+    pub supported: [bool; 2],
+}
+
+pub(crate) fn route_surface(ctl: &dyn LevelController, entity: usize, requested: Vec3,
+    players: [&Player; 2]) -> Option<RouteSurface> {
+    let o = ctl.downcast_ref::<Funhouse>()?;
+    let goal = o.surface_goal(entity, requested)?;
+    Some(RouteSurface { entity, requested, goal,
+        supported: players.map(|p| o.surface_supports(entity, p)) })
+}
+
 impl Funhouse {
     fn load(a: &mut Assets, map: &Bsp) -> Result<Self> {
         let data = data::Data::load(a, map)?;

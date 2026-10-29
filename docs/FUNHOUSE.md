@@ -466,3 +466,72 @@ pass. No Rust source or game binary changed; the previously frozen 865 active
 Rust tests and native component results remain the applicable evidence. No
 screenshots were opened. Overall remains **48.1%**, six combined campaign rows
 and 33 open, with the earlier contact repeats still required.
+
+
+## Live support and resident threats (29 October 2026)
+
+Geometry inspection corrects the earlier "far bank" description: step 98 is the
+pivot of native fulcrum entity 460, saved mover index 62. The connected course
+uses indices 31, 61 and 62. A waiting Alice who drifts away from that pivot loads
+the last board and lowers the partner's approach. The test now chooses an
+observed lateral footing and uses ordinary walking inputs to counter its tilt.
+It changes no body positions, health, inventory, physics or level progression.
+
+A first counterbalanced run on `c946266`, evidence folder suffix
+`22650502fc9f4448bb73c58308d8358d`, verifies all eight personal arrivals in 95-98
+and 400 matching player/world/native states before step 99. It subsequently
+fails at 101 because fixed world height does not describe the tilted board.
+Its old clear predicate did not include resident Boojums, so its printed clear
+message is not sufficient combat proof.
+
+Source `0d43ade17911a0182e2dbe1903885bc7ac813ba7f1bfe16863643b3f95585402`
+adds local read-only surface diagnostics. A named live fulcrum projects a requested
+horizontal walking goal onto its transformed collision brush. Arrival requires
+an acknowledged ordinary walking command, a living grounded body, and an actual
+support trace against that same brush. The recorded projected goal and body must
+match the immutable client observation. A lower floor, an airborne body, another
+board or an unknown entity cannot satisfy the check. This applies to the explicit
+101/103/104 moving-board goals; ordinary corridor/jump checks keep their prior bounds.
+
+The diagnostic also includes resident Boojums, with each player's actual native
+line of sight and distance. The test previously examined generic encounter Boojums
+and level-owned enemies but omitted NPC residents 50/51. A replay on `603f022`,
+folder suffix `f721b7cde9ac461386938d3c72466ab6`, therefore left them attacking after
+a premature clear; Blue died and revived before the waiting handoff. The new
+handoff rejects that hidden revival. A distance-only correction in
+`d2a5bf6a02b24b54af288f67b624ddae` kills 50/51/52 but waits for resident 65, outside
+the current sight lines. The final predicate requires native visibility for live
+resident threats within their 1,200-unit perception range and separately waits
+for nearby in-flight waves, including waves left by a dead enemy. Missing native
+resident diagnostics fail explicitly. These failed attempts remain retained.
+
+The subsequent public-internet run, folder suffix
+`cfdd7049f9864402b41e755906407db4`, verifies **95-103** with 40 ms delay and
+20 ms jitter. Independent checks confirm **12 personal arrivals**, **five own
+essence pickups** and **1,139 matching player/world/native states** before 104.
+Both players remain alive and finish at **100/100 health**. Residents 50/51/52 are
+dead; resident 65 remains alive with both native line-of-sight flags false.
+Both 101 and 103 arrivals are verified on the real tilted support, including
+Red's 101 arrival near height -173 and her later 103 arrival near height 10.
+These are supported board positions, not a widened claim for a lower floor.
+
+The run returns failure after 92.799 seconds at **104**: both riders moving to
+the rear tip the board down, and its projected footprint no longer supports the
+next target. Both remain alive. The diagnostic correctly rejects that goal.
+The ordinary checkpoint before 103 has SHA-256
+`d51582ee7d438652ad491a64677636e266bde6e185471afac7a20c8aec7b1f00`.
+The next route must coordinate the upper exit, letting one rider reach the upper
+ledge before both load the rear. No complete 95-117 or full Funhouse pass is claimed.
+
+All evidence folders above are under ignored `private/coop/funhouse-route-<suffix>/`.
+The frozen executable SHA-256 is
+`c27cb1150bab1b94671ac2367ca1a0997ce59dceea854953554697b386107eaa`.
+It passes **866 active Rust tests** (one ignored), the locked release build,
+**63 battle / 41 machinery / 37 scene / 8 single-player component** records and
+**94 Checkmate** records. Six new native world cases cover flat and +/-45-degree
+boards with either player, query purity, and lower-floor/airborne/wrong-support
+rejection. Single-player component gameplay matches the baseline, excluding only
+two measured benchmark durations. The **26 Funhouse guards**, **13 recovery guards**
+and **seven source-package tests** pass. No screenshots were opened.
+Overall remains **48.1%**, six combined campaign rows and 33 open; earlier contact
+repeats, full traversal, recovery/rejoin combinations and broader effects remain required.

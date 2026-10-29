@@ -43,15 +43,21 @@ are no deaths and final health is 100/90. Cell3 required two ordinary walks to
 observed safe shooting footings; the other six shots completed at their first
 positions in this run. A normal checkpoint before step 89 is retained. The
 next attempt has scoped arrival/hold/pickup proof through 94, then stops at 95.
-Subsequent queued attempts now verify both personal approaches and actual jumps
-at 95-96. In the latest run, Blue traverses 95-98 and survives on the far bank;
-Red stalls at 97, about 178 units below its required landing, with 100 health.
-The first platform is a scoped pass; the connected crossing and later machinery,
+A later queued run on `0d43ade` now verifies **95-103**: 12 personal arrivals,
+five personal essence pickups and 1,139 matching player/world/native states,
+with no deaths and final health 100/100. Step 98 is the third seesaw's pivot,
+not a stationary bank. Ordinary counterbalancing keeps the approach accessible.
+Native support diagnostics verify actual standing on the tilted board during
+101 and 103; falling onto a lower floor cannot count as arrival. The clear check
+now includes visible resident Boojums and their remaining attacks. The run fails
+at 104 when both riders load the rear and its next target loses support. A normal
+checkpoint before 103 is retained for a coordinated upper exit. Later machinery,
 scenes, combat and exit remain open. The total stays 48.1%.
 
-The frozen build's 865 active Rust tests and native Funhouse battle63/world35/
-scene37 plus Checkmate94 results remain valid; no Rust source changed for the
-pickup runner. Single-player component gameplay matches the baseline. Overall
+The latest frozen build passes 866 active Rust tests and native Funhouse
+battle63/world41/scene37 plus Checkmate94. The six added world checks verify
+read-only surface projection and personal support. Single-player component
+gameplay matches the baseline. Overall
 stays **48.1%**, with six combined campaign rows. See [Funhouse evidence](FUNHOUSE.md).
 
 Latest full-route milestone: a fresh Blue-led Checkmate run now passes through

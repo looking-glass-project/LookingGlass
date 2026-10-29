@@ -8,6 +8,7 @@ Full traversal, recovery, machinery and the exit remain separate work.
 import argparse
 import hashlib
 import json
+import math
 import time
 from pathlib import Path
 
@@ -37,6 +38,15 @@ def verify_arrivals(steps, completed, receipts, history, allow_revival=False):
             assert receipt['goal'] == goal and receipt['feet'] == body['feet'], 'Arrival differs from observed body'
             assert body['grounded'] and body['health'] > 0 and (allow_revival or body['spawned_at'] == 0), 'Invalid arrival body'
             jump = steps[step].get('mode') == 'jump'
+            surface = receipt.get('surface')
+            if surface is not None:
+                assert step in (101, 103, 104) and surface == 460, 'Unknown moving-surface waypoint'
+                native = row['driver'].get('surface')
+                assert native and native['entity'] == surface and native['requested'] == goal, 'No observed native surface goal'
+                assert native['supported'][0 if role == 'host' else 1], 'Player is not supported by the intended board'
+                assert row['driver']['command'] == receipt['command'], 'Surface command was not acknowledged'
+                assert receipt['target'] == native['goal'], 'Surface goal differs from native observation'
+                goal = native['goal']
             # The authored jump controller (funhouse/route.rs) accepts these
             # supported landing bounds. Corridor walks keep their tighter gate.
             crossing = receipt.get('crossing', False)
@@ -122,6 +132,29 @@ def waiting_point(neighbors, at, incoming, goal):
     return max(candidates, key=score)
 
 
+def fulcrum_waiting_point(neighbors, pivot):
+    """Use an observed lateral footing beside the final seesaw's pivot."""
+    candidates = [p for p in neighbors if abs(p[1] - pivot[1]) < 8
+                  and 48 <= abs(p[0] - pivot[0]) <= 96 and abs(p[2] - pivot[2]) < 35]
+    assert candidates, 'No supported lateral waiting point at the seesaw pivot'
+    return min(candidates, key=lambda p: abs(p[1] - pivot[1]))
+
+
+def fulcrum_balance_goal(anchor, angle):
+    """Normal steering on entity 460; its centre is not a stationary bank."""
+    assert math.isfinite(angle) and abs(angle) <= 45
+    offset = max(-220, min(220, 20 * angle))
+    radians = math.radians(angle)
+    # Stay inside the native board footprint, following its tilted top plane.
+    height = -16 + math.tan(radians) * offset + 16 / math.cos(radians)
+    return [anchor[0], -3600 + offset, height]
+
+
+def fulcrums_reset(states):
+    return all(max(abs(v) for v in state['fulcrums'][index]) < 1
+               for state in states for index in (31, 61, 62))
+
+
 def clock_threats(report, role):
     """Awake nearby Automatons and their in-flight fists from the real snapshot."""
     feet = report['frame']['players'][0 if role == 'host' else 1]['player']['feet']
@@ -131,6 +164,28 @@ def clock_threats(report, role):
         if not clock or not clock['active']:
             continue
         if clock['fists'] or (clock['health'] > 0 and clock['phase'] != 'Idle' and distance(feet, clock['feet']) <= 700):
+            threats.append(index)
+    return threats
+
+
+def resident_boojum_threats(report, role):
+    """Resident Boojums are separate from the generic encounter diagnostics."""
+    slot = 0 if role == 'host' else 1
+    feet = report['frame']['players'][slot]['player']['feet']
+    catalog = {b['id']: b for b in report['route_driver']['boojums']
+               if b['name'] == 'resident_boojum_' + str(b['id'])}
+    visible = {b['id'] for b in catalog.values() if b['active'] and b['health'] > 0
+               and b['line_of_sight'][slot] and b['distance'][slot] < 1200}
+    threats = []
+    for index, actor in enumerate(report['combat']['npcs']['actors']):
+        resident = actor.get('resident') or {}
+        boojum = resident.get('body', {}).get('Boojum')
+        if not boojum:
+            continue
+        assert index in catalog, 'Native resident Boojum visibility diagnostics are missing'
+        live = resident.get('active') and resident.get('awake') and boojum['active'] and boojum['health'] > 0
+        if (live and index in visible
+                or any(distance(feet, wave['position']) < 1200 for wave in boojum['waves'])):
             threats.append(index)
     return threats
 
@@ -237,13 +292,13 @@ class FunhousePair(Pair):
             self.evidence.update(checkpoint_sha256=hashlib.sha256(raw).hexdigest(),
                                  checkpoint_tick=self.saved['frame']['tick'])
 
-    def set(self, role, *args, shoot_switch=None, hold_goal=False, runup=None, **kwargs):
+    def set(self, role, *args, shoot_switch=None, hold_goal=False, runup=None, surface=None, **kwargs):
         kwargs.setdefault('attack', bool(args and args[0] is not None or kwargs.get('goal') is not None))
         super().set(role, *args, **kwargs)
         self.commands[role].update(input_lead=self.lead if role == 'guest' else 0,
             watch_dialogue=True, skip_scene=self.args.skip_scenes, prefer_cards=getattr(self, 'prefer_cards', True),
             avoid_switches=True, shoot_switch=shoot_switch, hold_goal=hold_goal,
-            combat_tactics=True, runup=runup)
+            combat_tactics=True, runup=runup, surface=surface)
         if getattr(self, 'allow_revival', False):
             self.commands[role]['recovery_trace'] = role == 'host'
 
@@ -326,6 +381,19 @@ class FunhousePair(Pair):
             row = self.history[role][-1]
             row.setdefault('presentation', report['presentation'])
             row.setdefault('funhouse', self.state(role))
+        balance = getattr(self, 'fulcrum_balance', None)
+        if balance:
+            role = balance['role']
+            body = self.body(role)
+            assert body['stats']['sanity'] > 0 and body['spawned_at'] == balance['spawn'], 'Waiting rider left the seesaw through death'
+            angle = self.state(role)['fulcrums'][62][0]
+            goal = fulcrum_balance_goal(balance['anchor'], angle)
+            old = self.commands[role].get('goal')
+            if old is None or distance(old, goal) > 2:
+                self.set(role, goal, run=True, attack=True)
+                self.evidence.setdefault('fulcrum_balance', []).append(dict(
+                    role=role, tick=self.reports[role]['frame']['tick'], angle=angle,
+                    anchor=balance['anchor'], goal=goal, command=self.commands[role]['id']))
 
     def until(self, predicate, seconds=90):
         end = time.monotonic() + seconds
@@ -343,7 +411,8 @@ class FunhousePair(Pair):
             self.set(role)
         self.until(lambda: not self.busy(), 120)
 
-    def move(self, role, goal, navigate=False, jump=False, follow=None, crossing=False, running_jump=False):
+    def move(self, role, goal, navigate=False, jump=False, follow=None, crossing=False, running_jump=False, surface=None):
+        assert surface is None or not (navigate or jump or crossing or running_jump or follow)
         jumps_before = self.body(role)['player']['jumps']
         start_tick = self.reports[role]['frame']['tick']
         # The native Funhouse steer() accepts 20/52 on its tilting approach.
@@ -356,7 +425,7 @@ class FunhousePair(Pair):
             span = distance(feet[:2], goal[:2])
             assert span > 1
             runup = dict(millis=150, wish=[(goal[i]-feet[i])/span for i in range(2)])
-        self.set(role, goal, navigate=navigate, run=True, jump=jump, runup=runup)
+        self.set(role, goal, navigate=navigate, run=True, jump=jump, runup=runup, surface=surface)
         best = (distance(self.body(role)['player']['feet'], goal), self.reports[role]['frame']['tick'])
         ledge_jump = None
         trail, following = [], None
@@ -378,7 +447,15 @@ class FunhousePair(Pair):
                         self.set(follow, following['feet'], navigate=True, run=True)
                         self.evidence.setdefault('following_footings', []).append(dict(
                             leader=role, follower=follow, **following))
-            at_goal = distance(body['feet'][:2], goal[:2]) < radius and abs(body['feet'][2] - goal[2]) < height
+            target = goal
+            if surface is not None:
+                native = self.reports[role]['route_driver'].get('surface')
+                if not native or native['entity'] != surface or native['requested'] != goal:
+                    return False
+                target = native['goal']
+                if not native['supported'][0 if role == 'host' else 1]:
+                    return False
+            at_goal = distance(body['feet'][:2], target[:2]) < radius and abs(body['feet'][2] - target[2]) < height
             acknowledged = self.reports[role]['route_driver']['command'] == self.commands[role]['id']
             arrived = acknowledged and body['jumps'] > jumps_before if jump else self.reached(role)
             if crossing:
@@ -386,14 +463,14 @@ class FunhousePair(Pair):
                 arrived = acknowledged and driver['phase'] in ('walking', 'settling landing', 'reached')
             if self.busy() or arrived and body['grounded'] and at_goal:
                 return True
-            if not crossing and body.get('ledge') and not body['ledge']['pulling'] and (ledge_jump is None or tick - ledge_jump > 120):
+            if surface is None and not crossing and body.get('ledge') and not body['ledge']['pulling'] and (ledge_jump is None or tick - ledge_jump > 120):
                 self.set(role, goal, run=True, jump=True)
                 ledge_jump = tick
                 navigate = False
             gap = distance(body['feet'], goal)
             if gap < best[0] - 2:
                 best = gap, tick
-            elif not crossing and not navigate and tick - best[1] > 240 and body['grounded']:
+            elif surface is None and not crossing and not navigate and tick - best[1] > 240 and body['grounded']:
                 # Match the authored route's normal path-planning fallback.
                 navigate = True
                 self.set(role, goal, navigate=True, run=True)
@@ -406,25 +483,26 @@ class FunhousePair(Pair):
         assert not self.busy(), 'Unexpected scene during opening corridor movement'
         body = self.body(role)['player']
         assert body['grounded'], 'Waypoint has no supported landing'
-        assert distance(body['feet'][:2], goal[:2]) < radius and abs(body['feet'][2] - goal[2]) < height
+        target = self.reports[role]['route_driver']['surface']['goal'] if surface is not None else goal
+        assert distance(body['feet'][:2], target[:2]) < radius and abs(body['feet'][2] - target[2]) < height
         if jump:
             assert body['jumps'] > jumps_before, 'No actual jump at authored jump step'
         return dict(start_tick=start_tick, jumps_before=jumps_before, jumps_after=body['jumps'])
 
-    def park(self, role, other, goal):
+    def park(self, role, other, goal, surface=None):
         """Walk to a native clear/supported neighbor, keeping the approach open."""
         slot = 0 if role == 'host' else 1
         at, incoming = self.body(role)['player']['feet'], self.body(other)['player']['feet']
         parking = waiting_point(self.reports[role]['route_driver']['neighbors'][slot], at, incoming, goal)
-        self.move(role, parking)
+        self.move(role, parking, surface=surface)
         assert distance(self.body(role)['player']['feet'][:2], goal[:2]) >= 36
         # Continue defending this waiting point. An enemy hit can otherwise
         # push the idle waiter into the partner's destination and block it.
         # Keep steering through the handoff; a neutral settling interval lets
         # incoming punches knock the player back into the lane before it ends.
-        self.set(role, parking, run=True, attack=True)
+        self.set(role, parking, run=True, attack=True, surface=surface)
 
-    def go(self, goal, jump=False):
+    def go(self, goal, jump=False, surface=None):
         # On a return along a narrow hall, the player already in front leads.
         # Record the real order; do not make the bodies pass through each other.
         self.until(lambda: all(self.body(r)['stats']['sanity'] > 0 for r in self.commands))
@@ -433,18 +511,19 @@ class FunhousePair(Pair):
         other = 'guest' if first == 'host' else 'host'
         self.set(other, attack=True)
         for role in (first, other):
-            follow = other if role == first and not jump and distance(self.body(role)['player']['feet'], goal) > 192 else None
-            self.record_arrival(role, goal, jump, follow=follow)
+            follow = other if surface is None and role == first and not jump and distance(self.body(role)['player']['feet'], goal) > 192 else None
+            self.record_arrival(role, goal, jump, follow=follow, surface=surface)
             if role == first:
-                self.park(first, other, goal)
+                self.park(first, other, goal, surface=surface)
         self.set(other, attack=True)
 
-    def record_arrival(self, role, goal, jump=False, follow=None, crossing=False, running_jump=False):
-        movement = self.move(role, goal, jump=jump, follow=follow, crossing=crossing, running_jump=running_jump)
+    def record_arrival(self, role, goal, jump=False, follow=None, crossing=False, running_jump=False, surface=None):
+        movement = self.move(role, goal, jump=jump, follow=follow, crossing=crossing, running_jump=running_jump, surface=surface)
         report = self.reports[role]
         self.evidence['arrivals'].append(dict(step=self.step, role=role, goal=goal,
             tick=report['frame']['tick'], feet=self.body(role)['player']['feet'],
-            command=report['route_driver']['command'], crossing=crossing, **movement))
+            command=report['route_driver']['command'], crossing=crossing, surface=surface,
+            target=report['route_driver']['surface']['goal'] if surface is not None else goal, **movement))
 
     def hold_roles(self, roles, goal, frames):
         for role in roles:
@@ -535,7 +614,7 @@ class FunhousePair(Pair):
         print('PASS Funhouse mirror sequence 29..32: both personal jumps/holds; one actual shared switch', flush=True)
 
     def fulcrum_course(self):
-        """Cross both connected fulcrums before parking and admitting the partner."""
+        """Queue the first boards, then balance the final seesaw for the partner."""
         assert self.steps[95] == dict(pos=[1920, -2650, 0])
         assert self.steps[96] == dict(pos=[1920, -2950, 0], mode='jump')
         assert self.steps[97] == dict(pos=[1920, -3400, 0])
@@ -548,10 +627,9 @@ class FunhousePair(Pair):
         self.set(other, waiting, run=True, attack=True)
         for role in (first, other):
             if role == other:
-                # The first Alice is now on the far bank. Let the unloaded
-                # authored fulcrum return before the second starts across it.
-                self.until(lambda: all(max(abs(v) for v in self.state(r)['fulcrums'][index]) < 1
-                                       for r in self.commands for index in (31, 61)), 30)
+                # All three boards matter. The final board is occupied, so
+                # the first rider actively balances it using normal inputs.
+                self.until(lambda: fulcrums_reset([self.state(r) for r in self.commands]), 30)
             for index in (95, 96, 97, 98):
                 self.step = index
                 self.record_arrival(role, self.steps[index]['pos'], jump=index == 96,
@@ -561,15 +639,20 @@ class FunhousePair(Pair):
                 self.clear((first,))
                 self.collect_loot((first,))
                 assert self.body(first)['stats']['sanity'] > 0 and self.body(first)['spawned_at'] == spawn, 'First rider must remain on the far side'
-                # Loot can draw the fighter back toward the platform's edge.
-                # Choose the waiting neighbor from the bank, not the drop.
+                # Step 98 is the final seesaw's pivot, not a stationary bank.
+                # Unconstrained defensive movement here tips Red's approach.
                 self.move(first, self.steps[98]['pos'])
-                self.park(first, other, self.steps[98]['pos'])
-                self.set(first, attack=True)
+                assert self.body(first)['spawned_at'] == spawn, 'Waiting rider died before reaching the pivot'
+                slot = 0 if first == 'host' else 1
+                anchor = fulcrum_waiting_point(self.reports[first]['route_driver']['neighbors'][slot], self.steps[98]['pos'])
+                self.fulcrum_balance = dict(role=first, anchor=anchor, spawn=spawn)
+                self.set(first, fulcrum_balance_goal(anchor, self.state(first)['fulcrums'][62][0]), run=True, attack=True)
             else:
                 self.set(role, attack=True)
+        self.fulcrum_balance = None
+        self.set(first, attack=True)
         self.completed.extend([95, 96, 97, 98])
-        print('PASS Funhouse fulcrums 95..98: both personal approaches, exit jumps and far-bank arrivals', flush=True)
+        print('PASS Funhouse fulcrums 95..98: both personal approaches, exit jumps and final pivot arrivals', flush=True)
 
     def clear(self, roles=None):
         roles = tuple(self.commands) if roles is None else tuple(roles)
@@ -584,6 +667,7 @@ class FunhousePair(Pair):
                 driver, slot = report['route_driver'], 0 if role == 'host' else 1
                 quiet &= driver['command'] == self.commands[role]['id'] and driver['native_threats'][slot] is None
                 quiet &= not clock_threats(report, role)
+                quiet &= not resident_boojum_threats(report, role)
                 for kind in ('guards', 'boojums', 'snarks'):
                     quiet &= not any(e['active'] and e['health'] > 0 and e['distance'][slot] <= 700
                                      and e['line_of_sight'][slot] for e in driver[kind])
@@ -696,7 +780,7 @@ class FunhousePair(Pair):
                 assert step['pos'][0] in (0, 1), 'Invalid authored Cards preference'
                 self.prefer_cards = bool(step['pos'][0])
             else:
-                self.go(step['pos'], jump=mode == 'jump')
+                self.go(step['pos'], jump=mode == 'jump', surface=460 if self.step in (101, 103, 104) else None)
             self.completed.append(self.step)
             if mode in ('', 'clear'):
                 self.collect_loot()

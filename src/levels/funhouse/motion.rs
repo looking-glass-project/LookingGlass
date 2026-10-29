@@ -81,6 +81,25 @@ fn approach(x: f32, y: f32, d: f32) -> f32 {
     }
 }
 impl Funhouse {
+    pub(super) fn surface_goal(&self, entity: usize, requested: Vec3) -> Option<Vec3> {
+        if !requested.is_finite() { return None; }
+        let o = self.objects.iter().find(|o| o.id == entity && o.solid && o.class == "func_fulcrum")?;
+        // Trace the real transformed brush, including the upright body's width.
+        // No support from an unrelated lower floor can satisfy this query.
+        let high = vec3(requested.x, requested.y, o.pose.translation.z + 1024.);
+        let low = high - Vec3::Z * 2048.;
+        let hit = o.collider.trace(high + PLAYER_CENTER, low + PLAYER_CENTER, PLAYER_HALF);
+        (!hit.start_solid && hit.fraction < 1. && hit.normal.z >= 0.65)
+            .then(|| high.lerp(low, hit.fraction))
+    }
+
+    pub(super) fn surface_supports(&self, entity: usize, p: &Player) -> bool {
+        if !p.grounded { return false; }
+        let Some(o) = self.objects.iter().find(|o| o.id == entity && o.solid && o.class == "func_fulcrum") else { return false; };
+        let hit = o.collider.trace(p.feet + PLAYER_CENTER, p.feet + PLAYER_CENTER - Vec3::Z * 3., PLAYER_HALF);
+        !hit.start_solid && hit.fraction < 1. && hit.normal.z >= 0.65
+    }
+
     pub fn rebuild(&mut self, _map: &Bsp) -> Result<()> {
         let s = &self.saved;
         let tube = s

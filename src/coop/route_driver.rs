@@ -17,6 +17,9 @@ struct Command {
     heartbeat: u64,
     epoch: u64,
     goal: Option<Vec3>,
+    /// Project an ordinary walking goal onto a named live Funhouse fulcrum.
+    #[serde(default)]
+    surface: Option<usize>,
     /// Opt-in host evidence, separate from gameplay state and the network wire.
     #[serde(default)]
     recovery_trace: bool,
@@ -141,6 +144,11 @@ impl Command {
         ensure!(self.goal.is_none_or(|p| p.is_finite() && p.abs().max_element() < 1_000_000.),
             "Invalid route goal");
         ensure!(self.goal.is_none() || self.marker.is_none(), "Choose a route goal or a marker");
+        ensure!(self.surface.is_none_or(|id| id < 100_000 && self.goal.is_some()
+            && !self.navigate && !self.horizontal && !self.swim && !self.jump && !self.hold_goal
+            && self.rope.is_none() && self.runup.is_none() && self.use_aim.is_none()
+            && self.beyond_step.is_none() && !self.checkpoint && !self.finish),
+            "A surface goal requires an ordinary straight walk");
         ensure!(!self.swim || (self.goal.is_some() && !self.horizontal && !self.navigate
             && self.rope.is_none() && self.runup.is_none() && self.use_aim.is_none()
             && self.beyond_step.is_none() && self.temple_follow.is_none() && self.garden_follow.is_none() && self.sanctum_follow.is_none() && self.chess_follow.is_none() && self.castling_follow.is_none()
@@ -276,6 +284,7 @@ pub struct Report {
     pub native_threats: [Option<usize>; 2],
     /// Nearby supported stopping points; only the local fixture reads these.
     pub neighbors: [Vec<Vec3>; 2],
+    pub surface: Option<crate::levels::funhouse::RouteSurface>,
     pub blade_pickups: [bool; 2],
     pub cards_pickups: [bool; 2],
     pub expected: Option<Vec3>,
@@ -788,6 +797,12 @@ impl Driver {
     pub fn observe(&mut self, frame: &Frame, arena: &Arena, world: &World) {
         self.report.observed_epoch = frame.epoch;
         self.report.observed_tick = frame.tick;
+        self.report.surface = self.command.as_ref()
+            .filter(|c| c.epoch == frame.epoch && self.report.command == Some(c.id))
+            .and_then(|c| Some((c.surface?, c.goal?)))
+            .and_then(|(id, goal)| arena.stage.interactions.levels.iter().find_map(|s|
+                crate::levels::funhouse::route_surface(s.ctl.as_ref(), id, goal,
+                    frame.players.each_ref().map(|b| &b.player))));
         self.report.beyond_steps = arena.stage.interactions.beyond.as_ref()
             .map(|b|std::array::from_fn(|i|b.step_goal(i+1)));
         self.report.clear = frame.players.each_ref().map(|b| !b.stats.alive() || world.body_clear(b.player.feet));
@@ -858,6 +873,19 @@ impl Driver {
                     }),
                 })
             }).collect();
+        self.report.boojums.extend(arena.npcs.route_boojums().map(|(id, boojum, active)| {
+            let center=boojum.target(id).center;
+            EnemyReport {
+                id, name:format!("resident_boojum_{id}"), active,
+                feet:boojum.feet, health:boojum.health, state:boojum.state,
+                selected_player:boojum.opponents.selected_player,
+                distance:frame.players.each_ref().map(|b|center.distance(b.player.eye())),
+                line_of_sight:frame.players.each_ref().map(|b| {
+                    let trace=world.sweep(center,b.player.eye(),Vec3::splat(0.5));
+                    b.stats.alive() && !b.stats.ignores_alice() && !trace.start_solid && trace.fraction>=1.
+                }),
+            }
+        }));
         if let Some(school) = &arena.stage.interactions.school2 {
             let (guards, boojums) = school2_reports(school, frame, world);
             self.report.guards.extend(guards);
@@ -1161,6 +1189,14 @@ impl Driver {
             }
         } else { command.goal };
         let Some(goal) = goal else { return; };
+        let surface = command.surface.and_then(|id| arena.stage.interactions.levels.iter().find_map(|s|
+            crate::levels::funhouse::route_surface(s.ctl.as_ref(), id, goal,
+                frame.players.each_ref().map(|b| &b.player))));
+        if command.surface.is_some() && surface.is_none() {
+            self.report.error = Some("No support beneath the requested surface goal".into());
+            return;
+        }
+        let goal = surface.as_ref().map_or(goal, |s| s.goal);
         let delta = goal-body.player.feet;
         if command.hold_goal {
             keys.wish=hold_wish(delta.truncate());keys.run=true;
@@ -1176,6 +1212,7 @@ impl Driver {
         self.report.reached = if command.navigate { landing.is_some_and(|(_,settled)|settled) }
             else if command.swim { delta.length()<command.arrival_radius }
             else { delta.truncate().length()<command.arrival_radius && (command.horizontal || delta.z.abs()<35.) };
+        self.report.reached &= surface.as_ref().is_none_or(|s| s.supported[local.index()]);
         if self.report.reached { self.report.phase="reached"; self.plan.clear(); return; }
         if command.swim {
             if !body.player.swimming {
@@ -2027,6 +2064,21 @@ mod tests {
             assert_eq!(keys.uses,1,"Repeated release edge");
             assert_eq!(landed,jump,"Jump-off {jump}: final feet {:?}",player.feet);
         }
+    }
+    #[test]
+    fn surface_goals_are_opt_in_straight_walks() {
+        let base=serde_json::json!({"id":1,"heartbeat":1,"epoch":1,"goal":[1920.,-3400.,0.],
+            "navigate":false,"attack":true,"capture":false,"finish":false});
+        let old:Command=serde_json::from_value(base.clone()).unwrap();
+        assert!(old.surface.is_none() && old.validate().is_ok());
+        let mut projected=base;projected["surface"]=460.into();
+        assert!(serde_json::from_value::<Command>(projected.clone()).unwrap().validate().is_ok());
+        for flag in ["navigate","horizontal","jump","hold_goal","swim","checkpoint","finish"] {
+            let mut bad=projected.clone();bad[flag]=true.into();
+            assert!(serde_json::from_value::<Command>(bad).unwrap().validate().is_err(),"{flag}");
+        }
+        projected["goal"]=serde_json::Value::Null;
+        assert!(serde_json::from_value::<Command>(projected).unwrap().validate().is_err());
     }
     #[test]
     fn legacy_route_commands_remain_valid_and_rope_inputs_are_bounded() {

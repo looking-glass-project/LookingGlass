@@ -24,8 +24,9 @@ def verify_boss_exit(history, skipped=False):
     for peer in ('host', 'guest'):
         rows = history[peer]
         arena = [r for r in rows if r['map'] == 'funhouse' and r['epoch'] == 1]
-        assert arena and any(b['health'] > 0 for b in arena[0]['funhouse']['bosses']), 'No live starting boss'
-        defeated = [r for r in arena if all(b['health'] <= 0 for b in r['funhouse']['bosses'])]
+        combat = [r for r in arena if r['funhouse'].get('fight') and len(r['funhouse']['bosses']) == 2]
+        assert combat and any(b['health'] > 0 for b in combat[0]['funhouse']['bosses']), 'No live starting boss'
+        defeated = [r for r in combat if all(b['health'] <= 0 for b in r['funhouse']['bosses'])]
         assert defeated, 'Both bosses must actually die'
         active = [r for r in arena if r['scene'] == SCENE and r['owner'] is not None]
         assert active and len({r['owner'] for r in active}) == 1, 'Missing or changing ending actor'
@@ -36,7 +37,7 @@ def verify_boss_exit(history, skipped=False):
         before = active[0]
         assert defeated[0]['tick'] <= before['tick'], 'Scene preceded boss defeat'
         for row in active:
-            assert all(b['health'] <= 0 for b in row['funhouse']['bosses']), 'Living boss during ending'
+            assert len(row['funhouse']['bosses']) == 2 and all(b['health'] <= 0 for b in row['funhouse']['bosses']), 'Missing or living boss during ending'
             assert not row['presentation']['visible_players'][partner], 'Ending displayed partner'
             assert row['players'][partner]['feet'] == before['players'][partner]['feet'], 'Ending moved partner'
             for old, body in zip(before['players'], row['players']):
@@ -135,6 +136,12 @@ class BossPair(FunhousePair):
             for body, old in zip(report['frame']['players'], self.saved['frame']['players']):
                 verify_resume_body(body, old, elapsed)
         self.fight()
+        self.finish_ending()
+
+    def finish_ending(self, full_route=False):
+        if full_route:
+            assert self.saved is None and self.args.start_step == 0
+            assert self.evidence.get('verified_pre_arena_steps') == list(range(139)), 'Missing full personal pre-arena traversal'
         self.until(self.arrived, 180)
         for role in self.commands:
             self.set(role, epoch=2, attack=False)
@@ -152,12 +159,14 @@ class BossPair(FunhousePair):
         recovery = read_trace(self.folder / 'host/recovery-trace.jsonl', self.build)
         recovery['rendered_revivals'] = verify_views(recovery['revivals'], self.history)
         self.evidence['recovery'] = recovery
-        (self.folder / 'result.json').write_text(json.dumps(dict(passed=True, full_route=False,
+        (self.folder / 'result.json').write_text(json.dumps(dict(passed=True, full_route=full_route,
             through_exit=True, build=self.build, internet=not self.args.local, skip_scenes=self.args.skip_scenes,
             delay_ms=self.args.delay_ms, jitter_ms=self.args.jitter_ms,
-            scope='Resumed Funhouse arena combat, original ending and actual Hatter1 arrival',
+            scope=('Fresh Funhouse traversal, combat, original ending and Hatter1 arrival' if full_route else
+                   'Resumed Funhouse arena combat, original ending and actual Hatter1 arrival'),
             evidence=self.evidence), indent=2))
-        print('PASS Funhouse boss ending and paired Hatter1 arrival; full route remains open', flush=True)
+        print('PASS fresh full Funhouse route through Hatter1' if full_route else
+              'PASS Funhouse boss ending and paired Hatter1 arrival; full route remains open', flush=True)
 
 
 if __name__ == '__main__':

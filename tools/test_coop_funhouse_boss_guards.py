@@ -18,7 +18,7 @@ def fixture():
         rows.append(dict(tick=tick, epoch=2 if arrival else 1, map='hatter1' if arrival else 'funhouse',
             checkpoint_generation=0, scene=SCENE if active else None, owner='Blue' if active else None,
             players=copy.deepcopy(bodies), presentation=dict(visible_players=[True, not active]),
-            driver=dict(clear=[True, True]), funhouse=dict(bosses=[dict(health=100 if tick == 100 else 0), dict(health=0)],
+            driver=dict(clear=[True, True]), funhouse=dict(fight=True, bosses=[dict(health=100 if tick == 100 else 0), dict(health=0)],
             scene=scene if active else None, floor=1000 if tail is not None and tail >= 2.5 else None)))
     history = {}
     for slot, peer in enumerate(('host', 'guest')):
@@ -32,6 +32,20 @@ class BossExitGuards(unittest.TestCase):
     def test_complete_watched_exit(self):
         result = verify_boss_exit(fixture())
         self.assertEqual([r['tail_ticks'] for r in result], [780, 780])
+
+    def test_empty_cast_before_arena_is_not_a_boss_defeat(self):
+        history = fixture()
+        for peer, rows in history.items():
+            earlier = copy.deepcopy(rows[0])
+            earlier['tick'] = 1
+            earlier['funhouse'].update(fight=False, bosses=[])
+            rows.insert(0, earlier)
+        self.assertEqual([r['defeated_tick'] for r in verify_boss_exit(history)], [200, 200])
+        for rows in history.values():
+            for row in rows:
+                row['funhouse']['bosses'] = []
+        with self.assertRaises(AssertionError):
+            verify_boss_exit(history)
 
     def test_skipping_still_requires_physical_tail_and_next_map(self):
         rows = fixture()

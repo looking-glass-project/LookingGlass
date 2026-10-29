@@ -122,6 +122,15 @@ fn hold_wish(delta:Vec2)->Vec2 {
     let wish=(delta*(4./320.)).clamp_length_max(1.);
     if wish.length_squared()<0.000001 {vec2(0.001,0.)} else {wish}
 }
+fn delayed_hold_wish(delta:Vec2, velocity:Vec2, lead:f32)->Vec2 {
+    if lead == 0. { return hold_wish(delta); }
+    // A remote timed hold uses delayed positions and delayed input delivery.
+    // Predict the pending movement and lower the feedback gain just as ordinary
+    // waypoint steering does. The local authored input and world physics stay
+    // unchanged; this only chooses the remote test driver's movement input.
+    let wish=((delta-velocity*lead)/(80.+640.*lead)).clamp_length_max(1.);
+    if wish.length_squared()<0.000001 {vec2(0.001,0.)} else {wish}
+}
 
 fn straight_wish(delta: Vec2, velocity: Vec2, lead: f32, run: bool, limit: Option<f32>) -> Vec2 {
     let steering = delta - velocity * lead;
@@ -1313,7 +1322,7 @@ impl Driver {
         let goal = surface.as_ref().map_or(goal, |s| s.goal);
         let delta = goal-body.player.feet;
         if command.hold_goal {
-            keys.wish=hold_wish(delta.truncate());keys.run=true;
+            keys.wish=delayed_hold_wish(delta.truncate(),body.player.velocity.truncate(),command.input_lead);keys.run=true;
             if !keys.primary && !keys.alternate {
                 keys.yaw=keys.wish.y.atan2(keys.wish.x);keys.pitch=0.;
             }
@@ -1607,6 +1616,7 @@ mod tests {
         assert!(p.feet.x>40. && (p.feet.x-boundary).abs()<0.1
             && goal.distance(p.feet.truncate())>30.,"Unexpected blocked footing: {:?}",p.feet);
         assert_eq!(hold_wish(Vec2::ZERO),vec2(0.001,0.));
+        assert_eq!(delayed_hold_wish(vec2(23.,-17.),vec2(300.,50.),0.),hold_wish(vec2(23.,-17.)));
         let base=serde_json::json!({"id":1,"heartbeat":1,"epoch":1,"goal":[100,0,0],
             "run":true,"hold_goal":true,"navigate":false,"attack":true,"capture":false,"finish":false});
         assert!(serde_json::from_value::<Command>(base.clone()).unwrap().validate().is_ok());
@@ -1615,6 +1625,36 @@ mod tests {
             ("shoot_switch","MirrorTrigger".into())] {
             let mut invalid=base.clone();invalid[field]=value;
             assert!(serde_json::from_value::<Command>(invalid).unwrap().validate().is_err());
+        }
+    }
+    #[test]
+    fn timed_hold_keeps_delayed_feedback_on_the_mirror_perch() {
+        let world=World::fixture(&[(vec3(520.,680.,-200.),vec3(704.,820.,0.))]);
+        let goal=vec2(665.,775.);
+        let replay=|delay:usize,predict:bool| {
+            let mut p=Player::new(vec3(589.,751.,0.03125));p.grounded=true;
+            let mut views=VecDeque::from(vec![p.clone();delay+1]);
+            let mut pending=VecDeque::from(vec![Controls::default();delay+1]);
+            let lead=(2*delay+6) as f32/120.;
+            let mut command=Controls::default();
+            for tick in 0..1200 {
+                let seen=views.pop_front().unwrap();
+                if tick%6==0 {
+                    let delta=goal-seen.feet.truncate();
+                    let wish=if predict {delayed_hold_wish(delta,seen.velocity.truncate(),lead)} else {hold_wish(delta)};
+                    command=Controls{wish,run:true,..Default::default()};
+                }
+                pending.push_back(command);p.tick(&world,pending.pop_front().unwrap());
+                if !p.grounded || !world.body_clear(p.feet) {return (false,p);}
+                views.push_back(p.clone());
+            }
+            (true,p)
+        };
+        assert!(!replay(36,false).0,"The old delayed hold must reproduce the fall");
+        for delay in [0,6,17,36] {
+            let (safe,p)=replay(delay,true);
+            assert!(safe && p.feet.truncate().distance(goal)<12.,
+                "Delayed hold left its support: delay={delay}, feet={:?}",p.feet);
         }
     }
     #[test]

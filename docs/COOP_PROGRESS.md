@@ -19,6 +19,15 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | Full campaign verification | 3.08 | 20 |
 | **Total** | **48.08, rounded to 48.1** | **100** |
 
+Current verification frontier: a fresh Funhouse run independently passes steps
+**0-28** (44 personal arrivals, seven pickups, 2,763 matching states), then fails
+at the mirror. The mirror shooting wait has been corrected and a delayed-hold
+regression is covered by native tests. The guest's return jump still fails; a
+revival at the bank is correctly rejected as traversal. The fresh full-route
+runner is available, but has no passing full-run result. Latest checks: **876
+active Rust tests**, 51 Funhouse guards and unchanged single-player component
+output apart from two timing measurements. Overall remains **48.1%**.
+
 Latest verified work: Funhouse's second personal pad and descent now pass
 steps **151-155** with eight personal arrivals, both actual jumps and 396 matching
 network states. Each player gains their own second 25-health/Will pickup.

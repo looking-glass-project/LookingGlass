@@ -975,3 +975,52 @@ Fresh traversal, the opposite lead order and ending owner, skipped ending, remai
 recovery/reconnect cases and rendered environment-effects checks remain open.
 Six campaign rows retain combined evidence; overall stays **48.1%**. No screenshots
 were opened for these runs.
+
+
+### Fresh-route integration and mirror timing frontier
+
+`tools/test_coop_funhouse_full.py` now joins the authored entrance through 138
+with the arena fight and original ending. Both players must have their own
+corridor/machinery/pendulum arrival evidence, gas must be open and all eight cell
+bits set. The runner starts with new profiles and rejects a resumed entrance.
+Actual boss victory can interrupt optional arena healing movements; unfinished
+waypoints never become completed arrivals. This runner has **no full-route pass**.
+
+Fresh run `4a98cc596f78481abffb2988f9ce2cd1` on `c79ac85` has independently audited
+**0-28** evidence: 44 personal arrivals, seven own pickups and **2,763 matching
+player/world/native states**, ending at 100/100 health without deaths. Its normal
+checkpoint before 29 has SHA-256
+`eb33096775f6d5bec151668ccc67ee25c59b08b2b63fd868d69a767f110776c7`.
+It fails at the mirror switch. The later cell-switch reposition policy had
+shortened the shooting wait to eight seconds on a perch that takes twelve seconds
+to turn. A fourteen-second retry still fails; restoring the mirror fixture's
+original bounded 90-second real-Blade wait activates the switch. The cell-switch
+reposition policy is unchanged and no switch is forced.
+
+The next retry, `391c4a4d04ae43838584998d294bba64`, activates the mirror and returns
+Blue, but Red's padded 120-tick hold lasts 204 observed ticks and walks off the
+perch. Red dies at 35,509 and revives at 36,709: exactly 1,200 active ticks, 25
+health, with preserved resources and verified spectator/return cameras. This
+is a failed crossing, not an arrival proof. Removing the extra hold padding alone
+still fails. One separate retry times out while connecting the guest before play.
+
+Source `1f789e9` adds delay prediction and lower feedback gain only to the opt-in
+route driver's held movement. Local zero-delay input is unchanged. A native
+physics regression reproduces the old controller's fall with delayed observation
+and input queues; the corrected controller stays supported at 0/6/17/36-tick
+queue delays. **876 active Rust tests** (one ignored), the locked release build,
+Funhouse **battle63/world46/scene37/single-player8** and **Checkmate94** pass.
+Single-player component output matches baseline except two measured timings.
+**51 Funhouse guards**, 13 recovery guards and seven source-package tests pass.
+
+Live run `fce3ab07947249fcb8b10d25cbe21c5b` keeps Red alive/grounded on the rotating
+perch through the 90-second hold, but stops on an incorrectly added takeoff-point
+arrival check. That check was removed: the authored action is directional input,
+not point arrival. Living, unchanged-spawn, grounded and minimum-duration checks
+remain; the following bank jump still requires its own actual jump and arrival.
+The next run, `d30e89298f6a4202aa59e22e36fa3fc5`, completes the hold but **fails the
+return jump**. Red's jump counter does not increase before the fall; her later
+25-health revival on the bank is rejected. The next work is to trace the requested
+jump against authoritative input and movement timing. Neither run is a mirror or
+full-route pass. No screenshots were opened. Overall stays **48.1%**, with six
+combined campaign rows and the existing remaining scope.

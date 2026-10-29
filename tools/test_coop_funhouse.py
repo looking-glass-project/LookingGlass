@@ -998,8 +998,24 @@ class FunhousePair(Pair):
                        and self.history[r][-1]['driver']['phase'] == 'holding toward goal' for r in roles)
         self.until(sampled)
         starts = {r: self.history[r][-1]['tick'] for r in roles}
-        self.until(lambda: all(self.reports[r]['frame']['tick'] >= starts[r] + frames + int(self.lead*120)
-                               for r in roles) and sampled(), max(90, frames/120 + 60))
+        # The mirror's short run-up must finish while the player can still jump
+        # from its perch. Its timer already starts after command observation;
+        # adding the adaptive network lead extended 120 ticks to over 200 and
+        # walked the guest over the edge before the next jump was requested.
+        padding = 0 if self.step == 31 else int(self.lead*120)
+        spawns = {r: self.body(r)['spawned_at'] for r in roles}
+        def held():
+            if self.step == 31:
+                assert all(self.body(r)['stats']['sanity'] > 0 and self.body(r)['spawned_at'] == spawns[r]
+                           for r in roles), 'Mirror run-up lost its rider'
+                # This is directional input on a turning support, not point
+                # arrival. Require support before the next actual jump; its
+                # ordinary bank landing still needs a personal arrival receipt.
+                if any(not self.body(r)['player']['grounded'] for r in roles):
+                    return False
+            return all(self.reports[r]['frame']['tick'] >= starts[r] + frames + padding
+                       for r in roles) and sampled()
+        self.until(held, max(90, frames/120 + 60))
         self.evidence.setdefault('holds', []).append(dict(step=self.step, goal=goal, frames=frames, starts=starts,
             commands={r: self.commands[r]['id'] for r in roles},
             ends={r: self.reports[r]['frame']['tick'] for r in roles}))
@@ -1102,8 +1118,16 @@ class FunhousePair(Pair):
         for attempt in range(5):
             self.set(role, shoot_switch=thread)
             command = self.commands[role]['id']
+            self.until(lambda: self.reports[role]['route_driver']['command'] == command, 20)
             start = self.reports[role]['frame']['tick']
-            self.until(lambda: self.reached(role) or self.reports[role]['frame']['tick'] - start >= 960, 25)
+            if thread == 'MirrorTrigger':
+                # Keep the original mirror fixture's bounded shooting wait.
+                # The 12-second turning perch and Blade cooldown can require
+                # several passes. Its small support has no safe neighboring
+                # footing; the later cell-switch reposition policy does not fit.
+                self.until(lambda: self.reached(role), 90)
+            else:
+                self.until(lambda: self.reached(role) or self.reports[role]['frame']['tick'] - start >= 960, 30)
             if self.reached(role):
                 break
             assert attempt < 4, 'Switch unreachable from tested ordinary shooting positions'
@@ -1361,8 +1385,9 @@ class FunhousePair(Pair):
             self.until(lambda: all(self.body(role)['stats']['sanity'] > 0 for role in self.commands), 30)
         ChessPair.save_checkpoint(self, step)
 
-    def verify(self):
-        assert self.completed == list(range(self.args.start_step, self.args.last_step + 1))
+    def verify(self, last_step=None):
+        last_step = self.args.last_step if last_step is None else last_step
+        assert self.completed == list(range(self.args.start_step, last_step + 1))
         verify_arrivals(self.steps, self.completed, self.evidence['arrivals'], self.history,
                         self.allow_revival, self.evidence.get('scene_handoffs', []))
         verify_following(self.evidence.get('following_footings', []), self.history)
@@ -1395,19 +1420,8 @@ class FunhousePair(Pair):
         self.evidence['ice_primary_views'] = {role: [sum(row.get('ice_primary_pulses', [0, 0])[slot] > 0
             for row in rows) for slot in range(2)] for role, rows in self.history.items()}
 
-    def run(self):
-        self.start_pair()
-        if self.saved:
-            receipt = json.loads((self.folder / 'host' / 'route-resume.json').read_text())
-            verify_resume_receipt(receipt, self.saved, self.build)
-            self.evidence['exact_resume_receipt'] = receipt
-            for report in self.reports.values():
-                assert report['visit'] == self.saved['visit']
-                elapsed = report['frame']['tick'] - self.saved['frame']['tick']
-                for body, old in zip(report['frame']['players'], self.saved['frame']['players']):
-                    verify_resume_body(body, old, elapsed)
-        self.scene_end()
-        for self.step in range(self.args.start_step, self.args.last_step + 1):
+    def play_steps(self, first_step, last_step):
+        for self.step in range(first_step, last_step + 1):
             if self.step in self.completed:
                 continue
             self.retain(f'before-{self.step:03d}')
@@ -1472,6 +1486,20 @@ class FunhousePair(Pair):
                 self.collect_loot()
             print('PASS Funhouse step', self.step, 'scene entrance' if self.step == 138 else mode or 'walk', 'health',
                   [self.body(r)['stats']['sanity'] for r in self.commands], flush=True)
+
+    def run(self):
+        self.start_pair()
+        if self.saved:
+            receipt = json.loads((self.folder / 'host' / 'route-resume.json').read_text())
+            verify_resume_receipt(receipt, self.saved, self.build)
+            self.evidence['exact_resume_receipt'] = receipt
+            for report in self.reports.values():
+                assert report['visit'] == self.saved['visit']
+                elapsed = report['frame']['tick'] - self.saved['frame']['tick']
+                for body, old in zip(report['frame']['players'], self.saved['frame']['players']):
+                    verify_resume_body(body, old, elapsed)
+        self.scene_end()
+        self.play_steps(self.args.start_step, self.args.last_step)
         self.save_checkpoint(self.args.last_step + 1)
         self.verify()
         for role in ('guest', 'host'):

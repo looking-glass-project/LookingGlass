@@ -115,12 +115,17 @@ tail and reaches **Hatter1 with both players alive**. It verifies **1,178 matchi
 Funhouse states**, plus four retained matching states in the new visit. Fresh full
 traversal, opposite lead/scene ownership and remaining recovery checks stay open.
 
-The latest frozen build passes **875 active Rust tests** and native Funhouse
+The latest frozen build, `1f789e9`, passes **876 active Rust tests** and native Funhouse
 **battle63/world46/scene37**, plus **Checkmate94**. Single-player component
-gameplay matches baseline except two benchmark durations. **50 Funhouse guards**,
+gameplay matches baseline except two benchmark durations. **51 Funhouse guards**,
 **13 recovery guards** and **seven source-package tests** pass. These are separate
 resumed segments, not a fresh full route. Overall remains **48.1%**, with six
-combined campaign rows. See [Funhouse evidence](FUNHOUSE.md).
+combined campaign rows. A new fresh run verifies steps 0-28 with 44 personal
+arrivals, seven pickups and 2,763 matching states, then fails at the mirror.
+The shooting wait and delay-aware hold controller are corrected; the guest's
+actual return jump remains the failing case. `test_coop_funhouse_full.py` joins
+the existing sections with explicit fresh-start, personal traversal and original
+exit checks, but has not passed a full run. See [Funhouse evidence](FUNHOUSE.md).
 
 Latest full-route milestone: a fresh Blue-led Checkmate run now passes through
 the King and into Funhouse over the public internet, including Red's verified

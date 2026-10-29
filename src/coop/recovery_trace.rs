@@ -38,7 +38,7 @@ impl Trace {
                 "stats":full.then_some(&b.stats),
                 "geometry":full.then(||serde_json::json!({"clear":world.body_clear(b.player.feet),
                     "safe":safe(b.player.feet),"valid":b.player.validate_world(world).is_ok(),
-                    "supported":crate::recovery::supported(world,b.player.feet),
+                    "supported":super::world::revival_supported(world,&b.player),
                     "swimming":b.player.immersion.level>=2,"rope":b.player.rope.is_some()}))
             })).collect::<Vec<_>>();
             serde_json::to_writer(&mut self.file,&serde_json::json!({"version":1,"serial":self.serial,
@@ -82,6 +82,19 @@ mod tests {
         let last=rows.last().unwrap();assert_eq!(last["tick"],1201);
         assert_eq!(last["players"][0]["spawned_at"],1201);assert_eq!(last["players"][0]["health"],25.);
         assert_eq!(last["players"][0]["geometry"]["clear"],true);
+        assert_eq!(last["players"][0]["geometry"]["supported"],true);
         for pair in rows.windows(2) {assert_eq!(pair[1]["serial"].as_u64().unwrap(),pair[0]["serial"].as_u64().unwrap()+1);}
+    }
+    #[test]
+    fn recovery_support_requires_ground_contact_and_a_full_footprint() {
+        let world=World::fixture(&[(vec3(-100.,-100.,-20.),vec3(100.,100.,0.))]);
+        let mut player=crate::movement::Player::spawn(&world,Vec3::Z*(EYE_HEIGHT+0.03125)).unwrap();
+        assert!(super::super::world::revival_supported(&world,&player));
+        player.feet.z+=8.;
+        assert!(!super::super::world::revival_supported(&world,&player));
+        player.feet.z-=8.;player.grounded=false;
+        assert!(!super::super::world::revival_supported(&world,&player));
+        player.grounded=true;player.feet.x=90.;
+        assert!(!super::super::world::revival_supported(&world,&player));
     }
 }

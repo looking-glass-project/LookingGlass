@@ -199,7 +199,7 @@ fn clear_path(world: &World, from: Vec3, to: Vec3) -> bool {
 
 /// Require a full footprint plus a small edge margin. Probe around the actual
 /// floor plane: a fixed four-unit downward ray incorrectly rejects normal hills.
-fn supported(world: &World, feet: Vec3) -> bool {
+pub(super) fn supported(world: &World, feet: Vec3) -> bool {
     if !world.body_clear(feet) || Immersion::sample(world, feet).level != 0 {
         return false;
     }

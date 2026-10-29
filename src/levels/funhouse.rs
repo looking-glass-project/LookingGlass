@@ -8,6 +8,8 @@ mod coop_scene_check;
 mod coop_world_check;
 mod data;
 mod motion;
+mod network_exit;
+pub(crate) use network_exit::{NetworkExit, ExitReport};
 mod presentation_check;
 mod performance_check;
 mod route;

@@ -565,3 +565,76 @@ Next: make the guest's ordinary input sequence continuous and correctly timed
 through the approach and jump, then require both personal upper-exit receipts.
 The full 103-117 segment, Funhouse visit and campaign acceptance remain open.
 Overall remains **48.1%**. No screenshots were opened for these runs.
+
+
+### Paired upper exit and descending corridor, 29 October 2026
+
+The opt-in `NetworkExit` test controller now sequences the final seesaw approach
+with ordinary inputs using each client's own world observations. The counterweighted
+rider waits for the tip; the solo rider runs continuously through the approach.
+The controller records support and jump receipts only on frames actually sent or
+restored. The verifier matches their body evidence and all three state hashes
+against both peers. It rejects unsent ticks, wrong support, death/relocation,
+missing receipts and fabricated jumps. This does not change game physics, saves
+or the network wire format.
+
+The first candidate, source `59b6e68`, failed honestly: receipts from intermediate
+physics ticks did not cross the network, and Red missed the approach during a
+network stall. That evidence remains in `83b9ab360ba54ff99a750cb782ac315f`.
+Moving receipt capture to actual sent/restored frames produced source
+`88b98f001452fba62a556c2741fd4ec3c9b8f9c6c92f4df68eb73f9f14a856f4`, executable
+SHA-256 `ee40c9688250ee8d5784902140ef0e4e97bbba4465599a591aa1f2f74a0bc42e`.
+
+Evidence `17e3d27ea01649928c7605680fc78c3b` independently verifies **103-109**:
+12 personal arrivals, two 200-tick holds, two own essence pickups and 719 matching
+player/world/native states. Both remain alive through this scope at 80/55 health.
+Blue's exit receipts are ticks 87760/88373/88834; Red's are 89450/89469/90086.
+The full run later wipes at 110 under normal enemy attacks, so it is not a full
+103-117 pass. A normal checkpoint before 107 is retained with SHA-256
+`39c819dc78d9ca0340759a8884a359c2c1984e4212ffa18f5da5d52ea360bf9a`.
+
+Ordinary combat pauses at 107/109 and each player's normal essence collection
+allow a later resumed **107-117** pass in `ee5ac69bdcf944d5adf062037d8306ac`:
+22 personal arrivals, six own pickups and 1,524 matching states, final health
+68/63 and no new deaths. Step 116 keeps strict eight-unit horizontal arrival but
+uses the original native route's 52-unit height tolerance: its marker is at 112
+while the actual supported sloping floor is near 69. Other walking steps retain
+35 units. Guards reject airborne, wrong-command and outside-bound arrivals.
+Earlier failures at the slope (`8557e1d4eb53497dbd28f16d36abfad9`) and at a
+landing with no safe lateral neighbor (`32437fe35de04cacbebab6657c356892`) remain.
+
+A narrow landing can instead queue forward to the next authored walking point.
+This requires an actual ordinary move and observed supported arrival; it does not
+credit the next route step prematurely. The targeted replay
+`1933f7036020423d82e0472eafba4b61` proves this wait but later stalls after deaths:
+the follower follows the leader's pre-respawn trail into her new destination.
+The runner now queues personal arrivals through 111-117 and pauses for normal
+combat at 112. Its old recovery audit also rejects two sloped revivals because it
+uses a flat-ground probe. That failed audit is retained, not retroactively changed.
+
+Source `94488e16adcb68dd601dd235df4e068d02b182e50986c947b2f7c0ca3c15379f`
+(executable SHA-256
+`bedcc403edaef7cfc8c189b1546db126c3ab3ed608a8cec7e69002eb04633d07`)
+corrects the read-only recovery logger to use co-op's actual slope/edge placement
+rules plus actual ground contact. Native checks reproduce both recorded slope
+positions and reject floating and airborne bodies. Placement behavior itself is
+unchanged. It passes **870 active units** (one ignored), locked release,
+**63 battle / 43 world / 37 scene / 8 single-player / 94 Checkmate** records.
+Single-player gameplay matches baseline, excluding only two benchmark timings.
+
+On this build, `5ed98c7b581345e88b1e32aa17d08343` independently verifies
+**111-116**: 12 personal arrivals, one forward wait, three own pickups and
+1,010 matching player/world/native states. Red dies at 100737 and revives at
+101937: exactly 1,200 active ticks, 25 health, preserved resources, safe supported
+placement and verified spectator/return cameras. The scoped end health is 100/65.
+The full replay stops at 117 after 186.695 seconds, with Red's navigation worker
+still planning from approximately [60.45, -4475.49, 64.03] toward [32, -4460, 96].
+Both are alive at the stop, 100/50 health. The failure is retained; the earlier
+107-117 success cannot substitute for a reliable repeat of this newer fixture.
+
+All runs use independent clients through the public internet with 40 ms injected
+delay and 20 ms jitter. **32 Funhouse guards / 13 recovery guards / seven package
+tests** pass. Current fixture dependencies match the captured latest run. No
+screenshots were opened. Next: resolve the 117 navigation stall, then weapons and
+pendulums from 118 onward. Full fresh traversal and remaining acceptance cases
+are open; overall remains **48.1%**, six combined visits and 33 open.

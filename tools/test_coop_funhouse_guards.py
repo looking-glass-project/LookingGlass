@@ -5,6 +5,85 @@ import unittest
 from test_coop_funhouse import FunhousePair, verify_arrivals, verify_switch_receipt, verify_holds, waiting_point, clock_threats, following_point, verify_following, nearby_drops, verify_loot, shooting_neighbor, cards_preference
 from test_coop_funhouse import fulcrum_waiting_point, fulcrum_balance_goal, fulcrums_reset
 from test_coop_funhouse import resident_boojum_threats
+from test_coop_funhouse import verify_exit_arrival
+from test_coop_funhouse import forward_waiting_point, verify_forward_waits
+
+
+class ForwardWaitingGuards(unittest.TestCase):
+    def test_waiting_cannot_skip_a_jump_hold_or_distant_waypoint(self):
+        for step in (dict(pos=[120, 0, 0], mode='jump'), dict(pos=[120, 0, 0], mode='hold'),
+                     dict(pos=[600, 0, 0]), dict(pos=[120, 0, 80])):
+            self.assertIsNone(forward_waiting_point([dict(pos=[0, 0, 0]), step], 0, [0, 0, 0]))
+
+    def test_forward_wait_requires_actual_supported_arrival_without_relocation(self):
+        steps = [dict(pos=[0, 0, 0]), dict(pos=[120, 0, 0])]
+        entry = dict(role='host', step=0, goal=[120, 0, 0], start_tick=10, tick=20)
+        def history():
+            body = dict(feet=[0, 0, 0], health=100, spawned_at=0, warped_at=0, grounded=True)
+            return dict(host=[dict(tick=10, owner=None, players=[body]),
+                              dict(tick=20, owner=None, players=[dict(body, feet=[120, 0, 0])])])
+        verify_forward_waits([entry], steps, history())
+        for field, value in [('health', 0), ('spawned_at', 15), ('warped_at', 15), ('grounded', False), ('feet', [128, 0, 0])]:
+            rows=history();rows['host'][1]['players'][0][field]=value
+            with self.subTest(field=field), self.assertRaises(AssertionError):
+                verify_forward_waits([entry], steps, rows)
+
+
+def exit_fixture(role='host'):
+    steps = [{} for _ in range(106)]
+    steps[103], steps[104], steps[105] = dict(pos=[1920, -3820, 150]), dict(pos=[1920, -3860, 195]), dict(pos=[1920, -4050, 256], mode='jump')
+    slot = 0 if role == 'host' else 1
+    course = dict(step=106, reached=True, start_tick=10, start_jumps=0, spawned_at=0, receipts=[])
+    states = []
+    for tick, point in [(10, [1920, -3400, -170]), (11, [1920, -3820, 100]), (12, [1920, -3860, 140]), (13, [1920, -4050, 256])]:
+        body = dict(feet=point, velocity=[0, 0, 0], health=100, grounded=True, jumps=int(tick == 13), spawned_at=0, warped_at=0)
+        bodies = [dict(body, feet=[1968, -3400, -170]), dict(body, feet=[1968, -3400, -170])]
+        bodies[slot] = body
+        states.append(dict(epoch=1, tick=tick, sha256=str(tick), world_sha256=str(tick), native_sha256=str(tick), movement=bodies))
+        if tick > 10:
+            step = tick + 92
+            course['receipts'].append(dict(step=step, tick=tick, feet=point, surface=None if tick == 13 else
+                dict(entity=460, requested=steps[step]['pos'], goal=point, supported=[slot == 0, slot == 1])))
+    history = {peer: [dict(driver=dict(command=99 if peer == role else 100,
+        funhouse_exit=course if peer == role else None, network_states=copy.deepcopy(states)))] for peer in ('host', 'guest')}
+    entries = [dict(step=n['step'], role=role, epoch=1, tick=n['tick'], feet=n['feet'], goal=steps[n['step']]['pos'], command=99, course=course) for n in course['receipts']]
+    return steps, entries, history
+
+
+class ContinuousExitGuards(unittest.TestCase):
+    def test_both_roles_need_real_sent_and_restored_movement_ticks(self):
+        for role in ('host', 'guest'):
+            steps, receipts, history = exit_fixture(role)
+            for receipt in receipts:
+                verify_exit_arrival(steps, receipt, history)
+
+    def test_wrong_support_missing_peer_or_unobserved_receipt_cannot_pass(self):
+        for mistake in ('board', 'support', 'peer', 'unsent', 'command', 'receipt'):
+            steps, receipts, history = exit_fixture()
+            receipt = receipts[0]
+            if mistake == 'board':
+                receipt['course']['receipts'][0]['surface']['entity'] = 459
+            elif mistake == 'support':
+                receipt['course']['receipts'][0]['surface']['supported'][0] = False
+            elif mistake == 'peer':
+                history['guest'][0]['driver']['network_states'].pop(1)
+            elif mistake == 'unsent':
+                for rows in history.values():
+                    rows[0]['driver']['network_states'].pop(1)
+            elif mistake == 'command':
+                receipt['command'] = 101
+            else:
+                receipt['tick'] = 14
+            with self.subTest(mistake=mistake), self.assertRaises(AssertionError):
+                verify_exit_arrival(steps, receipt, history)
+
+    def test_shared_but_invalid_body_or_fake_jump_still_fails(self):
+        for field, value in [('grounded', False), ('health', 0), ('spawned_at', 12), ('warped_at', 12), ('jumps', 0)]:
+            steps, receipts, history = exit_fixture()
+            for rows in history.values():
+                rows[0]['driver']['network_states'][-1]['movement'][0][field] = value
+            with self.subTest(field=field), self.assertRaises(AssertionError):
+                verify_exit_arrival(steps, receipts[-1], history)
 
 
 def fixture():
@@ -20,6 +99,34 @@ def fixture():
 
 
 class PersonalArrivalGuards(unittest.TestCase):
+    def test_sloped_marker_matches_native_height_but_keeps_personal_support(self):
+        def slope_fixture(step=116):
+            _, _, receipts, history = fixture()
+            goal, feet = [150, -4520, 112], [150, -4520, 69.0878]
+            steps = [dict(mode='wait', pos=[0, 0, 0]) for _ in range(117)]
+            steps[step] = dict(pos=goal)
+            for slot, receipt in enumerate(receipts):
+                receipt.update(step=step, goal=goal, feet=list(feet), command=7)
+                row = history[receipt['role']][0]
+                row['players'][slot]['feet'] = list(feet)
+                row['driver'] = dict(command=7, phase='walking')
+            return steps, [step], receipts, history
+        verify_arrivals(*slope_fixture())
+        for mistake in ('floor', 'horizontal', 'airborne', 'command', 'planning', 'other_step'):
+            args = slope_fixture(115 if mistake == 'other_step' else 116)
+            receipt = args[2][0]; row = args[3]['host'][0]; body = row['players'][0]
+            if mistake in ('floor', 'horizontal'):
+                body['feet'][2 if mistake == 'floor' else 0] = 60 if mistake == 'floor' else 158
+                receipt['feet'] = list(body['feet'])
+            elif mistake == 'airborne':
+                body['grounded'] = False
+            elif mistake == 'command':
+                row['driver']['command'] = 6
+            elif mistake == 'planning':
+                row['driver']['phase'] = 'planning'
+            with self.subTest(mistake=mistake), self.assertRaises(AssertionError):
+                verify_arrivals(*args)
+
     def test_clear_includes_resident_boojums_and_remaining_screams(self):
         boojum = dict(active=True, health=56, feet=[1315, -3764, 352], waves=[])
         report = dict(frame=dict(players=[dict(player=dict(feet=[1920, -3600, 0])),

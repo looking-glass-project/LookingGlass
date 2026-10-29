@@ -21,6 +21,13 @@ from coop_recovery import read_trace, verify_views
 from coop_recovery import verify_presence as verify_recovery_presence
 
 
+def sloped_arrival(step, goal):
+    # The authored native steer() accepts 52 vertical units. This descent's
+    # actual floor is near z69 at its z112 marker; keep the stricter eight-unit
+    # horizontal gate and require a real supported body, not a planner estimate.
+    return step == 116 and goal == [150, -4520, 112]
+
+
 def verify_arrivals(steps, completed, receipts, history, allow_revival=False):
     """Require each claimed arrival to match an immutable client observation."""
     observed = {role: {row['tick']: row for row in rows} for role, rows in history.items()}
@@ -30,6 +37,9 @@ def verify_arrivals(steps, completed, receipts, history, allow_revival=False):
         entries = [r for r in receipts if r['step'] == step]
         assert len(entries) == 2 and {r['role'] for r in entries} == {'host', 'guest'}, 'Missing personal arrival'
         for receipt in entries:
+            if receipt.get('native_exit'):
+                verify_exit_arrival(steps, receipt, history)
+                continue
             role = receipt['role']
             row = observed[role].get(receipt['tick'])
             assert row and row['owner'] is None, 'Arrival was not observed during free play'
@@ -56,12 +66,60 @@ def verify_arrivals(steps, completed, receipts, history, allow_revival=False):
                 assert row['driver']['command'] == receipt['command'], 'No acknowledged crossing command'
                 assert row['driver']['phase'] in ('walking', 'settling landing', 'reached'), 'No observed crossing input'
             radius, height = (20, 52) if jump or crossing else (8, 35)
+            if sloped_arrival(step, steps[step]['pos']):
+                height = 52
+                assert row['driver']['command'] == receipt['command'], 'Slope command was not acknowledged'
+                assert row['driver']['phase'] in ('walking', 'reached'), 'No observed slope approach input'
             assert distance(body['feet'][:2], goal[:2]) < radius and abs(body['feet'][2] - goal[2]) < height, 'Missed waypoint'
             if jump:
                 earlier = observed[role].get(receipt['start_tick'])
                 assert earlier and earlier['players'][0 if role == 'host' else 1]['jumps'] == receipt['jumps_before'], 'Jump start was not observed'
                 assert body['jumps'] == receipt['jumps_after'], 'Jump count differs from observed body'
                 assert receipt['jumps_after'] > receipt['jumps_before'], 'Jump waypoint has no actual jump'
+
+
+def verify_exit_arrival(steps, receipt, history):
+    """Match a brief native landing to actual sent AND restored body evidence."""
+    role, step, tick = receipt['role'], receipt['step'], receipt['tick']
+    assert step in (103, 104, 105), 'Unknown continuous exit waypoint'
+    course = receipt['course']
+    assert course['reached'] and course['step'] == 106, 'Native exit is incomplete'
+    assert [r['step'] for r in course['receipts']] == [103, 104, 105], 'Native exit skipped a waypoint'
+    assert any(row['driver']['command'] == receipt['command']
+               and row['driver'].get('funhouse_exit') == course for row in history[role]), 'Exit course was not observed for its command'
+    native = next(r for r in course['receipts'] if r['step'] == step)
+    assert native['tick'] == tick and native['feet'] == receipt['feet'], 'Exit receipt differs from native observation'
+    assert receipt['goal'] == steps[step]['pos'], 'Exit target differs from authored waypoint'
+    states = {}
+    for peer, rows in history.items():
+        states[peer] = {}
+        for row in rows:
+            for state in row['driver']['network_states']:
+                key = state['epoch'], state['tick']
+                old = states[peer].setdefault(key, state)
+                assert old == state, 'Per-tick network evidence changed'
+    key = receipt['epoch'], tick
+    start_key = receipt['epoch'], course['start_tick']
+    for at in (key, start_key):
+        assert all(at in states[p] for p in ('host', 'guest')), 'Missing sent or restored exit tick'
+        a, b = states['host'][at], states['guest'][at]
+        assert all(a[f] == b[f] for f in ('sha256', 'world_sha256', 'native_sha256', 'movement')), 'Exit tick differs between clients'
+    slot = 0 if role == 'host' else 1
+    body = states[role][key]['movement'][slot]
+    start = states[role][start_key]['movement'][slot]
+    assert start['jumps'] == course['start_jumps'] and start['spawned_at'] == course['spawned_at'], 'Exit start differs from actual body'
+    assert body['feet'] == receipt['feet'] and body['grounded'] and body['health'] > 0, 'Invalid exit arrival body'
+    assert body['spawned_at'] == start['spawned_at'] and body['warped_at'] == start['warped_at'], 'Exit used a relocation or respawn'
+    goal = receipt['goal']
+    radius, height = 20, 52
+    if step != 105:
+        surface = native['surface']
+        assert surface and surface['entity'] == 460 and surface['requested'] == goal, 'Wrong exit support'
+        assert surface['supported'][slot], 'Exit rider lacks own board support'
+        goal, radius, height = surface['goal'], 8, 35
+    else:
+        assert native['surface'] is None and body['jumps'] > course['start_jumps'], 'Exit has no actual upper jump'
+    assert distance(body['feet'][:2], goal[:2]) < radius and abs(body['feet'][2] - goal[2]) < height, 'Missed exit waypoint'
 
 
 def switched(state, thread):
@@ -130,6 +188,32 @@ def waiting_point(neighbors, at, incoming, goal):
         lateral = abs(offset[0]*direction[1] - offset[1]*direction[0]) / length
         return lateral + .1*distance(point[:2], incoming[:2])
     return max(candidates, key=score)
+
+
+def forward_waiting_point(steps, index, goal):
+    if index + 1 >= len(steps):
+        return None
+    next_step = steps[index + 1]
+    if next_step.get('mode', '') != '':
+        return None
+    point = next_step['pos']
+    return point if 72 <= distance(point[:2], goal[:2]) <= 512 and abs(point[2]-goal[2]) <= 52 else None
+
+
+def verify_forward_waits(entries, steps, history):
+    observed = {role: {row['tick']: row for row in rows} for role, rows in history.items()}
+    for entry in entries:
+        role, index = entry['role'], entry['step']
+        slot = 0 if role == 'host' else 1
+        assert entry['goal'] == forward_waiting_point(steps, index, steps[index]['pos']), 'Waiting skipped the next walking waypoint'
+        before = observed[role].get(entry['start_tick'])
+        after = observed[role].get(entry['tick'])
+        assert before and after and after['tick'] > before['tick'], 'Forward waiting was not observed'
+        a, b = before['players'][slot], after['players'][slot]
+        assert a['health'] > 0 and b['health'] > 0 and a['spawned_at'] == b['spawned_at'], 'Forward waiting used death'
+        assert a['warped_at'] == b['warped_at'] and after['owner'] is None and b['grounded'], 'Forward waiting used relocation or lacked support'
+        assert distance(b['feet'][:2], entry['goal'][:2]) < 8 and abs(b['feet'][2]-entry['goal'][2]) < 35, 'Missed forward waiting point'
+        assert distance(b['feet'][:2], steps[index]['pos'][:2]) >= 36, 'Forward waiter blocks the previous waypoint'
 
 
 def fulcrum_waiting_point(neighbors, pivot):
@@ -292,13 +376,13 @@ class FunhousePair(Pair):
             self.evidence.update(checkpoint_sha256=hashlib.sha256(raw).hexdigest(),
                                  checkpoint_tick=self.saved['frame']['tick'])
 
-    def set(self, role, *args, shoot_switch=None, hold_goal=False, runup=None, surface=None, **kwargs):
+    def set(self, role, *args, shoot_switch=None, hold_goal=False, runup=None, surface=None, funhouse_exit=False, **kwargs):
         kwargs.setdefault('attack', bool(args and args[0] is not None or kwargs.get('goal') is not None))
         super().set(role, *args, **kwargs)
         self.commands[role].update(input_lead=self.lead if role == 'guest' else 0,
             watch_dialogue=True, skip_scene=self.args.skip_scenes, prefer_cards=getattr(self, 'prefer_cards', True),
             avoid_switches=True, shoot_switch=shoot_switch, hold_goal=hold_goal,
-            combat_tactics=True, runup=runup, surface=surface)
+            combat_tactics=True, runup=runup, surface=surface, funhouse_exit=funhouse_exit)
         if getattr(self, 'allow_revival', False):
             self.commands[role]['recovery_trace'] = role == 'host'
 
@@ -418,6 +502,9 @@ class FunhousePair(Pair):
         # The native Funhouse steer() accepts 20/52 on its tilting approach.
         # Requiring a slower eight-unit stop lets the loaded tip sink away.
         radius, height = (20, 52) if jump or crossing else (8, 35)
+        slope = sloped_arrival(self.step, goal) and not (jump or crossing or surface is not None)
+        if slope:
+            height = 52
         runup = None
         if running_jump:
             assert jump and not navigate and not crossing
@@ -461,6 +548,8 @@ class FunhousePair(Pair):
             if crossing:
                 driver = self.reports[role]['route_driver']
                 arrived = acknowledged and driver['phase'] in ('walking', 'settling landing', 'reached')
+            if slope:
+                arrived = acknowledged and self.reports[role]['route_driver']['phase'] in ('walking', 'reached')
             if self.busy() or arrived and body['grounded'] and at_goal:
                 return True
             if surface is None and not crossing and body.get('ledge') and not body['ledge']['pulling'] and (ledge_jump is None or tick - ledge_jump > 120):
@@ -493,9 +582,26 @@ class FunhousePair(Pair):
         """Walk to a native clear/supported neighbor, keeping the approach open."""
         slot = 0 if role == 'host' else 1
         at, incoming = self.body(role)['player']['feet'], self.body(other)['player']['feet']
-        parking = waiting_point(self.reports[role]['route_driver']['neighbors'][slot], at, incoming, goal)
+        # Queue the narrow slope in the direction of travel. Its exact arrival
+        # can have no supported lateral neighbor; do not improvise an offset.
+        forward = self.step == 111 and surface is None
+        if forward:
+            parking = forward_waiting_point(self.steps, self.step, goal)
+            assert parking is not None, 'No authored forward waiting point'
+        else:
+            try:
+                parking = waiting_point(self.reports[role]['route_driver']['neighbors'][slot], at, incoming, goal)
+            except AssertionError:
+                parking = forward_waiting_point(self.steps, self.step, goal) if surface is None else None
+                if parking is None:
+                    raise
+                forward = True
+        start_tick = self.reports[role]['frame']['tick']
         self.move(role, parking, surface=surface)
         assert distance(self.body(role)['player']['feet'][:2], goal[:2]) >= 36
+        if forward:
+            self.evidence.setdefault('forward_waits', []).append(dict(role=role, step=self.step, goal=parking,
+                start_tick=start_tick, tick=self.reports[role]['frame']['tick']))
         # Continue defending this waiting point. An enemy hit can otherwise
         # push the idle waiter into the partner's destination and block it.
         # Keep steering through the handoff; a neutral settling interval lets
@@ -511,7 +617,9 @@ class FunhousePair(Pair):
         other = 'guest' if first == 'host' else 'host'
         self.set(other, attack=True)
         for role in (first, other):
-            follow = other if surface is None and role == first and not jump and distance(self.body(role)['player']['feet'], goal) > 192 else None
+            # On the narrow descent a follower can occupy the leader's target
+            # after a death/respawn. Queue personal arrivals and parking there.
+            follow = other if surface is None and role == first and not jump and not 111 <= self.step <= 117 and distance(self.body(role)['player']['feet'], goal) > 192 else None
             self.record_arrival(role, goal, jump, follow=follow, surface=surface)
             if role == first:
                 self.park(first, other, goal, surface=surface)
@@ -674,15 +782,20 @@ class FunhousePair(Pair):
             self.move(role, [x, -3400, 0], surface=460)
             self.until(lambda: self.state(role)['fulcrums'][62][0] <= -43, 30)
             self.step = 103
-            self.record_arrival(role, self.steps[103]['pos'], surface=460)
-            # At maximum tilt the rear target lies beyond the brush footprint.
-            # Keep standing on 103 until ordinary loading opens that approach.
-            self.until(lambda: self.state(role)['fulcrums'][62][0] >= -30, 30)
-            assert self.state(role)['fulcrums'][62][0] < -20, 'Missed the raised seesaw approach window'
-            self.step = 104
-            self.record_arrival(role, self.steps[104]['pos'], surface=460)
-            self.step = 105
-            self.record_arrival(role, self.steps[105]['pos'], jump=True)
+            self.set(role, funhouse_exit=True, attack=True)
+            self.moving_role = role
+            try:
+                self.until(lambda: self.reached(role), 70)
+            finally:
+                self.moving_role = None
+            report = self.reports[role]
+            course = report['route_driver']['funhouse_exit']
+            assert course and course['reached'] and course['step'] == 106
+            for native in course['receipts']:
+                self.evidence['arrivals'].append(dict(step=native['step'], role=role,
+                    goal=self.steps[native['step']]['pos'], tick=native['tick'], feet=native['feet'],
+                    epoch=report['frame']['epoch'], command=report['route_driver']['command'],
+                    native_exit=True, course=course))
             self.step = 106
             self.hold_roles([role], self.steps[106]['pos'], self.steps[106]['frames'])
             self.retain(f'upper-seesaw-{role}')
@@ -762,6 +875,7 @@ class FunhousePair(Pair):
         assert self.completed == list(range(self.args.start_step, self.args.last_step + 1))
         verify_arrivals(self.steps, self.completed, self.evidence['arrivals'], self.history, self.allow_revival)
         verify_following(self.evidence.get('following_footings', []), self.history)
+        verify_forward_waits(self.evidence.get('forward_waits', []), self.steps, self.history)
         verify_loot(self.evidence.get('loot', []), self.history)
         verify_holds(self.steps, self.completed, self.evidence.get('holds', []), self.history)
         shots = self.evidence.get('switches', [])
@@ -822,6 +936,16 @@ class FunhousePair(Pair):
                 self.prefer_cards = bool(step['pos'][0])
             else:
                 self.go(step['pos'], jump=mode == 'jump', surface=460 if self.step in (101, 103, 104) else None)
+            if self.step in (107, 109, 112):
+                # Defeat the visible upper-corridor attackers before walking
+                # onto the narrow descent. Moving-goal steering cannot dodge
+                # their punches/waves. These are normal, resource-costed fights.
+                previous = self.prefer_cards
+                self.prefer_cards = True
+                try:
+                    self.clear()
+                finally:
+                    self.prefer_cards = previous
             self.completed.append(self.step)
             if mode in ('', 'clear'):
                 self.collect_loot()

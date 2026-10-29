@@ -51,19 +51,30 @@ Native support diagnostics verify actual standing on the tilted board during
 101 and 103; falling onto a lower floor cannot count as arrival. The clear check
 now includes visible resident Boojums and their remaining attacks. The run fails
 at 104 when both riders load the rear and its next target loses support. A normal
-checkpoint before 103 is retained for a coordinated upper exit. A subsequent
-queued replay verifies Blue's 103/104 supported approaches, actual 105 upper jump
-and 200-tick hold at 106, with 296 matching states and both players at 100 health.
-Red reaches the solo approach after the raised window closes, so the paired
-section remains failed. Red needs correctly timed continuous movement; reducing
-remote braking alone caused oscillation and was reverted. Later machinery,
-scenes, combat and exit remain open. The total stays 48.1%.
+checkpoint before 103 is retained for a coordinated upper exit. Source `88b98f0`
+now verifies both riders through **103-109**: 12 personal arrivals, two 200-tick
+holds, two own essence pickups and 719 matching player/world/native states.
+An opt-in continuous test controller sends ordinary movement and jump inputs;
+each brief approach/landing receipt must match actual sent and restored frames
+on both clients. No game physics or arrival bounds were relaxed.
 
-The latest frozen build passes 866 active Rust tests and native Funhouse
-battle63/world41/scene37 plus Checkmate94. The six added world checks verify
-read-only surface projection and personal support. Single-player component
-gameplay matches the baseline. Overall
-stays **48.1%**, with six combined campaign rows. See [Funhouse evidence](FUNHOUSE.md).
+A separate resumed **107-117** run on that source passes 22 personal arrivals,
+six own pickups and 1,524 matching states, without new deaths. The current
+`94488e1` replay verifies **111-116** with 12 arrivals, one actual forward waiting
+move, three own pickups and 1,010 matching states. Red's natural death also gives
+an exact ten-second, 25-health revival with preserved resources, safe placement
+and spectator/return camera proof. The recovery logger uses co-op's actual
+slope-aware support rules, with floating/airborne/edge rejection checks.
+The replay then stalls at 117 while Red's navigation worker keeps planning;
+the earlier successful segment does not cover this failure. Reliable repetition,
+later weapons, pendulums, scenes, combat and exit remain open.
+
+The latest frozen build passes **870 active Rust tests** and native Funhouse
+**battle63/world43/scene37**, plus **Checkmate94**. Single-player component
+gameplay matches the baseline apart from two measured benchmark durations.
+The **32 Funhouse guards**, **13 recovery guards** and **seven source-package
+tests** pass. Overall stays **48.1%**, with six combined campaign rows. See
+[Funhouse evidence](FUNHOUSE.md).
 
 Latest full-route milestone: a fresh Blue-led Checkmate run now passes through
 the King and into Funhouse over the public internet, including Red's verified

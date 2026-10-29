@@ -231,11 +231,27 @@ fn gas(a:&mut Assets,map:&Bsp)->Result<()> {
     let saved=o.snapshot();ensure!(o.coop_contacts(FIXED_DT,&mut slots(&mut p,&mut s)).is_none() && o.snapshot()==saved,"Dead team started gas scene");
     println!("PASS Funhouse dead team cannot start automatic gas scene");Ok(())
 }
+fn sloped_revival_evidence(a:&mut Assets,map:&Bsp)->Result<()> {
+    let o=free(a,map)?;let w=world(map,&o)?;
+    // Actual natural-revival positions from the paired descending-corridor run.
+    for feet in [vec3(684.78735,-4760.3857,142.00255),vec3(658.48145,-4634.635,138.41537)] {
+        let mut p=Player::spawn(&w,feet+Vec3::Z*crate::movement::EYE_HEIGHT).context("Missing sloped spawn support")?;
+        ensure!(p.feet.distance(feet)<0.1 && crate::coop::world::revival_supported(&w,&p),"Actual sloped revival rejected");
+        ensure!(!crate::recovery::supported(&w,p.feet),"Fixture does not exercise the old flat-ground audit mismatch");
+        p.feet.z+=8.;
+        ensure!(!crate::coop::world::revival_supported(&w,&p),"Floating revival counted as supported");
+        p.feet=feet;p.grounded=false;
+        ensure!(!crate::coop::world::revival_supported(&w,&p),"Airborne body counted as grounded revival");
+        println!("PASS Funhouse actual sloped revival evidence at {feet:?}, floating/airborne rejected");
+    }
+    Ok(())
+}
 pub(super) fn check(a:&mut Assets)->Result<()> {
     let map=Bsp::parse(&a.read("maps/funhouse.bsp")?)?;
     let mut failures=Vec::new();
     for (label,result) in [("fulcrums",tilts(a,&map)),("surface goals",surface_goals(a,&map)),("pendulums",pendulums(a,&map)),("doors/tube",doors_and_tube(a,&map)),
-        ("dead/blocked",dead_and_blocked(a,&map)),("boarding",boarding(a,&map)),("gas",gas(a,&map))] {
+        ("dead/blocked",dead_and_blocked(a,&map)),("boarding",boarding(a,&map)),("gas",gas(a,&map)),
+        ("sloped revival evidence",sloped_revival_evidence(a,&map))] {
         if let Err(e)=result {failures.push(format!("{label}: {e:#}"));}
     }
     ensure!(failures.is_empty(),"Funhouse paired world failures:\n{}",failures.join("\n"));

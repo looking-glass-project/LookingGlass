@@ -256,6 +256,14 @@ pub fn interpolate_body(body: &mut Body, previous: &Body, elapsed: f32) {
 pub fn safe_near(world: &World, feet: Vec3) -> Option<Player> {
     safe_near_with(world, feet, |_| true)
 }
+
+/// Read-only recovery evidence using co-op's actual slope/edge placement rules.
+/// A supported footprint alone must not label a floating body as grounded.
+pub(crate) fn revival_supported(world: &World, player: &Player) -> bool {
+    if !player.grounded || !super::placement::supported(world, player.feet) { return false; }
+    let floor=world.body_trace(player.feet,player.feet-Vec3::Z*3.);
+    !floor.start_solid && floor.fraction<1. && floor.normal.z>=0.65
+}
 pub fn safe_near_with(world: &World, feet: Vec3, safe: impl Fn(Vec3) -> bool) -> Option<Player> {
     super::placement::near(world, feet, 32., safe)
 }

@@ -20,6 +20,9 @@ struct Command {
     /// Project an ordinary walking goal onto a named live Funhouse fulcrum.
     #[serde(default)]
     surface: Option<usize>,
+    /// Continuous ordinary-input Funhouse seesaw approach and upper jump.
+    #[serde(default)]
+    funhouse_exit: bool,
     /// Opt-in host evidence, separate from gameplay state and the network wire.
     #[serde(default)]
     recovery_trace: bool,
@@ -175,6 +178,14 @@ impl Command {
                 "Invalid moving-step command");
         }
         let courses=[self.temple_follow,self.garden_follow,self.sanctum_follow,self.chess_follow,self.castling_follow].iter().filter(|c|c.is_some()).count();
+        if self.funhouse_exit {
+            ensure!(self.goal.is_none() && self.marker.is_none() && self.surface.is_none()
+                && self.rope.is_none() && self.use_aim.is_none() && self.beyond_step.is_none()
+                && self.runup.is_none() && self.shoot_switch.is_none() && self.speed_limit.is_none()
+                && courses==0 && !self.swim && !self.horizontal && !self.navigate && !self.hold_goal
+                && !self.run && !self.jump && !self.checkpoint && !self.finish,
+                "The Funhouse exit requires its own ordinary-input sequence");
+        }
         if self.hold_goal {
             ensure!(self.goal.is_some() && self.marker.is_none() && self.run && !self.jump
                 && !self.navigate && !self.swim && self.rope.is_none() && self.runup.is_none()
@@ -285,6 +296,7 @@ pub struct Report {
     /// Nearby supported stopping points; only the local fixture reads these.
     pub neighbors: [Vec<Vec3>; 2],
     pub surface: Option<crate::levels::funhouse::RouteSurface>,
+    pub funhouse_exit: Option<crate::levels::funhouse::ExitReport>,
     pub blade_pickups: [bool; 2],
     pub cards_pickups: [bool; 2],
     pub expected: Option<Vec3>,
@@ -329,6 +341,24 @@ pub struct NetworkState {
     world_sha256: String,
     /// Native residents are separate from the registered encounter controllers.
     native_sha256: String,
+    /// Compact actual bodies for verifying landings between outer report polls.
+    movement: [MovementEvidence; 2],
+}
+#[derive(Serialize)]
+struct MovementEvidence {
+    feet: Vec3,
+    velocity: Vec3,
+    grounded: bool,
+    jumps: u64,
+    health: f32,
+    spawned_at: u64,
+    warped_at: u64,
+}
+impl From<&super::world::Body> for MovementEvidence {
+    fn from(b: &super::world::Body) -> Self {
+        Self { feet:b.player.feet, velocity:b.player.velocity, grounded:b.player.grounded,
+            jumps:b.player.jumps, health:b.stats.sanity(), spawned_at:b.spawned_at, warped_at:b.warped_at }
+    }
 }
 #[derive(Serialize)]
 pub struct EnemyReport<S> {
@@ -693,6 +723,7 @@ pub struct Driver {
     sanctum_course: Option<crate::levels::centipede2::NetworkDriver>,
     chess_course: Option<crate::levels::wchess1::NetworkDriver>,
     castling_course: Option<crate::levels::wchess2::NetworkDriver>,
+    funhouse_exit: Option<crate::levels::funhouse::NetworkExit>,
     location: Option<(u64, u64, u64)>,
     pub report: Report,
 }
@@ -713,6 +744,9 @@ impl Driver {
     /// Only the opt-in local harness keeps this bounded diagnostic history.
     pub fn record_state(&mut self, frame: &Frame, arena: &Arena) -> Result<()> {
         use sha2::{Digest, Sha256};
+        if let Some(course)=&mut self.funhouse_exit {
+            course.record_state(frame,arena);self.report.funhouse_exit=Some(course.report());
+        }
         let states = &mut self.report.network_states;
         if states.back().is_some_and(|s| (s.epoch,s.tick) == (frame.epoch,frame.tick)) { return Ok(()); }
         let enemies = arena.stage.interactions.encounters.as_ref().map(|c| c.snapshot());
@@ -723,7 +757,8 @@ impl Driver {
         states.push_back(NetworkState { epoch:frame.epoch, tick:frame.tick,
             sha256:format!("{:x}",Sha256::digest(bytes)),
             world_sha256:format!("{:x}",Sha256::digest(world)),
-            native_sha256:format!("{:x}",Sha256::digest(native)) });
+            native_sha256:format!("{:x}",Sha256::digest(native)),
+            movement:frame.players.each_ref().map(MovementEvidence::from) });
         while states.len() > 64 { states.pop_front(); }
         Ok(())
     }
@@ -736,7 +771,7 @@ impl Driver {
             navigation_clock:NavigationClock::new(now), jumped: false, rope_used: false,
             control_used: false, switch_aim:SwitchAim::default(), combat_aim:CombatAim::default(),combat_home:None,combat_location:None,
             step_height: None, swim_goal: None, swim_worker: None,
-            garden_course: None, sanctum_course: None, chess_course: None, castling_course: None, location: None, report: Report::default() }
+            garden_course: None, sanctum_course: None, chess_course: None, castling_course: None, funhouse_exit:None, location: None, report: Report::default() }
     }
     pub fn poll(&mut self, now: Instant) {
         if now.duration_since(self.polled) < Duration::from_millis(50) { return; }
@@ -759,6 +794,7 @@ impl Driver {
                     self.chess_course=None;self.report.chess_course=None;
                 }
                 if self.command.as_ref().is_none_or(|old| old.id != command.id || old.shoot_switch!=command.shoot_switch) {
+                    self.funhouse_exit=None;self.report.funhouse_exit=None;
                     self.plan.clear(); self.jumped = false; self.rope_used = false; self.location = None;
                     self.control_used = false;
                     self.switch_aim=SwitchAim::default();
@@ -1136,7 +1172,7 @@ impl Driver {
                 let cards=command.prefer_cards && body.stats.copies(1)>0 && body.stats.will()>=crate::route::fight::CARD_COST;
                 if let Some(target)=self.combat_aim.sample((frame.epoch,frame.tick),&context,&foes,body.player.eye(),cards,keys) {
                     if command.goal.is_none() && command.marker.is_none() && command.rope.is_none()
-                        && command.use_aim.is_none() && command.beyond_step.is_none() {
+                        && command.use_aim.is_none() && command.beyond_step.is_none() && !command.funhouse_exit {
                         if self.combat_home.is_none_or(|(id,_)|id!=command.id) {self.combat_home=Some((command.id,body.player.feet));}
                         keys.wish=combat_dodge(world,&body.player,self.combat_home.unwrap().1,target.center,frame.tick,
                             other.stats.alive().then_some(other.player.feet),keys.weapon==Some(0)&&keys.primary,
@@ -1152,6 +1188,18 @@ impl Driver {
         // Rope movement can be combined with ordinary weapon input. Apply aim
         // after movement-facing so a swing does not redirect an intended shot.
         if command.rope.is_some() { return; }
+        if command.funhouse_exit {
+            let result=(|| -> Result<()> {
+                if self.funhouse_exit.is_none() { self.funhouse_exit=Some(crate::levels::funhouse::NetworkExit::new(frame,arena,local)?); }
+                let course=self.funhouse_exit.as_mut().unwrap();
+                course.sample(frame,arena,local,command.input_lead,keys)?;
+                let report=course.report();self.report.reached=report.reached;
+                self.report.funhouse_exit=Some(report);Ok(())
+            })();
+            if let Err(error)=result {self.report.error=Some(error.to_string());}
+            self.report.phase="following Funhouse upper exit";
+            return;
+        }
         if let Some(index) = command.beyond_step {
             let Some(beyond) = &arena.stage.interactions.beyond else {
                 self.report.error = Some("Moving-step command requires Beyond the Wall".into()); return;
@@ -2079,6 +2127,23 @@ mod tests {
         }
         projected["goal"]=serde_json::Value::Null;
         assert!(serde_json::from_value::<Command>(projected).unwrap().validate().is_err());
+    }
+    #[test]
+    fn funhouse_exit_is_opt_in_and_cannot_mix_route_commands() {
+        let base=serde_json::json!({"id":1,"heartbeat":1,"epoch":1,"goal":null,
+            "navigate":false,"attack":true,"capture":false,"finish":false});
+        assert!(!serde_json::from_value::<Command>(base.clone()).unwrap().funhouse_exit);
+        let mut active=base;active["funhouse_exit"]=true.into();
+        assert!(serde_json::from_value::<Command>(active.clone()).unwrap().validate().is_ok());
+        for flag in ["navigate","horizontal","jump","run","hold_goal","swim","checkpoint","finish"] {
+            let mut bad=active.clone();bad[flag]=true.into();
+            assert!(serde_json::from_value::<Command>(bad).unwrap().validate().is_err(),"{flag}");
+        }
+        for (key,value) in [("goal",serde_json::json!([1920,-3820,150])),("surface",serde_json::json!(460)),
+            ("speed_limit",serde_json::json!(100)),("chess_follow",serde_json::json!("Blue"))] {
+            let mut bad=active.clone();bad[key]=value;
+            assert!(serde_json::from_value::<Command>(bad).unwrap().validate().is_err(),"{key}");
+        }
     }
     #[test]
     fn legacy_route_commands_remain_valid_and_rope_inputs_are_bounded() {

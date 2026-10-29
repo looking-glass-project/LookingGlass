@@ -18,37 +18,37 @@ historical; the current weighted estimate is **48.1% (about 48%)**. Six of 39
 campaign visits have combined evidence, with earlier contact-system repeats
 still required. Repeated component tests do not increase this total.
 
-Latest Funhouse traversal milestone: source `b897af2` passes a fresh watched
-entrance and authored steps 0-28 in two independent public-internet clients,
-with 40 ms delay and 20 ms jitter. Both players personally reach all 22 movement
-waypoints: 44 arrivals match the recorded client bodies. There are 2,734 matching
-player/world/native states, no deaths, and final health is Blue 86 / Red 75.
-Normal checkpoints are retained before steps 7, 28 and 29. Delayed diagnostic
-steering now settles at small stopping points; all 858 active Rust tests and the
-Funhouse battle/world/scene checks pass. Single-player component gameplay still
-matches baseline. This is an opening segment, not a complete visit. The resumed mirror sequence
-now also passes separately on source `b703a7a`: both players jump down and back,
-the Blade activates the mirror, and both perform the authored timed hold. Its
-615 matching player/world/native states come from steps 29-32 only. The longer
-attempt remains failed at step 35, where enemy knockback pushed the waiting
-player into the other player's destination. A correction to the automated
-waiting controls now gets both players through step 35. The next run fails
-at step 36 when Red dies. A subsequent recovery-enabled replay reaches step
-37 and records a correct Red revival: exactly 1,200 ticks, 25 health, preserved
-resources and verified spectator/return cameras in the recorded client views.
-It later ends in a team wipe; the host restores both saved bodies and inventories
-exactly, but continued play after that wipe remains unverified. The return
-corridor, transports, pendulums, later combat and the exit remain open. Overall
-stays **48.1%**, with six combined campaign rows. See [Funhouse evidence](FUNHOUSE.md).
+Latest Funhouse traversal milestone: source `c946266` now passes the resumed
+return corridor, authored steps **35-42**, in independent public-internet clients
+with 40 ms delay and 20 ms jitter. All **16 personal arrivals** and **1,175
+matching player/world/native states** pass. Red's natural revival takes exactly
+1,200 active ticks and restores 25 health, with preserved resources, safe
+placement and verified spectator/return cameras. Both players walk over their
+own essence from defeated Automatons. The runner had previously walked past
+these drops and entered the next fight nearly dead. Final health is Blue 100 /
+Red 26, and a normal checkpoint before step 43 is retained.
 
-The latest automated combat controller, source `c946266`, uses actual Blade
-melee reach, observed target motion for throws and ordinary defensive movement.
-It can keep a waiting survivor moving during the partner's revival countdown.
-All 865 active Rust tests pass, as do the Funhouse battle/world/scene checks and
-94 native Checkmate records; the single-player component log still matches.
-The two-client replay nevertheless ends in a team wipe at step 37. Its normal
-checkpoint, reports and failure are retained. These controller improvements
-do not establish a corridor pass or increase the completion estimate.
+The fresh watched entrance through steps 0-28 remains separately verified on
+`b897af2` (44 personal arrivals and 2,734 matching states), and mirror steps
+29-32 on `b703a7a` (both jumps/holds, one actual shot and 615 matching states).
+These are separate segment proofs; no fresh full-route pass on `c946266` is
+claimed. The first machinery attempt verifies the ten personal arrivals and
+three paired timed holds in steps 43-50, then fails to hit cell4 at step 51.
+The earlier failed combat attempts remain recorded. A subsequent resumed
+**46-88** machinery run now passes: **50 personal arrivals**, **11 paired timed
+holds**, **seven actual cell-switch shots** and **3,633 matching states**. There
+are no deaths and final health is 100/90. Cell3 required two ordinary walks to
+observed safe shooting footings; the other six shots completed at their first
+positions in this run. A normal checkpoint before step 89 is retained. The
+next attempt has scoped arrival/hold/pickup proof through 94, then stops at 95:
+both players remain alive on a tilted fulcrum, but the second cannot reach the
+authored landing height after the first parks. Later machinery, scenes, combat
+and the exit are still open.
+
+The frozen build's 865 active Rust tests and native Funhouse battle63/world35/
+scene37 plus Checkmate94 results remain valid; no Rust source changed for the
+pickup runner. Single-player component gameplay matches the baseline. Overall
+stays **48.1%**, with six combined campaign rows. See [Funhouse evidence](FUNHOUSE.md).
 
 Latest full-route milestone: a fresh Blue-led Checkmate run now passes through
 the King and into Funhouse over the public internet, including Red's verified

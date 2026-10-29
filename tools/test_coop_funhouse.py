@@ -1,6 +1,6 @@
 """Play Funhouse's opening, mirror and cell machinery in independent clients.
 
-This runner covers the authored entrance through step 88. It sends only ordinary
+This runner covers the authored entrance through step 117. It sends only ordinary
 inputs and normal save requests, including actual Blade throws at switches.
 Every movement waypoint needs a separate arrival receipt for each player.
 Full traversal, recovery, machinery and the exit remain separate work.
@@ -66,6 +66,22 @@ def verify_switch_receipt(entry, history):
         relevant = [r for r in states if r['tick'] >= entry['before_ticks'][role]]
         assert relevant and not switched(relevant[0]['funhouse'], entry['thread']), 'Switch was already active'
         assert any(switched(r['funhouse'], entry['thread']) for r in relevant), 'Switch did not reach both clients'
+    slot = 0 if entry['role'] == 'host' else 1
+    observed = {row['tick']: row for row in rows}
+    for movement in entry.get('repositions', []):
+        before, after = observed.get(movement['before']), observed.get(movement['after'])
+        assert before and after, 'Unobserved shooting approach'
+        assert movement['goal'] in before['driver']['neighbors'][slot], 'Invented shooting footing'
+        body = after['players'][slot]
+        assert body['health'] > 0 and body['grounded'], 'Unsupported shooting approach'
+        assert distance(body['feet'][:2], movement['goal'][:2]) < 8, 'Missed shooting approach'
+
+
+def shooting_neighbor(neighbors, home, other, target, tried):
+    choices = [p for p in neighbors if distance(p, home) <= 96
+               and distance(p[:2], other[:2]) >= 48
+               and all(distance(p, old) >= 24 for old in tried)]
+    return min(choices, key=lambda p: distance(p, target)) if choices else None
 
 
 def verify_holds(steps, completed, holds, history):
@@ -113,6 +129,46 @@ def clock_threats(report, role):
     return threats
 
 
+def nearby_drops(body):
+    """Only this player's live, uncollected essence near their current footing."""
+    stats, feet = body['stats'], body['player']['feet']
+    if stats['sanity'] <= 0 or stats['sanity'] >= 100 and stats['will'] >= 100:
+        return []
+    visit = 'funhouse$first'
+    drops = []
+    for drop in stats.get('loot', {}).get(visit, {}).get('drops', []):
+        key = f'drop:{visit}:{drop["id"]}'
+        if (key not in stats['collected'] and drop['remaining'] > 0
+                and distance(feet[:2], drop['origin'][:2]) <= 256
+                and abs(feet[2] - drop['origin'][2]) < 35):
+            drops.append(dict(key=key, **drop))
+    return sorted(drops, key=lambda d: distance(feet, d['origin']))
+
+
+def cards_preference(steps, before):
+    enabled = True
+    for step in steps[:before]:
+        if step.get('mode') == 'cards':
+            assert step['pos'][0] in (0, 1), 'Invalid authored Cards preference'
+            enabled = bool(step['pos'][0])
+    return enabled
+
+
+def verify_loot(receipts, history):
+    for receipt in receipts:
+        role, key = receipt['role'], receipt['key']
+        slot = 0 if role == 'host' else 1
+        observed = {row['tick']: row for row in history[role]}
+        before, after = observed.get(receipt['start_tick']), observed.get(receipt['tick'])
+        assert before and after and after['tick'] > before['tick'], 'Unobserved collection'
+        old, new = before['players'][slot], after['players'][slot]
+        assert key not in old['collected'] and key in new['collected'], 'No personal collection transition'
+        assert after['owner'] is None and new['health'] > 0, 'Invalid collection body'
+        drops = old['stats'].get('loot', {}).get('funhouse$first', {}).get('drops', [])
+        assert any(f'drop:funhouse$first:{d["id"]}' == key and d['origin'] == receipt['origin']
+                   and d['remaining'] > 0 for d in drops), 'No observed live personal drop'
+
+
 def following_point(trail, leader, follower):
     # Follow actual supported positions, leaving a body-length margin even
     # while the next delayed input is in transit. Never invent a ledge offset.
@@ -141,6 +197,7 @@ class FunhousePair(Pair):
         self.suspended = {}
         self.survivor_wait = {}
         self.moving_role = None
+        self.prefer_cards = True
         self.minimum_lead = min(1.5, .05 + 2 * (args.delay_ms + args.jitter_ms) / 1000)
         self.lead, self.lead_tick = self.minimum_lead, None
         self.step, self.completed = -1, []
@@ -149,8 +206,9 @@ class FunhousePair(Pair):
         self.deadline = time.monotonic() + 1200
         raw = (ROOT / 'src/levels/funhouse/route_steps.json').read_bytes()
         self.steps = json.loads(raw)
+        self.prefer_cards = cards_preference(self.steps, args.start_step)
         assert len(self.steps) == 1077, 'Review changed authored course'
-        assert all(s.get('mode', '') in ('', 'wait', 'clear', 'jump', 'shot', 'hold')
+        assert all(s.get('mode', '') in ('', 'wait', 'clear', 'jump', 'shot', 'hold', 'cards')
                    for s in self.steps[args.start_step:args.last_step + 1])
         (self.folder / 'course.json').write_bytes(raw)
         self.evidence.update(course_sha256=hashlib.sha256(raw).hexdigest(),
@@ -177,7 +235,7 @@ class FunhousePair(Pair):
         kwargs.setdefault('attack', bool(args and args[0] is not None or kwargs.get('goal') is not None))
         super().set(role, *args, **kwargs)
         self.commands[role].update(input_lead=self.lead if role == 'guest' else 0,
-            watch_dialogue=True, skip_scene=self.args.skip_scenes, prefer_cards=True,
+            watch_dialogue=True, skip_scene=self.args.skip_scenes, prefer_cards=getattr(self, 'prefer_cards', True),
             avoid_switches=True, shoot_switch=shoot_switch, hold_goal=hold_goal,
             combat_tactics=True)
         if getattr(self, 'allow_revival', False):
@@ -396,13 +454,33 @@ class FunhousePair(Pair):
         role = role or min(self.commands, key=lambda r: distance(self.body(r)['player']['feet'], vantage))
         for r in self.commands:
             self.set(r)
-        self.set(role, shoot_switch=thread)
-        command = self.commands[role]['id']
-        self.until(lambda: self.reached(role), 90)
+        home = self.body(role)['player']['feet']
+        tried, repositions = [home], []
+        other = 'guest' if role == 'host' else 'host'
+        for attempt in range(5):
+            self.set(role, shoot_switch=thread)
+            command = self.commands[role]['id']
+            start = self.reports[role]['frame']['tick']
+            self.until(lambda: self.reached(role) or self.reports[role]['frame']['tick'] - start >= 960, 25)
+            if self.reached(role):
+                break
+            assert attempt < 4, 'Switch unreachable from tested ordinary shooting positions'
+            report = self.reports[role]
+            target = report['route_driver']['expected']
+            assert target is not None, 'No active switch target to approach'
+            slot = 0 if role == 'host' else 1
+            point = shooting_neighbor(report['route_driver']['neighbors'][slot], home,
+                                      self.body(other)['player']['feet'], target, tried)
+            assert point is not None, 'No safe nearby shooting approach'
+            tick = report['frame']['tick']
+            self.move(role, point)
+            tried.append(point)
+            repositions.append(dict(before=tick, after=self.reports[role]['frame']['tick'], goal=point))
         self.until(lambda: all(switched(self.state(r), thread) for r in self.commands)
                    and any(r['driver']['command'] == command and r['driver']['phase'] == 'switch completed'
                            and r['driver']['reached'] for r in self.history[role][-8:]), 20)
-        entry = dict(step=self.step, role=role, thread=thread, command=command, before_ticks=before)
+        entry = dict(step=self.step, role=role, thread=thread, command=command, before_ticks=before,
+                     repositions=repositions)
         verify_switch_receipt(entry, self.history)
         self.evidence.setdefault('switches', []).append(entry)
         self.set(role)
@@ -457,12 +535,54 @@ class FunhousePair(Pair):
             return since is not None and tick - since >= 120
         self.until(cleared, 150)
 
+    def collect_loot(self):
+        # Killing a foe without walking over its essence leaves both test
+        # players starved. Each uses their own received inventory and inputs.
+        attempted = set()
+        for _ in range(8):
+            choices = [(self.body(role)['stats']['sanity'], role, drop)
+                       for role in self.commands for drop in nearby_drops(self.body(role))
+                       if (role, drop['key']) not in attempted]
+            if not choices or self.busy():
+                break
+            _, role, drop = min(choices, key=lambda item: item[0])
+            key, goal = drop['key'], drop['origin']
+            attempted.add((role, key))
+            other = 'guest' if role == 'host' else 'host'
+            if self.body(other)['stats']['sanity'] > 0:
+                if distance(self.body(other)['player']['feet'][:2], goal[:2]) < 64:
+                    self.park(other, role, goal)
+                else:
+                    self.set(other, self.body(other)['player']['feet'], run=True, attack=True)
+            # Parking can collect that player's copy incidentally. Re-read
+            # before claiming a separate deliberate collection by this player.
+            if key in self.body(role)['stats']['collected']:
+                continue
+            start = self.reports[role]['frame']['tick']
+            self.set(role, goal, navigate=True, run=True)
+            def done():
+                stats = self.body(role)['stats']
+                live = stats.get('loot', {}).get('funhouse$first', {}).get('drops', [])
+                return (key in stats['collected'] or not any(d['id'] == drop['id'] for d in live)
+                        or self.reports[role]['frame']['tick'] - start >= 1200)
+            self.moving_role = role
+            try:
+                self.until(done, 35)
+            finally:
+                self.moving_role = None
+            if key in self.body(role)['stats']['collected']:
+                self.evidence.setdefault('loot', []).append(dict(role=role, key=key, origin=goal,
+                    start_tick=start, tick=self.reports[role]['frame']['tick']))
+                print('PASS personal essence', role, key, 'health', self.body(role)['stats']['sanity'], flush=True)
+            self.set(role, attack=True)
+
     save_checkpoint = ChessPair.save_checkpoint
 
     def verify(self):
         assert self.completed == list(range(self.args.start_step, self.args.last_step + 1))
         verify_arrivals(self.steps, self.completed, self.evidence['arrivals'], self.history, self.allow_revival)
         verify_following(self.evidence.get('following_footings', []), self.history)
+        verify_loot(self.evidence.get('loot', []), self.history)
         verify_holds(self.steps, self.completed, self.evidence.get('holds', []), self.history)
         shots = self.evidence.get('switches', [])
         assert [e['step'] for e in shots] == [i for i in self.completed if self.steps[i].get('mode') == 'shot']
@@ -511,9 +631,14 @@ class FunhousePair(Pair):
                 self.shoot(step['thread'])
             elif mode == 'hold':
                 self.hold(step['pos'], step['frames'])
+            elif mode == 'cards':
+                assert step['pos'][0] in (0, 1), 'Invalid authored Cards preference'
+                self.prefer_cards = bool(step['pos'][0])
             else:
                 self.go(step['pos'], jump=mode == 'jump')
             self.completed.append(self.step)
+            if mode in ('', 'clear'):
+                self.collect_loot()
             print('PASS Funhouse step', self.step, mode or 'walk', 'health',
                   [self.body(r)['stats']['sanity'] for r in self.commands], flush=True)
         self.save_checkpoint(self.args.last_step + 1)
@@ -562,8 +687,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
     if args.require_revival and not args.allow_revival:
         parser.error('--require-revival requires --allow-revival')
-    if not 0 <= args.start_step <= args.last_step <= 88 or args.last_step < 1:
-        parser.error('The runner currently supports steps 0..88')
+    if not 0 <= args.start_step <= args.last_step <= 117 or args.last_step < 1:
+        parser.error('The runner currently supports steps 0..117')
     if bool(args.checkpoint) != (args.start_step > 0):
         parser.error('A later start requires an unchanged checkpoint; a fresh run starts at zero')
     if 29 < args.start_step < 33 or 28 < args.last_step < 32:

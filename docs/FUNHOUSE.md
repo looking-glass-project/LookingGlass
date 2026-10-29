@@ -338,3 +338,83 @@ pass. The frozen final executable SHA-256 is
 `d5b4422a06cf2808eb9a442be085c3346c143b4ccf7adefd19f0805458374b39`.
 Further combat-route coordination is needed before the machinery segment can
 be reached and verified from this checkpoint. Overall remains **48.1%**.
+
+
+## Return corridor and personal essence (29 October 2026)
+
+The same frozen `c946266` executable now passes **steps 35-42** from the unchanged
+Normal checkpoint in two independent public-internet clients, with 40 ms delay
+and 20 ms jitter. All **16 personal arrivals**, supported following footings and
+**1,175 matching player/world/native states** pass. Red dies naturally at tick
+**34887** and revives at **36087**: exactly **1,200 active ticks**, **25 health**,
+preserved resources and safe placement. Recorded spectator/return views pass.
+The final health is **Blue 100 / Red 26**.
+
+The missing step was collecting essence. The failed replay retained a large
+Automaton drop for each player near the end of step 35, yet the runner left
+Blue at three health and continued to the next fight. It now walks each player
+over nearby live drops from that player's own received inventory. The successful
+run verifies three deliberate pickup transitions (Blue's and Red's first
+Automaton essence, plus Red's second); incidental collection still uses the
+normal game rules. The checker rejects expired or distant candidates, a
+partner's collection credit and disappearance without a personal pickup event.
+No resources, bodies or progression are assigned by the fixture.
+
+Evidence: `private/coop/funhouse-route-19d78fb6fb2442b7beff2da6dc4a1908/`.
+The resulting normal checkpoint before step 43 has SHA-256
+`bdf435a23f89705e21fb1467ee8d968197b008092ef57d13b173af07bb117ddc`.
+The original failed runs remain failed; this is a new successful resumed segment.
+
+The first machinery attempt from that checkpoint verifies ten personal arrivals
+and three paired timed holds across **43-50**, then fails to hit **cell4 at 51**.
+Its retained evidence is `funhouse-route-f885234d3ac4461d859a62d0e8b748e7`.
+The scoped receipt checks pass independently, but the complete machinery run
+remains failed. Its normal checkpoint before 46 is retained. Later cell switches,
+shared transports, pendulums, scenes, combat and the exit remain open.
+
+The runner now also accepts the original Cards preference toggles through step
+117; that extends its supported command vocabulary, not verified coverage.
+Twenty-one Funhouse guards, thirteen shared recovery guards and seven package tests
+pass. The frozen executable and 865 active Rust/native-check results are unchanged.
+These segment results do not complete a campaign row: overall stays **48.1%**.
+
+
+## Cell-section traversal (29 October 2026)
+
+A subsequent independent-client internet run passes **46-88**, starting from
+the unchanged normal checkpoint before 46. It verifies **50 personal movement
+arrivals**, **11 paired timed holds**, **seven requested cell-switch shots** and
+**3,633 matching player/world/native states** with 40 ms delay and 20 ms jitter.
+There are no deaths; final health is **100/90**. Each switch was observed active
+before its command, acknowledged after the actual Blade shot, and received by
+both clients. This covers the requested cell4/3/1/6/5/7/8 sequence in this segment,
+not a new fresh-start proof of every cell.
+
+The fixture can retry a missed switch shot from a native collision/support/
+hazard-checked neighboring footing. It waits eight active simulation seconds
+before trying another position, remains within 96 units of the original footing,
+keeps at least 48 units from the partner, and uses ordinary walking. A receipt
+must match the observed native candidate and actual grounded arrival. Cell3
+needed two such approaches in this replay. Cell4 completed without repositioning
+in the new run; the previous cell4 timeout remains recorded rather than being
+reclassified as a pass. No weapon or collision rule was changed.
+
+Evidence: `private/coop/funhouse-route-e389cb0861f04f65a74961ccc397d027/`.
+The resulting normal checkpoint before 89 has SHA-256
+`47b0a987b66128627550e7694bcd2ed79872dfd97cf8b0176f5d9aeb8ae7f851`.
+Together with the earlier scoped 43-50 proof, these retained segments cover the
+tested opening machinery, but do not establish the full route, later pendulums,
+all recovery/rejoin paths or rendered environment effects. Overall remains
+**48.1%**, six combined campaign rows and 33 open.
+
+
+The next attempt, `funhouse-route-304c8d36ea9e438f9273bf8cdbf29e7e`, starts from
+that normal checkpoint and fails at **95**. Scoped checks for **89-94** pass
+six personal arrivals, two paired holds and three deliberate personal pickup
+receipts. Both players remain at 100 health at the failure. Blue reached 95,
+then parked on the tilting platform; Red could no longer satisfy the authored
+waypoint height. Both end grounded on its 45-degree slope, about 137-141 units
+below the nominal waypoint. The original run remains failed. The next route
+work is to queue the fulcrum crossing and its exit jump while preserving both
+personal receipts, rather than widening the arrival-height check. No full
+89-117 pass, new campaign-row credit or percentage increase is claimed.

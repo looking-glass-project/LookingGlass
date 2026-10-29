@@ -2,7 +2,7 @@
 import copy
 import unittest
 
-from test_coop_funhouse import FunhousePair, verify_arrivals, verify_switch_receipt, verify_holds, waiting_point, clock_threats, following_point, verify_following
+from test_coop_funhouse import FunhousePair, verify_arrivals, verify_switch_receipt, verify_holds, waiting_point, clock_threats, following_point, verify_following, nearby_drops, verify_loot, shooting_neighbor, cards_preference
 
 
 def fixture():
@@ -18,6 +18,57 @@ def fixture():
 
 
 class PersonalArrivalGuards(unittest.TestCase):
+    def test_resumed_course_retains_the_last_authored_cards_choice(self):
+        steps = [dict(pos=[0, 0, 0]), dict(mode='cards', pos=[0, 0, 0]),
+                 dict(pos=[200, 0, 0]), dict(mode='cards', pos=[1, 0, 0])]
+        self.assertTrue(cards_preference(steps, 1))
+        self.assertFalse(cards_preference(steps, 3))
+        self.assertTrue(cards_preference(steps, 4))
+
+    def test_authored_cards_preference_changes_only_requested_controls(self):
+        pair = FunhousePair.__new__(FunhousePair)
+        pair.serial, pair.lead, pair.commands = 0, .3, {}
+        pair.args = type('Args', (), {'skip_scenes': False})()
+        for enabled in (False, True):
+            pair.prefer_cards = enabled
+            pair.set('host', [400, 0, 0], run=True)
+            self.assertEqual(pair.commands['host']['prefer_cards'], enabled)
+            self.assertTrue(pair.commands['host']['attack'])
+            self.assertEqual(pair.commands['host']['goal'], [400, 0, 0])
+
+    def test_drop_selection_uses_personal_live_nearby_inventory(self):
+        drop = dict(id=32, origin=[699, 2239, 3], grade='Large', remaining=7.9)
+        body = dict(player=dict(feet=[800, 2293, 0]), stats=dict(sanity=3, will=.6,
+            collected=[], loot={'funhouse$first': dict(drops=[drop])}))
+        self.assertEqual(nearby_drops(body)[0]['key'], 'drop:funhouse$first:32')
+        for change in ('collected', 'expired', 'distant', 'full'):
+            test = copy.deepcopy(body)
+            if change == 'collected':
+                test['stats']['collected'].append('drop:funhouse$first:32')
+            elif change == 'expired':
+                test['stats']['loot']['funhouse$first']['drops'][0]['remaining'] = 0
+            elif change == 'distant':
+                test['player']['feet'] = [0, 0, 0]
+            else:
+                test['stats'].update(sanity=100, will=100)
+            self.assertEqual(nearby_drops(test), [])
+
+    def test_drop_verification_rejects_partner_credit_and_vanishing_pickups(self):
+        key = 'drop:funhouse$first:32'
+        old = dict(health=3, collected=[], stats=dict(loot={'funhouse$first': dict(
+            drops=[dict(id=32, origin=[699, 2239, 3], remaining=7.9)])}))
+        new = copy.deepcopy(old)
+        new.update(health=53, collected=[key])
+        receipts = [dict(role='host', key=key, origin=[699, 2239, 3], start_tick=1, tick=2)]
+        history = dict(host=[dict(tick=1, owner=None, players=[old, old]),
+                             dict(tick=2, owner=None, players=[new, old])])
+        verify_loot(receipts, history)
+        for bodies in ([old, new], [old, old]):
+            bad = copy.deepcopy(history)
+            bad['host'][1]['players'] = bodies
+            with self.assertRaises(AssertionError):
+                verify_loot(receipts, bad)
+
     def test_following_waits_for_space_and_uses_an_observed_footing(self):
         trail = [dict(tick=100, feet=[0, 0, 0]), dict(tick=200, feet=[96, 0, 0])]
         self.assertIsNone(following_point(trail[:1], [64, 0, 0], [-60, 0, 0]))
@@ -184,6 +235,23 @@ def shot_fixture():
 
 
 class SwitchReceiptGuards(unittest.TestCase):
+    def test_shooting_approach_stays_near_home_and_clear_of_partner(self):
+        home, other, target = [-1232, -52, 0], [-1230, -88, 0], [-1043, -16, 288]
+        safe, blocked, far = [-1184, -52, 0], [-1232, -100, 0], [-1088, -52, 0]
+        self.assertEqual(shooting_neighbor([safe, blocked, far], home, other, target, [home]), safe)
+        self.assertIsNone(shooting_neighbor([safe, blocked, far], home, other, target, [home, safe]))
+
+    def test_shooting_receipt_rejects_an_invented_approach(self):
+        entry, history = shot_fixture()
+        point = [-1184, -52, 0]
+        entry['repositions'] = [dict(before=10, after=11, goal=point)]
+        history['host'][0]['driver']['neighbors'] = [[point], []]
+        history['host'][1]['players'] = [dict(health=100, grounded=True, feet=point), {}]
+        verify_switch_receipt(entry, history)
+        history['host'][0]['driver']['neighbors'][0] = []
+        with self.assertRaises(AssertionError):
+            verify_switch_receipt(entry, history)
+
     def test_observed_target_and_both_shared_states_pass(self):
         verify_switch_receipt(*shot_fixture())
 

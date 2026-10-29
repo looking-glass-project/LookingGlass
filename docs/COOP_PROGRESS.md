@@ -72,9 +72,23 @@ off the landing route before Blue follows. Both finish at 70 health without
 deaths; a normal checkpoint before 135 is retained. The final jump waits for a
 reachable departure window, including platform movement during network delay.
 
-Next is the corridor from **135 onward**, then later machinery, scenes and exit.
-Fresh full traversal and the opposite crossing order remain unverified. These
-separate segment passes add no completed campaign row. Overall stays **48.1%**.
+The next **135-138** segment now passes on the same native source: six personal
+corridor arrivals, three supported waiting handoffs, Red's watched Tweedles scene
+and safe shared reunion, with **1,092 matching states**. Both observe all nine
+scene lines; Blue remains hidden and frozen, then both return at 70 health with
+their personal resources intact. A normal checkpoint before 139 is retained.
+The entrance step is verified by its scene trigger and reunion: the scene closes
+the door before either player can reach the old marker inside it.
+
+A later resumed attempt independently verifies the **139-143 prefix**: ten
+personal arrivals, five supported waiting handoffs and **505 matching states**,
+ending at 60/70 health without deaths. It then wipes at 144: Blue dies while
+waiting below the climb, and Red dies before Blue's revival. A normal checkpoint
+before 144 is retained; the complete 139-146 run failed.
+
+Next is survival and coordinated movement at **144**, then later machinery,
+scenes and exit. Fresh full traversal and the opposite crossing order remain
+unverified. These segments add no completed campaign row. Overall stays **48.1%**.
 
 Tests run as two independent clients through the public network path on Anode,
 with injected delay and jitter. Routine diagnosis uses state and log assertions.

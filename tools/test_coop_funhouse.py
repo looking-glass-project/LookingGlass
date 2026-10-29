@@ -1,8 +1,9 @@
 """Play Funhouse's opening, mirror and cell machinery in independent clients.
 
-This runner covers the authored entrance through step 134. It sends only ordinary
+This runner covers the authored entrance through step 146. It sends only ordinary
 inputs and normal save requests, including actual Blade throws at switches.
-Every movement waypoint needs a separate arrival receipt for each player.
+Every movement waypoint needs a separate arrival receipt for each player; the
+arena entrance instead verifies its first-entrant scene and shared reunion.
 Full traversal, recovery, machinery and the exit remain separate work.
 """
 import argparse
@@ -21,18 +22,28 @@ from coop_recovery import read_trace, verify_views
 from coop_recovery import verify_presence as verify_recovery_presence
 
 
-def sloped_arrival(step, goal):
-    # The authored native steer() accepts 52 vertical units. This descent's
-    # actual floor is near z69 at its z112 marker; the far-bank marker is about
-    # 37 above its slope. Keep the eight-unit horizontal gate and real support.
-    return (step == 116 and goal == [150, -4520, 112]
-            or step == 134 and goal == [450, -3270, 30])
+AUTHORED_WALK_GOALS = {i: step['pos'] for i, step in enumerate(json.loads(
+    (ROOT / 'src/levels/funhouse/route_steps.json').read_text())) if not step.get('mode')}
 
 
-def verify_arrivals(steps, completed, receipts, history, allow_revival=False):
+def authored_walk_arrival(step, goal):
+    # Native steer() uses 52 vertical units for these approximate markers.
+    # Bind that rule to the exact authored walk, retaining eight horizontal
+    # units, actual ground contact and an acknowledged walking command.
+    # Dynamic brush goals keep their own stricter projected support bounds.
+    return AUTHORED_WALK_GOALS.get(step) == goal
+
+
+def verify_arrivals(steps, completed, receipts, history, allow_revival=False, scene_handoffs=()):
     """Require each claimed arrival to match an immutable client observation."""
+    scene_steps = {138} if 138 in completed else set()
+    assert [e['step'] for e in scene_handoffs] == sorted(scene_steps), 'Missing or extra arena scene handoff'
+    for entry in scene_handoffs:
+        assert steps[entry['step']] == dict(pos=[32, -2800, -64]), 'Unknown scene entrance waypoint'
+        verify_tweedle_handoff(entry, history)
     observed = {role: {row['tick']: row for row in rows} for role, rows in history.items()}
-    expected = {step for step in completed if steps[step].get('mode', '') in ('', 'jump', 'pendulum')}
+    expected = {step for step in completed if step not in scene_steps
+                and steps[step].get('mode', '') in ('', 'jump', 'pendulum')}
     assert {r['step'] for r in receipts} == expected, 'Missing or extra movement receipts'
     for step in expected:
         entries = [r for r in receipts if r['step'] == step]
@@ -73,7 +84,7 @@ def verify_arrivals(steps, completed, receipts, history, allow_revival=False):
                 assert row['driver']['command'] == receipt['command'], 'No acknowledged crossing command'
                 assert row['driver']['phase'] in ('walking', 'settling landing', 'reached'), 'No observed crossing input'
             radius, height = (20, 52) if jump or crossing else (8, 35)
-            if sloped_arrival(step, steps[step]['pos']):
+            if not (jump or crossing or surface is not None) and authored_walk_arrival(step, steps[step]['pos']):
                 height = 52
                 assert row['driver']['command'] == receipt['command'], 'Slope command was not acknowledged'
                 assert row['driver']['phase'] in ('walking', 'reached'), 'No observed slope approach input'
@@ -183,6 +194,55 @@ def switched(state, thread):
         return state['mirror']
     assert thread.startswith('cell') and len(thread) == 5 and thread[4] in '12345678', 'Unknown authored switch'
     return bool(state['cells'] & (1 << (int(thread[4:]) - 1)))
+
+
+def verify_tweedle_handoff(entry, history):
+    assert entry['step'] == 138 and entry['scene'] == 'Funhouse_Tweedle_Cinema1'
+    owner = 'Blue' if entry['role'] == 'host' else 'Red'
+    partner = 1 if owner == 'Blue' else 0
+    warps = []
+    for peer, rows in history.items():
+        rows = [r for r in rows if entry['starts'][peer] <= r['tick'] <= entry['ends'][peer]]
+        active = [r for r in rows if r['scene'] == entry['scene'] and r['owner'] is not None]
+        assert active and {r['owner'] for r in active} == {owner}, 'Wrong or missing first-entrant scene owner'
+        before = active[0]
+        for row in active:
+            assert not row['presentation']['visible_players'][partner], 'Scene displayed the waiting partner'
+            assert row['players'][partner]['feet'] == before['players'][partner]['feet'], 'Scene moved the waiting partner'
+            for old, body in zip(before['players'], row['players']):
+                assert body['health'] == old['health'] > 0 and body['spawned_at'] == old['spawned_at'], 'Scene damaged or revived a player'
+                assert body['stats']['owned'] == old['stats']['owned'] and body['collected'] == old['collected'], 'Scene changed personal inventory'
+        if not entry['skipped']:
+            assert {r['funhouse']['scene']['clock']['line'] for r in active} == set(range(9)), 'Watched scene did not observe every dialogue line'
+        reunited = [r for r in rows if r['tick'] > active[-1]['tick'] and r['owner'] is None
+                    and r['funhouse']['fight'] and all(p['warped_at'] > old['warped_at']
+                        for p, old in zip(r['players'], before['players']))]
+        assert reunited, 'No actual post-scene reunion'
+        after = next((r for r in reunited if all(p['grounded'] for p in r['players'])), None)
+        assert after is not None, 'Scene bodies never settled on the ground'
+        first = reunited[0]
+        warp = first['players'][0]['warped_at']
+        assert after['tick']-warp <= 60, 'Scene landing took too long to settle'
+        # The original actor landing is above the arena floor. Ordinary gravity
+        # settles it; the partner is already placed on supported ground.
+        # Observe that short descent rather than treating an airborne frame as
+        # the completed reunion, and reject drift, deep falls or damage.
+        for row in (r for r in reunited if r['tick'] <= after['tick']):
+            assert all(row['driver']['clear']) and row['players'][partner]['grounded'], 'Obstructed or unsupported reunion partner'
+            for p, initial, old in zip(row['players'], first['players'], before['players']):
+                assert p['warped_at'] == warp and p['spawned_at'] == old['spawned_at'] and p['health'] == old['health'], 'Landing changed life or health'
+                assert distance(p['feet'][:2], initial['feet'][:2]) < 1 and 0 <= initial['feet'][2]-p['feet'][2] <= 32, 'Landing drifted or fell too far'
+        a, b = after['players']
+        assert a['warped_at'] == b['warped_at'], 'Scene reunion stamps differ'
+        assert all(p['grounded'] and p['health'] > 0 for p in after['players']) and all(after['driver']['clear']), 'Unsafe scene reunion'
+        assert distance(a['feet'][:2], b['feet'][:2]) >= 35.95 or abs(a['feet'][2]-b['feet'][2]) >= 55.95, 'Scene reunited overlapping players'
+        assert distance(a['feet'], b['feet']) <= 110 + max(0, after['tick']-a['warped_at'])*640/120, 'Scene separated the partners'
+        for old, body in zip(before['players'], after['players']):
+            assert body['spawned_at'] == old['spawned_at'], 'Reunion silently revived a player'
+            assert body['stats']['owned'] == old['stats']['owned'] and body['collected'] == old['collected'], 'Reunion changed personal inventory'
+        assert after['presentation']['visible_players'][1 if peer == 'host' else 0], 'Reunited partner remains hidden'
+        warps.append(a['warped_at'])
+    assert len(warps) == 2 and len(set(warps)) == 1, 'Clients disagree on the reunion'
 
 
 def verify_switch_receipt(entry, history):
@@ -586,6 +646,42 @@ class FunhousePair(Pair):
             self.set(role)
         self.until(lambda: not self.busy(), 120)
 
+    def tweedle_scene(self, role):
+        assert self.step == 138, 'Unexpected scene outside the arena entrance'
+        scene = 'Funhouse_Tweedle_Cinema1'
+        owner = 'Blue' if role == 'host' else 'Red'
+        starts = {r: report['frame']['tick'] for r, report in self.reports.items()}
+        for r in self.commands:
+            self.set(r)
+        self.until(lambda: all(r['route_driver']['scene'] == scene and r['combat']['stage']['owner'] == owner
+                               for r in self.reports.values()), 20)
+        self.scene_end()
+        self.until(lambda: all(r['combat']['stage']['owner'] is None and all(b['player']['grounded']
+                               and b['stats']['sanity'] > 0 for b in r['frame']['players']) for r in self.reports.values()), 20)
+        entry = dict(step=self.step, role=role, scene=scene, skipped=self.args.skip_scenes, starts=starts,
+                     ends={r: report['frame']['tick'] for r, report in self.reports.items()})
+        verify_tweedle_handoff(entry, self.history)
+        self.evidence.setdefault('scene_handoffs', []).append(entry)
+        self.retain('after-tweedle-scene')
+        self.save_checkpoint(139)
+        print('PASS Tweedles scene', owner, 'skipped' if self.args.skip_scenes else 'watched', 'and shared reunion', flush=True)
+
+    def tweedle_entry(self):
+        # The entrance triggers before the authored marker is reached, then
+        # closes behind the original actor. Verify the first-entrant scene
+        # and shared reunion; walking both players back into that closed door
+        # is neither an arrival requirement nor normal progression.
+        assert self.step == 138 and not self.busy()
+        assert all(not self.state(r)['fight'] for r in self.commands), 'Arena scene already completed; resume at 139'
+        goal = self.steps[self.step]['pos']
+        role = min(self.commands, key=lambda r: distance(self.body(r)['player']['feet'], goal)
+                   + (0 if r == self.first else 16))
+        for peer in self.commands:
+            self.set(peer)
+        self.set(role, goal, run=True)
+        self.until(self.busy)
+        self.tweedle_scene(role)
+
     def move(self, role, goal, navigate=False, jump=False, follow=None, crossing=False, running_jump=False, surface=None):
         assert surface is None or not (navigate or jump or crossing or running_jump or follow)
         jumps_before = self.body(role)['player']['jumps']
@@ -593,7 +689,7 @@ class FunhousePair(Pair):
         # The native Funhouse steer() accepts 20/52 on its tilting approach.
         # Requiring a slower eight-unit stop lets the loaded tip sink away.
         radius, height = (20, 52) if jump or crossing else (8, 35)
-        slope = sloped_arrival(self.step, goal) and not (jump or crossing or surface is not None)
+        slope = authored_walk_arrival(self.step, goal) and not (jump or crossing or surface is not None)
         if slope:
             height = 52
         runup = None
@@ -612,7 +708,8 @@ class FunhousePair(Pair):
             body, tick = self.body(role)['player'], self.reports[role]['frame']['tick']
             if self.body(role)['stats']['sanity'] <= 0:
                 return False
-            if 116 <= self.step <= 127 and body['grounded'] and not self.busy():
+            assert not self.busy(), 'Unexpected scene during ordinary waypoint movement'
+            if (116 <= self.step <= 127 or 135 <= self.step <= 146) and body['grounded'] and not self.state(role)['fight']:
                 threats = {r: combat_pending(self.reports[r], r) for r in self.commands}
                 if any(threats.values()):
                     # New attackers become visible while descending. Stop on
@@ -659,7 +756,7 @@ class FunhousePair(Pair):
                 arrived = acknowledged and driver['phase'] in ('walking', 'settling landing', 'reached')
             if slope:
                 arrived = acknowledged and self.reports[role]['route_driver']['phase'] in ('walking', 'reached')
-            if self.busy() or arrived and body['grounded'] and at_goal:
+            if arrived and body['grounded'] and at_goal:
                 return True
             if surface is None and not crossing and body.get('ledge') and not body['ledge']['pulling'] and (ledge_jump is None or tick - ledge_jump > 120):
                 self.set(role, goal, run=True, jump=True)
@@ -733,7 +830,7 @@ class FunhousePair(Pair):
             self.record_arrival(role, goal, jump, follow=follow, surface=surface)
             if role == first:
                 parking = self.park(first, other, goal, surface=surface)
-        if 111 <= self.step <= 127:
+        if 111 <= self.step <= 127 or 135 <= self.step <= 146:
             # An earlier personal arrival is not a safe handoff if the waiter
             # has since been knocked off the ledge while the partner approaches.
             def waiter_settled():
@@ -1053,7 +1150,8 @@ class FunhousePair(Pair):
 
     def verify(self):
         assert self.completed == list(range(self.args.start_step, self.args.last_step + 1))
-        verify_arrivals(self.steps, self.completed, self.evidence['arrivals'], self.history, self.allow_revival)
+        verify_arrivals(self.steps, self.completed, self.evidence['arrivals'], self.history,
+                        self.allow_revival, self.evidence.get('scene_handoffs', []))
         verify_following(self.evidence.get('following_footings', []), self.history)
         verify_forward_waits(self.evidence.get('forward_waits', []), self.steps, self.history)
         verify_waiting_footings(self.evidence.get('waiting_footings', []), self.history)
@@ -1115,7 +1213,9 @@ class FunhousePair(Pair):
             if self.step == 103:
                 self.seesaw_exit()
                 continue
-            if mode == 'wait':
+            if self.step == 138:
+                self.tweedle_entry()
+            elif mode == 'wait':
                 self.wait(step['frames'] / 120)
             elif mode == 'clear':
                 self.clear()
@@ -1144,7 +1244,7 @@ class FunhousePair(Pair):
             self.completed.append(self.step)
             if mode in ('', 'clear'):
                 self.collect_loot()
-            print('PASS Funhouse step', self.step, mode or 'walk', 'health',
+            print('PASS Funhouse step', self.step, 'scene entrance' if self.step == 138 else mode or 'walk', 'health',
                   [self.body(r)['stats']['sanity'] for r in self.commands], flush=True)
         self.save_checkpoint(self.args.last_step + 1)
         self.verify()
@@ -1161,7 +1261,7 @@ class FunhousePair(Pair):
             through_exit=False, build=self.build, internet=not self.args.local,
             first=self.args.first, skip_scenes=self.args.skip_scenes,
             delay_ms=self.args.delay_ms, jitter_ms=self.args.jitter_ms,
-            scope=f'Funhouse steps {self.args.start_step}..{self.args.last_step}; both personal arrivals',
+            scope=f'Funhouse steps {self.args.start_step}..{self.args.last_step}; personal movement arrivals and scene handoffs',
             mode='verified-individual-revival' if self.allow_revival else 'strict-no-death',
             fresh_entrance=self.saved is None,
             evidence=self.evidence), indent=2))
@@ -1192,8 +1292,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
     if args.require_revival and not args.allow_revival:
         parser.error('--require-revival requires --allow-revival')
-    if not 0 <= args.start_step <= args.last_step <= 134 or args.last_step < 1:
-        parser.error('The runner currently supports steps 0..134')
+    if not 0 <= args.start_step <= args.last_step <= 146 or args.last_step < 1:
+        parser.error('The runner currently supports steps 0..146')
     if bool(args.checkpoint) != (args.start_step > 0):
         parser.error('A later start requires an unchanged checkpoint; a fresh run starts at zero')
     if 29 < args.start_step < 33 or 28 < args.last_step < 32:

@@ -89,12 +89,22 @@ holds and **1,041 matching player/world/native states**. Red crosses first, walk
 beyond the narrow far landing and waits on a supported footing while Blue follows.
 Both finish at 70 health without deaths. The final jump predicts platform carry
 during network delay and waits for ordinary jump range. A normal checkpoint before
-135 is retained. The remaining corridor, machinery, scenes and exit, a fresh full
-route and the opposite lead order are still open.
+135 is retained. The next **135-138** segment passes six personal corridor
+arrivals, three supported waiting handoffs and Red's watched Tweedles scene with
+safe shared reunion. Both peers observe all nine lines and **1,092 matching
+states**, retaining 70 health and personal resources. The entrance is verified
+by its actual scene trigger and reunion, rather than an impossible arrival
+inside the door after it closes. A normal checkpoint before 139 is retained.
+A further resumed attempt independently verifies **139-143** with ten personal
+arrivals, five waiting handoffs and **505 matching states**, ending at 60/70 health
+without deaths. It then wipes at 144 while the players take turns on the climb;
+the full 139-146 attempt remains failed. A normal checkpoint before 144 is retained.
+Coordinated survival on that climb, later machinery/scenes/exit, fresh full route
+and opposite lead order are still open.
 
 The latest frozen build passes **875 active Rust tests** and native Funhouse
 **battle63/world46/scene37**, plus **Checkmate94**. Single-player component
-gameplay matches baseline except two benchmark durations. **38 Funhouse guards**,
+gameplay matches baseline except two benchmark durations. **44 Funhouse guards**,
 **13 recovery guards** and **seven source-package tests** pass. These are separate
 resumed segments, not a fresh full route. Overall remains **48.1%**, with six
 combined campaign rows. See [Funhouse evidence](FUNHOUSE.md).

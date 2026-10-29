@@ -10,6 +10,97 @@ from test_coop_funhouse import forward_waiting_point, verify_forward_waits
 from test_coop_funhouse import ice_preference
 from test_coop_funhouse import verify_waiting_footings
 from test_coop_funhouse import verify_pendulum_course
+from test_coop_funhouse import verify_tweedle_handoff
+
+
+def scene_fixture(role='host'):
+    owner = 'Blue' if role == 'host' else 'Red'
+    entry = dict(step=138, role=role, scene='Funhouse_Tweedle_Cinema1', skipped=False,
+                 starts=dict(host=99, guest=99), ends=dict(host=310, guest=310))
+    bodies = [dict(feet=[48*i, 0, 0], health=70, grounded=True, spawned_at=i, warped_at=10,
+                   stats=dict(owned=[1, i]), collected=[str(i)]) for i in range(2)]
+    rows = []
+    for tick, line in [(100 + 15*i, i) for i in range(9)] + [(310, None)]:
+        after = line is None
+        players = copy.deepcopy(bodies)
+        if after:
+            for p in players:
+                p['feet'][0] += 100
+                p['warped_at'] = 300
+        rows.append(dict(tick=tick, scene=None if after else entry['scene'], owner=None if after else owner,
+            players=players, presentation=dict(visible_players=[after, after]), driver=dict(clear=[True, True]),
+            funhouse=dict(fight=after, scene=None if after else dict(clock=dict(line=line)))))
+    return entry, {peer: copy.deepcopy(rows) for peer in ('host', 'guest')}
+
+
+class TweedleSceneGuards(unittest.TestCase):
+    def test_closed_entrance_requires_verified_scene_not_fictitious_arrivals(self):
+        entry, history = scene_fixture('guest')
+        steps = [dict(pos=[0, 0, 0], mode='wait') for _ in range(139)]
+        steps[138] = dict(pos=[32, -2800, -64])
+        verify_arrivals(steps, [138], [], history, True, [entry])
+        for mistake in ('missing', 'duplicate', 'wrong_goal', 'extra_arrival', 'not_completed', 'unsafe'):
+            course, proof, rows = copy.deepcopy(steps), [copy.deepcopy(entry)], copy.deepcopy(history)
+            completed, arrivals = [138], []
+            if mistake == 'missing': proof = []
+            elif mistake == 'duplicate': proof *= 2
+            elif mistake == 'wrong_goal': course[138]['pos'][0] += 1
+            elif mistake == 'extra_arrival': arrivals = [dict(step=138, role='guest')]
+            elif mistake == 'not_completed': completed = []
+            else: rows['host'][-1]['players'][0]['grounded'] = False
+            with self.subTest(mistake=mistake), self.assertRaises(AssertionError):
+                verify_arrivals(course, completed, arrivals, rows, True, proof)
+
+    def test_either_first_entrant_has_a_hidden_frozen_partner_and_shared_reunion(self):
+        for role in ('host', 'guest'):
+            verify_tweedle_handoff(*scene_fixture(role))
+
+    def test_missing_scene_bad_owner_visible_or_moving_partner_fail(self):
+        for mistake in ('missing', 'owner', 'visible', 'moving', 'dialogue'):
+            entry, history = scene_fixture()
+            if mistake == 'missing': history['guest'] = [history['guest'][-1]]
+            elif mistake == 'owner': history['guest'][0]['owner'] = 'Red'
+            elif mistake == 'visible': history['guest'][0]['presentation']['visible_players'][1] = True
+            elif mistake == 'moving': history['guest'][1]['players'][1]['feet'][0] += 1
+            else: history['guest'][1]['funhouse']['scene']['clock']['line'] = 7
+            with self.subTest(mistake=mistake), self.assertRaises(AssertionError):
+                verify_tweedle_handoff(entry, history)
+
+    def test_reunion_requires_real_warp_safe_bodies_and_personal_inventory(self):
+        for mistake in ('warp', 'ground', 'overlap', 'clear', 'hidden', 'inventory', 'spawn'):
+            entry, history = scene_fixture()
+            row = history['guest'][-1]
+            if mistake == 'warp': row['players'][1]['warped_at'] = 10
+            elif mistake == 'ground': row['players'][1]['grounded'] = False
+            elif mistake == 'overlap': row['players'][1]['feet'] = list(row['players'][0]['feet'])
+            elif mistake == 'clear': row['driver']['clear'][1] = False
+            elif mistake == 'hidden': row['presentation']['visible_players'][0] = False
+            elif mistake == 'inventory': row['players'][1]['stats']['owned'] = [1, 0]
+            else: row['players'][1]['spawned_at'] += 1
+            with self.subTest(mistake=mistake), self.assertRaises(AssertionError):
+                verify_tweedle_handoff(entry, history)
+
+    def test_original_actor_may_settle_briefly_but_cannot_drift_or_fall_away(self):
+        def landing():
+            entry, history = scene_fixture('guest')
+            for rows in history.values():
+                airborne = copy.deepcopy(rows[-1])
+                airborne['tick'] = 305
+                airborne['players'][1]['grounded'] = False
+                airborne['players'][1]['feet'][2] = 13.2
+                rows.insert(-1, airborne)
+            return entry, history
+        verify_tweedle_handoff(*landing())
+        for mistake in ('deep_fall', 'drift', 'partner', 'late', 'damage'):
+            entry, history = landing()
+            rows = history['guest']
+            if mistake == 'deep_fall': rows[-2]['players'][1]['feet'][2] = 33
+            elif mistake == 'drift': rows[-1]['players'][1]['feet'][0] += 2
+            elif mistake == 'partner': rows[-2]['players'][0]['grounded'] = False
+            elif mistake == 'late': rows[-1]['tick'] = entry['ends']['guest'] = 400
+            else: rows[-1]['players'][1]['health'] = 69
+            with self.subTest(mistake=mistake), self.assertRaises(AssertionError):
+                verify_tweedle_handoff(entry, history)
 
 
 def pendulum_fixture(role='host'):
@@ -185,6 +276,29 @@ def fixture():
 
 
 class PersonalArrivalGuards(unittest.TestCase):
+    def test_recorded_waypoint136_uses_the_native_marker_height(self):
+        _, _, receipts, history = fixture()
+        steps = [dict(mode='wait', pos=[0, 0, 0]) for _ in range(137)]
+        steps[136] = dict(pos=[400, -3000, -16])
+        for slot, entry in enumerate(receipts):
+            feet = [399.99704, -3000.48706, -52.053833]
+            entry.update(step=136, goal=steps[136]['pos'], feet=list(feet), command=9)
+            row = history[entry['role']][0]
+            row['players'][slot]['feet'] = list(feet)
+            row['driver'] = dict(command=9, phase='reached')
+        verify_arrivals(steps, [136], receipts, history)
+        for mistake in ('height', 'horizontal', 'airborne', 'command', 'planning'):
+            entries, rows = copy.deepcopy(receipts), copy.deepcopy(history)
+            body, driver = rows['host'][0]['players'][0], rows['host'][0]['driver']
+            if mistake == 'height': body['feet'][2] = -68
+            elif mistake == 'horizontal': body['feet'][0] = 408
+            elif mistake == 'airborne': body['grounded'] = False
+            elif mistake == 'command': driver['command'] = 8
+            else: driver['phase'] = 'planning'
+            entries[0]['feet'] = list(body['feet'])
+            with self.subTest(mistake=mistake), self.assertRaises(AssertionError):
+                verify_arrivals(steps, [136], entries, rows)
+
     def test_recorded_far_bank_slope_keeps_native_height_and_tight_horizontal_bounds(self):
         def captured():
             _, _, receipts, history = fixture()

@@ -797,3 +797,62 @@ and 20 ms jitter. **38 Funhouse / 13 recovery / seven source-package** guards pa
 No screenshots were opened, and no new particle-rendering claim is made. The next
 scope starts at 135. Fresh full traversal, the opposite crossing order and the
 remaining visit acceptance cases are open; overall remains **48.1%**.
+
+
+### Co-op corridor and Tweedles entrance, 29 October 2026
+
+The unchanged `c79ac85` native build now passes a separate **135-138** public
+internet segment in run `d061b4b894894e24bf961d18abc956ab`, with 40 ms delay and
+20 ms jitter. There are **six personal arrivals**, three supported waiting
+handoffs and **1,092 matching player/world/native states**. An independent audit
+also matches all 1,096 retained states, including normal shutdown observations.
+Both remain at 70 health throughout, without new deaths or spawns.
+
+Red is the first entrant and owns the original watched Tweedles scene. Both peers
+observe all nine dialogue lines, with 223 host and 221 guest active-scene samples.
+Blue is hidden and stationary during the scene. The shared reunion occurs at tick
+129228; both are grounded by host tick 129253 and guest tick 129264. They remain
+48 units apart, body-clear and visible, with unchanged health and personal
+inventory. The original actor's brief descent is checked separately: at most
+32 vertical units within 60 ticks, with no horizontal drift, damage or revival;
+the partner stays grounded. The normal checkpoint before 139 has SHA-256
+`986689438ce34fe5d022df6b9623b916fb0da9c9b0078dc9b66b14b0cce3bfc7`.
+
+Three test-controller corrections precede this pass. The exact authored static
+walking markers now use the native single-player route's 52-unit vertical bound,
+retaining eight horizontal units, actual ground contact and acknowledged walking
+input; moving-brush projections and jump checks retain their existing bounds.
+A captured grounded step-136 approach was 36.05 units below its approximate marker,
+which the previous 35-unit checker incorrectly rejected. The scene verifier now
+observes the original actor's bounded gravity landing before testing the completed
+reunion. Finally, the scene entrance is a trigger/handoff milestone: it closes
+before the old step-138 marker can be reached. The runner no longer sends both
+players back into that closed doorway after the verified reunion. Every other
+movement step still requires separate personal arrival evidence.
+
+Earlier run `1fdac9f4ac1545c48e1d5821135f250f` has scoped watched-scene proof only;
+its verifier stopped before saving. Run `edd6ba75bd23454a94efe5a5e024f274` saves
+the valid reunion but fails the attempted return to the closed entrance. Neither
+is promoted to a full segment pass. Guards reject missing/duplicate/unsafe scene
+proof, fictitious entrance arrivals, wrong targets, airborne or unsupported
+bodies, missing dialogue, changed resources, overlap and unsafe landing drift.
+**44 Funhouse guards**, 13 recovery guards and seven source-package tests pass.
+The frozen native identity and executable hash are unchanged; its existing
+875-unit and battle63/world46/scene37/single-player8/Checkmate94 checks apply.
+No screenshots were opened and no new particle-rendering claim is made.
+
+A further resumed run, `a33042a4fad84486b78f3c7b8fa73276`, independently verifies
+only its **139-143 prefix**: ten personal arrivals, five safe waiting handoffs and
+**505 matching player/world/native states**, ending at Blue 60 / Red 70 health
+without deaths or new spawns. The audit cuts off at the retained before-144
+reports (host 133119, guest 133110); later failure observations are not counted.
+
+The complete 139-146 attempt fails at 144. Blue dies while waiting below the
+climb; Red reaches the 144 target but subsequently dies before Blue's revival,
+causing a normal team wipe that the traversal verifier correctly refuses.
+No full climb, boss defeat or post-wipe continuation is claimed. The normal
+checkpoint before 144 has SHA-256
+`0c6cbac7cb306a23541a1adf04eaf9f03b6c0d58e889ea2f0d5dfbe0b80e7222`.
+The next scope is coordinated movement and survival at **144**. These remain
+checkpoint segments, not fresh full traversal or a completed campaign visit.
+Overall stays **48.1%**.

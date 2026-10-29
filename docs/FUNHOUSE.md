@@ -737,3 +737,63 @@ hashes match the tested current files; source and executable identities match th
 frozen build. These checkpoints let the next bank/pendulum test resume through
 the normal restore path. The narrow-bank coordination at 126 and the full visit
 remain open; there is no additional campaign-row or percentage credit.
+
+
+### Queued bank and pendulums, 29 October 2026
+
+Waiting beside waypoint 126 blocks the only supported approach lane. The runner
+now sends one player through the bank, three pendulums and far-side jump before
+bringing the other across. It uses ordinary walking, running and jump inputs;
+the authoritative physics, enemies, shared collision and saves are unchanged.
+Each short platform landing is recorded only at an actual sent/restored frame.
+Its verification requires both peers' matching player/world/native state and
+movement, an actual personal jump, a living grounded body, and native contact
+with the intended moving brush (117, 116 and 115). Death or relocation cannot
+complete the sequence. Each player also performs the full 1,200-tick bank jump
+hold and both fixed far-side jumps.
+
+On source `d5372a1`, run `43bcd21d53d24392a62cb4c0591bb252` independently verifies
+Red's 128-132 sequence, but fails because the far landing has no safe parking
+neighbor. The next attempt, `e03b6ac0ebc94a60965d620133648c9a`, also completes Red's
+next jump, then stalls at 134. The grounded body is approximately
+[450.52, -3270.58, -7.04] beneath its [450, -3270, 30] marker. This specific
+sloped marker now uses the original native route's 52-unit height bound while
+retaining eight horizontal units, real ground contact and an acknowledged walking
+command. Guards reject an unrelated lower floor, horizontal miss or airborne body.
+These failed paired runs retain only the independently checked personal scope.
+
+Attempt `d8ff8b10319840499ab4fbcc1f523360` reaches the third pendulum but exposes
+an unsafe immediate exit jump. While the guest's input travels, the platform
+carries Red from about [363.02, -3624.14, 55.81] to
+[360.46, -3708.85, 72.16], outside ordinary jump range of the bank. Red dies.
+The normal revival is independently verified at ticks 117964-119164: exactly
+1,200 active ticks, 25 health, preserved resources, supported placement and the
+spectator/return camera transition. That recovery does not make the crossing pass.
+
+The exit controller now forecasts platform carry through the input delay and
+short running start. It waits on the actual moving platform until the bank is
+within the ordinary ballistic jump range, then runs and jumps. Captured unsafe
+departures fail its new regression. Source
+`c79ac854cc6e1facbc5618f288f0b07be737c9a7830bc4c67abaa350b0536dd4`, executable SHA-256
+`8d8583df9a276009cfb83d8b6fff5d1a6e93831160e1c7ab7bbc637e58dfa15b`, passes
+**875 active Rust units** (one ignored), locked release,
+**63 battle / 46 world / 37 scene / 8 single-player / 94 Checkmate** records.
+Single-player component gameplay matches baseline except two benchmark timings.
+
+The paired run `7c9bdf3c69a54dc2bc6af7237b4a0b9c` then passes **126-134** with
+**14 personal arrivals**, all six individual pendulum landings, the two bank
+jump holds and **1,041 matching player/world/native states**. Red's bank hold
+lasts 1,201 observed ticks with eight actual jumps; Blue's lasts 1,200 with ten.
+The final waiting-footing check confirms Red stays alive and supported off the
+incoming route. Both finish at 70 health, with no deaths or new spawns. A separate
+audit repeats the receipt checks and matches 1,052 retained states including the
+additional normal client-exit observations after the runner's verification point.
+All eight captured Python dependencies match the tested current files.
+
+The normal checkpoint before 135 has SHA-256
+`ed78029b571b35fa4f6763e642d5fde669734329412dbcf6207ff29e96b1ca50`.
+The run uses two independent processes over the public internet with 40 ms delay
+and 20 ms jitter. **38 Funhouse / 13 recovery / seven source-package** guards pass.
+No screenshots were opened, and no new particle-rendering claim is made. The next
+scope starts at 135. Fresh full traversal, the opposite crossing order and the
+remaining visit acceptance cases are open; overall remains **48.1%**.

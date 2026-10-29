@@ -9,6 +9,8 @@ mod coop_world_check;
 mod data;
 mod motion;
 mod network_exit;
+mod network_pendulums;
+pub(crate) use network_pendulums::{NetworkPendulums, PendulumReport};
 pub(crate) use network_exit::{NetworkExit, ExitReport};
 mod presentation_check;
 mod performance_check;

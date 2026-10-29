@@ -9,6 +9,65 @@ from test_coop_funhouse import verify_exit_arrival
 from test_coop_funhouse import forward_waiting_point, verify_forward_waits
 from test_coop_funhouse import ice_preference
 from test_coop_funhouse import verify_waiting_footings
+from test_coop_funhouse import verify_pendulum_course
+
+
+def pendulum_fixture(role='host'):
+    steps = [dict(pos=[0, 0, 0]) for _ in range(133)]
+    steps[128] = dict(pos=[-288, -3500, -32], mode='holdjump', frames=1200)
+    for step in range(129, 132):
+        steps[step] = dict(pos=[0, 0, 0], mode='pendulum', thread=f'pend{step-128}')
+    steps[132] = dict(pos=[640, -3500, 56], mode='jump')
+    slot = 0 if role == 'host' else 1
+    receipts, states = [], []
+    previous = 9
+    for step in range(128, 133):
+        start, end = previous + 1, previous + (1201 if step == 128 else 80)
+        feet = [-288, -3500, -32] if step == 128 else [640, -3500, 56] if step == 132 else [100*(step-128), -3500, 0]
+        support = None if step in (128, 132) else dict(entity=246-step, name=f'pend{step-128}',
+            goal=list(feet), supported=[slot == 0, slot == 1])
+        receipts.append(dict(step=step, start_tick=start, start_jumps=step-128, tick=end, feet=list(feet), support=support))
+        for tick, jumps in [(start, step-128), (end, step-127)]:
+            body = dict(feet=list(feet), health=70, grounded=True, jumps=jumps, spawned_at=5, warped_at=0)
+            states.append(dict(epoch=1, tick=tick, sha256=str(tick), world_sha256=str(tick),
+                native_sha256=str(tick), movement=[dict(body), dict(body)]))
+        previous = end
+    course = dict(step=133, reached=True, receipts=receipts)
+    entry = dict(role=role, epoch=1, command=77, course=course)
+    history = {peer: [dict(owner=None, driver=dict(command=77 if peer == role else 78,
+        funhouse_pendulums=course if peer == role else None, network_states=copy.deepcopy(states)))] for peer in ('host', 'guest')}
+    return steps, entry, history
+
+
+class PendulumCourseGuards(unittest.TestCase):
+    def test_both_players_need_the_full_hold_and_all_actual_jumps(self):
+        for role in ('host', 'guest'):
+            verify_pendulum_course(*pendulum_fixture(role))
+
+    def test_wrong_support_unsent_ticks_and_skipped_stages_fail(self):
+        for mistake in ('support', 'name', 'brush', 'peer', 'command', 'duration', 'short_hold', 'stage'):
+            steps, entry, history = pendulum_fixture()
+            if mistake == 'support': entry['course']['receipts'][1]['support']['supported'][0] = False
+            elif mistake == 'name': entry['course']['receipts'][1]['support']['name'] = 'pend2'
+            elif mistake == 'brush': entry['course']['receipts'][1]['support']['entity'] = 116
+            elif mistake == 'peer': history['guest'][0]['driver']['network_states'].pop(3)
+            elif mistake == 'command': entry['command'] += 1
+            elif mistake == 'duration': steps[128]['frames'] = 1201
+            elif mistake == 'short_hold':
+                entry['course']['receipts'][0]['start_tick'] += 2
+                for rows in history.values():
+                    rows[0]['driver']['network_states'][0]['tick'] += 2
+            else: entry['course']['receipts'].pop(1)
+            with self.subTest(mistake=mistake), self.assertRaises(AssertionError):
+                verify_pendulum_course(steps, entry, history)
+
+    def test_matching_peers_do_not_excuse_death_relocation_or_fake_jumps(self):
+        for field, value in [('grounded', False), ('health', 0), ('spawned_at', 12), ('warped_at', 12), ('jumps', 0)]:
+            steps, entry, history = pendulum_fixture()
+            for rows in history.values():
+                rows[0]['driver']['network_states'][3]['movement'][0][field] = value
+            with self.subTest(field=field), self.assertRaises(AssertionError):
+                verify_pendulum_course(steps, entry, history)
 
 
 class ForwardWaitingGuards(unittest.TestCase):
@@ -126,6 +185,31 @@ def fixture():
 
 
 class PersonalArrivalGuards(unittest.TestCase):
+    def test_recorded_far_bank_slope_keeps_native_height_and_tight_horizontal_bounds(self):
+        def captured():
+            _, _, receipts, history = fixture()
+            steps = [dict(mode='wait', pos=[0, 0, 0]) for _ in range(135)]
+            steps[134] = dict(pos=[450, -3270, 30])
+            for slot, entry in enumerate(receipts):
+                feet = [450.520172, -3270.575928, -7.039044]
+                entry.update(step=134, goal=steps[134]['pos'], feet=list(feet), command=7)
+                row = history[entry['role']][0]
+                row['players'][slot]['feet'] = list(feet)
+                row['driver'] = dict(command=7, phase='reached')
+            return steps, [134], receipts, history
+        verify_arrivals(*captured())
+        for mistake in ('lower_floor', 'horizontal', 'airborne', 'command', 'planning'):
+            args = captured()
+            row, entry = args[3]['host'][0], args[2][0]
+            if mistake == 'lower_floor': row['players'][0]['feet'][2] = -22
+            elif mistake == 'horizontal': row['players'][0]['feet'][0] = 458
+            elif mistake == 'airborne': row['players'][0]['grounded'] = False
+            elif mistake == 'command': row['driver']['command'] = 6
+            else: row['driver']['phase'] = 'planning'
+            entry['feet'] = list(row['players'][0]['feet'])
+            with self.subTest(mistake=mistake), self.assertRaises(AssertionError):
+                verify_arrivals(*args)
+
     def test_sloped_marker_matches_native_height_but_keeps_personal_support(self):
         def slope_fixture(step=116):
             _, _, receipts, history = fixture()

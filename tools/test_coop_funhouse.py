@@ -1,6 +1,6 @@
 """Play Funhouse's opening, mirror and cell machinery in independent clients.
 
-This runner covers the authored entrance through step 127. It sends only ordinary
+This runner covers the authored entrance through step 134. It sends only ordinary
 inputs and normal save requests, including actual Blade throws at switches.
 Every movement waypoint needs a separate arrival receipt for each player.
 Full traversal, recovery, machinery and the exit remain separate work.
@@ -23,20 +23,27 @@ from coop_recovery import verify_presence as verify_recovery_presence
 
 def sloped_arrival(step, goal):
     # The authored native steer() accepts 52 vertical units. This descent's
-    # actual floor is near z69 at its z112 marker; keep the stricter eight-unit
-    # horizontal gate and require a real supported body, not a planner estimate.
-    return step == 116 and goal == [150, -4520, 112]
+    # actual floor is near z69 at its z112 marker; the far-bank marker is about
+    # 37 above its slope. Keep the eight-unit horizontal gate and real support.
+    return (step == 116 and goal == [150, -4520, 112]
+            or step == 134 and goal == [450, -3270, 30])
 
 
 def verify_arrivals(steps, completed, receipts, history, allow_revival=False):
     """Require each claimed arrival to match an immutable client observation."""
     observed = {role: {row['tick']: row for row in rows} for role, rows in history.items()}
-    expected = {step for step in completed if steps[step].get('mode', '') in ('', 'jump')}
+    expected = {step for step in completed if steps[step].get('mode', '') in ('', 'jump', 'pendulum')}
     assert {r['step'] for r in receipts} == expected, 'Missing or extra movement receipts'
     for step in expected:
         entries = [r for r in receipts if r['step'] == step]
         assert len(entries) == 2 and {r['role'] for r in entries} == {'host', 'guest'}, 'Missing personal arrival'
         for receipt in entries:
+            if receipt.get('native_pendulums'):
+                verify_pendulum_course(steps, receipt, history)
+                native = next(r for r in receipt['course']['receipts'] if r['step'] == step)
+                assert step in range(129, 133) and native['tick'] == receipt['tick'] and native['feet'] == receipt['feet']
+                assert receipt['goal'] == steps[step]['pos']
+                continue
             if receipt.get('native_exit'):
                 verify_exit_arrival(steps, receipt, history)
                 continue
@@ -120,6 +127,55 @@ def verify_exit_arrival(steps, receipt, history):
     else:
         assert native['surface'] is None and body['jumps'] > course['start_jumps'], 'Exit has no actual upper jump'
     assert distance(body['feet'][:2], goal[:2]) < radius and abs(body['feet'][2] - goal[2]) < height, 'Missed exit waypoint'
+
+
+def verify_pendulum_course(steps, entry, history):
+    role, epoch, course = entry['role'], entry['epoch'], entry['course']
+    assert course and course['reached'] and course['step'] == 133, 'Incomplete pendulum course'
+    assert [r['step'] for r in course['receipts']] == list(range(128, 133)), 'Skipped pendulum stage'
+    assert any(row['driver']['command'] == entry['command'] and row['owner'] is None
+               and row['driver'].get('funhouse_pendulums') == course for row in history[role]), 'Unobserved pendulum command'
+    states = {peer: {} for peer in history}
+    for peer, rows in history.items():
+        for row in rows:
+            for state in row['driver']['network_states']:
+                key = state['epoch'], state['tick']
+                assert states[peer].setdefault(key, state) == state, 'Changed network evidence'
+    slot = 0 if role == 'host' else 1
+    previous = 0
+    original = None
+    for native in course['receipts']:
+        step, start, end = native['step'], native['start_tick'], native['tick']
+        assert previous <= start < end, 'Pendulum stages overlap or have no observed duration'
+        previous = end
+        for tick in (start, end):
+            key = epoch, tick
+            assert all(key in states[peer] for peer in ('host', 'guest')), 'Missing sent/restored pendulum tick'
+            a, b = states['host'][key], states['guest'][key]
+            assert all(a[f] == b[f] for f in ('sha256', 'world_sha256', 'native_sha256', 'movement')), 'Pendulum peers differ'
+        before = states[role][epoch, start]['movement'][slot]
+        body = states[role][epoch, end]['movement'][slot]
+        if original is None:
+            original = before
+        assert before['jumps'] == native['start_jumps'] and body['jumps'] > before['jumps'], 'No actual personal jump'
+        assert body['feet'] == native['feet'] and body['health'] > 0 and body['grounded'], 'Invalid pendulum landing body'
+        for state in states[role].values():
+            if state['epoch'] == epoch and start <= state['tick'] <= end:
+                p = state['movement'][slot]
+                assert p['health'] > 0 and all(p[f] == original[f] for f in ('spawned_at', 'warped_at')), 'Crossing used death or relocation'
+        if step == 128:
+            assert steps[step] == dict(pos=[-288, -3500, -32], mode='holdjump', frames=1200)
+            assert before['grounded'] and distance(before['feet'][:2], steps[step]['pos'][:2]) < 20 and abs(before['feet'][2] + 32) < 35, 'Jump hold did not start on the bank'
+            assert end - start >= steps[step]['frames'] and native['support'] is None, 'Incomplete bank jump hold'
+            assert distance(body['feet'][:2], steps[step]['pos'][:2]) < 20 and abs(body['feet'][2] + 32) < 35
+        elif step < 132:
+            support = native['support']
+            assert steps[step]['mode'] == 'pendulum' and support and support['name'] == steps[step]['thread'], 'Wrong pendulum'
+            assert support['entity'] == {129: 117, 130: 116, 131: 115}[step], 'Wrong pendulum brush'
+            assert support['supported'][slot] and abs(body['feet'][0] - support['goal'][0]) < 65, 'Missing own moving-platform support'
+        else:
+            assert steps[step] == dict(pos=[640, -3500, 56], mode='jump') and native['support'] is None
+            assert distance(body['feet'][:2], steps[step]['pos'][:2]) < 20 and abs(body['feet'][2] - 56) < 52, 'Missed far bank'
 
 
 def switched(state, thread):
@@ -383,7 +439,7 @@ class FunhousePair(Pair):
         self.prefer_cards = cards_preference(self.steps, args.start_step)
         self.prefer_ice = ice_preference(self.steps, args.start_step)
         assert len(self.steps) == 1077, 'Review changed authored course'
-        assert all(s.get('mode', '') in ('', 'wait', 'clear', 'jump', 'shot', 'hold', 'cards', 'ice')
+        assert all(s.get('mode', '') in ('', 'wait', 'clear', 'jump', 'shot', 'hold', 'cards', 'ice', 'holdjump', 'pendulum')
                    for s in self.steps[args.start_step:args.last_step + 1])
         (self.folder / 'course.json').write_bytes(raw)
         self.evidence.update(course_sha256=hashlib.sha256(raw).hexdigest(),
@@ -406,14 +462,14 @@ class FunhousePair(Pair):
             self.evidence.update(checkpoint_sha256=hashlib.sha256(raw).hexdigest(),
                                  checkpoint_tick=self.saved['frame']['tick'])
 
-    def set(self, role, *args, shoot_switch=None, hold_goal=False, runup=None, surface=None, funhouse_exit=False, **kwargs):
+    def set(self, role, *args, shoot_switch=None, hold_goal=False, runup=None, surface=None, funhouse_exit=False, funhouse_pendulums=False, **kwargs):
         kwargs.setdefault('attack', bool(args and args[0] is not None or kwargs.get('goal') is not None))
         super().set(role, *args, **kwargs)
         self.commands[role].update(input_lead=self.lead if role == 'guest' else 0,
             watch_dialogue=True, skip_scene=self.args.skip_scenes, prefer_cards=getattr(self, 'prefer_cards', True),
             prefer_ice=getattr(self, 'prefer_ice', False),
             avoid_switches=True, shoot_switch=shoot_switch, hold_goal=hold_goal,
-            combat_tactics=True, runup=runup, surface=surface, funhouse_exit=funhouse_exit)
+            combat_tactics=True, runup=runup, surface=surface, funhouse_exit=funhouse_exit, funhouse_pendulums=funhouse_pendulums)
         if getattr(self, 'allow_revival', False):
             self.commands[role]['recovery_trace'] = role == 'host'
 
@@ -876,6 +932,57 @@ class FunhousePair(Pair):
         self.completed.extend(range(103, 107))
         print('PASS Funhouse seesaw exit 103..106: both personal approaches, upper jumps and timed holds', flush=True)
 
+    def pendulum_course(self):
+        assert self.steps[126] == dict(pos=[-288, -3460, 0])
+        first = min(self.commands, key=lambda r: distance(self.body(r)['player']['feet'], self.steps[126]['pos']))
+        other = 'guest' if first == 'host' else 'host'
+        waiting = list(self.body(other)['player']['feet'])
+        spawns = {r: self.body(r)['spawned_at'] for r in self.commands}
+        self.set(other, waiting, run=True, attack=True)
+        for role in (first, other):
+            self.step = 126
+            self.record_arrival(role, self.steps[126]['pos'])
+            self.step = 127
+            self.clear((role,))
+            self.step = 128
+            self.move(role, self.steps[128]['pos'])
+            self.set(role, funhouse_pendulums=True, attack=True)
+            self.moving_role = role
+            try:
+                self.until(lambda: self.reached(role), 240)
+            finally:
+                self.moving_role = None
+            report = self.reports[role]
+            course = report['route_driver']['funhouse_pendulums']
+            entry = dict(role=role, epoch=report['frame']['epoch'], command=report['route_driver']['command'], course=course)
+            self.evidence.setdefault('pendulum_courses', []).append(entry)
+            for native in course['receipts']:
+                if native['step'] != 128:
+                    self.evidence['arrivals'].append(dict(entry, step=native['step'], tick=native['tick'],
+                        feet=native['feet'], goal=self.steps[native['step']]['pos'], native_pendulums=True))
+            self.step = 132
+            self.retain(f'pendulums-{role}')
+            for step in (133, 134):
+                self.step = step
+                self.record_arrival(role, self.steps[step]['pos'], jump=step == 133)
+            if role == first:
+                # The leader only waits after leaving the shared narrow bank.
+                parking = self.park(first, other, self.steps[134]['pos'])
+        assert all(self.body(r)['stats']['sanity'] > 0 and self.body(r)['spawned_at'] == spawns[r]
+                   for r in self.commands), 'Pendulum crossing used a death or revival'
+        def waiter_settled():
+            body = self.body(first)
+            assert body['stats']['sanity'] > 0 and body['player']['grounded'], 'Far-bank waiter fell or died'
+            feet = body['player']['feet']
+            return distance(feet[:2], parking[:2]) < 24 and abs(feet[2]-parking[2]) < 35
+        self.until(waiter_settled, 15)
+        footing = dict(step=134, role=first, goal=parking, command=self.commands[first]['id'],
+                       tick=self.reports[first]['frame']['tick'])
+        verify_waiting_footings([footing], self.history)
+        self.evidence.setdefault('waiting_footings', []).append(footing)
+        self.completed.extend(range(126, 135))
+        print('PASS Funhouse bank/pendulums 126..134: both personal jumps and supported landings', flush=True)
+
     def clear(self, roles=None):
         roles = tuple(self.commands) if roles is None else tuple(roles)
         for role in roles:
@@ -951,6 +1058,12 @@ class FunhousePair(Pair):
         verify_forward_waits(self.evidence.get('forward_waits', []), self.steps, self.history)
         verify_waiting_footings(self.evidence.get('waiting_footings', []), self.history)
         verify_loot(self.evidence.get('loot', []), self.history)
+        courses = self.evidence.get('pendulum_courses', [])
+        assert len(courses) == (2 if 128 in self.completed else 0), 'Missing personal pendulum course'
+        if courses:
+            assert {e['role'] for e in courses} == {'host', 'guest'}
+        for entry in courses:
+            verify_pendulum_course(self.steps, entry, self.history)
         verify_holds(self.steps, self.completed, self.evidence.get('holds', []), self.history)
         shots = self.evidence.get('switches', [])
         assert [e['step'] for e in shots] == [i for i in self.completed if self.steps[i].get('mode') == 'shot']
@@ -995,6 +1108,9 @@ class FunhousePair(Pair):
                 continue
             if self.step == 95:
                 self.fulcrum_course()
+                continue
+            if self.step == 126:
+                self.pendulum_course()
                 continue
             if self.step == 103:
                 self.seesaw_exit()
@@ -1076,8 +1192,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
     if args.require_revival and not args.allow_revival:
         parser.error('--require-revival requires --allow-revival')
-    if not 0 <= args.start_step <= args.last_step <= 127 or args.last_step < 1:
-        parser.error('The runner currently supports steps 0..127')
+    if not 0 <= args.start_step <= args.last_step <= 134 or args.last_step < 1:
+        parser.error('The runner currently supports steps 0..134')
     if bool(args.checkpoint) != (args.start_step > 0):
         parser.error('A later start requires an unchanged checkpoint; a fresh run starts at zero')
     if 29 < args.start_step < 33 or 28 < args.last_step < 32:
@@ -1086,6 +1202,8 @@ if __name__ == '__main__':
         parser.error('The queued fulcrum crossing must include steps 95..98 together')
     if 103 < args.start_step < 107 or 102 < args.last_step < 106:
         parser.error('The queued seesaw exit must include steps 103..106 together')
+    if 126 < args.start_step < 135 or 125 < args.last_step < 134:
+        parser.error('The queued bank and pendulums must include steps 126..134 together')
     if not (0 <= args.delay_ms <= 500 and 0 <= args.jitter_ms <= 500):
         parser.error('Delay/jitter must be between 0 and 500 ms')
     pair = FunhousePair(args)

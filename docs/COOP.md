@@ -74,18 +74,27 @@ Source `c8f333c` verifies **121-125** with ten personal arrivals, five safe wait
 handoffs, two own pickups and 1,033 matching player/world/native states. Both
 survive at 90/30 health. The ordinary-input dodge controller accounts for network
 delay, pending motion and braking, with shorter sidesteps on narrow supports.
-It previously walked the guest off a ledge before taking damage. The run now stops
+It previously walked the guest off a ledge before taking damage. That run stopped
 at 126 where the first player's waiting point blocks the only supported approach
-lane. A coordinated bank/pendulum sequence and the rest of the visit remain open.
+lane. This exposed the need to coordinate the bank and pendulums.
 
 A further resumed **121-125** run passes with ten personal arrivals, five safe
 waiting handoffs, two own pickups and **1,079 matching states**. Both finish at
 70 health without deaths; normal checkpoints before 125 and 126 are retained
 for the next coordinated crossing test. This is another bounded segment pass.
 
-The latest frozen build passes **873 active Rust tests** and native Funhouse
+Source `c79ac85` now passes the queued **126-134** bank/pendulum sequence: **14
+personal arrivals**, all six individual moving-platform landings, both bank jump
+holds and **1,041 matching player/world/native states**. Red crosses first, walks
+beyond the narrow far landing and waits on a supported footing while Blue follows.
+Both finish at 70 health without deaths. The final jump predicts platform carry
+during network delay and waits for ordinary jump range. A normal checkpoint before
+135 is retained. The remaining corridor, machinery, scenes and exit, a fresh full
+route and the opposite lead order are still open.
+
+The latest frozen build passes **875 active Rust tests** and native Funhouse
 **battle63/world46/scene37**, plus **Checkmate94**. Single-player component
-gameplay matches baseline except two benchmark durations. **34 Funhouse guards**,
+gameplay matches baseline except two benchmark durations. **38 Funhouse guards**,
 **13 recovery guards** and **seven source-package tests** pass. These are separate
 resumed segments, not a fresh full route. Overall remains **48.1%**, with six
 combined campaign rows. See [Funhouse evidence](FUNHOUSE.md).

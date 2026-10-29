@@ -23,6 +23,9 @@ struct Command {
     /// Continuous ordinary-input Funhouse seesaw approach and upper jump.
     #[serde(default)]
     funhouse_exit: bool,
+    /// Continuous ordinary inputs for bank jumps and moving pendulums.
+    #[serde(default)]
+    funhouse_pendulums: bool,
     /// Opt-in host evidence, separate from gameplay state and the network wire.
     #[serde(default)]
     recovery_trace: bool,
@@ -181,7 +184,8 @@ impl Command {
                 "Invalid moving-step command");
         }
         let courses=[self.temple_follow,self.garden_follow,self.sanctum_follow,self.chess_follow,self.castling_follow].iter().filter(|c|c.is_some()).count();
-        if self.funhouse_exit {
+        if self.funhouse_exit || self.funhouse_pendulums {
+            ensure!(!(self.funhouse_exit && self.funhouse_pendulums), "Cannot combine Funhouse courses");
             ensure!(self.goal.is_none() && self.marker.is_none() && self.surface.is_none()
                 && self.rope.is_none() && self.use_aim.is_none() && self.beyond_step.is_none()
                 && self.runup.is_none() && self.shoot_switch.is_none() && self.speed_limit.is_none()
@@ -300,6 +304,7 @@ pub struct Report {
     pub neighbors: [Vec<Vec3>; 2],
     pub surface: Option<crate::levels::funhouse::RouteSurface>,
     pub funhouse_exit: Option<crate::levels::funhouse::ExitReport>,
+    pub funhouse_pendulums: Option<crate::levels::funhouse::PendulumReport>,
     pub blade_pickups: [bool; 2],
     pub cards_pickups: [bool; 2],
     pub expected: Option<Vec3>,
@@ -766,6 +771,7 @@ pub struct Driver {
     chess_course: Option<crate::levels::wchess1::NetworkDriver>,
     castling_course: Option<crate::levels::wchess2::NetworkDriver>,
     funhouse_exit: Option<crate::levels::funhouse::NetworkExit>,
+    funhouse_pendulums: Option<crate::levels::funhouse::NetworkPendulums>,
     location: Option<(u64, u64, u64)>,
     pub report: Report,
 }
@@ -788,6 +794,9 @@ impl Driver {
         use sha2::{Digest, Sha256};
         if let Some(course)=&mut self.funhouse_exit {
             course.record_state(frame,arena);self.report.funhouse_exit=Some(course.report());
+        }
+        if let Some(course)=&mut self.funhouse_pendulums {
+            course.record_state(frame,arena);self.report.funhouse_pendulums=Some(course.report());
         }
         let states = &mut self.report.network_states;
         if states.back().is_some_and(|s| (s.epoch,s.tick) == (frame.epoch,frame.tick)) { return Ok(()); }
@@ -813,7 +822,7 @@ impl Driver {
             navigation_clock:NavigationClock::new(now), jumped: false, rope_used: false,
             control_used: false, switch_aim:SwitchAim::default(), combat_aim:CombatAim::default(),combat_home:None,combat_location:None,
             step_height: None, swim_goal: None, swim_worker: None,
-            garden_course: None, sanctum_course: None, chess_course: None, castling_course: None, funhouse_exit:None, location: None, report: Report::default() }
+            garden_course: None, sanctum_course: None, chess_course: None, castling_course: None, funhouse_exit:None, funhouse_pendulums:None, location: None, report: Report::default() }
     }
     pub fn poll(&mut self, now: Instant) {
         if now.duration_since(self.polled) < Duration::from_millis(50) { return; }
@@ -837,6 +846,7 @@ impl Driver {
                 }
                 if self.command.as_ref().is_none_or(|old| old.id != command.id || old.shoot_switch!=command.shoot_switch) {
                     self.funhouse_exit=None;self.report.funhouse_exit=None;
+                    self.funhouse_pendulums=None;self.report.funhouse_pendulums=None;
                     self.plan.clear(); self.jumped = false; self.rope_used = false; self.location = None;
                     self.control_used = false;
                     self.switch_aim=SwitchAim::default();
@@ -1216,7 +1226,7 @@ impl Driver {
                 let target=ice_aim(&context,&foes,body,command.prefer_ice,keys).or(normal);
                 if let Some(target)=target {
                     if command.goal.is_none() && command.marker.is_none() && command.rope.is_none()
-                        && command.use_aim.is_none() && command.beyond_step.is_none() && !command.funhouse_exit {
+                        && command.use_aim.is_none() && command.beyond_step.is_none() && !command.funhouse_exit && !command.funhouse_pendulums {
                         if self.combat_home.is_none_or(|(id,_)|id!=command.id) {self.combat_home=Some((command.id,body.player.feet));}
                         keys.wish=combat_dodge(world,&body.player,self.combat_home.unwrap().1,target.center,frame.tick,command.input_lead,
                             other.stats.alive().then_some(other.player.feet),keys.weapon==Some(0)&&keys.primary,
@@ -1232,6 +1242,18 @@ impl Driver {
         // Rope movement can be combined with ordinary weapon input. Apply aim
         // after movement-facing so a swing does not redirect an intended shot.
         if command.rope.is_some() { return; }
+        if command.funhouse_pendulums {
+            let result=(|| -> Result<()> {
+                if self.funhouse_pendulums.is_none() { self.funhouse_pendulums=Some(crate::levels::funhouse::NetworkPendulums::new(frame,arena,local)?); }
+                let course=self.funhouse_pendulums.as_mut().unwrap();
+                course.sample(frame,arena,command.input_lead,keys)?;
+                let report=course.report();self.report.reached=report.reached;
+                self.report.funhouse_pendulums=Some(report);Ok(())
+            })();
+            if let Err(error)=result {self.report.error=Some(error.to_string());}
+            self.report.phase="following Funhouse pendulums";
+            return;
+        }
         if command.funhouse_exit {
             let result=(|| -> Result<()> {
                 if self.funhouse_exit.is_none() { self.funhouse_exit=Some(crate::levels::funhouse::NetworkExit::new(frame,arena,local)?); }
@@ -2256,8 +2278,12 @@ mod tests {
         let base=serde_json::json!({"id":1,"heartbeat":1,"epoch":1,"goal":null,
             "navigate":false,"attack":true,"capture":false,"finish":false});
         assert!(!serde_json::from_value::<Command>(base.clone()).unwrap().funhouse_exit);
-        let mut active=base;active["funhouse_exit"]=true.into();
+        assert!(!serde_json::from_value::<Command>(base.clone()).unwrap().funhouse_pendulums);
+        for course in ["funhouse_exit","funhouse_pendulums"] {
+        let mut active=base.clone();active[course]=true.into();
         assert!(serde_json::from_value::<Command>(active.clone()).unwrap().validate().is_ok());
+        let mut both=active.clone();both["funhouse_exit"]=true.into();both["funhouse_pendulums"]=true.into();
+        assert!(serde_json::from_value::<Command>(both).unwrap().validate().is_err());
         for flag in ["navigate","horizontal","jump","run","hold_goal","swim","checkpoint","finish"] {
             let mut bad=active.clone();bad[flag]=true.into();
             assert!(serde_json::from_value::<Command>(bad).unwrap().validate().is_err(),"{flag}");
@@ -2266,6 +2292,7 @@ mod tests {
             ("speed_limit",serde_json::json!(100)),("chess_follow",serde_json::json!("Blue"))] {
             let mut bad=active.clone();bad[key]=value;
             assert!(serde_json::from_value::<Command>(bad).unwrap().validate().is_err(),"{key}");
+        }
         }
     }
     #[test]

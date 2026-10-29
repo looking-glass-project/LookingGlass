@@ -65,14 +65,20 @@ arrivals, five safe waiting handoffs and two own pickups. Both finish at 70 heal
 without deaths. Normal checkpoints before 125 and 126 are retained, allowing
 the next crossing test to resume without repeating the earlier fights.
 
-Current blocker: at **126**, the leading player waits in the only supported
-approach lane. The other stops at the required 36-unit player separation. The
-next work must coordinate this narrow bank and the following pendulum crossings.
-Full traversal, later scenes and exit remain open. Overall stays **48.1%**.
+The narrow bank and pendulums now pass as a coordinated **126-134** sequence on
+source `c79ac85`: **14 personal arrivals**, all six individual pendulum landings,
+both bank jump holds and **1,041 matching states**. Red crosses first and waits
+off the landing route before Blue follows. Both finish at 70 health without
+deaths; a normal checkpoint before 135 is retained. The final jump waits for a
+reachable departure window, including platform movement during network delay.
+
+Next is the corridor from **135 onward**, then later machinery, scenes and exit.
+Fresh full traversal and the opposite crossing order remain unverified. These
+separate segment passes add no completed campaign row. Overall stays **48.1%**.
 
 Tests run as two independent clients through the public network path on Anode,
 with injected delay and jitter. Routine diagnosis uses state and log assertions.
-Screenshots are not needed for each run. The current source also has 873 passing
+Screenshots are not needed for each run. The current source also has 875 passing
 active Rust tests and native Funhouse battle, machinery and scene checks; those
 component results do not prove a full campaign route.
 

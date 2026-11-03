@@ -148,7 +148,7 @@ The compiler downloads the locked open-source dependencies. It does not fetch Al
 ### Linux (experimental, source only)
 
 The engine builds and its unit tests pass natively on Linux (x86-64, X11 or
-XWayland). Guided setup, controller support and packaging are still Windows-only.
+XWayland). Guided setup and packaging are still Windows-only.
 Needs a Rust toolchain, a C compiler and ALSA headers (`alsa-lib-devel` on
 Fedora, `libasound2-dev` on Debian/Ubuntu).
 
@@ -160,5 +160,8 @@ echo "$PWD/private/game/Alice1/bin/base" > private/data-path.txt
 ```
 
 `--data <folder>` overrides `private/data-path.txt`. Saves go to `private/saves`
-relative to the folder `launch.sh` runs from. Known gaps: no gamepad input (XInput
-only), and the mouse is not released when the window loses focus.
+relative to the folder `launch.sh` runs from. Controllers are read through evdev
+(`/dev/input/event*`) with the Xbox 360 layout that Steam Input and the kernel
+`xpad` driver present; under Steam, including Steam Deck Game Mode, enable Steam
+Input for the shortcut. Other pads used without Steam may map buttons differently.
+Known gap: the mouse is not released when the window loses focus.

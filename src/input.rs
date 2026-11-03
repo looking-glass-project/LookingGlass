@@ -1,8 +1,10 @@
-//! Gameplay bindings and Windows XInput. Menu controls remain fixed and usable
+//! Gameplay bindings, Windows XInput and Linux evdev pads. Menu controls remain fixed and usable
 //! even when every gameplay action has been rebound. No original DLL is loaded.
 use crate::preferences::Preferences;
 use macroquad::prelude::*;
 use std::collections::HashSet;
+#[cfg(target_os = "linux")]
+mod linux_pad;
 
 pub const KEYS: &[(&str, KeyCode)] = &[
     ("W", KeyCode::W),
@@ -195,7 +197,7 @@ struct RawPad {
 }
 #[repr(C)]
 #[derive(Default)]
-#[cfg_attr(not(windows), allow(dead_code))] // Only XInput fills it; no Linux pad backend yet.
+#[cfg_attr(not(windows), allow(dead_code))] // Only XInput fills it.
 struct RawState {
     packet: u32,
     pad: RawPad,
@@ -212,7 +214,11 @@ fn read_pad(index: u32) -> Option<RawPad> {
         // Fixed C layout, writable state, index checked by XInput; Windows 10+ system API.
         (unsafe { XInputGetState(index, &mut state) } == 0).then_some(state.pad)
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "linux")]
+    {
+        linux_pad::read(index)
+    }
+    #[cfg(not(any(windows, target_os = "linux")))]
     {
         let _ = index;
         None

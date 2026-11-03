@@ -195,6 +195,7 @@ struct RawPad {
 }
 #[repr(C)]
 #[derive(Default)]
+#[cfg_attr(not(windows), allow(dead_code))] // Only XInput fills it; no Linux pad backend yet.
 struct RawState {
     packet: u32,
     pad: RawPad,

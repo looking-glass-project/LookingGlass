@@ -144,3 +144,21 @@ The compiler downloads the locked open-source dependencies. It does not fetch Al
 ```powershell
 .\target\release\looking-glass.exe --data "D:\Games\Alice1\bin\base" --map gvillage
 ```
+
+### Linux (experimental, source only)
+
+The engine builds and its unit tests pass natively on Linux (x86-64, X11 or
+XWayland). Guided setup, controller support and packaging are still Windows-only.
+Needs a Rust toolchain, a C compiler and ALSA headers (`alsa-lib-devel` on
+Fedora, `libasound2-dev` on Debian/Ubuntu).
+
+```sh
+cargo build --release --locked
+7z x Alice1_2011_vanilla.7z -oprivate/game     # or any folder holding the .pk3 files
+echo "$PWD/private/game/Alice1/bin/base" > private/data-path.txt
+./launch.sh
+```
+
+`--data <folder>` overrides `private/data-path.txt`. Saves go to `private/saves`
+relative to the folder `launch.sh` runs from. Known gaps: no gamepad input (XInput
+only), and the mouse is not released when the window loses focus.

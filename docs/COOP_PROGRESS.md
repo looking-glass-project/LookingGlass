@@ -19,26 +19,34 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | Full campaign verification | 3.08 | 20 |
 | **Total** | **48.58, rounded to 48.6** | **100** |
 
-Latest diagnostic result: the first chair approach now completes Red's native
-pull-up, resumes navigation to the original waypoint and activates its puzzle
-contact. A scoped audit verifies those components and **1,088 matching
-player/world/native states**. The paired step still fails because the chair
-offers no safe walking neighbor for the leader to wait at. Its lower surface
-also reports slime immersion and causes ordinary damage; waiting there is not
-a solution. No completed step or campaign visit is credited.
+Latest completed traversal section: resumed **138** now passes for both players.
+Each reaches the original chair waypoint, then uses an observed native jump to
+return to dry ground before the partner approaches. The run verifies the puzzle
+contact, two personal arrivals, two departures, one observed Red pull-up and
+**1,828 matching player/world/native states**. Both survive at **67/67.73 health**;
+ordinary slime and combat damage is retained. A normal checkpoint before 139 is
+saved. The earlier failed waiting arrangements remain recorded separately.
 
-The automated controller now observes a real catch before requesting a pull,
-shimmies with ordinary inputs when the native pull destination is obstructed,
-and resumes navigation/combat after a verified completed climb. Native source
-`99a66d6` passes **901 active Rust tests** (three ignored), the locked release,
-**72 native paired/driver checks** and the exact single-player **11+1** baseline.
-All **154 Python guards** and seven source-package checks pass. The previous
+The next requested 139-143 run completes **139**. Its separately audited section
+adds two arrivals, two departures and **1,741 matching states**, ending at
+**54/43.53 health**. Step 140 remains unverified: Blue's selected return point
+is beneath a higher landing, and Red's delayed jump route triggers the original
+rescue portal before a new search times out. The runtime now enforces the same
+return-height check as the final verifier, so it stops at that mismatch earlier.
+
+The fixture returns to the first nearby dry footing from the actual approach.
+A reproduced selection bug chose a later point beneath the chair rim, leaving
+Blue above her target; its regression now rejects that choice. All **166 Python
+guards** and seven source-package checks pass. Native source remains `99a66d6`,
+with **901 active Rust tests** (three ignored), the locked release, **72 native
+paired/driver checks** and the exact single-player **11+1** baseline. The previous
 **40 scene cases** belong to source `04d3b0c`; they were not repeated for these
-diagnostic changes. Next: safe chair departure and partner arrival, then the
-remaining puzzle, second portal and final scene/exit. Overall stays **48.6%**.
+diagnostic changes. The remaining chairs, second portal, final scene/exit and
+full-route/recovery/reconnect repeats remain open. No additional campaign visit
+is credited; overall stays **48.6%**.
 See [Clockwork evidence](HATTER1.md).
 
-Latest completed traversal section: Clockwork's resumed **136-137** portal section passes
+Earlier completed traversal section: Clockwork's resumed **136-137** portal section passes
 with two personal approach arrivals, two input-driven native climbs, separate
 portal crossings, one waiting handoff and **202 matching player/world/native
 states**. Both players remain alive at **80/100 health**; the leader takes two

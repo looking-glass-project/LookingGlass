@@ -1048,3 +1048,52 @@ locked release, **72 native paired/driver checks** and the exact single-player
 894-file source worktree audit pass. The earlier 40 scene cases were not repeated
 on this diagnostic-only change. No further campaign visit is credited; overall
 completion remains **48.6%**.
+
+## First paired chair and dry departures (4 November 2026)
+
+The chair fixture now requires both personal arrivals and ordinary jump
+departures to previously observed dry approach footing. It records immersion,
+the real host input/takeoff, flight and supported dry landing. The return target
+must clear the partner and the arrival lane. A scene, rescue warp, revival,
+missing personal arrival or unreplicated chair contact cannot pass.
+
+The first attempt reached the chair with both players and returned Red safely,
+but selected a later supported point partway up the chair for Blue. Approaching
+that XY from above left Blue on the rim, unable to reach the lower target Z.
+The original failed run is retained at
+`private/coop/hatter1-route-e9b4f1b224e34a35ae1f3ccd876aa131`.
+The selector now preserves the first eligible nearby dry approach footing.
+Its new regression fails with the original selection and passes after the fix.
+
+The next resumed **138** replay passes on unchanged native source `99a66d6`.
+Two independent internet clients with 40 ms delay and 20 ms jitter record two
+personal chair arrivals, one observed Red pull-up, two native jump departures,
+the replicated puzzle contact and **1,828 matching player/world/native states**.
+Both finish alive on dry ground with **67 and about 67.73 health**. No health is
+refilled; normal damage during approach/departure remains. The ordinary checkpoint
+before 139 is saved at tick 197099. Evidence:
+`private/coop/hatter1-route-60c616cad3f741c0846d4a912e2abe6e/result-summary.json`.
+
+All **165 Python guards** and seven source-package checks pass. Native source and
+its previous 901 Rust, 72 paired/driver and exact 11+1 single-player checks are
+unchanged. This is one completed resumed paired step, not a complete visit.
+The later chairs, second portal, final scene/exit and fresh/recovery/reconnect
+repeats remain open. Overall completion remains **48.6%**.
+
+The following 139-143 replay completes **139** before failing at 140. Its frozen,
+separately audited completed section verifies two personal chair arrivals, one
+observed pull-up, two native jump departures and **1,741 matching
+player/world/native states**, ending at **54/43.53 health**. The original failure
+is retained; no third-chair component is included in this completed section:
+`private/coop/hatter1-route-229f63cf853147c4ba7ad05695f1753a/completed-prefix-audit.json`.
+Its normal checkpoint before 140 is saved at tick 209317.
+
+At 140, Blue reaches the chair but her return lands about 33 units above the
+selected approach footing. The final verifier already rejects that height
+mismatch; the runtime now applies the same check before declaring departure.
+Red's first delayed jump plan diverges from its predicted path and activates the
+original rescue portal at tick 219344. A second search then reaches the fixture
+timeout. Both remain alive at about **43/43.53 health**. The successful 139 audit
+does not hide either later failure. The return target and remote jump approach
+need further work; all **166 Python guards** pass, including the additional
+landing-height rejection. Native source is unchanged and no full visit is credited.

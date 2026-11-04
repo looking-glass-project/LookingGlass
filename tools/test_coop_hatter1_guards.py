@@ -12,7 +12,87 @@ from test_coop_hatter1 import verify_scene_handoff, verify_contact_handoff
 from test_coop_hatter1 import verify_doorway_approaches
 from test_coop_hatter1 import next_door_footing, verify_door_waiting
 from test_coop_hatter1 import verify_first_portal
+from test_coop_hatter1 import chair_return,verify_chair_departures
 from test_coop_hatter1 import ClockworkPair
+
+
+class ChairDeparture(unittest.TestCase):
+    def setUp(self):
+        self.steps=[{} for _ in range(139)];self.steps[138]=dict(nav=[0,0,100])
+        self.arrivals=[dict(step=138,role=role,tick=tick) for role,tick in (('host',100),('guest',300))]
+        self.receipts=[dict(step=138,role=role,approach_tick=start,selected_tick=start,before_tick=before,
+            after_tick=flight,arrival_tick=end,goal=goal,command=cmd)
+            for role,start,before,flight,end,goal,cmd in [('host',10,100,120,200,[-200,0,0],11),('guest',200,300,320,400,[200,0,0],21)]]
+        self.history={}
+        for role in ('host','guest'):
+            rows=[]
+            for tick in (10,100,120,200,300,320,400):
+                players=[]
+                for slot,start,flight,end,x in ((0,100,120,200,-200),(1,300,320,400,200)):
+                    at=[x,0,0] if tick<start or tick>=end else [0,0,100 if tick<flight else 130]
+                    players.append(dict(feet=at,health=100,grounded=tick!=flight,ledge=None,immersion=dict(level=0),
+                        jumps=int(tick>=flight),warped_at=0,spawned_at=0))
+                command=(10 if tick<120 else 11) if role=='host' else (20 if tick<320 else 21)
+                events=[]
+                for slot,t in ((0,110),(1,310)):
+                    if tick>=t:
+                        before=[[[0,0,100],True,0]]*2;after=copy.deepcopy(before);after[slot][1:]=[False,1]
+                        events.append(dict(kind='jump',epoch=1,tick=t,input=[slot==0,slot==1],before=before,after=after))
+                rows.append(dict(tick=tick,owner=None,players=players,clockwork=dict(cubes=[False,False,tick>=100,False]),
+                    driver=dict(command=command,reached=tick in (100,200,300,400),clear=[True,True],input_events=events)))
+            self.history[role]=rows
+
+    def check(self):verify_chair_departures(self.receipts,self.steps,self.arrivals,self.history,[138])
+
+    def test_both_players_jump_back_to_observed_dry_ground(self):self.check()
+
+    def test_return_uses_the_approach_floor_before_climbing_the_chair_side(self):
+        # A later supported point can be under an overhang. Returning to that
+        # same XY from above leaves Alice on the roof, unable to reach its Z.
+        side=copy.deepcopy(self.history['host'][0]);side['tick']=60
+        side['players'][0]['feet']=[-100,0,40]
+        self.history['host'].insert(1,side)
+        self.check()
+
+    def test_missing_partner_departure_is_rejected(self):
+        self.receipts.pop()
+        with self.assertRaisesRegex(AssertionError,'Missing personal'):self.check()
+
+    def test_hazardous_return_footing_is_rejected(self):
+        self.history['host'][0]['players'][0]['immersion']['level']=1
+        with self.assertRaisesRegex(AssertionError,'no observed dry'):self.check()
+
+    def test_partner_occupied_return_footing_is_rejected(self):
+        self.history['host'][1]['players'][1]['feet']=[-200,0,0]
+        with self.assertRaisesRegex(AssertionError,'no observed dry'):self.check()
+
+    def test_an_unobserved_return_target_is_rejected(self):
+        self.receipts[0]['goal']=[-210,0,0]
+        with self.assertRaisesRegex(AssertionError,'not the observed'):self.check()
+
+    def test_liquid_at_final_landing_is_rejected(self):
+        self.history['host'][3]['players'][0]['immersion']['level']=1
+        with self.assertRaisesRegex(AssertionError,'land safely outside liquid'):self.check()
+
+    def test_landing_above_the_return_floor_is_rejected(self):
+        self.history['host'][3]['players'][0]['feet']=[-200,0,33.31]
+        with self.assertRaisesRegex(AssertionError,'return missed'):self.check()
+
+    def test_missing_authoritative_takeoff_is_rejected(self):
+        for row in self.history['host']:row['driver']['input_events']=[]
+        with self.assertRaisesRegex(AssertionError,'Actual takeoff unobserved'):self.check()
+
+    def test_a_repeated_jump_is_rejected(self):
+        self.history['host'][3]['players'][0]['jumps']=2
+        with self.assertRaisesRegex(AssertionError,'repeated the jump'):self.check()
+
+    def test_a_recovery_warp_is_rejected(self):
+        self.history['host'][3]['players'][0]['warped_at']=180
+        with self.assertRaisesRegex(AssertionError,'scene, warp or revival'):self.check()
+
+    def test_an_unreplicated_puzzle_contact_is_rejected(self):
+        for row in self.history['guest']:row['clockwork']['cubes'][2]=False
+        with self.assertRaisesRegex(AssertionError,'contact not replicated'):self.check()
 
 
 class LedgeHandoffCommands(unittest.TestCase):

@@ -3,7 +3,8 @@
 Each player must earn a separate waypoint receipt. The first stops at a native
 clear/supported neighbor to let the second arrive. The initial runner supports
 nav/walk/node/wait/lever steps, the watched Hare/Port/Gryphon handoffs and a paired gap
-crossing adapted from steps 36-42, plus sequential first-portal jumps at 136-137.
+crossing adapted from steps 36-42, sequential first-portal jumps at 136-137,
+and chair contacts/departures at 138-141.
 A scene-triggered reunion is recorded
 separately from personal walking arrivals. Other timed inputs, portals and
 later scene handoffs remain explicit future work.
@@ -422,6 +423,55 @@ def verify_grounded_jump(jump, history):
                and e['before'][slot][2] == count and e['after'][slot][2] == count + 1 for e in events), 'Actual takeoff unobserved'
 
 
+def chair_return(rows, slot, start_tick, before_tick, goal):
+    """Return to the first nearby dry footing crossed during this approach."""
+    before=next(r for r in rows if r['tick']==before_tick)
+    partner=before['players'][1-slot]['feet']
+    # Later supports may be partway up the chair beneath its rim. Preserve the
+    # earlier approach floor rather than targeting an overhang from above.
+    for row in rows:
+        if not start_tick<=row['tick']<before_tick:continue
+        body=row['players'][slot];at=body['feet']
+        if body['grounded'] and body.get('ledge') is None and body['health']>0 and row['driver']['clear'][slot] \
+                and body['immersion']['level']==0 and 56<=goal[2]-at[2]<=256 \
+                and 64<=distance(at[:2],goal[:2])<=384 \
+                and (distance(at[:2],partner[:2])>=48 or abs(at[2]-partner[2])>=64):
+            return row
+    raise AssertionError('Chair approach has no observed dry return footing clear of the partner')
+
+
+def verify_chair_departures(receipts, steps, arrivals, history, completed):
+    expected={i for i in completed if 138<=i<=141}
+    assert {(r['step'],r['role']) for r in receipts}=={(i,r) for i in expected for r in ('host','guest')} \
+        and len(receipts)==2*len(expected), 'Missing personal chair departure'
+    for receipt in receipts:
+        step=receipt['step'];role=receipt['role'];slot=0 if role=='host' else 1
+        rows=history[role];by_tick={r['tick']:r for r in rows}
+        before=by_tick[receipt['before_tick']];end=by_tick[receipt['arrival_tick']]
+        arrival=next(r for r in arrivals if r['step']==step and r['role']==role)
+        assert arrival['tick']==receipt['before_tick'], 'Chair departure did not follow its personal arrival'
+        selected=chair_return(rows,slot,receipt['approach_tick'],receipt['before_tick'],steps[step]['nav'])
+        assert selected['tick']==receipt['selected_tick'] and receipt['goal']==selected['players'][slot]['feet'], 'Chair return was not the observed safe footing'
+        verify_grounded_jump(receipt,history)
+        flight=by_tick[receipt['after_tick']]
+        assert not flight['players'][slot]['grounded'], 'Chair departure flight unobserved'
+        body=end['players'][slot]
+        assert body['health']>0 and body['grounded'] and body.get('ledge') is None and end['driver']['clear'][slot] \
+            and body['immersion']['level']==0, 'Chair departure did not land safely outside liquid'
+        assert end['driver']['command']==receipt['command'] and end['driver']['reached'], 'Chair return command unacknowledged'
+        assert distance(body['feet'][:2],receipt['goal'][:2])<8 and abs(body['feet'][2]-receipt['goal'][2])<16, 'Chair return missed'
+        assert body['jumps']==before['players'][slot]['jumps']+1, 'Chair departure repeated the jump'
+        for row in rows:
+            if receipt['before_tick']<=row['tick']<=receipt['arrival_tick']:
+                b=row['players'][slot];old=before['players'][slot]
+                assert row['owner'] is None and b['health']>0 and b['warped_at']==old['warped_at'] and b['spawned_at']==old['spawned_at'], 'Chair departure used a scene, warp or revival'
+        cube={138:2,139:1,140:0,141:3}[step]
+        assert all(any(r['tick']>=receipt['before_tick'] and r['clockwork']['cubes'][cube] for r in rows) for rows in history.values()), 'Chair contact not replicated'
+    for step in expected:
+        pair=[r for r in receipts if r['step']==step]
+        assert pair[0]['arrival_tick']<pair[1]['before_tick'], 'Follower arrived before the chair was cleared'
+
+
 def verify_gear_boarding(boardings, goal, history):
     verify_jump_crossing(boardings,goal,GEAR_APPROACH,history)
 
@@ -586,7 +636,7 @@ class ClockworkPair(Pair):
             effective_course_sha256=hashlib.sha256(effective).hexdigest(), waypoint_adjustments=adjustments,
             executable_sha256=hashlib.sha256(args.exe.read_bytes()).hexdigest(),
             arrivals=[], levers=[], holds=[], parking=[], stair_waiting=[], corridor_waiting=[], yields=[], descent_arrivals=[], descent_jumps=[], ledge_pulls=[], gear_boarding=[], gear_exits=[], gap_jumps=[], gap_holds=[], gap_waiting=[], node_resolutions=[],
-            scene_handoffs=[], doorway_approaches=[], door_waiting=[], portal_jumps=[], portal_waiting=[], port_player=args.port_player, completed=self.completed, scope='Fresh Clockwork prefix only')
+            scene_handoffs=[], doorway_approaches=[], door_waiting=[], portal_jumps=[], portal_waiting=[], chair_departures=[], port_player=args.port_player, completed=self.completed, scope='Fresh Clockwork prefix only')
         if args.start_step<=36<=args.last_step:
             self.evidence['gap_adaptation']='Steps 36-42 run separately per player: original approach, preparation wait and run-up, then actual jump and feedback steering to the original landing. This does not claim identical replay of the single-player timed air inputs.'
         dependencies = self.folder / 'fixture-dependencies'; dependencies.mkdir()
@@ -662,7 +712,7 @@ class ClockworkPair(Pair):
             self.history[role][-1]['clockwork'] = self.state(role)
             self.history[role][-1].setdefault('presentation',report['presentation'])
             for observed, body in zip(self.history[role][-1]['players'], report['frame']['players']):
-                observed.update(ledge=body['player'].get('ledge'), climbs=body['player']['climbs'])
+                observed.update(ledge=body['player'].get('ledge'), climbs=body['player']['climbs'],immersion=body['player']['immersion'])
 
     def until(self, predicate, seconds=90):
         end = time.monotonic() + seconds
@@ -874,6 +924,28 @@ class ClockworkPair(Pair):
         self.evidence[evidence_key].append(receipt)
         self.wait_for_partner(role,park)
 
+    def leave_chair(self, role, goal, approach_tick):
+        before=self.reports[role];slot=0 if role=='host' else 1
+        selected=chair_return(self.history[role],slot,approach_tick,before['frame']['tick'],goal)
+        park=list(selected['players'][slot]['feet'])
+        receipt=dict(step=self.step,role=role,approach_tick=approach_tick,
+            selected_tick=selected['tick'],before_tick=before['frame']['tick'],goal=park)
+        count=self.body(role)['player']['jumps']
+        # Leave the sinking, harmful cushion immediately. A separate ordinary
+        # jump returns to observed dry ground, freeing the chair for the partner.
+        self.set(role,park,run=True,jump=True,attack=False)
+        receipt['command']=self.commands[role]['id']
+        self.evidence['chair_departures'].append(receipt)
+        self.until(lambda:self.reports[role]['route_driver']['command']==receipt['command']
+            and self.body(role)['player']['jumps']==count+1 and not self.body(role)['player']['grounded'],15)
+        receipt['after_tick']=self.reports[role]['frame']['tick']
+        self.until(lambda:self.reached(role) and self.body(role)['player']['grounded']
+            and self.body(role)['player']['immersion']['level']==0
+            and abs(self.body(role)['player']['feet'][2]-park[2])<16,30)
+        receipt['arrival_tick']=self.reports[role]['frame']['tick']
+        self.wait_for_partner(role,park)
+        print('PASS ordinary chair departure',self.step,role,flush=True)
+
     def wait_for_partner(self, role, park):
         # These return stairs and rooms are static ground. Once clear of the
         # follower, let ordinary combat controls dodge instead of continually
@@ -991,11 +1063,15 @@ class ClockworkPair(Pair):
             if self.step == 1: self.descend(role)
             if self.step == 16: self.board_gear(role,goal)
             if self.step == 17: self.exit_gear(role,goal)
+            approach_tick=self.reports[role]['frame']['tick']
             self.move(role, goal, navigate, yield_partner=first if role == other else other if self.step in (60,112) or 81<=self.step<=108 else None)
             report = self.reports[role]
             self.evidence['arrivals'].append(dict(step=self.step, role=role, goal=goal,
                 tick=report['frame']['tick'], feet=list(self.body(role)['player']['feet']),
                 command=report['route_driver']['command']))
+            if 138<=self.step<=141:
+                self.leave_chair(role,goal,approach_tick)
+                continue
             if role == first:
                 slot = 0 if role == 'host' else 1
                 if self.step in DOOR_HANDOFFS:
@@ -1040,6 +1116,8 @@ class ClockworkPair(Pair):
                     if ready: break
                 else: raise AssertionError('Could not walk far enough to leave the arrival lane clear')
                 self.wait_for_partner(role,park)
+        if 138<=self.step<=141:
+            verify_chair_departures(self.evidence['chair_departures'],self.steps,self.evidence['arrivals'],self.history,self.completed+[self.step])
         self.set(other, attack=True)
 
     def lever(self, index):
@@ -1097,6 +1175,7 @@ class ClockworkPair(Pair):
         if 1 in self.completed:
             verify_descent(self.evidence['descent_arrivals'], self.evidence['descent_jumps'], self.history)
         verify_ledge_pulls(self.evidence['ledge_pulls'], self.history)
+        verify_chair_departures(self.evidence['chair_departures'],self.steps,self.evidence['arrivals'],self.history,self.completed)
         verify_yields(self.evidence['yields'], self.steps, self.history)
         verify_stair_waiting(self.evidence['stair_waiting'],self.steps,self.evidence['arrivals'],self.history)
         verify_corridor_waiting(self.evidence['corridor_waiting'],self.steps,self.evidence['arrivals'],self.history)
@@ -1131,7 +1210,7 @@ class ClockworkPair(Pair):
         interrupted={r['step'] for r in self.evidence['scene_handoffs'] if 'interrupted_goal' in r}
         assert sorted([p['step'] for p in self.evidence['parking'] if p['ready']]
             +[p['step'] for kind in ('stair_waiting','corridor_waiting','door_waiting') for p in self.evidence[kind]]) == [i for i in self.completed
-            if next(iter(self.steps[i])) in ('nav','walk') and i not in (36,37,42,136) and i not in interrupted], 'Missing completed parking handoff'
+            if next(iter(self.steps[i])) in ('nav','walk') and i not in (36,37,42,136,138,139,140,141) and i not in interrupted], 'Missing completed parking handoff'
         for role, rows in self.history.items():
             assert rows and all(r['map'] == self.map_name and r['epoch'] == 1 and r['checkpoint_generation'] == 0 for r in rows)
             assert all(p['health'] > 0 and p['spawned_at'] == 0 for r in rows for p in r['players']), 'Prefix contains a death'

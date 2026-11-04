@@ -19,7 +19,26 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | Full campaign verification | 3.08 | 20 |
 | **Total** | **48.58, rounded to 48.6** | **100** |
 
-Latest completed automation result: Clockwork's resumed **136-137** portal section passes
+Latest diagnostic result: the first chair approach now completes Red's native
+pull-up, resumes navigation to the original waypoint and activates its puzzle
+contact. A scoped audit verifies those components and **1,088 matching
+player/world/native states**. The paired step still fails because the chair
+offers no safe walking neighbor for the leader to wait at. Its lower surface
+also reports slime immersion and causes ordinary damage; waiting there is not
+a solution. No completed step or campaign visit is credited.
+
+The automated controller now observes a real catch before requesting a pull,
+shimmies with ordinary inputs when the native pull destination is obstructed,
+and resumes navigation/combat after a verified completed climb. Native source
+`99a66d6` passes **901 active Rust tests** (three ignored), the locked release,
+**72 native paired/driver checks** and the exact single-player **11+1** baseline.
+All **154 Python guards** and seven source-package checks pass. The previous
+**40 scene cases** belong to source `04d3b0c`; they were not repeated for these
+diagnostic changes. Next: safe chair departure and partner arrival, then the
+remaining puzzle, second portal and final scene/exit. Overall stays **48.6%**.
+See [Clockwork evidence](HATTER1.md).
+
+Latest completed traversal section: Clockwork's resumed **136-137** portal section passes
 with two personal approach arrivals, two input-driven native climbs, separate
 portal crossings, one waiting handoff and **202 matching player/world/native
 states**. Both players remain alive at **80/100 health**; the leader takes two

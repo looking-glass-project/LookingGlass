@@ -12,6 +12,71 @@ from test_coop_hatter1 import verify_scene_handoff, verify_contact_handoff
 from test_coop_hatter1 import verify_doorway_approaches
 from test_coop_hatter1 import next_door_footing, verify_door_waiting
 from test_coop_hatter1 import verify_first_portal
+from test_coop_hatter1 import ClockworkPair
+
+
+class LedgeHandoffCommands(unittest.TestCase):
+    def test_only_planned_chair_approaches_wait_for_an_explicit_pullup(self):
+        pair=ClockworkPair.__new__(ClockworkPair)
+        pair.serial=0;pair.commands={};pair.lead=.17
+        for role in ('host','guest'):
+            for step in (-1,0,136,137,138,139,140,141,142):
+                pair.step=step
+                pair.set(role,[0,0,64],navigate=True)
+                self.assertEqual(pair.commands[role]['ledge_handoff'],step in (138,139,140,141))
+                pair.set(role,[0,0,64],jump=True)
+                self.assertFalse(pair.commands[role]['ledge_handoff'])
+                pair.set(role,attack=False)
+                self.assertFalse(pair.commands[role]['ledge_handoff'])
+
+    def test_completed_pull_resumes_routing_and_combat_before_arrival(self):
+        for role,slot in (('host',0),('guest',1)):
+            with self.subTest(role=role):
+                pair=ClockworkPair.__new__(ClockworkPair)
+                pair.serial=0;pair.commands={};pair.lead=.2;pair.step=138
+                pair.evidence=dict(ledge_pulls=[]);pair.history=dict(host=[],guest=[])
+                pair.reports={};goal=[100,0,100]
+                def observe(tick,climbs,grounded,ledge,at,reached=False):
+                    body=dict(feet=at,climbs=climbs,grounded=grounded,ledge=ledge)
+                    partner=dict(feet=[-100,0,100],climbs=1,grounded=True,ledge=None)
+                    players=[partner,partner];players[slot]=body
+                    driver=dict(command=pair.commands.get(role,{}).get('id',0),reached=reached,
+                        ledge_pull_clear=[True,True],input_events=[])
+                    if tick>=200:
+                        driver['input_events']=[dict(kind='jump',epoch=1,tick=110,input=[slot==0,slot==1],
+                            before=[[[0,0,0],False,0]]*2,after=[[[0,0,0],False,0]]*2)]
+                    row=dict(tick=tick,epoch=1,players=players,driver=driver)
+                    for peer in pair.history:pair.history[peer].append(copy.deepcopy(row))
+                    pair.reports[role]=dict(frame=dict(tick=tick,epoch=1,players=[dict(player=p) for p in players]),
+                        route_driver=driver,combat=dict(stage=dict(owner=None)))
+                def until(predicate):
+                    self.assertFalse(predicate())
+                    pull_command=pair.commands[role]['id']
+                    self.assertTrue(pair.commands[role]['jump'])
+                    self.assertFalse(pair.commands[role]['attack'])
+                    observe(200,0,False,dict(pulling=True),[0,0,70])
+                    self.assertFalse(predicate())
+                    # Grounding or the partner's climb cannot complete this pull.
+                    observe(300,0,True,None,[36,0,100])
+                    self.assertFalse(predicate())
+                    self.assertEqual(pair.commands[role]['id'],pull_command)
+                    self.assertNotIn('after_tick',pair.evidence['ledge_pulls'][0])
+                    observe(400,1,True,None,[36,0,100])
+                    self.assertFalse(predicate())
+                    resumed=pair.commands[role]
+                    self.assertGreater(resumed['id'],pull_command)
+                    self.assertEqual(resumed['goal'],goal)
+                    self.assertTrue(resumed['navigate'] and resumed['attack'])
+                    self.assertFalse(resumed['jump'])
+                    self.assertEqual(resumed['arrival_radius'],6)
+                    self.assertEqual(pair.evidence['ledge_pulls'][0]['after_tick'],400)
+                    observe(600,1,True,None,goal,reached=True)
+                    self.assertTrue(predicate())
+                pair.until=until
+                observe(100,0,False,dict(pulling=False,top=100,forward=[1,0]),[0,0,40])
+                command=pair.move(role,goal,navigate=True,radius=6)
+                self.assertEqual(command,pair.commands[role]['id'])
+                self.assertEqual(pair.evidence['ledge_pulls'][0]['after_tick'],400)
 
 
 class FirstPortal(unittest.TestCase):
@@ -766,6 +831,13 @@ class LedgePull(unittest.TestCase):
     def check(self): verify_ledge_pulls(self.pulls,self.history)
 
     def test_observed_native_pull_up(self): self.check()
+
+    def test_chair_pull_requires_its_own_clear_native_destination(self):
+        self.pulls[0]['requires_clear']=True
+        self.history['guest'][0]['driver']['ledge_pull_clear']=[True,False]
+        with self.assertRaisesRegex(AssertionError,'destination was not clear'):self.check()
+        self.history['guest'][0]['driver']['ledge_pull_clear']=[False,True]
+        self.check()
 
     def test_missing_start_ledge(self):
         self.history['guest'][0]['players'][1]['ledge'] = None

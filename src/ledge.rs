@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 pub const PULL_TIME: f32 = 2.35;
 const HAND_HEIGHT: f32 = 60.875;
-const SHIMMY_SPEED: f32 = 11.63 / 0.8;
+pub(crate) const SHIMMY_SPEED: f32 = 11.63 / 0.8;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Hang {
@@ -186,6 +186,7 @@ impl Hang {
         }
         None
     }
+    pub(crate) fn pull_clear(&self, world: &World) -> bool { self.destination(world).is_some() }
     /// None releases; Some(feet, complete) advances one fixed tick.
     pub fn tick(&mut self, world: &World, feet: Vec3, input: Controls) -> Option<(Vec3, bool)> {
         if !self.valid_contact(world) {

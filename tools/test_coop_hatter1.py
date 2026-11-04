@@ -507,6 +507,7 @@ def verify_ledge_pulls(pulls, history):
         after = next(r for r in rows if r['tick'] == pull['after_tick'])
         a, b = before['players'][slot], after['players'][slot]
         assert a['ledge'] and not a['ledge']['pulling'], 'Pull-up did not begin at an observed ledge'
+        if pull.get('requires_clear'): assert before['driver']['ledge_pull_clear'][slot], 'Pull-up destination was not clear'
         assert b['climbs'] == a['climbs'] + 1 and b['grounded'] and b['ledge'] is None, 'Native pull-up did not finish'
         assert any(before['tick'] < r['tick'] <= after['tick'] and r['driver']['command'] == pull['command']
                    and r['players'][slot]['ledge'] and r['players'][slot]['ledge']['pulling'] for r in rows), 'Pull-up animation unobserved'
@@ -614,6 +615,7 @@ class ClockworkPair(Pair):
         self.commands[role].update(input_lead=self.lead if role == 'guest' else 0,
             use_aim=use_aim, watch_dialogue=True, combat_tactics=True,
             prefer_cards=False, prefer_ice=True, avoid_switches=True)
+        self.commands[role]['ledge_handoff']=138<=self.step<=141 and self.commands[role]['navigate']
 
     def body(self, role):
         return self.reports[role]['frame']['players'][0 if role == 'host' else 1]
@@ -711,14 +713,33 @@ class ClockworkPair(Pair):
                 cinematic=report['route_driver']['scene']
                 return True
             gap = distance(body['feet'], goal); tick = report['frame']['tick']
+            if pullup is not None:
+                slot=0 if role=='host' else 1
+                before=next(r for r in self.history[role] if r['tick']==pullup['before_tick'])
+                if body['climbs']==before['players'][slot]['climbs']+1 and body['grounded'] and body.get('ledge') is None:
+                    pullup['after_tick']=tick
+                    verify_ledge_pulls([pullup],self.history)
+                    pullup=None
+                    # The explicit Space command has finished. Resume normal
+                    # routing and combat from the actual landing, which may
+                    # still need a jump or detour before the original goal.
+                    navigate=True
+                    self.set(role,goal,navigate=True,run=True)
+                    self.commands[role]['arrival_radius']=radius
+                    command=self.commands[role]['id']
+                    best=gap,tick
+                    return False
             if self.reached(role) and body['grounded'] and distance(body['feet'][:2], goal[:2]) < radius and abs(body['feet'][2]-goal[2]) < 35:
                 return True
             hang = body.get('ledge')
+            needs_clear=138<=self.step<=141
             if hang and not hang['pulling'] and pullup is None and goal[2] >= hang['top'] - 35 and sum(
-                    (goal[i]-body['feet'][i])*hang['forward'][i] for i in range(2)) > 0:
-                self.set(role, goal, run=True, jump=True)
+                    (goal[i]-body['feet'][i])*hang['forward'][i] for i in range(2)) > 0 \
+                    and (not needs_clear or report['route_driver']['ledge_pull_clear'][0 if role=='host' else 1]):
+                self.set(role, goal, run=True, jump=True,attack=not needs_clear)
                 self.commands[role]['arrival_radius'] = radius
-                pullup = dict(role=role, before_tick=tick, command=self.commands[role]['id'])
+                navigate=False; command=self.commands[role]['id']
+                pullup = dict(role=role, before_tick=tick, command=command,requires_clear=needs_clear)
                 self.evidence['ledge_pulls'].append(pullup)
             if gap < best[0] - 2: best = gap, tick
             elif yield_partner is not None and not jump and pullup is None and tick-best[1] > 240:
@@ -751,16 +772,17 @@ class ClockworkPair(Pair):
                     best = distance(self.body(role)['player']['feet'],goal), self.reports[role]['frame']['tick']
                     yielded += 1
                     print('PASS ordinary partner yield',self.step,yield_partner,flush=True)
-            if not navigate and not jump and tick - best[1] > 240 and body['grounded']:
+            if not navigate and not jump and pullup is None and tick - best[1] > 240 and body['grounded']:
                 navigate = True; self.set(role, goal, navigate=True, run=True)
                 self.commands[role]['arrival_radius'] = radius
+                command=self.commands[role]['id']
             return False
         self.until(done)
         if cinematic:
             entry=self.watch_scene(cinematic,role,command)
             entry['interrupted_goal']=goal
             raise SceneCompleted(entry)
-        if pullup is not None: pullup['after_tick'] = self.reports[role]['frame']['tick']
+        assert pullup is None, 'Arrival did not observe a completed native pull-up'
         return command
 
     def watch_scene(self, scene, role, trigger_command):
@@ -1134,7 +1156,7 @@ class ClockworkPair(Pair):
             step = self.steps[self.step]
             print('Clockwork step', self.step, step, flush=True)
             self.clear()
-            if self.step in (0, 1, 9, 14, 17, 18, 25, 33, 36, 43, 44, 51, 52, 60, 64, 66, 68, 76, 79, 81, 91, 99, 107, 109, 112, 114, 128, 131, 136): self.save_checkpoint(self.step)
+            if self.step in (0, 1, 9, 14, 17, 18, 25, 33, 36, 43, 44, 51, 52, 60, 64, 66, 68, 76, 79, 81, 91, 99, 107, 109, 112, 114, 128, 131, 136, 139, 140, 141, 142, 143): self.save_checkpoint(self.step)
             if self.step==36:
                 self.cross_corridor_gap()
                 self.completed.extend(range(36,43))

@@ -103,6 +103,10 @@ struct Command {
     #[serde(default = "default_arrival_radius")]
     arrival_radius: f32,
     navigate: bool,
+    /// Stop a planned climb at its first native hang so the outer fixture can
+    /// observe the catch and send a separate ordinary pull-up input.
+    #[serde(default)]
+    ledge_handoff: bool,
     attack: bool,
     /// Opt-in route tactic. Sends normal weapon/attack inputs and spends the
     /// player's actual Will; old fixtures retain their Blade-only behavior.
@@ -202,6 +206,8 @@ impl Command {
         ensure!(self.marker.is_none_or(|i| i < 100_000), "Invalid route marker");
         ensure!(!self.jump || !self.navigate && self.rope.is_none(),
             "Explicit jump needs straight movement, not a planned route or rope command");
+        ensure!(!self.ledge_handoff || self.navigate && self.goal.is_some(),
+            "A ledge handoff requires a planned route goal");
         ensure!(!self.run || self.rope.is_none(), "Rope controls own their running input");
         if let Some(runup) = &self.runup {
             ensure!(self.jump && self.run && self.goal.is_some() && (1..=500).contains(&runup.millis)
@@ -335,6 +341,7 @@ pub struct Report {
     pub scene: Option<String>,
     pub speech: bool,
     pub clear: [bool; 2],
+    pub ledge_pull_clear: [bool; 2],
     /// Nearest visible native hostile within the route's 700-unit clear radius.
     pub native_threats: [Option<usize>; 2],
     /// Nearby supported stopping points; only the local fixture reads these.
@@ -477,6 +484,45 @@ struct Worker {
 struct PlannedRoute {
     steps: Vec<(Controls, Vec3)>,
     walking: bool,
+    ledge_goal: Option<Vec3>,
+}
+fn stop_at_ledge(world: &World, start: &Player, goal: Vec3,
+    mut steps: Vec<(Controls, Vec3)>) -> (Vec<(Controls, Vec3)>,Option<Vec3>) {
+    let mut player=start.clone();
+    for index in 0..steps.len() {
+        let input=steps[index].0;
+        for tick in 0..24 {
+            player.tick(world,Controls{jump:input.jump && tick==0,..input});
+            if player.ledge.as_ref().is_some_and(|hang| goal.z>=hang.top-35.
+                && (goal-player.feet).truncate().dot(hang.forward)>0.) {
+                // A timed pull can reach the host before its delayed catch.
+                // Keep the catch input. The live handoff then approaches until
+                // it observes the hang and waits for an explicit pull input.
+                let target=steps[index].1;
+                steps.truncate(index+1);
+                return (steps,Some(target));
+            }
+        }
+    }
+    (steps,None)
+}
+fn ledge_handoff_wish(world: &World, player: &Player, goal: Vec3, grip: Option<Vec3>, lead: f32) -> Option<Vec2> {
+    if player.grounded || player.swimming { None }
+    else if let Some(hang)=&player.ledge {
+        let mut wish=Vec2::ZERO;
+        if !hang.pulling && !hang.pull_clear(world) {
+            if let Some(grip)=grip {
+                let right=vec2(hang.forward.y,-hang.forward.x);
+                let delta=(grip-player.feet).truncate().dot(right);
+                if delta.abs()>0.5 {
+                    let speed=(delta.abs()/(2.+crate::ledge::SHIMMY_SPEED*lead)).clamp(0.3,1.);
+                    wish=right*delta.signum()*speed;
+                }
+            }
+        }
+        Some(wish)
+    }
+    else { Some((goal-player.feet).truncate().normalize_or_zero()) }
 }
 struct SwimWorker {
     command: u64,
@@ -926,6 +972,7 @@ pub struct Driver {
     worker: Option<Worker>,
     planning_hold: Option<Vec3>,
     plan: VecDeque<(Controls, Vec3)>,
+    ledge_goal: Option<Vec3>,
     walking_plan: bool,
     walking_progress: WalkingProgress,
     step_tick: u64,
@@ -956,7 +1003,7 @@ impl Driver {
             // A relocation invalidates the path, not a jump already consumed
             // by this command. A new visit, command or planned segment rearms it.
             if self.location.is_some_and(|old| old.0 != location.0) { self.jumped=false; }
-            self.plan.clear(); self.planning_hold=None; self.location = Some(location);
+            self.plan.clear(); self.planning_hold=None; self.ledge_goal=None; self.location = Some(location);
             self.swim_goal = None;
             self.step_tick = tick; self.step_at = now;
             self.navigation_clock = NavigationClock::new(now);
@@ -1020,7 +1067,7 @@ impl Driver {
         let now = Instant::now();
         Self { path, recovery_trace:None, command: None, modified: None, polled: now, refreshed: now, used: now,
             door_requests: BTreeSet::new(), door_context: None,
-            worker: None, planning_hold:None, plan: VecDeque::new(), walking_plan:false, step_tick: 0, step_at: now,
+            worker: None, planning_hold:None, plan: VecDeque::new(), ledge_goal:None, walking_plan:false, step_tick: 0, step_at: now,
             walking_progress:WalkingProgress::new(Vec3::ZERO,now),
             navigation_clock:NavigationClock::new(now), jumped: false, rope_used: false,
             control_used: false, switch_aim:SwitchAim::default(), combat_aim:CombatAim::default(),combat_home:None,combat_location:None,
@@ -1050,7 +1097,7 @@ impl Driver {
                 if self.command.as_ref().is_none_or(|old| old.id != command.id || old.shoot_switch!=command.shoot_switch) {
                     self.funhouse_exit=None;self.report.funhouse_exit=None;
                     self.funhouse_pendulums=None;self.report.funhouse_pendulums=None;
-                    self.plan.clear(); self.planning_hold=None; self.jumped = false; self.rope_used = false; self.location = None;
+                    self.plan.clear(); self.planning_hold=None; self.ledge_goal=None; self.jumped = false; self.rope_used = false; self.location = None;
                     self.control_used = false;
                     self.switch_aim=SwitchAim::default();
                     self.step_height = None;
@@ -1097,6 +1144,8 @@ impl Driver {
         self.report.beyond_steps = arena.stage.interactions.beyond.as_ref()
             .map(|b|std::array::from_fn(|i|b.step_goal(i+1)));
         self.report.clear = frame.players.each_ref().map(|b| !b.stats.alive() || world.body_clear(b.player.feet));
+        self.report.ledge_pull_clear=frame.players.each_ref().map(|b|
+            b.player.ledge.as_ref().is_some_and(|hang|hang.pull_clear(world)));
         self.report.native_threats = frame.players.each_ref().map(|b|
             native_threat(world,&arena.stage.interactions,arena.npcs.targets(),b));
         self.report.neighbors = frame.players.each_ref().map(|b| {
@@ -1238,7 +1287,7 @@ impl Driver {
                             }
                             let trace = serde_json::json!({ "build": env!("LOOKING_GLASS_BUILD"),
                                 "epoch": worker.epoch, "command": worker.id, "start": worker.start,
-                                "walking":plan.walking,
+                                "walking":plan.walking,"ledge_goal":plan.ledge_goal,
                                 "steps": plan.steps.iter().map(|(input, expected)|serde_json::json!({
                                     "wish": input.wish, "jump": input.jump, "run": input.run, "expected": expected
                                 })).collect::<Vec<_>>() });
@@ -1246,6 +1295,7 @@ impl Driver {
                                 let _ = std::fs::write(crate::preferences::path(&format!("route-plan-{}-{}.json",worker.id,self.report.replans)),bytes);
                             }
                             self.walking_plan=plan.walking;
+                            self.ledge_goal=plan.ledge_goal;
                             self.planning_hold=None;
                             self.walking_progress=WalkingProgress::new(body.player.feet,now);
                             self.plan = plan.steps.into(); self.step_tick = frame.tick; self.step_at = now; self.jumped = false;
@@ -1334,7 +1384,7 @@ impl Driver {
             return;
         }
         if arena.stage.busy() {
-            self.plan.clear(); self.planning_hold=None; self.jumped = false; self.report.phase = "scene";
+            self.plan.clear(); self.planning_hold=None; self.ledge_goal=None; self.jumped = false; self.report.phase = "scene";
             self.swim_goal = None;
             return;
         }
@@ -1643,10 +1693,12 @@ impl Driver {
                 }
             } else {
                 let (wish,settled)=planning_hold_control(&mut self.planning_hold,&body.player,carry,command.input_lead);
-                keys.wish=wish;keys.swim=wish.extend(0.);keys.run=carry.is_some();
+                let handoff=command.ledge_handoff.then(||ledge_handoff_wish(world,&body.player,goal,self.ledge_goal,command.input_lead)).flatten();
+                keys.wish=handoff.unwrap_or(wish);keys.swim=keys.wish.extend(0.);keys.run=carry.is_some() || handoff.is_some();
                 self.report.expected=self.planning_hold;
                 if carry.is_some() {self.report.phase="settling planning start";}
-                if self.worker.is_none() && self.report.error.is_none() && settled {
+                if self.worker.is_none() && self.report.error.is_none() && settled
+                    && !(command.ledge_handoff && body.player.ledge.is_some()) {
                     let (send,result)=mpsc::channel();
                     let world=world.clone(); let player:Player=body.player.clone();
                     self.worker=Some(Worker { id:command.id, epoch:frame.epoch, warped:body.warped_at, start:player.feet,result });
@@ -1655,11 +1707,15 @@ impl Driver {
                     // arrive with jitter. Avoid plans that jump at the last safe
                     // physics tick of an edge; leave 100 ms of support in reserve.
                     let margin = if local == PlayerId::Red { 12 } else { 0 };
+                    let ledge_handoff=command.ledge_handoff;
                     std::thread::spawn(move || { let plan=Route::plan_grounded(&world,&player,goal,22.)
-                        .map(|steps|PlannedRoute {walking:true,steps})
+                        .map(|steps|PlannedRoute {walking:true,steps,ledge_goal:None})
                         .or_else(|_|Route::plan_with_takeoff_margin(&world,&player,goal,22.,margin)
                             .or_else(|_|Route::plan_with_takeoff_margin(&world,&player,goal,40.,margin))
-                            .map(|steps|PlannedRoute {walking:plan_stays_grounded(&world,&player,&steps),steps}));
+                            .map(|steps| {
+                                let (steps,ledge_goal)=if ledge_handoff {stop_at_ledge(&world,&player,goal,steps)} else {(steps,None)};
+                                PlannedRoute {walking:plan_stays_grounded(&world,&player,&steps),steps,ledge_goal}
+                            }));
                         let _=send.send(plan); });
                 }
             }
@@ -1713,6 +1769,82 @@ impl Driver {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn ledge_handoff_waits_for_the_delayed_pullup_instead_of_releasing() {
+        let world=World::fixture(&[(vec3(16.,-100.,-100.),vec3(200.,100.,64.))]);
+        let mut planned=Player::new(vec3(0.,0.,6.));planned.velocity=vec3(30.,0.,-80.);
+        let inputs=[Controls{wish:Vec2::X,..Default::default()},
+            Controls{wish:Vec2::X,jump:true,..Default::default()},
+            Controls{wish:-Vec2::X,..Default::default()}];
+        let mut prediction=planned.clone();let mut steps=Vec::new();
+        for input in inputs {
+            for tick in 0..24 {prediction.tick(&world,Controls{jump:input.jump && tick==0,..input});}
+            steps.push((input,prediction.feet));
+        }
+        let (steps,grip)=stop_at_ledge(&world,&planned,vec3(100.,0.,64.),steps);
+        // A slightly later catch makes the timed pull input arrive in midair.
+        // The fixture's observed catch then needs another 36 ticks to deliver
+        // its explicit pull. No body/ledge state is assigned during the replay.
+        let mut player=Player::new(vec3(0.,0.,14.));player.velocity=vec3(30.,0.,120.);
+        let mut views=VecDeque::from(vec![player.clone();24]);let mut pull=None;
+        for tick in 0..480 {
+            let view=views.pop_front().unwrap();
+            if pull.is_none() && view.ledge.as_ref().is_some_and(|h|!h.pulling) {pull=Some(tick+12);}
+            let hold=ledge_handoff_wish(&world,&view,vec3(100.,0.,64.),grip,0.3).unwrap_or(Vec2::ZERO);
+            let mut input=steps.get(tick/24).map_or(Controls{wish:hold,..Default::default()},|(input,_)|
+                Controls{jump:input.jump && tick%24==0,..*input});
+            if pull==Some(tick) {input.jump=true;}
+            player.tick(&world,input);views.push_back(player.clone());
+            assert!(world.body_clear(player.feet));
+        }
+        assert!(pull.is_some(),"No observed native catch");
+        assert!(player.grounded && player.ledge.is_none() && player.climbs==1 && player.feet.z>63.9,
+            "Delayed pull lost the ledge: feet={:?}, climbs={}",player.feet,player.climbs);
+    }
+    #[test]
+    fn ledge_handoff_keeps_routes_to_lower_or_opposite_goals_intact() {
+        let world=World::fixture(&[(vec3(16.,-100.,-100.),vec3(200.,100.,64.))]);
+        let mut start=Player::new(vec3(0.,0.,6.));start.velocity=vec3(30.,0.,-80.);
+        let steps=vec![(Controls{wish:Vec2::X,..Default::default()},vec3(0.,0.,3.125)),
+            (Controls{wish:-Vec2::X,..Default::default()},vec3(-20.,0.,-10.))];
+        for goal in [vec3(100.,0.,0.),vec3(-100.,0.,64.)] {
+            let (remaining,grip)=stop_at_ledge(&world,&start,goal,steps.clone());
+            assert_eq!(remaining.len(),steps.len());assert!(grip.is_none());
+        }
+        let open=World::fixture(&[]);
+        assert_eq!(stop_at_ledge(&open,&start,vec3(100.,0.,64.),steps.clone()).0.len(),steps.len());
+    }
+    #[test]
+    fn ledge_handoff_shimmies_clear_of_an_obstructed_pull_before_jumping() {
+        let world=World::fixture(&[(vec3(16.,-100.,-100.),vec3(200.,100.,64.)),
+            (vec3(24.,-100.,64.),vec3(60.,0.,140.))]);
+        let mut player=Player::new(vec3(0.,-30.,6.));player.velocity=vec3(30.,0.,-80.);
+        player.tick(&world,Controls{wish:Vec2::X,..Default::default()});
+        assert!(player.ledge.as_ref().is_some_and(|h|!h.pull_clear(&world)));
+        let mut rejected=player.clone();rejected.tick(&world,Controls{jump:true,..Default::default()});
+        assert!(rejected.ledge.as_ref().is_some_and(|h|!h.pulling));
+        let mut views=VecDeque::from(vec![player.clone();24]);
+        let mut pending=VecDeque::from(vec![Controls::default();12]);let mut sent=false;
+        for _ in 0..900 {
+            let view=views.pop_front().unwrap();
+            let wish=ledge_handoff_wish(&world,&view,vec3(100.,40.,64.),Some(vec3(0.,40.,3.125)),0.3).unwrap_or(Vec2::ZERO);
+            let jump=!sent && view.ledge.as_ref().is_some_and(|h|h.pull_clear(&world));
+            sent|=jump;pending.push_back(Controls{wish,jump,..Default::default()});
+            player.tick(&world,pending.pop_front().unwrap());views.push_back(player.clone());
+            assert!(world.body_clear(player.feet));
+        }
+        assert!(sent && player.grounded && player.ledge.is_none() && player.climbs==1 && player.feet.y>14.9);
+    }
+    #[test]
+    fn ledge_handoff_requires_an_explicit_planned_goal() {
+        let mut value=serde_json::json!({"id":1,"heartbeat":1,"epoch":1,"goal":[100,0,64],
+            "navigate":true,"ledge_handoff":true,"attack":false,"capture":false,"finish":false});
+        assert!(serde_json::from_value::<Command>(value.clone()).unwrap().validate().is_ok());
+        value["goal"]=serde_json::Value::Null;
+        assert!(serde_json::from_value::<Command>(value.clone()).unwrap().validate().is_err());
+        value["goal"]=serde_json::json!([100,0,64]);value["navigate"]=false.into();
+        assert!(serde_json::from_value::<Command>(value).unwrap().validate().is_err());
+    }
     #[test]
     fn a_consumed_jump_is_not_replayed_after_relocation() {
         for local in [PlayerId::Blue, PlayerId::Red] {

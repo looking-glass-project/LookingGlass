@@ -996,3 +996,55 @@ scene cases**, **151 Python guards** and seven source-package checks pass.
 Later chair traversal, the second portal, final scene/exit and complete fresh,
 recovery and reconnect repeats remain open. This is partial visit evidence;
 overall completion remains **48.6%**.
+
+## Observed chair pulls and remaining waiting failure (4 November 2026)
+
+The failed first-chair replay exposed a diagnostic input timing problem: the
+planned pull arrived before the remote body's actual catch, and the following
+away input dropped the ledge before the observed pull could arrive. Opted-in
+chair routes now stop at the first simulated catch, keep approaching until the
+real catch is observed and wait for an explicit ordinary pull input. If the
+native full-body pull destination is obstructed, ordinary sideways inputs move
+the grip toward the planned clear position. The original ledge physics,
+collision and timing remain unchanged; its existing clearance query is exposed
+read-only to the diagnostic report.
+
+Native regressions use actual player physics with delayed observations and
+inputs. They require a completed climb and clear grounded landing, including
+an initially obstructed pull that needs a shimmy. Lower and opposite goals keep
+their original routes; the handoff is explicitly enabled only for planned
+chair approaches. The first live attempt with the new observation protocol
+completed Red's climb, but the fixture kept walking under the consumed pull
+command and Red died on the lower surface. That failure remains retained at
+`private/coop/hatter1-route-06dd0794413a454cad79c0497d044647`.
+
+The fixture now validates the pull as soon as its own native climb count
+increases and the player lands, then issues a fresh planned command to the
+original goal with normal combat enabled. It records the climb's actual ending
+tick separately from waypoint arrival. A guard reproduces the stuck command
+with the retained old fixture for both players and passes with the correction;
+grounding alone or the partner's climb cannot complete the receipt.
+
+The next replay on source `99a66d6` restores the unchanged checkpoint at tick
+184650 through two independent internet clients with 40 ms delay and 20 ms
+jitter. Red completes the pull at 191629, then reaches the original first-chair
+waypoint at 191896 and activates its native puzzle contact. A separate component
+audit verifies the input, animation, completed pull, personal arrival, replicated
+contact and **1,088 matching player/world/native states**. Both are alive at the
+last retained observation, with 80 and about 73.73 health. Evidence:
+`private/coop/hatter1-route-b5fd0e9a54f344099aa89ddd6f2a1b55/chair-component-audit.json`.
+
+The requested paired 138-143 replay still fails at 138: after that first arrival,
+no observed walking neighbor provides a waiting position. The report identifies
+slime immersion on the lower chair surface, explaining the continuing damage.
+The current fixture must find an ordinary safe departure before bringing the
+partner up. This audit credits one player's components only; the second arrival,
+completed paired step, remaining chairs and full visit are unverified. Failed
+runs and their original observations remain unchanged.
+
+Frozen source `99a66d6` passes **901 active Rust tests** (three ignored), the
+locked release, **72 native paired/driver checks** and the exact single-player
+**11+1** baseline. All **154 Python guards**, seven source-package checks and the
+894-file source worktree audit pass. The earlier 40 scene cases were not repeated
+on this diagnostic-only change. No further campaign visit is credited; overall
+completion remains **48.6%**.

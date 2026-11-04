@@ -9,6 +9,56 @@ from test_coop_hatter1 import next_corridor_footing, verify_corridor_waiting
 from test_coop_hatter1 import validate_course_range, verify_gap_hold
 from test_coop_hatter1 import recorded_node, verify_node_resolutions
 from test_coop_hatter1 import verify_scene_handoff, verify_contact_handoff
+from test_coop_hatter1 import verify_doorway_approaches
+
+
+class DoorwayApproaches(unittest.TestCase):
+    def setUp(self):
+        self.steps=[{} for _ in range(117)]; self.steps[109]={'nav':[-4896,1632,251.03125]}
+        self.steps[116]={'walk':[-4896,1664,240.03125]}
+        self.entities=[{'classname':'info_pathnode'} for _ in range(94)]
+        for i in (92,93): self.entities[i]={'classname':'func_rotatingdoor'}
+        goal=self.steps[109]['nav']
+        self.receipt=dict(step=107,role='host',goal=goal,tick=100,command=9,feet=goal,end_tick=304)
+        body=dict(feet=goal,grounded=True,health=100,spawned_at=0,warped_at=50)
+        first=dict(tick=100,players=[body],driver=dict(command=9,reached=True,clear=[True]),clockwork=dict(doors=[.3,.3]))
+        last=copy.deepcopy(first);last.update(tick=304);last['clockwork']['doors']=[1.,1.]
+        lead=copy.deepcopy(first);lead['tick']=80;lead['driver']['command']=8
+        lead['players'][0]['feet']=self.steps[116]['walk']
+        self.receipt['lead_in']=dict(goal=self.steps[116]['walk'],tick=80,command=8,feet=self.steps[116]['walk'])
+        self.history={'host':[lead,first,last]}
+
+    def check(self): verify_doorway_approaches([self.receipt],self.steps,self.history,self.entities)
+
+    def test_observed_centered_approach_and_opening(self): self.check()
+
+    def test_unacknowledged_arrival(self):
+        self.history['host'][1]['driver']['reached']=False
+        with self.assertRaisesRegex(AssertionError,'acknowledged'): self.check()
+
+    def test_partly_open_neighbor(self):
+        self.history['host'][-1]['clockwork']['doors'][1]=.35
+        with self.assertRaisesRegex(AssertionError,'open fully'): self.check()
+
+    def test_insufficient_hold(self):
+        self.receipt['end_tick']=303; self.history['host'][-1]['tick']=303
+        with self.assertRaisesRegex(AssertionError,'too short'): self.check()
+
+    def test_warp_is_not_walking(self):
+        self.history['host'][-1]['players'][0]['warped_at']=300
+        with self.assertRaisesRegex(AssertionError,'warped'): self.check()
+
+    def test_leaving_the_waiting_footing(self):
+        self.history['host'][-1]['players'][0]['feet']=[-4896,1610,251.03125]
+        with self.assertRaisesRegex(AssertionError,'left its footing'): self.check()
+
+    def test_wrong_staging_goal(self):
+        self.receipt['goal']=[0,0,0]
+        with self.assertRaisesRegex(AssertionError,'differs from the course'): self.check()
+
+    def test_wrong_lead_in(self):
+        self.receipt['lead_in']['goal']=[0,0,0]
+        with self.assertRaisesRegex(AssertionError,'centered doorway lead-in'): self.check()
 
 
 class SceneHandoffs(unittest.TestCase):

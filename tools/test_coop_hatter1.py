@@ -430,6 +430,44 @@ def verify_ledge_pulls(pulls, history):
                    for r in history['host'] for e in r['driver'].get('input_events', [])), 'Pull-up input unobserved'
 
 
+def doorway_slots(entities):
+    objects=[i for i,e in enumerate(entities) if e.get('classname') in
+             ('script_object','func_door','func_rotatingdoor','func_sinkobject')]
+    assert all(entities[i]['classname']=='func_rotatingdoor' for i in (92,93)), 'Review changed doorway'
+    return [objects.index(i) for i in (92,93)]
+
+
+def verify_doorway_approaches(receipts, steps, history, entities):
+    slots=doorway_slots(entities)
+    for receipt in receipts:
+        assert receipt['step'] in (107,108), 'Unexpected doorway approach'
+        goal=steps[109]['nav']
+        assert receipt['goal']==goal, 'Doorway approach differs from the course'
+        role=receipt['role']; slot=0 if role=='host' else 1
+        rows=history[role]
+        arrived=next(r for r in rows if r['tick']==receipt['tick'])
+        body=arrived['players'][slot]
+        assert arrived['driver']['command']==receipt['command'] and arrived['driver']['reached'], 'Doorway approach not acknowledged'
+        assert body['grounded'] and body['health']>0 and arrived['driver']['clear'][slot], 'Invalid doorway footing'
+        assert body['feet']==receipt['feet'] and distance(body['feet'][:2],goal[:2])<8 and abs(body['feet'][2]-goal[2])<35, 'Doorway approach missed'
+        end=next(r for r in rows if r['tick']==receipt['end_tick'])
+        lead=receipt['lead_in']
+        lead_row=next(r for r in rows if r['tick']==lead['tick'])
+        lead_body=lead_row['players'][slot]
+        assert lead['goal']==steps[116]['walk'] and lead_row['tick']<arrived['tick'], 'Missing centered doorway lead-in'
+        assert lead_row['driver']['command']==lead['command'] and lead_row['driver']['reached'], 'Doorway lead-in not acknowledged'
+        assert lead_body['grounded'] and lead_body['health']>0 and lead_row['driver']['clear'][slot], 'Invalid doorway lead-in footing'
+        assert lead_body['feet']==lead['feet'] and distance(lead_body['feet'][:2],lead['goal'][:2])<8 and abs(lead_body['feet'][2]-lead['goal'][2])<35, 'Doorway lead-in missed'
+        assert end['tick']-arrived['tick']>=204, 'Doorway opening hold too short'
+        for row in rows:
+            if lead_row['tick']<=row['tick']<=end['tick']:
+                b=row['players'][slot]
+                assert b['spawned_at']==lead_body['spawned_at']==0 and b['warped_at']==lead_body['warped_at'], 'Doorway approach warped or revived'
+                if row['tick']>=arrived['tick']:
+                    assert b['grounded'] and distance(b['feet'][:2],goal[:2])<8, 'Doorway hold left its footing'
+        assert all(end['clockwork']['doors'][k]>=.999 for k in slots), 'Doorway did not open fully'
+
+
 class ClockworkPair(Pair):
     map_name, entry, next_map = 'hatter1', 'hatter1_start1', 'hatter2'
     evidence_prefix, capture_scenes = 'hatter1-route-', False
@@ -461,7 +499,7 @@ class ClockworkPair(Pair):
             effective_course_sha256=hashlib.sha256(effective).hexdigest(), waypoint_adjustments=adjustments,
             executable_sha256=hashlib.sha256(args.exe.read_bytes()).hexdigest(),
             arrivals=[], levers=[], holds=[], parking=[], stair_waiting=[], corridor_waiting=[], yields=[], descent_arrivals=[], descent_jumps=[], ledge_pulls=[], gear_boarding=[], gear_exits=[], gap_jumps=[], gap_holds=[], gap_waiting=[], node_resolutions=[],
-            scene_handoffs=[], port_player=args.port_player, completed=self.completed, scope='Fresh Clockwork prefix only')
+            scene_handoffs=[], doorway_approaches=[], port_player=args.port_player, completed=self.completed, scope='Fresh Clockwork prefix only')
         if args.start_step<=36<=args.last_step:
             self.evidence['gap_adaptation']='Steps 36-42 run separately per player: original approach, preparation wait and run-up, then actual jump and feedback steering to the original landing. This does not claim identical replay of the single-player timed air inputs.'
         dependencies = self.folder / 'fixture-dependencies'; dependencies.mkdir()
@@ -549,6 +587,27 @@ class ClockworkPair(Pair):
             self.pump()
 
     def move(self, role, goal, navigate=False, jump=False, radius=8, yield_partner=None):
+        if self.step in (107,108) and goal==self.steps[108]['nav'] and distance(self.body(role)['player']['feet'][:2],goal[:2])>=radius:
+            # Approach the rotating pair along the centered, authored waiting
+            # waypoint. Cutting diagonally into its left leaf blocks the swing.
+            # These are ordinary inputs; retain the original arrival afterwards.
+            lead_goal=self.steps[116]['walk']
+            self.move(role,lead_goal,navigate=True)
+            report=self.reports[role]
+            lead=dict(goal=lead_goal,tick=report['frame']['tick'],command=report['route_driver']['command'],
+                feet=list(self.body(role)['player']['feet']))
+            approach=self.steps[109]['nav']
+            self.move(role,approach)
+            report=self.reports[role]
+            receipt=dict(step=self.step,role=role,goal=approach,tick=report['frame']['tick'],
+                command=report['route_driver']['command'],feet=list(self.body(role)['player']['feet']),lead_in=lead)
+            self.set(role,approach,run=True,attack=False)
+            slots=doorway_slots(self.entities)
+            self.until(lambda:self.reports[role]['frame']['tick']>=receipt['tick']+204
+                and all(self.state(role)['doors'][k]>=.999 for k in slots),15)
+            receipt['end_tick']=self.reports[role]['frame']['tick']
+            verify_doorway_approaches([receipt],self.steps,self.history,self.entities)
+            self.evidence['doorway_approaches'].append(receipt)
         self.set(role, goal, navigate=navigate, run=True, jump=jump)
         self.commands[role]['arrival_radius'] = radius
         command = self.commands[role]['id']
@@ -883,6 +942,7 @@ class ClockworkPair(Pair):
         verify_yields(self.evidence['yields'], self.steps, self.history)
         verify_stair_waiting(self.evidence['stair_waiting'],self.steps,self.evidence['arrivals'],self.history)
         verify_corridor_waiting(self.evidence['corridor_waiting'],self.steps,self.evidence['arrivals'],self.history)
+        verify_doorway_approaches(self.evidence['doorway_approaches'],self.steps,self.history,self.entities)
         if 16 in self.completed: verify_gear_boarding(self.evidence['gear_boarding'],self.steps[16]['nav'],self.history)
         if 17 in self.completed: verify_gear_exit(self.evidence['gear_exits'],self.steps[17]['nav'],self.history)
         if 36 in self.completed: verify_gap_sequence(self.evidence,self.steps,self.history)
@@ -936,7 +996,7 @@ class ClockworkPair(Pair):
             step = self.steps[self.step]
             print('Clockwork step', self.step, step, flush=True)
             self.clear()
-            if self.step in (0, 1, 9, 14, 17, 18, 25, 33, 36, 43, 44, 51, 52, 60, 64, 66, 68, 76, 79, 81, 91, 99, 109): self.save_checkpoint(self.step)
+            if self.step in (0, 1, 9, 14, 17, 18, 25, 33, 36, 43, 44, 51, 52, 60, 64, 66, 68, 76, 79, 81, 91, 99, 107, 109): self.save_checkpoint(self.step)
             if self.step==36:
                 self.cross_corridor_gap()
                 self.completed.extend(range(36,43))

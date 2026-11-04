@@ -866,3 +866,38 @@ baseline. All **116 Python guards**, seven source-package checks and the source
 audit pass. Later lifts, scenes, recovery/reconnects and complete traversal remain
 open. These resumed sections do not complete another campaign visit; overall
 completion stays **48.6%**.
+
+## Rotating doorway approach (4 November 2026)
+
+The short grounded landing handoff previously discarded navigation solely
+because the goal was close, even when a wall blocked direct walking. It now
+requires body clearance, including the existing 18-unit step-up path and
+overhead clearance. Regressions reject a tall wall, actually walk up a normal
+12-unit step and reject that step under a low ceiling. Movement physics and
+arrival tolerances remain unchanged. A horizontal-only intermediate correction
+failed the live rising-floor approach; that unsuccessful replay is retained.
+
+The actual doorway uses rotating leaves 92/93. A diagonal approach can block
+their swing. The paired runner now uses the authored centered footings from
+116 and 109 before returning to the original 108 target. It verifies both
+walking arrivals, a 204-tick opening hold, both fully open native leaves and
+no warp or respawn. It still requires both players to reach the original
+107/108 waypoints separately; this adaptation does not skip those arrivals.
+
+Frozen source `11c5ba2` passes **resumed 107-108** through independent internet
+clients with 40 ms delay and 20 ms jitter. The unchanged checkpoint restores
+exactly at tick 153910. Evidence verifies four personal arrivals, two centered
+door approaches, one forward handoff, one waiting handoff and **692 matching
+player/world/native states**. Both finish at **100/100 health**. The ordinary
+checkpoint before 109 is saved at tick 158807. Frozen fixture hashes match the
+tested files. Evidence:
+`private/coop/hatter1-route-75eca5c73ada4bf296c2eda6d122413d`.
+
+Before this fix, source `cefabf5` repeated **99-106** successfully with 16
+arrivals and 1,652 matching states to save the closer checkpoint. The three
+subsequent doorway failures are retained separately; none receives traversal
+credit. The final source passes **893 active Rust tests** (three ignored),
+the locked release, **72 native paired/driver checks** and the exact
+single-player 11+1 baseline. All **124 Python guards** and seven source-package
+checks pass. Later Clockwork scenes and traversal, full fresh/recovery/reconnect
+repeats and the remaining campaign visits stay open. Overall remains **48.6%**.

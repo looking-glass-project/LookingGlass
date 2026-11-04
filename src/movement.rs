@@ -9,7 +9,7 @@ pub const EYE_HEIGHT: f32 = 48.;
 pub const FIXED_DT: f32 = 1. / 120.;
 // Brisk walk: about two authored strides per second (51.3-51.7 units each).
 pub const WALK_SPEED: f32 = 104.;
-const STEP_HEIGHT: f32 = 18.;
+pub(crate) const STEP_HEIGHT: f32 = 18.;
 pub const GRAVITY: f32 = 800.;
 // Local Player jump event: half gravity in the ordinary, unpowered state.
 // Horizontal acceleration and animation timing remain provisional.

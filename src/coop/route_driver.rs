@@ -649,7 +649,27 @@ pub(crate) fn landing_control(world: &World, player: &Player, goal: Vec3, lead: 
                 && !centre.start_solid && centre.fraction<1. && centre.normal.z>=0.65
         })
     };
-    if !(player.grounded && delta.length()<42.) && !nearby_walk && !descent { return None; }
+    // Proximity alone cannot replace a route around an obstruction. Once this
+    // handoff clears the route, straight steering would otherwise push into
+    // the same wall forever, even with a clear destination on its other side.
+    let near_grounded=player.grounded && delta.length()<42. && {
+        let end=vec3(goal.x,goal.y,player.feet.z);
+        let hit=world.body_trace(player.feet,end);
+        (!hit.start_solid && hit.fraction>=1.) || {
+            // A horizontal sweep touches rising ground before normal movement
+            // steps onto it. Use the same bounded raise/across/drop clearance
+            // as Player::tick; a tall wall or a low ceiling still blocks it.
+            let up=world.body_trace(player.feet,player.feet+Vec3::Z*crate::movement::STEP_HEIGHT);
+            let height=crate::movement::STEP_HEIGHT*up.fraction;
+            let raised=player.feet+Vec3::Z*height;
+            let across=world.body_trace(raised,end+Vec3::Z*height);
+            let down=world.body_trace(end+Vec3::Z*height,end-Vec3::Z*2.);
+            !up.start_solid && !up.all_solid && up.fraction>0.
+                && !across.start_solid && across.fraction>=1.
+                && !down.start_solid && down.fraction<1. && down.normal.z>=0.65
+        }
+    };
+    if !near_grounded && !nearby_walk && !descent { return None; }
     let settled = player.grounded && delta.truncate().length() < radius && player.velocity.truncate().length() < 20.;
     let steering = delta.truncate()-player.velocity.truncate()*lead;
     // Once supported, use the same delay-aware gain as ordinary final walking.
@@ -2491,6 +2511,42 @@ mod tests {
         assert_eq!(planning_hold_control(&mut anchor,&p,None,0.),(Vec2::ZERO,true));
         planning_hold_control(&mut anchor,&p,Some(carry),0.);
         assert_eq!(anchor,Some(p.feet));
+    }
+    #[test]
+    fn blocked_grounded_landing_keeps_navigation_in_control() {
+        let floor=(vec3(-200.,-200.,-100.),vec3(200.,200.,0.));
+        let wall=(vec3(-1.,-30.,0.),vec3(1.,30.,100.));
+        let blocked=World::fixture(&[floor,wall]);
+        let open=World::fixture(&[floor]);
+        let player=Player::spawn(&blocked,vec3(-20.,0.,crate::movement::EYE_HEIGHT+0.03125)).unwrap();
+        let goal=vec3(20.,0.,0.03125);
+        assert!(player.grounded && blocked.body_clear(player.feet) && blocked.body_clear(goal));
+        assert!(player.feet.distance(goal)<42. && blocked.body_trace(player.feet,goal).fraction<1.);
+        for lead in [0.,0.2,0.6] {
+            assert!(landing_control(&blocked,&player,goal,lead,8.).is_none(),
+                "A nearby blocked goal must retain navigation instead of pushing into the wall");
+            assert!(landing_control(&open,&player,goal,lead,8.).is_some_and(|(wish,settled)|wish.x>0. && !settled));
+        }
+    }
+    #[test]
+    fn grounded_landing_can_walk_up_a_normal_step() {
+        let floor=(vec3(-200.,-200.,-100.),vec3(200.,200.,0.));
+        let step=(vec3(0.,-50.,0.),vec3(100.,50.,12.));
+        let world=World::fixture(&[floor,step]);
+        let mut player=Player::spawn(&world,vec3(-20.,0.,crate::movement::EYE_HEIGHT+0.03125)).unwrap();
+        let goal=vec3(20.,0.,12.03125);
+        assert!(player.grounded && world.body_clear(goal));
+        let horizontal=vec3(goal.x,goal.y,player.feet.z);
+        assert!(world.body_trace(player.feet,horizontal).fraction<1., "Horizontal clearance alone rejects a legal step");
+        for _ in 0..240 {
+            let (wish,settled)=landing_control(&world,&player,goal,0.,8.).expect("A normal step must retain precise walking");
+            if settled { break; }
+            player.tick(&world,Controls {wish,..Default::default()});
+        }
+        assert!(player.grounded && player.feet.distance(goal)<8., "Ordinary movement must actually climb the step: {:?}",player.feet);
+        let ceiling=World::fixture(&[floor,step,(vec3(-100.,-50.,60.),vec3(100.,50.,70.))]);
+        let low=Player::spawn(&ceiling,vec3(-20.,0.,crate::movement::EYE_HEIGHT+0.03125)).unwrap();
+        assert!(landing_control(&ceiling,&low,goal,0.,8.).is_none(),"Stepping requires headroom");
     }
     #[test]
     fn precise_landing_stays_on_a_small_footing_at_internet_tail_latency() {

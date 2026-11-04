@@ -19,7 +19,22 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | Full campaign verification | 3.08 | 20 |
 | **Total** | **48.58, rounded to 48.6** | **100** |
 
-Latest automation result: Clockwork's completed resumed **99-106** section
+Latest automation result: Clockwork's resumed **107-108** doorway section passes
+on source `11c5ba2`, with four personal arrivals, two observed door approaches,
+one forward handoff, one waiting handoff and **692 matching player/world/native
+states**. Both players finish at 100 health, and an ordinary checkpoint before
+109 is saved. The runner lines up at authored waiting points and observes both
+rotating leaves opening before continuing to the original waypoint. Its precise
+walking handoff now checks walls while permitting normal step-up clearance.
+
+All **893 active Rust tests**, the locked release, **72 native checks**, the
+unchanged single-player **11+1** baseline, **124 Python guards** and seven
+source-package checks pass. Earlier unsuccessful doorway replays are retained.
+This completes the previously stalled section, not the whole visit. Later
+Clockwork scenes/traversal, recovery/reconnects and campaign repeats remain open;
+overall completion stays **48.6%**. See [Clockwork evidence](HATTER1.md).
+
+Earlier automation result: Clockwork's completed resumed **99-106** section
 verifies 16 personal arrivals, two pathnode projections, seven forward handoffs,
 one waiting handoff and **1,845 matching player/world/native states**, with both
 players at 100 health. The requested 99-108 run times out at 107 while the leader

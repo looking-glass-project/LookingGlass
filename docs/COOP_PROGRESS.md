@@ -19,7 +19,26 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | Full campaign verification | 3.08 | 20 |
 | **Total** | **48.58, rounded to 48.6** | **100** |
 
-Latest automation result: Clockwork's resumed **68-81** section passes with
+Latest automation result: Clockwork's completed resumed **99-106** section
+verifies 16 personal arrivals, two pathnode projections, seven forward handoffs,
+one waiting handoff and **1,845 matching player/world/native states**, with both
+players at 100 health. The requested 99-108 run times out at 107 while the leader
+approaches its next waiting point. It stops about 16 units short with the native
+controller reporting `settling landing`; this remains the next investigation.
+The original failure and the separately audited completed section are retained.
+
+This batch also verifies **81-93** (2,421 matching states, 46/85 health) and
+**91-103** (3,181 matching states, 100/100 health), each scoped separately from
+its original longer-run failure. The test controller now coordinates narrow
+stairs and winding paths, permits ordinary defensive movement while waiting on
+static ground, and bounds an unsuccessful melee approach before allowing a
+normal Blade throw. Source `cefabf5` passes **891 active Rust tests**, the locked
+release, **72 native checks** and the exact single-player **11+1** baseline;
+all **116 Python guards** pass. No additional complete visit is credited.
+Later machinery/scenes, recovery/reconnects and full campaign repeats remain
+open. Overall stays **48.6%**. See [Clockwork evidence](HATTER1.md).
+
+Earlier automation result: Clockwork's resumed **68-81** section passes with
 26 personal arrivals, 16 pathnode projections, 13 waiting handoffs, one timed
 hold and **2,294 matching player/world/native states**. Both finish alive at
 16.53/100 health. The combat test controller now requires supported footing

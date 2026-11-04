@@ -32,7 +32,8 @@ DESCENT = [[-2848.6, 3228.5, 320.03125], [-3070.9, 2936.8, 176.03125],
            [-3231.4, 2929.1, 128.03125], [-3296, 2960, 192.03125]]
 GEAR_APPROACH = [-4373.3784,3304.2549,208.03125]
 GEAR_EXIT_APPROACH = [-4512,3008,208.03125]
-CORRIDOR_HANDOFFS = (25,26,27,28,33,34,35)
+CORRIDOR_HANDOFFS = (25,26,27,28,33,34,35,100,101,102,103,104,105,106,107)
+STAIR_HANDOFFS = (21,22,23,81,82,83,84,85)
 SCENES = {'Hatter1_Cinema1': ('Hare','hare',(60,61,62)), 'Port_Cine': ('Port','port',(67,))}
 
 
@@ -214,11 +215,12 @@ def verify_node_resolutions(source, effective, completed, receipts, history, ent
 
 
 def next_stair_footing(steps, step):
-    assert step in (21,22,23), 'Forward waiting is limited to the stair flight'
-    goal=steps[step]['walk'];following=steps[step+1]
-    assert set(following)=={'walk'}, 'Next stair footing must be an ordinary walking step'
-    point=following['walk']
-    assert 48 <= distance(goal[:2],point[:2]) <= 192 and 0 <= point[2]-goal[2] <= 48, 'Invalid next stair footing'
+    assert step in STAIR_HANDOFFS, 'Forward waiting is limited to the stair flights'
+    key,label,rise=('walk','walking',48) if step<81 else ('nav','navigation',64)
+    following=steps[step+1]
+    assert set(steps[step])==set(following)=={key}, f'Next stair footing must be an ordinary {label} step'
+    goal,point=steps[step][key],following[key]
+    assert 48 <= distance(goal[:2],point[:2]) <= 192 and 0 <= point[2]-goal[2] <= rise, 'Invalid next stair footing'
     return point
 
 
@@ -227,10 +229,11 @@ def verify_stair_waiting(receipts, steps, arrivals, history):
 
 
 def next_corridor_footing(steps, step):
-    assert step in CORRIDOR_HANDOFFS, 'Forward navigation is limited to the laboratory corridor'
+    assert step in CORRIDOR_HANDOFFS, 'Forward navigation is limited to the laboratory and return corridors'
     assert set(steps[step])=={'nav'} and set(steps[step+1])=={'nav'}, 'Corridor handoff cannot skip a non-navigation action'
     goal,point=steps[step]['nav'],steps[step+1]['nav']
-    assert 48 <= distance(goal[:2],point[:2]) <= 256 and abs(point[2]-goal[2]) < 16, 'Invalid next corridor footing'
+    height=abs(point[2]-goal[2])
+    assert 48 <= distance(goal[:2],point[:2]) <= 256 and (height<=64 if step>=100 else height<16), 'Invalid next corridor footing'
     return point
 
 
@@ -368,7 +371,10 @@ def yield_target(candidates, at, incoming, goal, via=None):
         return distance(point[:2], [a[i]+t*line[i] for i in range(2)])
     def clearance(point):
         return min(segment_gap(point,a,b) for a,b in zip(route,route[1:]))
-    usable = [p for p in candidates if distance(p[:2],incoming[:2]) >= 64 and clearance(p) >= 48
+    # Reserve the same 48-unit lane around the stopped body and its route.
+    # Requiring 64 only at the body rejects usable supported corner steps;
+    # native personal space remains 36 units throughout the actual movement.
+    usable = [p for p in candidates if distance(p[:2],incoming[:2]) >= 48 and clearance(p) >= 48
               and sum((p[i]-at[i])*(at[i]-incoming[i]) for i in range(2)) >= 0]
     assert usable, 'No observed supported yield clear of the follower'
     return max(usable, key=lambda p: (clearance(p),distance(p[:2],incoming[:2])))
@@ -699,7 +705,15 @@ class ClockworkPair(Pair):
         receipt.update(tick=self.reports[role]['frame']['tick'],command=self.reports[role]['route_driver']['command'],
             feet=list(self.body(role)['player']['feet']))
         self.evidence[evidence_key].append(receipt)
-        self.set(role,park,run=True)
+        self.wait_for_partner(role,park)
+
+    def wait_for_partner(self, role, park):
+        # These return stairs and rooms are static ground. Once clear of the
+        # follower, let ordinary combat controls dodge instead of continually
+        # walking back into an enemy's punches. Moving machinery still needs
+        # its existing position hold.
+        if 81<=self.step<=108: self.set(role,attack=True)
+        else: self.set(role,park,run=True)
 
     def resolve_node(self, entity):
         assert self.entities[entity]['classname']=='info_pathnode', 'Expected an authored pathnode'
@@ -758,6 +772,15 @@ class ClockworkPair(Pair):
 
     def go_without_scene(self, goal, navigate=False):
         first = self.first if self.step==60 else min(self.commands, key=lambda r: distance(self.body(r)['player']['feet'], goal) + (0 if r == self.first else 16))
+        if 81<=self.step<=108:
+            # Either nearby player can lead this static return route. Avoid
+            # repeatedly sending an injured Alice into the next room alone
+            # just because her preceding waiting point is slightly closer.
+            nearby=[r for r in self.commands if distance(self.body(r)['player']['feet'],goal)
+                    <=distance(self.body(first)['player']['feet'],goal)+128]
+            healthier=max(nearby,key=lambda r:self.body(r)['stats']['sanity'])
+            if self.body(healthier)['stats']['sanity']>=self.body(first)['stats']['sanity']+20:
+                first=healthier
         other = 'guest' if first == 'host' else 'host'
         self.set(other, attack=True)
         if self.step == 17:
@@ -766,7 +789,7 @@ class ClockworkPair(Pair):
             if self.step == 1: self.descend(role)
             if self.step == 16: self.board_gear(role,goal)
             if self.step == 17: self.exit_gear(role,goal)
-            self.move(role, goal, navigate, yield_partner=first if role == other else other if self.step==60 else None)
+            self.move(role, goal, navigate, yield_partner=first if role == other else other if self.step==60 or 81<=self.step<=108 else None)
             report = self.reports[role]
             self.evidence['arrivals'].append(dict(step=self.step, role=role, goal=goal,
                 tick=report['frame']['tick'], feet=list(self.body(role)['player']['feet']),
@@ -776,12 +799,12 @@ class ClockworkPair(Pair):
                 if self.step in CORRIDOR_HANDOFFS:
                     self.forward_wait(role,next_corridor_footing(self.steps,self.step),True,'corridor_waiting')
                     continue
-                if self.step in (21,22,23) or not report['route_driver']['neighbors'][slot]:
+                if self.step in STAIR_HANDOFFS or not report['route_driver']['neighbors'][slot]:
                     # An eight-unit arrival can stop on the edge of a small
                     # footing. Center by walking before asking for neighbors.
                     self.move(role, goal, radius=2)
-                if self.step in (21,22,23):
-                    self.forward_wait(role,next_stair_footing(self.steps,self.step),False,'stair_waiting')
+                if self.step in STAIR_HANDOFFS:
+                    self.forward_wait(role,next_stair_footing(self.steps,self.step),navigate,'stair_waiting')
                     continue
                 visited = []
                 for attempt in range(8):
@@ -800,7 +823,7 @@ class ClockworkPair(Pair):
                         command=self.reports[role]['route_driver']['command'], feet=list(self.body(role)['player']['feet']))
                     if ready: break
                 else: raise AssertionError('Could not walk far enough to leave the arrival lane clear')
-                self.set(role, park, run=True)
+                self.wait_for_partner(role,park)
         self.set(other, attack=True)
 
     def lever(self, index):

@@ -806,3 +806,63 @@ seven source-package checks pass. Frozen fixture hashes match the tested files.
 This is a completed resumed section, not complete Clockwork traversal or another
 verified campaign visit. Later scenes, transports, recovery/reconnect repeats
 and fresh traversal remain open; overall completion stays **48.6%**.
+
+## Return stairs and room combat (4 November 2026)
+
+The paired runner now uses the next authored footing when the return stairs
+(81-85) or winding path (100-107) cannot offer a sideways waiting position.
+Each player still earns its own waypoint arrival. Before the follower arrives,
+the leader must reach the next point through ordinary movement; the verifier
+checks its command, grounded position and ordering. These handoffs cannot skip
+an action, exceed the bounded horizontal distance or cross an excessive height
+change. Earlier laboratory-corridor limits remain unchanged.
+
+On the static return route, a waiting player can use the existing combat dodge
+controls instead of repeatedly walking back into punches. A substantially
+healthier nearby player can lead the approach, with an observed walking yield
+if needed. The yield selector reserves 48 units around both the stopped player
+and its route; its previous 64-unit body margin rejected an observed room-corner
+step despite sufficient clearance. Native 36-unit personal space and the
+continuous overlap checks still apply throughout actual movement.
+
+The native test controller also bounds its close-melee approach to one second.
+If the target stays outside the Blade's actual hit volume, the ordinary throw
+policy becomes available. Reaching melee range renews the preference, while a
+new target or visit receives its own approach window. A regression covers
+out-of-reach targets, repeated snapshots, actual melee reach and a new visit.
+No enemy, weapon, damage, resource or player-movement rule changes.
+
+Two separately audited completed sections retain their original longer-run
+failures. On source `894292f`, **81-93** verifies 26 personal arrivals, six
+pathnode projections, five stair handoffs, eight waiting handoffs and **2,421
+matching player/world/native states**, ending at 46/85 health. That requested
+81-108 run then fails in the room fight at 94. Evidence:
+`private/coop/hatter1-route-e95506092c354f50bebfa6e4d40f7974/completed-prefix-audit.json`.
+On source `cefabf5`, **91-103** verifies 26 personal arrivals, 16 projections,
+13 waiting handoffs and **3,181 matching states**. Both players clear the room
+fight and finish this section at 100 health through normal pickups. Its requested
+91-108 run stops at 104 because the narrow path has no sideways waiting point.
+Evidence:
+`private/coop/hatter1-route-e6d13cb4efad4a59a6b18610fa8b67d3/completed-prefix-audit.json`.
+
+With forward handoffs across the full winding path, **99-106** verifies 16
+personal arrivals, two projections, seven forward handoffs, one waiting handoff
+and **1,845 matching player/world/native states**, ending at 100/100 health.
+The unchanged checkpoint restores exactly at tick 142280, and the scoped audit
+ends at 155535. The requested 99-108 run still fails at 107: the leader reaches
+`[-4937.065, 1613.450, 256.03125]` while approaching the next waiting point at
+`[-4928, 1600, 256.03125]`, then remains grounded and nearly stationary with the
+controller reporting `settling landing`. The follower stays at its preceding
+footing. Both remain alive; the timeout is retained and neither 107 nor 108 is
+credited. The next investigation is the short-range landing handoff near this
+geometry. Evidence:
+`private/coop/hatter1-route-85ba532924904603b949c05569f4aa24/completed-prefix-audit.json`.
+
+All runs use independent internet clients with 40 ms delay and 20 ms jitter.
+Frozen fixture versions accompany each result. Source `cefabf5` passes **891
+active Rust tests** (three ignored), the locked release and **72 native
+paired/driver checks**. Single-player 11+1 results remain identical to the
+baseline. All **116 Python guards**, seven source-package checks and the source
+audit pass. Later lifts, scenes, recovery/reconnects and complete traversal remain
+open. These resumed sections do not complete another campaign visit; overall
+completion stays **48.6%**.

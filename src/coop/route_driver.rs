@@ -792,6 +792,7 @@ impl SwitchAim {
 struct CombatAim {
     tracker: crate::route::fight::Tracker,
     sampled: Option<(u64,u64)>,
+    closing_since: Option<(u64,usize,u64)>,
 }
 fn target_may_be_in_range(eye:Vec3,target:&crate::combat::Target,range:f32)->bool {
     // Use the whole hit box: tall bosses can be reachable even when their
@@ -830,9 +831,17 @@ impl CombatAim {
                 .map(|point|(*target,point)))
             .filter(|(_,point)|point.distance(eye)<220.)
             .min_by(|(_,a),(_,b)|a.distance_squared(eye).total_cmp(&b.distance_squared(eye)));
-        // A near attacker can reach Alice before the thrown Blade returns.
-        // With no Cards to fund, retain it and close using ordinary movement.
-        self.tracker.hold_blade=!cards && closing.is_some();
+        // Give ordinary movement a second to close before throwing away the
+        // Blade. If geometry or knockback keeps the target outside its actual
+        // melee volume, do not keep swinging out of reach indefinitely.
+        self.closing_since=closing.filter(|_|!cards).map(|(target,point)| {
+            let now=(stamp.0,target.id,stamp.1);
+            if crate::weapons::blade_melee(context,eye,(point-eye).normalize_or_zero())
+                .iter().any(|hit|hit.id==target.id) {return now;}
+            self.closing_since.filter(|&(epoch,id,tick)|epoch==stamp.0 && id==target.id && tick<=stamp.1)
+                .unwrap_or(now)
+        });
+        self.tracker.hold_blade=self.closing_since.is_some_and(|(_,_,tick)|stamp.1-tick<120);
         let reachable=foes.iter().copied().filter(|target|
             target_may_be_in_range(eye,target,crate::route::fight::THROW_RANGE)).collect::<Vec<_>>();
         let mut plan=crate::route::fight::plan(context,eye,&reachable,&self.tracker,cards);
@@ -1856,6 +1865,33 @@ mod tests {
         let mut funded=Input::default();
         aim.sample((1,2),&context,&targets,player.eye(),true,&mut funded);
         assert_eq!(funded.weapon,Some(1));assert!(funded.primary && !funded.alternate);
+    }
+    #[test]
+    fn combat_tactics_stops_waiting_for_an_unreachable_melee_target() {
+        let world=World::fixture(&[(vec3(-400.,-400.,-100.),vec3(400.,400.,0.))]);
+        let eye=vec3(0.,0.,48.03125);
+        let mut target=crate::combat::Target{id:7,center:vec3(200.,0.,43.),half:crate::clockwork::HALF};
+        let mut aim=CombatAim::default();
+        for tick in [1,60,120,121,121,240] {
+            let targets=[target];let context=crate::combat::Context{world:&world,targets:&targets};
+            assert!(crate::weapons::blade_melee(&context,eye,Vec3::X).is_empty());
+            let mut keys=Input::default();
+            assert_eq!(aim.sample((1,tick),&context,&targets,eye,false,&mut keys).unwrap().id,target.id);
+            assert_eq!(keys.weapon,Some(0));
+            assert_eq!(keys.alternate,tick>=121,"Unreachable target retained the Blade at tick{tick}");
+            assert_eq!(keys.primary,!keys.alternate);
+        }
+        // Real reach restores the melee preference, and a new visit receives
+        // its own approach window instead of inheriting the expired one.
+        target.center.x=50.;
+        let targets=[target];let context=crate::combat::Context{world:&world,targets:&targets};
+        assert!(crate::weapons::blade_melee(&context,eye,Vec3::X).iter().any(|h|h.id==target.id));
+        let mut keys=Input::default();aim.sample((1,241),&context,&targets,eye,false,&mut keys);
+        assert!(keys.primary && !keys.alternate);
+        target.center.x=200.;
+        let targets=[target];let context=crate::combat::Context{world:&world,targets:&targets};
+        aim.sample((2,1),&context,&targets,eye,false,&mut keys);
+        assert!(keys.primary && !keys.alternate);
     }
     #[test]
     fn timed_hold_keeps_normal_input_against_a_blocked_authored_point() {

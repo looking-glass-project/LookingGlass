@@ -281,8 +281,46 @@ class StairWaiting(unittest.TestCase):
     def test_not_a_general_route_skip(self):
         with self.assertRaisesRegex(AssertionError,'limited'): next_stair_footing(self.steps,20)
 
+    def test_return_flight_uses_each_next_authored_navigation_step(self):
+        steps=json.loads((Path(__file__).resolve().parents[1]/'src/levels/hatter1/route_steps.json').read_text())
+        for step in range(81,86):
+            with self.subTest(step=step):
+                self.assertEqual(next_stair_footing(steps,step),steps[step+1]['nav'])
+
+    def test_return_flight_needs_observed_forward_arrival(self):
+        self.steps=[{} for _ in range(84)]
+        self.steps[82]=dict(nav=[-6240,3616,128.03125])
+        self.steps[83]=dict(nav=[-6112,3616,160.03125])
+        self.receipt.update(step=82,goal=self.steps[83]['nav'],feet=list(self.steps[83]['nav']))
+        for arrival in self.arrivals: arrival['step']=82
+        for row,step in zip(self.history['host'],(82,83)):
+            row['players']=[dict(feet=list(self.steps[step]['nav']),health=16.53,spawned_at=0,grounded=True) for _ in range(2)]
+        self.check()
+        self.history['host'][-1]['driver']['reached']=False
+        with self.assertRaisesRegex(AssertionError,'unacknowledged'): self.check()
+
+    def test_return_flight_cannot_skip_an_action_or_unbounded_rise(self):
+        steps=[{} for _ in range(84)];steps[82]=dict(nav=[-6240,3616,128.03125])
+        steps[83]=dict(wait=1)
+        with self.assertRaises(AssertionError): next_stair_footing(steps,82)
+        steps[83]=dict(nav=[-6112,3616,256.03125])
+        with self.assertRaisesRegex(AssertionError,'Invalid next stair'): next_stair_footing(steps,82)
+
 
 class CorridorWaiting(unittest.TestCase):
+    def test_narrow_return_path_uses_the_next_authored_point(self):
+        steps=json.loads((Path(__file__).resolve().parents[1]/'src/levels/hatter1/route_steps.json').read_text())
+        for step in range(100,108):
+            with self.subTest(step=step):
+                self.assertEqual(next_corridor_footing(steps,step),steps[step+1]['nav'])
+
+    def test_return_handoff_cannot_skip_actions_or_large_height_changes(self):
+        steps=[{} for _ in range(106)];steps[104]=dict(nav=[-5440,1824,216.03125])
+        steps[105]=dict(wait=1)
+        with self.assertRaisesRegex(AssertionError,'non-navigation'): next_corridor_footing(steps,104)
+        steps[105]=dict(nav=[-5312,1792,312.03125])
+        with self.assertRaisesRegex(AssertionError,'Invalid next corridor'): next_corridor_footing(steps,104)
+
     def setUp(self):
         self.steps=[{} for _ in range(27)]
         self.steps[25]=dict(nav=[-5120,2544,320.03125])
@@ -562,6 +600,12 @@ class GearExit(GearBoarding):
 
 
 class Yielding(unittest.TestCase):
+    def test_room_corner_can_yield_with_supported_body_clearance(self):
+        candidates=[[-6321.2949,2547.0112,320.03125],[-6287.3540,2532.9524,320.03125],
+                    [-6355.2358,2532.9524,320.03125]]
+        self.assertEqual(yield_target(candidates,[-6321.2949,2499.0112,320.03125],
+            [-6295.3403,2523.9585,320.03125],[-6304,2512,320.03125]),candidates[2])
+
     def test_blocked_body_can_retain_attempted_velocity(self):
         body = dict(feet=[-3919.305,2799.345,208],velocity=[39.46,-114.75,0],grounded=True)
         waiter = dict(feet=[-3953.348,2787.638,208],velocity=[0,0,0],grounded=True)

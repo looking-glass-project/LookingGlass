@@ -19,23 +19,27 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | Full campaign verification | 3.08 | 20 |
 | **Total** | **48.08, rounded to 48.1** | **100** |
 
-Current verification frontier: fresh Funhouse **0-37** now passes the full
-prefix verifier on `1839b9f`: **58 personal arrivals, seven personal pickups,
-two holds, the actual mirror switch and 5,011 matching states**, without deaths
-through that boundary. The full run then fails at 38 when both players die in
-the return corridor. Its checkpoint reset is correctly rejected as route proof.
+Current verification frontier: the updated fixture now verifies a fresh Funhouse
+**0-55** prefix on `1839b9f`: **82 personal arrivals, 16 personal pickups,
+seven holds, two actual switch shots and 10,511 matching network states**.
+This includes the opening scene, mirror and return corridor in one run.
 
-The input fixture now stops ordinary corridor movement to fight newly active
-attackers using normal dodge/weapon controls and collect each player's drops.
-A resumed **35-42** retry from that run's earned checkpoint passes **16 personal
-arrivals and 2,636 matching states**, with no deaths and final health 100/80.
-These are separate proofs; a fresh full route with the updated fixture remains
-required. No campaign row is added; overall remains **48.1%**.
+Four natural deaths each pass the exact 1,200-active-tick revival timer,
+25-health safe placement, preserved personal resources and spectator/returning
+camera checks. Both players finish this prefix alive at 75/95 health. Captured
+and current fixture hashes match; 5,412 recovery trace rows were checked.
+
+The complete run then fails at switch step 56 after five ordinary shooting
+positions. The exact aiming failure is still under investigation. No complete
+campaign row is added; overall remains **48.1%**. Next is a focused switch
+reproduction from this run's unchanged, normally earned checkpoint43, followed
+by another full traversal once that failure is understood.
 
 Two resumed mirror 29-32 runs also pass, including exact actual-jump evidence.
 Conservative range rejection removes distant-enemy aiming work from the test
 driver; its measured host p95 cost drops from 39.5 to 1.1 ms per frame on the same
-PC. The fresh prefix has no control resets. Gameplay physics, combat rules and
+PC. The earlier 0-37 prefix had no control resets; the latest run records one
+early suspension. Gameplay physics, combat rules and
 the control-reset safeguard are unchanged. **877 active Rust tests**, the locked
 release, Funhouse battle63/world46/scene37/single-player8 and Checkmate94 pass;
 single-player component output matches baseline except two benchmark timings.

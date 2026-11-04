@@ -1098,3 +1098,30 @@ clients on the authorized PC fallback while Anode is occupied, with 40 ms delay
 and 20 ms jitter. No screenshots were opened. The earlier fresh prefix and this
 resumed corridor are not a combined full-run pass; that remains the next test.
 Overall remains 48.1%, with no new completed campaign visit.
+
+
+### Combined fresh prefix and four recoveries (4 November 2026)
+
+Run `f4d6dc8aa1304a3d89ca3e6845124746` uses frozen native source `1839b9f`
+and the final corridor fixture from `fbee005`. It verifies fresh **0-55**:
+82 personal arrivals, 16 own pickups, seven paired holds, two actual switch
+shots and 10,511 matching player/world/native states. The original opening,
+mirror and corrected return corridor pass together. The complete run remains
+FAILED at switch step 56 after five ordinary shooting positions; both players
+remain alive at 75/95 health. The exact aiming cause is not yet established.
+
+The independent retained prefix audit calls the full Funhouse verifier against
+the saved before-56 boundary and bounded histories. Every captured fixture
+matches current source. Its 5,412-row recovery trace proves four natural
+revivals (Blue three times, Red once), each exactly 1,200 active ticks later at
+25 health, with clear safe supported placement, preserved personal resources,
+and independently rendered spectator/returning-player cameras. It verifies the
+unchanged checkpoint43 SHA-256
+`0fa861781383932bdbb807c3b0af282dfb64dea71531e6d41c44c7215f40b860`.
+
+Proof is retained locally as `verified-recovery-prefix-0-55.json`. The run uses
+independent internet clients, 40 ms delay/20 ms jitter and the authorized PC
+fallback while Anode is occupied. One early input suspension is recorded; this
+is not a zero-reset or Anode-repeatability claim. No screenshots were opened.
+No campaign row is added. Overall remains 48.1%; next is the focused step-56
+switch failure, then fresh full traversal and the remaining campaign cases.

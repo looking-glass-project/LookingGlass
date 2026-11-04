@@ -25,10 +25,13 @@ steps 29-32 with both actual jumps/holds, one shared switch, 816 matching states
 and no deaths. Read-only input traces and per-stage timings exposed costly
 out-of-range aiming in the automated driver. Conservative hit-box rejection
 reduces its measured host p95 cost from 39.5 to 1.1 ms/frame while preserving
-normal target, occlusion and combat rules. The fresh run verifies 0-37, then fails at a team wipe on 38. A corridor
-fixture correction subsequently passes resumed 35-42 with 16 personal arrivals,
-2,636 matching states and no deaths. A combined fresh full route remains
-required; see [current progress](COOP_PROGRESS.md).
+normal target, occlusion and combat rules. With the corridor fixture correction,
+the latest fresh run verifies **0-55**: 82 personal arrivals, 16 own pickups,
+seven holds, two switch shots and 10,511 matching states. Four natural revivals
+pass the exact ten-second timer, safe placement, personal resources and camera
+checks. Both survive at 75/95 health. The full run fails at the next switch (56);
+its aiming failure remains under investigation. No completed campaign row is
+added; see [current progress](COOP_PROGRESS.md).
 
 Earlier Funhouse traversal milestone: source `c946266` now passes the resumed
 return corridor, authored steps **35-42**, in independent public-internet clients

@@ -1,8 +1,12 @@
 """Reject incomplete or unobserved Clockwork route receipts."""
 import copy
+import json
 import unittest
+from pathlib import Path
 from test_coop_hatter1 import DESCENT, GEAR_APPROACH, GEAR_EXIT_APPROACH, parking_target, partner_contact, yield_target, verify_yields, verify_arrivals, verify_descent, verify_ledge_pulls, verify_gear_boarding, verify_gear_exit
 from test_coop_hatter1 import recorded_arrival, next_stair_footing, verify_stair_waiting
+from test_coop_hatter1 import next_corridor_footing, verify_corridor_waiting
+from test_coop_hatter1 import validate_course_range, verify_gap_hold
 
 
 class RecordedArrival(unittest.TestCase):
@@ -59,6 +63,84 @@ class StairWaiting(unittest.TestCase):
 
     def test_not_a_general_route_skip(self):
         with self.assertRaisesRegex(AssertionError,'limited'): next_stair_footing(self.steps,20)
+
+
+class CorridorWaiting(unittest.TestCase):
+    def setUp(self):
+        self.steps=[{} for _ in range(27)]
+        self.steps[25]=dict(nav=[-5120,2544,320.03125])
+        self.steps[26]=dict(nav=[-5240,2408,320.03125])
+        self.receipt=dict(step=25,role='guest',goal=self.steps[26]['nav'],before_tick=110,tick=200,
+                          command=55,feet=list(self.steps[26]['nav']))
+        self.arrivals=[dict(step=25,role='guest',tick=100),dict(step=25,role='host',tick=300)]
+        self.history={'guest':[]}
+        for tick,point in [(110,self.steps[25]['nav']),(200,self.steps[26]['nav'])]:
+            body=dict(feet=list(point),health=89,spawned_at=0,grounded=True)
+            self.history['guest'].append(dict(tick=tick,players=[body,body],driver=dict(command=55,reached=True)))
+
+    def check(self): verify_corridor_waiting([self.receipt],self.steps,self.arrivals,self.history)
+
+    def test_separate_forward_arrival_before_follower(self): self.check()
+
+    def test_missing_arrival_acknowledgment(self):
+        self.history['guest'][-1]['driver']['reached']=False
+        with self.assertRaisesRegex(AssertionError,'unacknowledged'): self.check()
+
+    def test_cannot_skip_a_lever_or_wait(self):
+        for key in ('lever','wait'):
+            with self.subTest(key=key):
+                self.steps[26]={key:2}
+                with self.assertRaisesRegex(AssertionError,'non-navigation'): self.check()
+
+    def test_forward_motion_is_bounded(self):
+        self.steps[26]['nav'][0]-=500
+        with self.assertRaisesRegex(AssertionError,'Invalid next corridor'): self.check()
+
+    def test_other_sections_cannot_use_this_handoff(self):
+        with self.assertRaisesRegex(AssertionError,'limited'): next_corridor_footing(self.steps,20)
+
+
+class GapCourse(unittest.TestCase):
+    def setUp(self):
+        self.steps=json.loads((Path(__file__).resolve().parents[1]/'src/levels/hatter1/route_steps.json').read_text())
+
+    def test_complete_paired_sequence_is_accepted(self): validate_course_range(self.steps,33,42)
+
+    def test_partial_paired_sequence_is_rejected(self):
+        for start,last in [(36,38),(37,42),(40,42)]:
+            with self.subTest(start=start,last=last),self.assertRaisesRegex(AssertionError,'complete 36-42'):
+                validate_course_range(self.steps,start,last)
+
+    def test_changed_authored_jump_requires_review(self):
+        self.steps[40]['input'][4]=0
+        with self.assertRaisesRegex(AssertionError,'changed gap inputs'): validate_course_range(self.steps,36,42)
+
+    def test_unrelated_input_does_not_gain_support(self):
+        self.steps[25]={'input':[0.1,1,0,0,0,0]}
+        with self.assertRaisesRegex(AssertionError,'unimplemented'): validate_course_range(self.steps,25,35)
+
+
+class GapHold(unittest.TestCase):
+    def setUp(self):
+        self.goal=[-5080,2795,320.03125]
+        self.hold=dict(role='host',seconds=0.25,start_tick=100,end_tick=130)
+        self.history={'host':[dict(tick=t,players=[dict(feet=list(self.goal),grounded=True)]) for t in (100,130)]}
+
+    def check(self): verify_gap_hold(self.hold,self.goal,self.history)
+
+    def test_supported_preparation_wait(self): self.check()
+
+    def test_short_wait(self):
+        self.hold['end_tick']=129
+        with self.assertRaisesRegex(AssertionError,'ended early'): self.check()
+
+    def test_airborne_wait(self):
+        self.history['host'][-1]['players'][0]['grounded']=False
+        with self.assertRaisesRegex(AssertionError,'left the takeoff'): self.check()
+
+    def test_wrong_floor(self):
+        self.history['host'][-1]['players'][0]['feet'][2]-=100
+        with self.assertRaisesRegex(AssertionError,'left the takeoff'): self.check()
 
 
 class Arrivals(unittest.TestCase):

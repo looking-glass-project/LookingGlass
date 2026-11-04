@@ -500,3 +500,58 @@ fixture hashes match. Evidence:
 The original 18-38 request remains failed at 25 because the first arrival has no
 suitable corridor waiting position. A normal checkpoint before 25 is retained
 at tick 32620 for the next short reproduction. No complete visit is credited.
+
+## Corridor handoffs and delayed landing (4 November 2026)
+
+The corridor fixture now moves the first arrival to the next authored navigation
+footing before the follower approaches. This is limited to seven corridor
+waypoints, with bounded spacing and height differences; it cannot skip a lever
+or wait. Each forward move needs its own grounded arrival and command receipt.
+
+On native source `cf5d551`, the resumed **25-35** section independently passes
+16 personal arrivals, seven corridor handoffs, two timed holds, one lever and
+**1,073 matching player/world/native states**. Both survive at 89/100 health.
+The normal checkpoint restores exactly at tick 32620; the audit ends at 41363.
+Copied and current fixture hashes matched at audit time. Evidence:
+`private/coop/hatter1-route-438d88376355413d9e777c0a69842a4e/completed-prefix-audit.json`.
+The longer 25-38 request remains failed at 36 because the jump approach has no
+suitable waiting neighbor. This scoped result does not prove a complete visit.
+
+The fixture now groups gap steps 36-42 into one sequential paired crossing.
+Each player must reach the approach, hold for the original preparation time,
+perform a real jump and land with a personal acknowledgment. The first crosses
+and moves to the next authored landing-side footing before the second approaches.
+The crossing uses feedback air steering; it does not claim identical playback
+of the original single-player timed inputs. Its live verification is pending.
+All **72 Python guards** pass, including corridor handoff ordering, partial gap
+sequence rejection and supported preparation holds.
+
+The first 33-42 retry fails before the gap: Red overshoots the step-33 platform
+while Blue waits safely ahead. Evidence is retained unchanged in
+`private/coop/hatter1-route-e8f07a7ea14c42c88c5b548edf50088a`.
+The driver's final landing control waited for a delayed observation of downward
+velocity, so braking arrived too late. It now predicts whether ordinary gravity
+will make the player descend by the time the input arrives, retaining the
+existing wall, floor-support, distance and height checks. Updrafts are excluded
+from that prediction. Gameplay movement physics is unchanged.
+
+A captured-motion regression reproduces the fall with the previous handoff
+timing, then requires supported settled landings with 0, 6, 12 and 18 ticks of
+observation and input delay per direction. All **886 active Rust tests** pass,
+with one ignored. Source
+`fdbfbde9620c22756b1600b59f2aed1594d87b7696ddca0520f49e1db5431799`, executable SHA-256
+`70710270621f99e36fd82d97a172c7d5e5e344debebdac1769d74fdf796c5442`, passes
+the locked release and all 68 paired native cases. The single-player 11+1
+outputs still match the baseline exactly.
+
+The live internet retry verifies **resumed 33-34** with four personal arrivals,
+two corridor handoffs and **237 matching player/world/native states**, ending
+at tick 40554 with 89/100 health. The unchanged checkpoint restores exactly
+at tick 38760; copied and current fixture hashes match. This includes the
+previously failed step-33 landing. Evidence:
+`private/coop/hatter1-route-e35d66df3dc64b1abfbe7982c9238d2c/completed-prefix-audit.json`.
+The requested 33-42 run remains failed at 35: Red misses the supported landing
+during a different jump approach while Blue waits safely at 36. The gap
+sequence is still untested in the live game. The failure and original
+observations are retained; this partial retry does not complete Clockwork or
+add campaign credit.

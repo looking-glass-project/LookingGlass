@@ -19,7 +19,21 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | Full campaign verification | 3.08 | 20 |
 | **Total** | **48.58, rounded to 48.6** | **100** |
 
-Latest automation result: Clockwork's resumed **18-24** section verifies 12
+Latest automation result: Clockwork's resumed **25-35** section verifies 16
+personal arrivals, seven corridor handoffs, two timed holds, one lever and
+**1,073 matching player/world/native states**, ending with both alive at 89/100
+health. This is a scoped audit of a longer run that stopped at the gap approach.
+The next retry exposed a delayed landing failure before that gap. An earlier
+braking handoff now passes **886 active Rust tests**, including a regression
+that reproduces the old fall. The new live retry verifies **33-34**, including
+the previously failed landing, with four personal arrivals, two handoffs and
+**237 matching states**. It then fails at 35 with Red falling during a different
+jump approach; the gap sequence remains untested. Full Clockwork stays open.
+The locked release, 68 paired native checks and exact single-player 11+1
+baseline pass, as do **72 Python guards**. Total completion stays **48.6%**,
+with six fully verified campaign visits.
+
+Earlier automation result: Clockwork's resumed **18-24** section verifies 12
 personal arrivals, all three stair handoffs, one timed hold and **454 matching
 player/world/native states**, with both players at 89 health. The leader moves
 to the next tread before the follower arrives. The runner also waits for command

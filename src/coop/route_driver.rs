@@ -567,8 +567,13 @@ pub(crate) fn landing_control(world: &World, player: &Player, goal: Vec3, lead: 
     // Match the route's 35-unit walking height tolerance for sloping supports
     // and approximate waypoints; a two-unit band misses legitimate landings.
     let height_tolerance=35.;
+    // A delayed snapshot can still show ascent even though a new input will
+    // arrive after the apex. Anticipate only ordinary gravity; retain the
+    // existing current-footing and clear-approach checks below.
+    let descending_on_arrival=player.velocity.z<0. || (player.updraft_time<=0.
+        && player.velocity.z<crate::movement::GRAVITY*lead.clamp(0.,1.5));
     let descent = !player.grounded && !player.swimming && player.ledge.is_none()
-        && player.velocity.z < 0. && (-128. ..=height_tolerance).contains(&delta.z)
+        && descending_on_arrival && (-128. ..=height_tolerance).contains(&delta.z)
         && delta.truncate().length() < 128. && {
             let hit=world.body_trace(player.feet,goal+Vec3::Z*(-delta.z));
             let down=vec3(player.feet.x,player.feet.y,goal.z-height_tolerance);
@@ -2479,8 +2484,42 @@ mod tests {
         airborne.velocity=-Vec3::Z*100.;
         let wall=World::fixture(&[floor,(vec3(-100.,30.,0.),vec3(100.,40.,200.))]);
         assert!(landing_control(&wall,&airborne,goal,0.2,8.).is_none());
-        airborne.velocity.z=100.;
+        airborne.velocity.z=200.;
         assert!(landing_control(&world,&airborne,goal,0.2,8.).is_none());
+        airborne.velocity.z=100.;
+        assert!(landing_control(&world,&airborne,goal,0.2,8.).is_some());
+        airborne.updraft_time=1.;
+        assert!(landing_control(&world,&airborne,goal,0.2,8.).is_none());
+    }
+    #[test]
+    fn delayed_corridor_landing_brakes_before_the_snapshot_descends() {
+        let world=World::fixture(&[(vec3(-48.,-48.,-100.),vec3(48.,48.,0.))]);
+        let goal=vec3(0.,0.,0.03125);
+        // The failed Red corridor approach, relative to its landing waypoint.
+        // Before its delayed snapshot shows descent, its actual body has
+        // already crossed much of the small landing with northward momentum.
+        for (delay,legacy) in [(18,true),(0,false),(6,false),(12,false),(18,false)] {
+            let mut player=Player::new(vec3(-51.58984,-63.51709,73.33676));
+            player.velocity=vec3(226.7417,173.23021,206.6663);
+            let mut views=VecDeque::from(vec![player.clone();delay+1]);
+            let mut pending=VecDeque::from(vec![Controls{wish:Vec2::Y,run:true,..Default::default()};delay]);
+            let mut handed_off=false;let mut fell=false;
+            for tick in 0..720 {
+                let view=views.pop_front().unwrap();
+                let landing=(!legacy || view.velocity.z<0.).then(||
+                    landing_control(&world,&view,goal,2.*delay as f32/120.,8.)).flatten();
+                let control=if let Some((wish,_))=landing {
+                    handed_off=true;Controls{wish,..Default::default()}
+                } else if handed_off {Controls::default()}
+                else {Controls{wish:if tick<24 {vec2(-0.70710677,0.70710677)} else {-Vec2::X},run:true,..Default::default()}};
+                pending.push_back(control);player.tick(&world,pending.pop_front().unwrap());
+                if player.feet.z< -0.1 {fell=true;break;}
+                views.push_back(player.clone());
+            }
+            if legacy {assert!(fell,"Captured delayed landing should reproduce the old late-braking fall: {:?}",player.feet);}
+            else {assert!(!fell && handed_off && landing_control(&world,&player,goal,0.,8.).is_some_and(|(_,settled)|settled),
+                "Corridor landing did not settle delay{delay}: {:?}",player.feet);}
+        }
     }
     #[test]
     fn unselected_idle_guard_still_blocks_aim_at_an_enemy_behind_it() {

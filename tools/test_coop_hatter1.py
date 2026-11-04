@@ -2,8 +2,9 @@
 
 Each player must earn a separate waypoint receipt. The first stops at a native
 clear/supported neighbor to let the second arrive. The initial runner supports
-nav/walk/wait/lever steps; timed inputs, portals and scene handoffs remain explicit
-future work. An explicit checkpoint can resume a separately labelled segment,
+nav/walk/wait/lever steps and a paired gap crossing adapted from steps 36-42;
+other timed inputs, portals and scene handoffs remain explicit future work.
+An explicit checkpoint can resume a separately labelled segment,
 with an exact native restore receipt. The runner never edits authoritative
 positions, resources or progression.
 """
@@ -29,6 +30,7 @@ DESCENT = [[-2848.6, 3228.5, 320.03125], [-3070.9, 2936.8, 176.03125],
            [-3231.4, 2929.1, 128.03125], [-3296, 2960, 192.03125]]
 GEAR_APPROACH = [-4373.3784,3304.2549,208.03125]
 GEAR_EXIT_APPROACH = [-4512,3008,208.03125]
+CORRIDOR_HANDOFFS = (25,26,27,28,33,34,35)
 
 
 def map_entities(base):
@@ -108,20 +110,90 @@ def next_stair_footing(steps, step):
 
 
 def verify_stair_waiting(receipts, steps, arrivals, history):
+    verify_forward_waiting(receipts,steps,arrivals,history,next_stair_footing,'Stair',2)
+
+
+def next_corridor_footing(steps, step):
+    assert step in CORRIDOR_HANDOFFS, 'Forward navigation is limited to the laboratory corridor'
+    assert set(steps[step])=={'nav'} and set(steps[step+1])=={'nav'}, 'Corridor handoff cannot skip a non-navigation action'
+    goal,point=steps[step]['nav'],steps[step+1]['nav']
+    assert 48 <= distance(goal[:2],point[:2]) <= 256 and abs(point[2]-goal[2]) < 16, 'Invalid next corridor footing'
+    return point
+
+
+def verify_corridor_waiting(receipts, steps, arrivals, history):
+    verify_forward_waiting(receipts,steps,arrivals,history,next_corridor_footing,'Corridor',8)
+
+
+def verify_forward_waiting(receipts, steps, arrivals, history, target, label, radius):
     for receipt in receipts:
         step,role=receipt['step'],receipt['role'];slot=0 if role=='host' else 1
-        goal=next_stair_footing(steps,step)
-        assert receipt['goal']==goal, 'Stair waiting target differs from the course'
+        goal=target(steps,step)
+        assert receipt['goal']==goal, f'{label} waiting target differs from the course'
         pair=[r for r in arrivals if r['step']==step]
-        assert len(pair)==2 and pair[0]['role']==role, 'Stair waiter must be the first arrival'
+        assert len(pair)==2 and pair[0]['role']==role, f'{label} waiter must be the first arrival'
         rows={r['tick']:r for r in history[role]}
         before,end=rows[receipt['before_tick']],rows[receipt['tick']]
-        assert pair[0]['tick']<=before['tick']<=end['tick']<pair[1]['tick'], 'Stair handoff out of order'
-        assert distance(before['players'][slot]['feet'][:2],steps[step]['walk'][:2])<2, 'Stair waiter did not center first'
+        assert pair[0]['tick']<=before['tick']<=end['tick']<pair[1]['tick'], f'{label} handoff out of order'
+        start=before['players'][slot];original=next(iter(steps[step].values()))
+        assert start['grounded'] and distance(start['feet'][:2],original[:2])<radius and abs(start['feet'][2]-original[2])<35, f'{label} waiter did not center first'
         body=end['players'][slot]
-        assert body['health']>0 and body['spawned_at']==0 and body['grounded'], 'Invalid stair waiting body'
-        assert end['driver']['command']==receipt['command'] and end['driver']['reached'], 'Stair waiting arrival unacknowledged'
-        assert body['feet']==receipt['feet'] and distance(body['feet'][:2],goal[:2])<8 and abs(body['feet'][2]-goal[2])<35, 'Stair waiting arrival missed'
+        assert body['health']>0 and body['spawned_at']==0 and body['grounded'], f'Invalid {label} waiting body'
+        assert end['driver']['command']==receipt['command'] and end['driver']['reached'], f'{label} waiting arrival unacknowledged'
+        assert body['feet']==receipt['feet'] and distance(body['feet'][:2],goal[:2])<8 and abs(body['feet'][2]-goal[2])<35, f'{label} waiting arrival missed'
+
+
+def validate_gap_course(steps):
+    assert [next(iter(s)) for s in steps[36:44]] == ['nav','walk','wait','input','input','input','nav','nav'], 'Review changed gap course'
+    assert steps[38]['wait']==0.25 and [steps[i]['input'] for i in (39,40,41)] == [
+        [0.1,0,1,0,0,0],[0.35,0,1,0,1,0],[0.65,0,-1,0,0,0]], 'Review changed gap inputs'
+    approach,landing,waiting=steps[37]['walk'],steps[42]['nav'],steps[43]['nav']
+    assert abs(approach[0]-landing[0])<1 and 200<landing[1]-approach[1]<300 and abs(landing[2]-approach[2])<1, 'Review changed gap geometry'
+    assert distance(landing[:2],waiting[:2])>=64, 'Gap waiter needs landing clearance'
+
+
+def validate_course_range(steps, start, last):
+    if start<=42 and last>=36:
+        assert start<=36 and last>=42, 'The paired gap needs the complete 36-42 sequence'
+        validate_gap_course(steps)
+    assert all(next(iter(steps[i])) in ('nav','walk','wait','lever') or 36<=i<=42
+               for i in range(start,last+1)), 'Requested prefix needs an unimplemented input type'
+
+
+def verify_gap_hold(hold, goal, history):
+    assert hold['seconds']==0.25 and hold['end_tick']-hold['start_tick']>=30, 'Gap preparation wait ended early'
+    slot=0 if hold['role']=='host' else 1
+    rows=[r for r in history[hold['role']] if hold['start_tick']<=r['tick']<=hold['end_tick']]
+    assert rows and rows[0]['tick']==hold['start_tick'] and rows[-1]['tick']==hold['end_tick'], 'Gap preparation wait unobserved'
+    assert all(r['players'][slot]['grounded'] and distance(r['players'][slot]['feet'][:2],goal[:2])<8
+               and abs(r['players'][slot]['feet'][2]-goal[2])<35 for r in rows), 'Gap preparation left the takeoff footing'
+
+
+def verify_gap_sequence(evidence, steps, history):
+    validate_gap_course(steps)
+    approach,landing,waiting=steps[37]['walk'],steps[42]['nav'],steps[43]['nav']
+    jumps=evidence['gap_jumps'];holds=evidence['gap_holds'];parks=evidence['gap_waiting']
+    verify_jump_crossing(jumps,landing,approach,history,'Gap')
+    assert len(holds)==2 and {h['role'] for h in holds}=={'host','guest'}, 'Missing personal gap preparation wait'
+    for hold in holds:
+        verify_gap_hold(hold,approach,history)
+        jump=next(j for j in jumps if j['role']==hold['role'])
+        assert hold['end_tick']<=jump['before_tick'], 'Gap jump preceded preparation'
+        slot=0 if jump['role']=='host' else 1
+        rows={r['tick']:r for r in history[jump['role']]}
+        assert rows[jump['before_tick']]['players'][slot]['warped_at']==rows[jump['arrival_tick']]['players'][slot]['warped_at'], 'Gap used a recovery warp'
+    assert len(parks)==1, 'Missing first-player gap handoff'
+    park=parks[0];role=park['role'];slot=0 if role=='host' else 1
+    pair=[r for r in evidence['arrivals'] if r['step']==36]
+    assert len(pair)==2 and pair[0]['role']==role, 'Gap waiter must cross first'
+    first=next(j for j in jumps if j['role']==role);other=next(j for j in jumps if j['role']!=role)
+    assert first['arrival_tick']<=park['before_tick']<=park['tick']<pair[1]['tick'], 'Gap handoff out of order'
+    assert park['goal']==waiting, 'Gap waiting target differs from the course'
+    row=next(r for r in history[role] if r['tick']==park['tick']);body=row['players'][slot]
+    assert row['driver']['command']==park['command'] and row['driver']['reached'], 'Gap waiting arrival unacknowledged'
+    assert body['grounded'] and body['feet']==park['feet'] and distance(body['feet'][:2],waiting[:2])<8 and abs(body['feet'][2]-waiting[2])<35, 'Gap waiting arrival missed'
+    assert all(r['players'][slot]['grounded'] and distance(r['players'][slot]['feet'][:2],landing[:2])>=48
+               for r in history[role] if park['tick']<=r['tick']<=other['arrival_tick']), 'Gap waiter blocked the landing'
 
 
 def verify_descent(arrivals, jumps, history):
@@ -149,28 +221,28 @@ def verify_grounded_jump(jump, history):
 
 
 def verify_gear_boarding(boardings, goal, history):
-    verify_gear_crossing(boardings,goal,GEAR_APPROACH,history)
+    verify_jump_crossing(boardings,goal,GEAR_APPROACH,history)
 
 
 def verify_gear_exit(exits, goal, history):
-    verify_gear_crossing(exits,goal,GEAR_EXIT_APPROACH,history)
+    verify_jump_crossing(exits,goal,GEAR_EXIT_APPROACH,history)
 
 
-def verify_gear_crossing(boardings, goal, approach, history):
-    assert len(boardings) == 2 and {r['role'] for r in boardings} == {'host','guest'}, 'Missing personal gear boarding'
+def verify_jump_crossing(boardings, goal, approach, history, label='Gear'):
+    assert len(boardings) == 2 and {r['role'] for r in boardings} == {'host','guest'}, f'Missing personal {label} crossing'
     for receipt in boardings:
         verify_grounded_jump(receipt,history)
         slot = 0 if receipt['role'] == 'host' else 1
         rows = {r['tick']:r for r in history[receipt['role']]}
         start, flight, end = [rows[receipt[k]] for k in ('before_tick','after_tick','arrival_tick')]
-        assert start['driver']['command'] == receipt['approach_command'] and start['driver']['reached'], 'Gear approach unacknowledged'
+        assert start['driver']['command'] == receipt['approach_command'] and start['driver']['reached'], f'{label} approach unacknowledged'
         start_feet=start['players'][slot]['feet']
-        assert distance(start_feet[:2],approach[:2]) < 2 and abs(start_feet[2]-approach[2]) < 35, 'Gear run-up started elsewhere'
-        assert not flight['players'][slot]['grounded'], 'Gear flight unobserved'
+        assert distance(start_feet[:2],approach[:2]) < 2 and abs(start_feet[2]-approach[2]) < 35, f'{label} run-up started elsewhere'
+        assert not flight['players'][slot]['grounded'], f'{label} flight unobserved'
         body = end['players'][slot]
-        assert body['health'] > 0 and body['spawned_at'] == 0 and body['grounded'], 'Invalid gear arrival body'
-        assert end['driver']['command'] == receipt['arrival_command'] and end['driver']['reached'], 'Gear arrival unacknowledged'
-        assert distance(body['feet'][:2],goal[:2]) < 8 and abs(body['feet'][2]-goal[2]) < 35, 'Gear arrival missed'
+        assert body['health'] > 0 and body['spawned_at'] == 0 and body['grounded'], f'Invalid {label} arrival body'
+        assert end['driver']['command'] == receipt['arrival_command'] and end['driver']['reached'], f'{label} arrival unacknowledged'
+        assert distance(body['feet'][:2],goal[:2]) < 8 and abs(body['feet'][2]-goal[2]) < 35, f'{label} arrival missed'
 
 
 def yield_target(candidates, at, incoming, goal, via=None):
@@ -253,7 +325,7 @@ class ClockworkPair(Pair):
         raw = (ROOT / 'src/levels/hatter1/route_steps.json').read_bytes()
         self.steps = json.loads(raw)
         assert len(self.steps) == 150 and 0 <= args.start_step <= args.last_step < len(self.steps), 'Review changed course'
-        assert all(next(iter(s)) in ('nav', 'walk', 'wait', 'lever') for s in self.steps[args.start_step:args.last_step + 1]), 'Requested prefix needs an unimplemented input type'
+        validate_course_range(self.steps,args.start_step,args.last_step)
         # The native SP course accepts a 22-unit planning radius. At this
         # boundary its marker cannot be approached within our eight-unit
         # arrival bound. Use the separately observed clear, grounded footing.
@@ -268,8 +340,10 @@ class ClockworkPair(Pair):
         self.evidence.update(course_sha256=hashlib.sha256(raw).hexdigest(), map_sha256=map_sha,
             effective_course_sha256=hashlib.sha256(effective).hexdigest(), waypoint_adjustments=adjustments,
             executable_sha256=hashlib.sha256(args.exe.read_bytes()).hexdigest(),
-            arrivals=[], levers=[], holds=[], parking=[], stair_waiting=[], yields=[], descent_arrivals=[], descent_jumps=[], ledge_pulls=[], gear_boarding=[], gear_exits=[],
+            arrivals=[], levers=[], holds=[], parking=[], stair_waiting=[], corridor_waiting=[], yields=[], descent_arrivals=[], descent_jumps=[], ledge_pulls=[], gear_boarding=[], gear_exits=[], gap_jumps=[], gap_holds=[], gap_waiting=[],
             completed=self.completed, scope='Fresh Clockwork prefix only')
+        if args.start_step<=36<=args.last_step:
+            self.evidence['gap_adaptation']='Steps 36-42 run separately per player: original approach, preparation wait and run-up, then actual jump and feedback steering to the original landing. This does not claim identical replay of the single-player timed air inputs.'
         dependencies = self.folder / 'fixture-dependencies'; dependencies.mkdir()
         for name in ('test_coop_hatter1.py', 'test_coop_village.py', 'test_coop_play.py', 'test_coop_chess.py',
                      'test_coop_funhouse.py', 'test_coop_castling.py', 'test_coop_chess_resume.py', 'coop_diagnostics.py', 'coop_recovery.py'):
@@ -467,6 +541,37 @@ class ClockworkPair(Pair):
         receipt.update(arrival_tick=self.reports[role]['frame']['tick'],
             arrival_command=self.reports[role]['route_driver']['command'])
 
+    def forward_wait(self, role, park, navigate, evidence_key):
+        receipt=dict(step=self.step,role=role,goal=park,before_tick=self.reports[role]['frame']['tick'])
+        self.move(role,park,navigate=navigate)
+        receipt.update(tick=self.reports[role]['frame']['tick'],command=self.reports[role]['route_driver']['command'],
+            feet=list(self.body(role)['player']['feet']))
+        self.evidence[evidence_key].append(receipt)
+        self.set(role,park,run=True)
+
+    def cross_corridor_gap(self):
+        first=min(self.commands,key=lambda r:distance(self.body(r)['player']['feet'],self.steps[36]['nav']))
+        other='guest' if first=='host' else 'host'
+        self.set(other,attack=True)
+        for role in (first,other):
+            for step,key in ((36,'nav'),(37,'walk')):
+                goal=self.steps[step][key]
+                self.move(role,goal,navigate=key=='nav',radius=2 if step==37 else 8)
+                report=self.reports[role]
+                self.evidence['arrivals'].append(dict(step=step,role=role,goal=goal,tick=report['frame']['tick'],
+                    feet=list(self.body(role)['player']['feet']),command=report['route_driver']['command']))
+            start=self.reports[role]['frame']['tick']
+            self.until(lambda:self.reports[role]['frame']['tick']>=start+30)
+            self.evidence['gap_holds'].append(dict(role=role,seconds=0.25,start_tick=start,end_tick=self.reports[role]['frame']['tick']))
+            self.cross_gear(role,self.steps[42]['nav'],self.steps[37]['walk'],False,100,[0,1],'gap_jumps')
+            report=self.reports[role]
+            self.evidence['arrivals'].append(dict(step=42,role=role,goal=self.steps[42]['nav'],tick=report['frame']['tick'],
+                feet=list(self.body(role)['player']['feet']),command=report['route_driver']['command']))
+            if role==first: self.forward_wait(role,self.steps[43]['nav'],True,'gap_waiting')
+        # Preserve every observed timestamp; group personal receipts by course
+        # step after both complete their sequential crossing.
+        self.evidence['arrivals'].sort(key=lambda r:r['step'])
+
     def go(self, goal, navigate=False):
         first = min(self.commands, key=lambda r: distance(self.body(r)['player']['feet'], goal) + (0 if r == self.first else 16))
         other = 'guest' if first == 'host' else 'host'
@@ -484,18 +589,15 @@ class ClockworkPair(Pair):
                 command=report['route_driver']['command']))
             if role == first:
                 slot = 0 if role == 'host' else 1
+                if self.step in CORRIDOR_HANDOFFS:
+                    self.forward_wait(role,next_corridor_footing(self.steps,self.step),True,'corridor_waiting')
+                    continue
                 if self.step in (21,22,23) or not report['route_driver']['neighbors'][slot]:
                     # An eight-unit arrival can stop on the edge of a small
                     # footing. Center by walking before asking for neighbors.
                     self.move(role, goal, radius=2)
                 if self.step in (21,22,23):
-                    park=next_stair_footing(self.steps,self.step)
-                    receipt=dict(step=self.step,role=role,goal=park,before_tick=self.reports[role]['frame']['tick'])
-                    self.move(role,park)
-                    receipt.update(tick=self.reports[role]['frame']['tick'],command=self.reports[role]['route_driver']['command'],
-                        feet=list(self.body(role)['player']['feet']))
-                    self.evidence['stair_waiting'].append(receipt)
-                    self.set(role,park,run=True)
+                    self.forward_wait(role,next_stair_footing(self.steps,self.step),False,'stair_waiting')
                     continue
                 for attempt in range(3):
                     report = self.reports[role]
@@ -559,15 +661,17 @@ class ClockworkPair(Pair):
         verify_ledge_pulls(self.evidence['ledge_pulls'], self.history)
         verify_yields(self.evidence['yields'], self.steps, self.history)
         verify_stair_waiting(self.evidence['stair_waiting'],self.steps,self.evidence['arrivals'],self.history)
+        verify_corridor_waiting(self.evidence['corridor_waiting'],self.steps,self.evidence['arrivals'],self.history)
         if 16 in self.completed: verify_gear_boarding(self.evidence['gear_boarding'],self.steps[16]['nav'],self.history)
         if 17 in self.completed: verify_gear_exit(self.evidence['gear_exits'],self.steps[17]['nav'],self.history)
+        if 36 in self.completed: verify_gap_sequence(self.evidence,self.steps,self.history)
         expected = [i for i in self.completed if 'lever' in self.steps[i]]
         assert [r['step'] for r in self.evidence['levers']] == expected, 'Missing lever receipts'
         for receipt in self.evidence['levers']:
             row = next(r for r in self.history[receipt['role']] if r['tick'] == receipt['tick'])
             assert row['clockwork']['levers'][receipt['lever']] == receipt['time'] and row['clockwork'].get('pull') is None
             assert row['driver']['command'] == receipt['command'], 'Lever command not observed'
-        assert [r['step'] for r in self.evidence['holds']] == [i for i in self.completed if 'wait' in self.steps[i]], 'Missing timed wait'
+        assert [r['step'] for r in self.evidence['holds']] == [i for i in self.completed if 'wait' in self.steps[i] and i!=38], 'Missing timed wait'
         for hold in self.evidence['holds']:
             assert hold['end_tick'] - hold['start_tick'] >= hold['seconds'] * 120, 'Timed wait ended early'
         for park in self.evidence['parking']:
@@ -581,8 +685,9 @@ class ClockworkPair(Pair):
             if park['ready']:
                 goal = next(iter(self.steps[park['step']].values()))
                 assert distance(park['goal'][:2], goal[:2]) >= 48, 'Waiting target obstructs the arrival lane'
-        assert sorted([p['step'] for p in self.evidence['parking'] if p['ready']]+[p['step'] for p in self.evidence['stair_waiting']]) == [i for i in self.completed
-            if next(iter(self.steps[i])) in ('nav','walk')], 'Missing completed parking handoff'
+        assert sorted([p['step'] for p in self.evidence['parking'] if p['ready']]
+            +[p['step'] for kind in ('stair_waiting','corridor_waiting') for p in self.evidence[kind]]) == [i for i in self.completed
+            if next(iter(self.steps[i])) in ('nav','walk') and i not in (36,37,42)], 'Missing completed parking handoff'
         for role, rows in self.history.items():
             assert rows and all(r['map'] == self.map_name and r['epoch'] == 1 and r['checkpoint_generation'] == 0 for r in rows)
             assert all(p['health'] > 0 and p['spawned_at'] == 0 for r in rows for p in r['players']), 'Prefix contains a death'
@@ -603,10 +708,16 @@ class ClockworkPair(Pair):
                     verify_resume_body(body,old,elapsed)
             print('PASS exact shared checkpoint resume',self.saved['frame']['tick'],flush=True)
         for self.step in range(self.args.start_step,self.args.last_step+1):
+            if self.step in self.completed: continue
             step = self.steps[self.step]
             print('Clockwork step', self.step, step, flush=True)
             self.clear()
-            if self.step in (0, 1, 9, 14, 17, 18, 25, 33): self.save_checkpoint(self.step)
+            if self.step in (0, 1, 9, 14, 17, 18, 25, 33, 36): self.save_checkpoint(self.step)
+            if self.step==36:
+                self.cross_corridor_gap()
+                self.completed.extend(range(36,43))
+                print('PASS paired gap sequence 36-42',flush=True)
+                continue
             key, value = next(iter(step.items()))
             if key in ('nav', 'walk'): self.go(value, key == 'nav')
             elif key == 'lever': self.lever(value)

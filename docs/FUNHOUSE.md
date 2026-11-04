@@ -1202,3 +1202,31 @@ clients with 40 ms delay/20 ms jitter on the authorized PC fallback while Anode
 is occupied. Both have connected and entered the original opening at 100/100
 health. The full run is still in progress; no route pass is claimed. Overall
 remains 48.1%, with six combined visits and the remaining campaign checks open.
+
+
+### Fresh puzzle traversal and expected gas cinematic (4 November 2026)
+
+The `1b9f5c22091942ccbd68466a497bfef9` run has ended with a full-run FAILURE
+at 90: the fixture rejects an automatic scene during ordinary waypoint movement.
+Native `pair_actor` correctly begins `GasOpenCine` one second after `all_cells`;
+its original sequence completes after 9.3 seconds. The failing host frame is
+98554, owner Blue, scene clock 0.025. The guest is 18 ticks behind and has not yet
+received the scene. This is not evidence of a lost guest activation: the fixture
+aborts before waiting for replication. No production scene change is inferred.
+
+The full retained prefix verifier passes **0-88**, using the clean before 89
+boundary (host 98463/guest 98459): 122 arrivals, 27 own pickups, 14 holds, eight switch
+shots and 13,767 matching player/world/native states. Captured and current
+fixture hashes match. A 5,585-row exact recovery trace verifies four natural
+revivals (Red once, Blue three times), each after 1,200 active ticks at 25 health,
+with supported safe non-overlapping placement, preserved personal resources
+and independently rendered spectator/returning cameras. Both end at 100 health.
+Proof is retained locally as `verified-recovery-prefix-0-88.json`.
+
+The attempted 0-89 audit fails its requirement to end outside a cinematic; that
+guard is preserved. The full run remains failed. Its ordinary checkpoint 89 has
+verified SHA-256
+`0b8e43ed48d9faece5c8d332ad8e06935b6632a345e58f197e0cdf5ead30436f`
+and can support a focused real-input continuation. Next is an explicit gas-scene
+wait and shared-reunion receipt before walking, then another full traversal.
+No screenshots were opened. No campaign row is added; overall stays 48.1%.

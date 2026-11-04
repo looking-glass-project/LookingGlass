@@ -20,31 +20,20 @@ historical; the current weighted estimate is **48.1% (about 48%)**. Six of 39
 campaign visits have combined evidence, with earlier contact-system repeats
 still required. Repeated component tests do not increase this total.
 
-Current Funhouse mirror check (4 November): source `1839b9f` passes resumed
-steps 29-32 with both actual jumps/holds, one shared switch, 816 matching states
-and no deaths. Read-only input traces and per-stage timings exposed costly
-out-of-range aiming in the automated driver. Conservative hit-box rejection
-reduces its measured host p95 cost from 39.5 to 1.1 ms/frame while preserving
-normal target, occlusion and combat rules. With the corridor fixture correction,
-the latest fresh run verifies **0-55**: 82 personal arrivals, 16 own pickups,
-seven holds, two switch shots and 10,511 matching states. Four natural revivals
-pass the exact ten-second timer, safe placement, personal resources and camera
-checks. Both survive at 75/95 health. The full run fails at the next switch (56).
-Geometry probes identify a swinging door across the nearer retry positions.
-The fixture now prefers safe neighbors with native sight-line evidence. A new
-`a797a00` replay passes 43-56 from the earned checkpoint: 14 arrivals, five holds,
-two real switch shots and 1,753 matching states, no deaths, final 75/95. The new
-fresh full route remains required; no campaign row is added. See
-[current progress](COOP_PROGRESS.md).
+Current fresh Funhouse frontier (4 November): source `f9e7029` verifies
+**0-88**, with 122 personal arrivals, 27 own pickups, 14 paired holds, eight
+switch shots and 13,767 matching states. Four natural ten-second revivals pass
+resource, safe-placement and camera checks; both players end the verified
+prefix at 100 health. This combines the opening, mirror, return corridor and
+cell machinery using the corrected visible shooting approaches.
 
-A subsequent fresh run failed during internet startup, before paired gameplay.
-The guest's 15-second initial deadline was shorter than the connection worker's
-20-second DNS retry budget alone. Source `f9e7029` now gives initial setup a
-separate 60-second ceiling, retaining the 15-second identity check and 120-second
-level-load limits. Its controlled timeout/cancellation regression passes with
-879 active Rust tests. A new fresh internet run has connected both clients and
-is in progress; this is not yet a full-route pass or proof of the failed run's
-exact external delay. The original failure did not retain the guest's phase.
+The full run fails at 90 when the fixture rejects the expected automatic
+`GasOpenCine` during walking. It needs an explicit watched-scene/reunion gate.
+The clean audit boundary is 88, before that scene; checkpoint 89 was normally
+earned and retained. Initial connection setup now has a separate 60-second
+allowance, with the existing 15-second identity and 120-second loading limits.
+879 active Rust tests and the native checks pass. No completed campaign row is
+added; see [current progress](COOP_PROGRESS.md).
 
 Earlier Funhouse traversal milestone: source `c946266` now passes the resumed
 return corridor, authored steps **35-42**, in independent public-internet clients

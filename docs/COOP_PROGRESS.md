@@ -19,36 +19,28 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | Full campaign verification | 3.08 | 20 |
 | **Total** | **48.08, rounded to 48.1** | **100** |
 
-Current verification frontier: the updated fixture now verifies a fresh Funhouse
-**0-55** prefix on `1839b9f`: **82 personal arrivals, 16 personal pickups,
-seven holds, two actual switch shots and 10,511 matching network states**.
-This includes the opening scene, mirror and return corridor in one run.
+Current verification frontier: source `f9e7029` now passes a fresh Funhouse
+**0-88** prefix: **122 personal arrivals, 27 own pickups, 14 paired holds,
+eight switch shots and 13,767 matching player/world/native states**. The original
+opening, mirror, return corridor and cell machinery pass in one continuous run.
+Four natural deaths each pass the exact ten-second revival, 25-health safe
+placement, preserved resources and independently rendered camera checks.
+Both players finish this verified prefix at 100 health.
 
-Four natural deaths each pass the exact 1,200-active-tick revival timer,
-25-health safe placement, preserved personal resources and spectator/returning
-camera checks. Both players finish this prefix alive at 75/95 health. Captured
-and current fixture hashes match; 5,412 recovery trace rows were checked.
+The complete run remains failed. At step 90, the fixture rejects `GasOpenCine`
+as unexpected during walking. The game correctly starts it one second after
+the final clock puzzle switch. The next test change must explicitly watch that
+scene and verify shared reunion before continuing ordinary movement. The clean
+verified boundary is 88; the attempted 0-89 audit correctly rejects its boundary
+inside an active cinematic. An unchanged normal checkpoint before89 is retained.
 
-The complete run then fails at switch step 56. Headless geometry probes now
-identify the swinging cell door across the nearer retry positions. The test
-controller prefers existing safe neighbors with a verified projectile-width
-sight line, including world and partner occlusion, before retrying the real shot.
-
-On new source `a797a00`, an Anode internet replay from the unchanged earned
-checkpoint43 passes **43-56**: 14 personal arrivals, five holds, both switch
-shots and 1,753 matching states. Both remain alive at 75/95 health, without
-new deaths. Retained records confirm two approach choices differ from the old
-nearest-only rule. A fresh full traversal is still required; no completed
-campaign row is added, and overall remains **48.1%**.
-
-A subsequent fresh run failed during internet startup, before paired gameplay.
-The guest's 15-second initial deadline was shorter than the connection worker's
-20-second DNS retry budget alone. Source `f9e7029` now gives initial setup a
-separate 60-second ceiling, retaining the 15-second identity check and 120-second
-level-load limits. Its controlled timeout/cancellation regression passes with
-879 active Rust tests. A new fresh internet run has connected both clients and
-is in progress; this is not yet a full-route pass or proof of the failed run's
-exact external delay. The original failure did not retain the guest's phase.
+This run incorporates the tested visible-shooting-position correction. It also
+uses the separate 60-second initial connection allowance; identity checking
+still has 15 seconds and level loading 120 seconds. Both clients connected on
+this attempt in under the old 15-second window, so the controlled regression
+provides the slow-connection proof. All 879 active Rust tests and native checks
+pass. The full route, opposite-owner/recovery cases and remaining campaign visits
+are still open. No completed campaign row is added; overall stays **48.1%**.
 
 Two resumed mirror 29-32 runs also pass, including exact actual-jump evidence.
 Conservative range rejection removes distant-enemy aiming work from the test

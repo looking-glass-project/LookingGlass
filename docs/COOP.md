@@ -28,9 +28,12 @@ prefix at 100 health. This combines the opening, mirror, return corridor and
 cell machinery using the corrected visible shooting approaches.
 
 The full run fails at 90 when the fixture rejects the expected automatic
-`GasOpenCine` during walking. It needs an explicit watched-scene/reunion gate.
-The clean audit boundary is 88, before that scene; checkpoint 89 was normally
-earned and retained. Initial connection setup now has a separate 60-second
+`GasOpenCine` during walking. Its explicit watched-scene/reunion gate now passes
+an unchanged checkpoint replay of **89-94**: both clients observe the full scene
+and same safe reunion, six personal arrivals, two paired holds and 578 matching
+states. Both finish at 100 health without deaths. All 55 Funhouse guards pass.
+The clean fresh-run boundary remains 88; a full repeat is next. This checkpoint
+segment does not complete a campaign visit. Initial setup has a separate 60-second
 allowance, with the existing 15-second identity and 120-second loading limits.
 879 active Rust tests and the native checks pass. No completed campaign row is
 added; see [current progress](COOP_PROGRESS.md).

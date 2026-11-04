@@ -27,12 +27,19 @@ Four natural deaths each pass the exact ten-second revival, 25-health safe
 placement, preserved resources and independently rendered camera checks.
 Both players finish this verified prefix at 100 health.
 
-The complete run remains failed. At step 90, the fixture rejects `GasOpenCine`
-as unexpected during walking. The game correctly starts it one second after
-the final clock puzzle switch. The next test change must explicitly watch that
-scene and verify shared reunion before continuing ordinary movement. The clean
-verified boundary is 88; the attempted 0-89 audit correctly rejects its boundary
-inside an active cinematic. An unchanged normal checkpoint before89 is retained.
+The complete run remains failed at step 90, where the fixture treated the
+expected automatic `GasOpenCine` as unexpected during walking. A new explicit
+scene gate now passes the unchanged normal checkpoint **89-94**: both clients
+watch the original 9.3-second scene, hide/freeze its waiting partner, preserve
+personal inventory and health, and observe the same safe reunion tick. Six
+personal arrivals, two paired holds and 578 matching player/world/native states
+pass; both players finish at 100 health without a death. Captured/current fixture
+hashes and the retained evidence pass an independent audit. All 55 Funhouse
+test guards pass. No screenshots are needed for this replay.
+
+The clean fresh-run boundary remains **88**. The checkpoint replay does not
+extend that continuous run or complete another campaign visit. Next is a fresh
+full Funhouse run with the explicit scene gate; total remains **48.1%**.
 
 This run incorporates the tested visible-shooting-position correction. It also
 uses the separate 60-second initial connection allowance; identity checking

@@ -1230,3 +1230,35 @@ verified SHA-256
 and can support a focused real-input continuation. Next is an explicit gas-scene
 wait and shared-reunion receipt before walking, then another full traversal.
 No screenshots were opened. No campaign row is added; overall stays 48.1%.
+
+
+### Explicit gas-scene wait and checkpoint replay (4 November 2026)
+
+The fixture now waits for the scheduled Gas scene and both clients' completed
+reunion before step 90, rather than treating the idle second before activation
+as completion. Scene observations retained during checkpoint startup also count.
+A checkpoint that already contains completed gas progress does not claim a new
+scene. Unexpected scenes during ordinary movement still fail.
+
+Independent internet clients on unchanged native source `f9e7029`, with 40 ms
+delay/20 ms jitter, pass steps **89-94** from the unchanged normal checkpoint
+listed above. Evidence: `funhouse-route-35465cdbbef443c88c64d6afc7f28f7f`.
+Each client retains 50 active Gas observations, owner Blue, covering clocks
+0.125-9.208 and 0.108-9.267 seconds. Both observe the actual reunion at tick 99668:
+hidden/frozen waiting partner during the scene; grounded, clear, non-overlapping
+living bodies afterward; matching warp stamps and preserved health/inventory.
+All six personal walking arrivals and two paired holds pass, with 578 matching
+player/world/native states (581 retained in the independent audit). Both players
+remain at 100 health, with no deaths. The 38-row exact recovery trace and captured
+fixture hashes also verify. Checkpoint before 95 has SHA-256
+`deafb88161ad447b80c197a83ea583dad651db99dfa133b39534e2f5c1aef63f`.
+
+All 55 Funhouse test guards pass, including the pending-scene gap, startup
+observation, missing peer/owner, early completion, unsafe reunion and resource
+corruption cases. The native executable is unchanged; its earlier locked build,
+879 active Rust tests and native checks still apply. Source-package seven and
+worktree 888 checks pass. No screenshot was opened; both clients close normally.
+
+This is a watched Blue-owner checkpoint segment, not a fresh complete route or
+live skipped/Red-owner proof. The earlier fresh run stays failed with verified
+0-88; next is a fresh full repeat. No campaign row is added; total stays 48.1%.

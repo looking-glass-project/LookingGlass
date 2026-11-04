@@ -12,6 +12,129 @@ from test_coop_funhouse import verify_waiting_footings
 from test_coop_funhouse import verify_pendulum_course
 from test_coop_funhouse import verify_tweedle_handoff
 from test_coop_funhouse import verify_input_jumps
+from test_coop_funhouse import verify_gas_handoff
+
+
+def gas_fixture(owner='Blue', skipped=False):
+    entry = dict(step=90, scene='GasOpenCine', owner=owner, skipped=skipped,
+                 starts=dict(host=100, guest=100), ends=dict(host=1220, guest=1220))
+    bodies = [dict(feet=[48*i, 0, 0], health=100, grounded=True, spawned_at=i,
+                   warped_at=10, stats=dict(owned=[1, i]), collected=[str(i)]) for i in range(2)]
+    rows = []
+    for tick, clock in ((100, .025), (1180, 9.025), (1220, None)):
+        after = clock is None
+        players = copy.deepcopy(bodies)
+        if after:
+            for p in players:
+                p['warped_at'] = 1213
+                p['feet'][0] += 100
+        rows.append(dict(tick=tick, scene=None if after else entry['scene'], owner=None if after else owner,
+            players=players, presentation=dict(visible_players=[after, after]), driver=dict(clear=[True, True]),
+            funhouse=dict(cells=255, gas=after, scene=None if after else dict(clock=dict(time=clock)))))
+    return entry, {peer: copy.deepcopy(rows) for peer in ('host', 'guest')}
+
+
+class GasSceneGuards(unittest.TestCase):
+    def test_gate_waits_for_pending_scene_and_accepts_scene_observed_during_startup(self):
+        for already_finished in (False, True):
+            entry, history = gas_fixture()
+            pair = FunhousePair.__new__(FunhousePair)
+            pair.step, pair.saved, pair.evidence = 90, None, {}
+            pair.commands = dict(host={}, guest={})
+            pair.args = type('Args', (), dict(skip_scenes=False))()
+            commands = []
+            pair.set = lambda role, **kwargs: commands.append((role, kwargs))
+            pair.retain = lambda name: None
+            pair.state = lambda role: pair.reports[role]['funhouse']
+            def reports(index):
+                return {peer: dict(funhouse=rows[index]['funhouse'],
+                    route_driver=dict(scene=rows[index]['scene']), combat=dict(stage=dict(owner=rows[index]['owner'])),
+                    frame=dict(tick=rows[index]['tick'], players=[dict(player=dict(grounded=p['grounded']),
+                        stats=dict(sanity=p['health'])) for p in rows[index]['players']])) for peer, rows in history.items()}
+            pair.reports = reports(-1 if already_finished else 0)
+            if not already_finished:
+                for r in pair.reports.values():
+                    r['route_driver']['scene'] = None
+                    r['combat']['stage']['owner'] = None
+            pair.history = history if already_finished else dict(host=[], guest=[])
+            def until(predicate, seconds):
+                if not already_finished:
+                    self.assertFalse(predicate(), 'An idle gap before gas starts is not completion')
+                    pair.reports = reports(0)
+                    self.assertFalse(predicate(), 'An active scene is not completion')
+                    pair.reports, pair.history = reports(-1), history
+                self.assertTrue(predicate())
+            pair.until = until
+            with self.subTest(already_finished=already_finished):
+                pair.gas_scene()
+                self.assertEqual(pair.evidence['gas_handoff'], entry)
+                self.assertEqual(commands, [('host', dict(attack=False)), ('guest', dict(attack=False))])
+
+    def test_saved_completion_does_not_claim_a_new_scene(self):
+        pair = FunhousePair.__new__(FunhousePair)
+        pair.step, pair.evidence, pair.reports = 90, {}, dict(host={}, guest={})
+        pair.saved = dict(frame=dict(combat=dict(stage=dict(world=dict(levels=dict(funhouse=dict(gas=True)))))))
+        pair.state = lambda role: dict(gas=True)
+        pair.gas_scene()
+        self.assertEqual(pair.evidence, {})
+
+    def test_watched_scene_requires_both_clients_and_real_shared_reunion(self):
+        for owner in ('Blue', 'Red'):
+            verify_gas_handoff(*gas_fixture(owner))
+
+    def test_missing_peer_ownership_visibility_movement_and_resources_fail(self):
+        for mistake in ('peer', 'scene', 'owner', 'visible', 'moving', 'health', 'inventory', 'puzzle', 'early_flag'):
+            entry, history = gas_fixture()
+            row = history['guest'][1]
+            if mistake == 'peer': history.pop('guest')
+            elif mistake == 'scene': history['guest'] = [history['guest'][-1]]
+            elif mistake == 'owner': row['owner'] = 'Red'
+            elif mistake == 'visible': row['presentation']['visible_players'][1] = True
+            elif mistake == 'moving': row['players'][1]['feet'][0] += 1
+            elif mistake == 'health': row['players'][1]['health'] -= 1
+            elif mistake == 'inventory': row['players'][1]['stats']['owned'] = [1, 0]
+            elif mistake == 'puzzle': row['funhouse']['cells'] = 127
+            else: row['funhouse']['gas'] = True
+            with self.subTest(mistake=mistake), self.assertRaises(AssertionError):
+                verify_gas_handoff(entry, history)
+
+    def test_watched_scene_cannot_be_shortened_or_miss_its_start_or_end(self):
+        for mistake in ('short', 'start', 'end'):
+            entry, history = gas_fixture()
+            if mistake == 'short':
+                for p in history['guest'][-1]['players']: p['warped_at'] = 1200
+            elif mistake == 'start': history['guest'].pop(0)
+            else: history['guest'].pop(1)
+            with self.subTest(mistake=mistake), self.assertRaises(AssertionError):
+                verify_gas_handoff(entry, history)
+
+    def test_skip_allows_short_duration_but_still_requires_scene_and_reunion(self):
+        entry, history = gas_fixture(skipped=True)
+        for rows in history.values():
+            rows.pop(1)
+            for p in rows[-1]['players']: p['warped_at'] = 130
+        verify_gas_handoff(entry, history)
+        history['guest'][-1]['funhouse']['gas'] = False
+        with self.assertRaises(AssertionError): verify_gas_handoff(entry, history)
+
+    def test_missing_unsafe_or_inconsistent_reunion_fails(self):
+        for mistake in ('missing', 'warp', 'peer_warp', 'ground', 'clear', 'overlap', 'far', 'hidden', 'health', 'inventory', 'spawn'):
+            entry, history = gas_fixture()
+            row = history['guest'][-1]
+            if mistake == 'missing': history['guest'].pop()
+            elif mistake == 'warp': row['players'][1]['warped_at'] = 10
+            elif mistake == 'peer_warp':
+                for p in row['players']: p['warped_at'] += 1
+            elif mistake == 'ground': row['players'][1]['grounded'] = False
+            elif mistake == 'clear': row['driver']['clear'][1] = False
+            elif mistake == 'overlap': row['players'][1]['feet'] = list(row['players'][0]['feet'])
+            elif mistake == 'far': row['players'][1]['feet'][0] += 200
+            elif mistake == 'hidden': row['presentation']['visible_players'][0] = False
+            elif mistake == 'health': row['players'][1]['health'] -= 1
+            elif mistake == 'inventory': row['players'][1]['stats']['owned'] = [1, 0]
+            else: row['players'][1]['spawned_at'] += 1
+            with self.subTest(mistake=mistake), self.assertRaises(AssertionError):
+                verify_gas_handoff(entry, history)
 
 
 def input_jump_fixture(step=147):

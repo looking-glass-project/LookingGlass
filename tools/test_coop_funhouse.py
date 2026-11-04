@@ -245,6 +245,49 @@ def verify_tweedle_handoff(entry, history):
     assert len(warps) == 2 and len(set(warps)) == 1, 'Clients disagree on the reunion'
 
 
+def verify_gas_handoff(entry, history):
+    """Require both clients to observe the automatic scene and its real reunion."""
+    assert entry['step'] == 90 and entry['scene'] == 'GasOpenCine'
+    assert entry['owner'] in ('Blue', 'Red') and set(history) == {'host', 'guest'}
+    partner = 1 if entry['owner'] == 'Blue' else 0
+    warps = []
+    for peer, rows in history.items():
+        rows = [r for r in rows if entry['starts'][peer] <= r['tick'] <= entry['ends'][peer]]
+        active = [r for r in rows if r['scene'] == entry['scene'] and r['owner'] is not None]
+        assert active and {r['owner'] for r in active} == {entry['owner']}, 'Missing or inconsistent gas owner'
+        before = active[0]
+        assert before['funhouse']['scene']['clock']['time'] <= .5, 'Gas scene start was not observed'
+        for row in active:
+            assert row['funhouse']['cells'] == 255 and not row['funhouse']['gas'], 'Gas scene bypassed the puzzle or completed early'
+            assert not row['presentation']['visible_players'][partner], 'Gas scene displayed the waiting partner'
+            assert row['players'][partner]['feet'] == before['players'][partner]['feet'], 'Gas scene moved the waiting partner'
+            for old, body in zip(before['players'], row['players']):
+                assert body['health'] == old['health'] > 0 and body['spawned_at'] == old['spawned_at'], 'Gas scene damaged or revived a player'
+                assert body['stats']['owned'] == old['stats']['owned'] and body['collected'] == old['collected'], 'Gas scene changed personal inventory'
+        reunited = [r for r in rows if r['tick'] > active[-1]['tick'] and r['owner'] is None
+                    and r['funhouse']['gas'] and r['scene'] is None]
+        assert reunited, 'Missing completed gas scene and reunion'
+        after = reunited[0]
+        a, b = after['players']
+        warp = a['warped_at']
+        assert warp == b['warped_at'] and all(warp > p['warped_at'] for p in before['players']), 'Missing actual shared gas reunion'
+        if not entry['skipped']:
+            # Native Gas finishes at 9.3 seconds. Reports are sampled, so use
+            # the actual reunion tick plus the first observed scene clock.
+            watched = warp - before['tick'] + before['funhouse']['scene']['clock']['time'] * 120
+            assert watched >= 9.3 * 120 - 2, 'Watched gas scene finished early'
+            assert max(r['funhouse']['scene']['clock']['time'] for r in active) >= 9., 'Gas scene ending was not observed'
+        assert all(p['grounded'] and p['health'] > 0 for p in after['players']) and all(after['driver']['clear']), 'Unsafe gas reunion'
+        assert distance(a['feet'][:2], b['feet'][:2]) >= 35.95 or abs(a['feet'][2]-b['feet'][2]) >= 55.95, 'Gas reunion overlaps players'
+        assert distance(a['feet'], b['feet']) <= 110, 'Gas reunion separated the partners'
+        for old, body in zip(before['players'], after['players']):
+            assert body['health'] == old['health'] and body['spawned_at'] == old['spawned_at'], 'Gas reunion changed life or health'
+            assert body['stats']['owned'] == old['stats']['owned'] and body['collected'] == old['collected'], 'Gas reunion changed personal inventory'
+        assert after['presentation']['visible_players'][1 if peer == 'host' else 0], 'Gas reunion left the partner hidden'
+        warps.append(warp)
+    assert len(set(warps)) == 1, 'Clients disagree on gas reunion'
+
+
 def verify_input_jumps(steps, completed, receipts, history):
     expected = {s for s in completed if steps[s].get('mode') == 'inputjump'}
     assert {r['step'] for r in receipts} == expected, 'Missing or extra timed jump'
@@ -693,6 +736,39 @@ class FunhousePair(Pair):
         self.retain('after-tweedle-scene')
         self.save_checkpoint(139)
         print('PASS Tweedles scene', owner, 'skipped' if self.args.skip_scenes else 'watched', 'and shared reunion', flush=True)
+
+    def gas_scene(self):
+        # The final cell switch schedules this scene one second later. Waiting
+        # only for "not busy" can return before it starts. A resumed checkpoint
+        # may instead see it during startup; retain that actual history too.
+        assert self.step == 90
+        if self.gas_already_saved():
+            assert all(self.state(role)['gas'] for role in self.reports), 'Restored gas completion was lost'
+            return  # This segment does not claim a scene completed in an earlier run.
+        for role in self.commands:
+            self.set(role, attack=False)
+        def complete():
+            for role, report in self.reports.items():
+                assert report['route_driver']['scene'] in (None, 'GasOpenCine'), 'Unexpected scene before gas reunion'
+                if not self.state(role)['gas'] or report['combat']['stage']['owner'] is not None:
+                    return False
+                if not all(b['player']['grounded'] and b['stats']['sanity'] > 0 for b in report['frame']['players']):
+                    return False
+            return len(self.reports) == 2
+        self.until(complete, 60)
+        active = {peer: [r for r in rows if r['scene'] == 'GasOpenCine' and r['owner'] is not None]
+                  for peer, rows in self.history.items()}
+        assert all(active.values()), 'Each client must observe the gas scene'
+        entry = dict(step=90, scene='GasOpenCine', owner=active['host'][0]['owner'], skipped=self.args.skip_scenes,
+                     starts={peer: rows[0]['tick'] for peer, rows in active.items()},
+                     ends={peer: r['frame']['tick'] for peer, r in self.reports.items()})
+        verify_gas_handoff(entry, self.history)
+        self.evidence['gas_handoff'] = entry
+        self.retain('after-gas-scene')
+        print('PASS gas scene', entry['owner'], 'skipped' if entry['skipped'] else 'watched', 'and shared reunion', flush=True)
+
+    def gas_already_saved(self):
+        return bool(self.saved and self.saved['frame']['combat']['stage']['world']['levels'][self.map_name]['gas'])
 
     def tweedle_entry(self):
         # The entrance triggers before the authored marker is reached, then
@@ -1403,6 +1479,9 @@ class FunhousePair(Pair):
         verify_waiting_footings(self.evidence.get('waiting_footings', []), self.history)
         verify_input_jumps(self.steps, self.completed, self.evidence.get('input_jumps', []), self.history)
         verify_loot(self.evidence.get('loot', []), self.history)
+        if 90 in self.completed and not self.gas_already_saved():
+            assert self.evidence.get('gas_handoff'), 'Missing gas scene handoff'
+            verify_gas_handoff(self.evidence['gas_handoff'], self.history)
         courses = self.evidence.get('pendulum_courses', [])
         assert len(courses) == (2 if 128 in self.completed else 0), 'Missing personal pendulum course'
         if courses:
@@ -1432,6 +1511,8 @@ class FunhousePair(Pair):
         for self.step in range(first_step, last_step + 1):
             if self.step in self.completed:
                 continue
+            if self.step == 90:
+                self.gas_scene()
             self.retain(f'before-{self.step:03d}')
             if self.step in self.args.save_before:
                 self.save_checkpoint(self.step)

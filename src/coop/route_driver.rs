@@ -951,6 +951,30 @@ pub struct Driver {
     pub report: Report,
 }
 impl Driver {
+    fn observe_location(&mut self, location: (u64, u64, u64), tick: u64, now: Instant) {
+        if self.location != Some(location) {
+            // A relocation invalidates the path, not a jump already consumed
+            // by this command. A new visit, command or planned segment rearms it.
+            if self.location.is_some_and(|old| old.0 != location.0) { self.jumped=false; }
+            self.plan.clear(); self.planning_hold=None; self.location = Some(location);
+            self.swim_goal = None;
+            self.step_tick = tick; self.step_at = now;
+            self.navigation_clock = NavigationClock::new(now);
+        }
+    }
+    fn direct_jump(command: &Command, local: PlayerId, ticks: u64, elapsed: Duration,
+        keys: &mut Input, jumped: &mut bool) -> bool {
+        if let Some(runup) = command.runup.as_ref().filter(|r|
+            !*jumped && r.active(local,ticks,elapsed)) {
+            // Sample the short run-up beside the input, without an outer
+            // report round-trip that could send a player off the pad.
+            keys.wish=runup.wish; keys.swim=keys.wish.extend(0.);
+            true
+        } else {
+            if command.jump && !*jumped { keys.jumps+=1; *jumped=true; }
+            false
+        }
+    }
     pub fn record_input_event(&mut self, event:serde_json::Value) {
         self.report.input_events.push_back(event);
         while self.report.input_events.len()>32 { self.report.input_events.pop_front(); }
@@ -1195,12 +1219,7 @@ impl Driver {
         if self.combat_location!=Some(location) {
             self.combat_aim=Default::default();self.combat_home=None;self.combat_location=Some(location);
         }
-        if self.location != Some(location) {
-            self.plan.clear(); self.planning_hold=None; self.jumped = false; self.location = Some(location);
-            self.swim_goal = None;
-            self.step_tick = frame.tick; self.step_at = now;
-            self.navigation_clock = NavigationClock::new(now);
-        }
+        self.observe_location(location, frame.tick, now);
         // Never spawn a second worker while a superseded plan is still running.
         if let Some(worker) = &self.worker {
             let result = match worker.result.try_recv() {
@@ -1651,14 +1670,10 @@ impl Driver {
                 command.input_lead,command.run,command.speed_limit);
             keys.swim=keys.wish.extend(0.);
             keys.run=command.run;
-            if let Some(runup) = command.runup.as_ref().filter(|r|
-                !self.jumped && r.active(local,frame.tick.saturating_sub(self.step_tick),now.duration_since(self.step_at))) {
-                // Time this short approach beside input sampling. Waiting for
-                // a report in the outer harness can double its duration and
-                // send a player off the pad before the jump arrives.
-                keys.wish=runup.wish; keys.swim=keys.wish.extend(0.);
+            if Self::direct_jump(command,local,frame.tick.saturating_sub(self.step_tick),
+                now.duration_since(self.step_at),keys,&mut self.jumped) {
                 self.report.phase="running approach";
-            } else if command.jump && !self.jumped { keys.jumps+=1; self.jumped=true; }
+            }
         }
         if !keys.primary && !keys.alternate && keys.wish.length()>0. {
             keys.yaw=keys.wish.y.atan2(keys.wish.x); keys.pitch=0.;
@@ -1698,6 +1713,34 @@ impl Driver {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn a_consumed_jump_is_not_replayed_after_relocation() {
+        for local in [PlayerId::Blue, PlayerId::Red] {
+            let path=std::env::temp_dir().join(format!("looking-glass-jump-{}-{:?}.json",std::process::id(),local));
+            let mut driver=Driver::new(path.clone());
+            let mut command=serde_json::json!({"id":1,"heartbeat":1,"epoch":1,"goal":[512,0,0],
+                "jump":true,"navigate":false,"attack":false,"capture":false,"finish":false});
+            let mut now=driver.refreshed;
+            let mut keys=Input::default();
+            for (index,(epoch,id)) in [(1,1),(1,2),(2,2)].into_iter().enumerate() {
+                command["id"]=id.into();command["epoch"]=epoch.into();
+                std::fs::write(&path,serde_json::to_vec(&command).unwrap()).unwrap();
+                let file=std::fs::File::options().write(true).open(&path).unwrap();
+                file.set_times(std::fs::FileTimes::new().set_modified(SystemTime::UNIX_EPOCH+Duration::from_secs(index as u64+1))).unwrap();
+                now+=Duration::from_millis(60);driver.poll(now);
+                assert_eq!(driver.report.command,Some(id));
+                for stamp in [(epoch,0,0),(epoch,30,0),(epoch,30,40)] {
+                    driver.observe_location(stamp,50,now);
+                    for _ in 0..3 {
+                        Driver::direct_jump(driver.command.as_ref().unwrap(),local,0,Duration::ZERO,
+                            &mut keys,&mut driver.jumped);
+                        assert_eq!(keys.jumps,index as u64+1,"Wrong jump count across command/visit changes: {stamp:?}");
+                    }
+                }
+            }
+            std::fs::remove_file(path).unwrap();
+        }
+    }
     #[test]
     fn ice_preference_requires_own_resources_range_and_a_clear_target() {
         use crate::inventory::{PickupKind,Stats};

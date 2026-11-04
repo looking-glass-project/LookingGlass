@@ -3,7 +3,8 @@
 Each player must earn a separate waypoint receipt. The first stops at a native
 clear/supported neighbor to let the second arrive. The initial runner supports
 nav/walk/node/wait/lever steps, the watched Hare/Port/Gryphon handoffs and a paired gap
-crossing adapted from steps 36-42. A scene-triggered reunion is recorded
+crossing adapted from steps 36-42, plus sequential first-portal jumps at 136-137.
+A scene-triggered reunion is recorded
 separately from personal walking arrivals. Other timed inputs, portals and
 later scene handoffs remain explicit future work.
 An explicit checkpoint can resume a separately labelled segment,
@@ -34,6 +35,7 @@ GEAR_APPROACH = [-4373.3784,3304.2549,208.03125]
 GEAR_EXIT_APPROACH = [-4512,3008,208.03125]
 CORRIDOR_HANDOFFS = (25,26,27,28,33,34,35,100,101,102,103,104,105,106,107)
 STAIR_HANDOFFS = (21,22,23,81,82,83,84,85)
+DOOR_HANDOFFS = (128,)
 SCENES = {'Hatter1_Cinema1': ('Hare','hare',(60,61,62)), 'Port_Cine': ('Port','port',(67,)),
           'Hatter1_Cinema2': ('Gryphon','gryphon',(112,))}
 CONTACT_SCENES = {'Hatter1_Cinema1': (60,62), 'Hatter1_Cinema2': (112,)}
@@ -244,6 +246,32 @@ def verify_corridor_waiting(receipts, steps, arrivals, history):
     verify_forward_waiting(receipts,steps,arrivals,history,next_corridor_footing,'Corridor',8)
 
 
+def next_door_footing(steps, step):
+    assert step in DOOR_HANDOFFS, 'Door handoff is limited to the return doorway'
+    assert set(steps[step])=={'walk'} and steps[step+1]=={'wait':1.7} and set(steps[step+2])=={'walk'}, 'Door handoff must retain its opening wait'
+    start,goal=steps[step]['walk'],steps[step+2]['walk']
+    assert 48<=distance(start[:2],goal[:2])<=192 and abs(goal[2]-start[2])<16, 'Invalid door waiting footing'
+    return goal
+
+
+def verify_door_waiting(receipts, steps, arrivals, history, entities):
+    verify_forward_waiting(receipts,steps,arrivals,history,next_door_footing,'Door',8)
+    slots=doorway_slots(entities,(4,5))
+    for receipt in receipts:
+        hold=receipt['opening_hold'];role=receipt['role'];slot=0 if role=='host' else 1
+        first_arrival=next(r for r in arrivals if r['step']==receipt['step'] and r['role']==role)
+        assert first_arrival['tick']<=hold['start_tick'], 'Door opening wait preceded arrival'
+        rows=[r for r in history[role] if hold['start_tick']<=r['tick']<=hold['end_tick']]
+        assert rows and rows[0]['tick']==hold['start_tick'] and rows[-1]['tick']==hold['end_tick']==receipt['before_tick'], 'Door opening hold unobserved'
+        assert hold['end_tick']-hold['start_tick']>=204, 'Door opening wait too short'
+        goal=steps[receipt['step']]['walk'];first=rows[0]['players'][slot]
+        for row in rows:
+            body=row['players'][slot]
+            assert body['grounded'] and body['health']>0 and distance(body['feet'][:2],goal[:2])<8 and abs(body['feet'][2]-goal[2])<35, 'Door opening wait left its footing'
+            assert body['warped_at']==first['warped_at'] and body['spawned_at']==0, 'Door opening wait warped or revived'
+        assert all(rows[-1]['clockwork']['doors'][k]>=.999 for k in slots), 'Door crossing began before both leaves opened'
+
+
 def verify_forward_waiting(receipts, steps, arrivals, history, target, label, radius):
     for receipt in receipts:
         step,role=receipt['step'],receipt['role'];slot=0 if role=='host' else 1
@@ -275,8 +303,63 @@ def validate_course_range(steps, start, last):
     if start<=42 and last>=36:
         assert start<=36 and last>=42, 'The paired gap needs the complete 36-42 sequence'
         validate_gap_course(steps)
+    if start<=137 and last>=136:
+        assert start<=136 and last>=137, 'The paired portal needs the complete 136-137 sequence'
+        validate_first_portal_course(steps)
     assert all(next(iter(steps[i])) in ('nav','walk','node','wait','lever') or 36<=i<=42
+               or i==137
                for i in range(start,last+1)), 'Requested prefix needs an unimplemented input type'
+
+
+def validate_first_portal_course(steps):
+    assert steps[136]=={'nav':[-2800,2272,256.03125]} and steps[137]=={'input':[1,1,0,0,1,0]}, 'Review changed portal jump course'
+
+
+def verify_first_portal(evidence, steps, history, entities):
+    validate_first_portal_course(steps)
+    portal,dest=entities[45],entities[131]
+    assert portal['classname']=='trigger_teleport' and dest['classname']=='func_teleportdest' and portal['target']==dest['targetname'], 'Wrong native first portal'
+    origin=[float(v) for v in portal['origin'].split()];destination=[float(v) for v in dest['origin'].split()]
+    jumps=evidence['portal_jumps'];parks=evidence['portal_waiting']
+    assert len(jumps)==2 and {j['role'] for j in jumps}=={'host','guest'}, 'Missing personal portal crossing'
+    for jump in jumps:
+        role=jump['role'];slot=0 if role=='host' else 1;warps=[]
+        own=next(r for r in history[role] if r['tick']==jump['before_tick'])
+        before=own['players'][slot]
+        assert before['grounded'] and distance(before['feet'][:2],steps[136]['nav'][:2])<8, 'Portal jump did not start on the takeoff point'
+        assert any(jump['before_tick']<=r['tick']<=jump['warp'] and r['driver']['command']==jump['command'] for r in history[role]), 'Portal jump command unobserved'
+        events=[e for r in history['host'] for e in r['driver'].get('input_events',[])]
+        assert any(e['kind']=='jump' and jump['before_tick']<=e['tick']<jump['warp'] and e['input'][slot]
+            and e['before'][slot][1] and not e['after'][slot][1]
+            and (e['after'][slot][2]==e['before'][slot][2]+1 or
+                 (e['after'][slot][2]==e['before'][slot][2] and e['after'][slot][0][2]>e['before'][slot][0][2]
+                  and any(e['tick']<=r['tick']<jump['warp'] and not r['players'][slot]['grounded']
+                          and r['players'][slot]['climbs']==before['climbs']+1 for r in history[role])))
+            for e in events), 'Portal takeoff unobserved'
+        assert not any(e['kind']=='jump' and jump['warp']<=e['tick']<=jump['arrival_tick'] and e['input'][slot]
+                       for e in events), 'Portal jump replayed at the destination'
+        for peer,rows in history.items():
+            changed=[r for r in rows if r['tick']>=jump['before_tick'] and r['players'][slot]['warped_at']>before['warped_at']]
+            assert changed, 'Missing replicated portal warp'
+            after=changed[0];body=after['players'][slot];warp=body['warped_at']
+            assert warp==jump['warp'] and warp>jump['before_tick'] and after['tick']-warp<=60, 'Wrong portal warp stamp'
+            assert body['spawned_at']==before['spawned_at']==0 and body['health']>0 and after['owner'] is None, 'Portal was replaced by revival or a scene'
+            assert distance(body['feet'][:2],destination[:2])<64 and abs(body['feet'][2]-destination[2])<128, 'Portal reached the wrong destination'
+            approach=[r for r in rows if jump['before_tick']<=r['tick']<warp]
+            assert approach and distance(approach[-1]['players'][slot]['feet'][:2],origin[:2])<180 and abs(approach[-1]['players'][slot]['feet'][2]-origin[2])<192, 'Portal source contact unobserved'
+            warps.append(warp)
+        assert len(set(warps))==1, 'Clients disagree on personal portal warp'
+        end=next(r for r in history[role] if r['tick']==jump['arrival_tick']);body=end['players'][slot]
+        assert body['warped_at']==jump['warp'] and body['grounded'] and end['driver']['clear'][slot], 'Portal landing is not safe'
+    assert len(parks)==1, 'Missing portal waiting handoff'
+    park=parks[0];first=jumps[0];second=jumps[1];role=first['role'];slot=0 if role=='host' else 1
+    assert park['role']==role and first['arrival_tick']<=park['selected_tick']<park['tick']<second['before_tick'], 'Portal handoff out of order'
+    selected=next(r for r in history[role] if r['tick']==park['selected_tick'])
+    assert park['goal'] in selected['driver']['neighbors'][slot]==park['candidates'], 'Portal waiting point was not observed'
+    arrived=next(r for r in history[role] if r['tick']==park['tick']);body=arrived['players'][slot]
+    assert arrived['driver']['command']==park['command'] and arrived['driver']['reached'] and body['grounded'], 'Portal waiting arrival unacknowledged'
+    assert body['feet']==park['feet'] and distance(body['feet'][:2],park['goal'][:2])<8, 'Portal waiting arrival missed'
+    assert distance(body['feet'][:2],destination[:2])>=35.95 or abs(body['feet'][2]-destination[2])>=55.95, 'Portal waiter obstructs the arrival'
 
 
 def verify_gap_hold(hold, goal, history):
@@ -433,11 +516,11 @@ def verify_ledge_pulls(pulls, history):
                    for r in history['host'] for e in r['driver'].get('input_events', [])), 'Pull-up input unobserved'
 
 
-def doorway_slots(entities):
+def doorway_slots(entities, doors=(92,93)):
     objects=[i for i,e in enumerate(entities) if e.get('classname') in
              ('script_object','func_door','func_rotatingdoor','func_sinkobject')]
-    assert all(entities[i]['classname']=='func_rotatingdoor' for i in (92,93)), 'Review changed doorway'
-    return [objects.index(i) for i in (92,93)]
+    assert all(entities[i]['classname']=='func_rotatingdoor' for i in doors), 'Review changed doorway'
+    return [objects.index(i) for i in doors]
 
 
 def verify_doorway_approaches(receipts, steps, history, entities):
@@ -502,7 +585,7 @@ class ClockworkPair(Pair):
             effective_course_sha256=hashlib.sha256(effective).hexdigest(), waypoint_adjustments=adjustments,
             executable_sha256=hashlib.sha256(args.exe.read_bytes()).hexdigest(),
             arrivals=[], levers=[], holds=[], parking=[], stair_waiting=[], corridor_waiting=[], yields=[], descent_arrivals=[], descent_jumps=[], ledge_pulls=[], gear_boarding=[], gear_exits=[], gap_jumps=[], gap_holds=[], gap_waiting=[], node_resolutions=[],
-            scene_handoffs=[], doorway_approaches=[], port_player=args.port_player, completed=self.completed, scope='Fresh Clockwork prefix only')
+            scene_handoffs=[], doorway_approaches=[], door_waiting=[], portal_jumps=[], portal_waiting=[], port_player=args.port_player, completed=self.completed, scope='Fresh Clockwork prefix only')
         if args.start_step<=36<=args.last_step:
             self.evidence['gap_adaptation']='Steps 36-42 run separately per player: original approach, preparation wait and run-up, then actual jump and feedback steering to the original landing. This does not claim identical replay of the single-player timed air inputs.'
         dependencies = self.folder / 'fixture-dependencies'; dependencies.mkdir()
@@ -832,6 +915,41 @@ class ClockworkPair(Pair):
             # The partner's scripted reunion is recorded as a scene handoff,
             # never as an independently walked waypoint or completed parking.
 
+    def cross_first_portal(self):
+        validate_first_portal_course(self.steps)
+        goal=self.steps[136]['nav'];first=self.first;other='guest' if first=='host' else 'host'
+        self.set(other,attack=True)
+        for role in (first,other):
+            self.move(role,goal,navigate=True,yield_partner=other if role==first else first)
+            report=self.reports[role]
+            self.evidence['arrivals'].append(dict(step=136,role=role,goal=goal,tick=report['frame']['tick'],
+                feet=list(self.body(role)['player']['feet']),command=report['route_driver']['command']))
+            old_warp=self.body(role)['warped_at'];feet=self.body(role)['player']['feet']
+            jump=dict(role=role,before_tick=report['frame']['tick'])
+            self.set(role,[feet[0]+512,goal[1],feet[2]],run=True,jump=True,attack=False)
+            jump['command']=self.commands[role]['id']
+            self.until(lambda:self.body(role)['warped_at']>old_warp,15)
+            jump['warp']=self.body(role)['warped_at'];self.set(role,attack=False)
+            slot=0 if role=='host' else 1
+            self.until(lambda:self.body(role)['player']['grounded']
+                and math.hypot(*self.body(role)['player']['velocity'][:2])<20
+                and all(r['frame']['players'][slot]['warped_at']==jump['warp'] for r in self.reports.values()),15)
+            jump['arrival_tick']=self.reports[role]['frame']['tick'];self.evidence['portal_jumps'].append(jump)
+            if role==first:
+                report=self.reports[role];at=list(self.body(role)['player']['feet'])
+                candidates=report['route_driver']['neighbors'][slot]
+                # Walk away from the actual arrival before the other player
+                # enters. The next source approach is deliberately sequential.
+                destination=[float(v) for v in self.entities[131]['origin'].split()]
+                park,ready=parking_target(candidates,at,destination,destination,[])
+                assert ready, 'Portal arrival has no observed clear waiting point'
+                receipt=dict(role=role,goal=park,selected_tick=report['frame']['tick'],candidates=candidates)
+                self.move(role,park)
+                receipt.update(tick=self.reports[role]['frame']['tick'],command=self.reports[role]['route_driver']['command'],
+                    feet=list(self.body(role)['player']['feet']))
+                self.evidence['portal_waiting'].append(receipt);self.set(role,park,run=True)
+        verify_first_portal(self.evidence,self.steps,self.history,self.entities)
+
     def go_without_scene(self, goal, navigate=False):
         first = self.first if self.step in (60,112) else min(self.commands, key=lambda r: distance(self.body(r)['player']['feet'], goal) + (0 if r == self.first else 16))
         if 81<=self.step<=108:
@@ -858,6 +976,20 @@ class ClockworkPair(Pair):
                 command=report['route_driver']['command']))
             if role == first:
                 slot = 0 if role == 'host' else 1
+                if self.step in DOOR_HANDOFFS:
+                    # Give the opening its authored wait, then walk through to
+                    # make room for the follower. The ordinary wait step still
+                    # runs for the pair afterwards; neither arrival is skipped.
+                    park=next_door_footing(self.steps,self.step)
+                    hold=dict(start_tick=report['frame']['tick'])
+                    self.set(role,goal,run=True)
+                    slots=doorway_slots(self.entities,(4,5))
+                    self.until(lambda:self.reports[role]['frame']['tick']>=hold['start_tick']+204
+                        and all(self.state(role)['doors'][k]>=.999 for k in slots),15)
+                    hold['end_tick']=self.reports[role]['frame']['tick']
+                    self.forward_wait(role,park,False,'door_waiting')
+                    self.evidence['door_waiting'][-1]['opening_hold']=hold
+                    continue
                 if self.step in CORRIDOR_HANDOFFS:
                     self.forward_wait(role,next_corridor_footing(self.steps,self.step),True,'corridor_waiting')
                     continue
@@ -946,10 +1078,12 @@ class ClockworkPair(Pair):
         verify_yields(self.evidence['yields'], self.steps, self.history)
         verify_stair_waiting(self.evidence['stair_waiting'],self.steps,self.evidence['arrivals'],self.history)
         verify_corridor_waiting(self.evidence['corridor_waiting'],self.steps,self.evidence['arrivals'],self.history)
+        verify_door_waiting(self.evidence['door_waiting'],self.steps,self.evidence['arrivals'],self.history,self.entities)
         verify_doorway_approaches(self.evidence['doorway_approaches'],self.steps,self.history,self.entities)
         if 16 in self.completed: verify_gear_boarding(self.evidence['gear_boarding'],self.steps[16]['nav'],self.history)
         if 17 in self.completed: verify_gear_exit(self.evidence['gear_exits'],self.steps[17]['nav'],self.history)
         if 36 in self.completed: verify_gap_sequence(self.evidence,self.steps,self.history)
+        if 136 in self.completed: verify_first_portal(self.evidence,self.steps,self.history,self.entities)
         expected = [i for i in self.completed if 'lever' in self.steps[i]]
         assert [r['step'] for r in self.evidence['levers']] == expected, 'Missing lever receipts'
         for receipt in self.evidence['levers']:
@@ -974,8 +1108,8 @@ class ClockworkPair(Pair):
                 assert distance(park['goal'][:2], goal[:2]) >= 48, 'Waiting target obstructs the arrival lane'
         interrupted={r['step'] for r in self.evidence['scene_handoffs'] if 'interrupted_goal' in r}
         assert sorted([p['step'] for p in self.evidence['parking'] if p['ready']]
-            +[p['step'] for kind in ('stair_waiting','corridor_waiting') for p in self.evidence[kind]]) == [i for i in self.completed
-            if next(iter(self.steps[i])) in ('nav','walk') and i not in (36,37,42) and i not in interrupted], 'Missing completed parking handoff'
+            +[p['step'] for kind in ('stair_waiting','corridor_waiting','door_waiting') for p in self.evidence[kind]]) == [i for i in self.completed
+            if next(iter(self.steps[i])) in ('nav','walk') and i not in (36,37,42,136) and i not in interrupted], 'Missing completed parking handoff'
         for role, rows in self.history.items():
             assert rows and all(r['map'] == self.map_name and r['epoch'] == 1 and r['checkpoint_generation'] == 0 for r in rows)
             assert all(p['health'] > 0 and p['spawned_at'] == 0 for r in rows for p in r['players']), 'Prefix contains a death'
@@ -1005,6 +1139,11 @@ class ClockworkPair(Pair):
                 self.cross_corridor_gap()
                 self.completed.extend(range(36,43))
                 print('PASS paired gap sequence 36-42',flush=True)
+                continue
+            if self.step==136:
+                self.cross_first_portal()
+                self.completed.extend((136,137))
+                print('PASS paired portal sequence 136-137',flush=True)
                 continue
             key, value = next(iter(step.items()))
             if key in ('nav', 'walk'): self.go(value, key == 'nav')

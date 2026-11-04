@@ -936,3 +936,63 @@ partners, pause/restore and ordinary speech. Those component fixtures do not
 substitute for actual traversal. Later return movement, portals, the final
 scene, recovery/reconnects and complete-route repeats remain open. No new
 complete campaign visit is credited; overall completion remains **48.6%**.
+
+## Return doorway and first portal (4 November 2026)
+
+The narrow doorway at 128 now retains its 204-tick opening hold, observes both
+rotating leaves 4/5 fully open, and walks the first player to the authored
+forward footing before the partner approaches. Both original waypoint arrivals
+and the later original wait remain required. On source `11c5ba2`, the requested
+128-136 run completes **128-135** before failing at the next waiting arrangement.
+Its frozen, separately audited completed section verifies ten personal arrivals,
+four ordinary waiting handoffs, one door handoff, three timed holds and **562
+matching player/world/native states**, ending at 100/100 health. Evidence:
+`private/coop/hatter1-route-8b6c5b5fb21d4db2b66c7084acf1b4df/completed-prefix-audit.json`.
+
+At 136, parking backwards on the stairs obstructed the following player. The
+paired runner now lets each player separately approach and use the original
+jump input to climb through the first portal. The leader must walk to an
+observed supported point clear of the destination before the follower crosses.
+Both clients must observe each personal warp and safe landing. A scene or
+revival cannot substitute for the crossing.
+
+A native regression reproduced another overlap case: generic teleport contact
+could put the incoming Alice directly inside a living partner because ordinary
+movement separation had already run. The portal now waits while that destination
+is occupied, retaining personal resources and the existing cooldown. Once clear,
+ordinary contact can retry. Both player identities, dead or separate partners,
+and a solid destination are covered by the regression tests.
+
+The first live portal replay on source `2f6cef0` reached both destinations but
+failed verification. Its original jump input correctly caused a native climb,
+which does not increment the jump count. It also exposed a separate diagnostic
+controller bug: a consumed jump was rearmed at teleport, producing an unwanted
+second jump. The verifier now requires actual jump input and a native jump or
+climb, and rejects a repeated destination jump. The controller keeps a consumed
+jump through relocation; new commands and new visits still rearm it. The retained
+failed run demonstrates the repeated jump and remains uncredited:
+`private/coop/hatter1-route-68afaaa0cba2449694c48181e302d019`.
+
+Frozen source `04d3b0c` passes **resumed 136-137** using the unchanged ordinary
+checkpoint at tick 183151, two independent internet clients, 40 ms delay and
+20 ms jitter. It verifies two source arrivals, two input-driven native climbs,
+two personal portal crossings, one waiting handoff and **202 matching
+player/world/native states**. The players finish at **80/100 health**: Blue
+takes two hits while grounded at the waiting point after crossing. No death,
+revival or resource reset occurs. The normal checkpoint before 138 is saved at
+tick 184650. Frozen fixture hashes match the tested tools. Evidence:
+`private/coop/hatter1-route-2986a1557db14f268352b96cc9bd0e50/result-summary.json`.
+
+The following requested **138-143** segment times out at 138, with no completed
+waypoints. Red's approach observes a ledge and requests a pull-up, but the
+receipt never reaches completion; Red ends on the lower floor. Both remain
+alive at 80/90 health. The failure and unchanged checkpoint are retained for
+investigation; this run adds no traversal credit. Evidence:
+`private/coop/hatter1-route-6c4437f598384236a4fde90d9d17fbf9`.
+
+All **897 active Rust tests** (three ignored), the locked release, **72 native
+paired/driver checks**, the exact single-player **11+1** baseline, **40 staged
+scene cases**, **151 Python guards** and seven source-package checks pass.
+Later chair traversal, the second portal, final scene/exit and complete fresh,
+recovery and reconnect repeats remain open. This is partial visit evidence;
+overall completion remains **48.6%**.

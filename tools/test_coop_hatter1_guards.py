@@ -10,6 +10,150 @@ from test_coop_hatter1 import validate_course_range, verify_gap_hold
 from test_coop_hatter1 import recorded_node, verify_node_resolutions
 from test_coop_hatter1 import verify_scene_handoff, verify_contact_handoff
 from test_coop_hatter1 import verify_doorway_approaches
+from test_coop_hatter1 import next_door_footing, verify_door_waiting
+from test_coop_hatter1 import verify_first_portal
+
+
+class FirstPortal(unittest.TestCase):
+    def setUp(self):
+        self.steps=json.loads((Path(__file__).resolve().parents[1]/'src/levels/hatter1/route_steps.json').read_text())
+        self.entities=[{} for _ in range(132)]
+        self.entities[45]=dict(classname='trigger_teleport',target='tel3',origin='-2720 2272 320')
+        self.entities[131]=dict(classname='func_teleportdest',targetname='tel3',origin='-768 3232 72')
+        goal=self.steps[136]['nav'];park=[-720,3232,64]
+        self.evidence=dict(portal_jumps=[dict(role='host',before_tick=100,command=10,warp=130,arrival_tick=150),
+            dict(role='guest',before_tick=300,command=20,warp=330,arrival_tick=350)],
+            portal_waiting=[dict(role='host',selected_tick=150,tick=200,goal=park,candidates=[park],feet=park,command=11)])
+        events=[]
+        for slot,tick in ((0,110),(1,310)):
+            before=[[goal,True,0] for _ in range(2)];after=copy.deepcopy(before);after[slot][1:]=[False,1]
+            events.append(dict(kind='jump',tick=tick,input=[slot==0,slot==1],before=before,after=after))
+        self.history={}
+        for role in ('host','guest'):
+            rows=[]
+            for tick in (100,120,132,150,200,300,320,332,350):
+                bodies=[]
+                for slot,warp in ((0,130),(1,330)):
+                    at=list(goal);grounded=True
+                    if tick<warp and tick>=(120 if slot==0 else 320):at=[-2740,2272,280];grounded=False
+                    if tick>=warp:at=[-768,3232,64 if tick>=(150 if slot==0 else 350) else 72];grounded=tick>=(150 if slot==0 else 350)
+                    if slot==0 and tick>=200:at=park
+                    bodies.append(dict(feet=at,grounded=grounded,spawned_at=0,warped_at=warp if tick>=warp else 5,health=100,climbs=0))
+                command=(10 if tick<200 else 11) if role=='host' else (20 if tick>=300 else 0)
+                rows.append(dict(tick=tick,owner=None,players=copy.deepcopy(bodies),driver=dict(command=command,
+                    reached=tick==200,clear=[True,True],neighbors=[[park],[]],input_events=[e for e in events if e['tick']<=tick])))
+            self.history[role]=rows
+
+    def check(self):verify_first_portal(self.evidence,self.steps,self.history,self.entities)
+
+    def test_two_actual_jumps_and_replicated_personal_warps(self):self.check()
+
+    def climb(self):
+        for rows in self.history.values():
+            for row in rows:
+                for event in row['driver']['input_events']:
+                    slot=0 if event['input'][0] else 1
+                    event['after'][slot][2]=event['before'][slot][2]
+                    event['after'][slot][0][2]=event['before'][slot][0][2]+2
+                for slot,warp in ((0,130),(1,330)):
+                    if warp-20<=row['tick']<warp:row['players'][slot]['climbs']=1
+
+    def test_native_climb_from_the_same_jump_input_is_a_takeoff(self):
+        self.climb();self.check()
+
+    def test_upward_motion_without_the_native_climb_is_not_a_takeoff(self):
+        self.climb()
+        for row in self.history['host']:row['players'][0]['climbs']=0
+        with self.assertRaisesRegex(AssertionError,'takeoff unobserved'):self.check()
+
+    def test_a_climb_without_jump_input_is_not_a_takeoff(self):
+        self.climb()
+        for row in self.history['host']:row['driver']['input_events']=[]
+        with self.assertRaisesRegex(AssertionError,'takeoff unobserved'):self.check()
+
+    def test_a_jump_must_not_replay_at_the_destination(self):
+        event=copy.deepcopy(self.history['host'][1]['driver']['input_events'][0]);event['tick']=130
+        self.history['host'][3]['driver']['input_events'].append(event)
+        with self.assertRaisesRegex(AssertionError,'replayed at the destination'):self.check()
+
+    def test_partial_portal_sequence_is_not_supported(self):
+        for start,last in ((136,136),(137,137)):
+            with self.subTest(start=start),self.assertRaisesRegex(AssertionError,'complete 136-137'):
+                validate_course_range(self.steps,start,last)
+
+    def test_changed_portal_input_requires_review(self):
+        self.steps[137]['input'][4]=0
+        with self.assertRaisesRegex(AssertionError,'changed portal jump'):self.check()
+
+    def test_a_warp_without_jump_is_not_a_crossing(self):
+        for row in self.history['host']:row['driver']['input_events']=[]
+        with self.assertRaisesRegex(AssertionError,'takeoff unobserved'):self.check()
+
+    def test_both_clients_must_observe_the_same_warp(self):
+        self.history['guest'][2]['players'][0]['warped_at']=131
+        with self.assertRaisesRegex(AssertionError,'warp stamp'):self.check()
+
+    def test_wrong_destination_is_rejected(self):
+        self.history['guest'][2]['players'][0]['feet']=[0,0,72]
+        with self.assertRaisesRegex(AssertionError,'wrong destination'):self.check()
+
+    def test_scene_cannot_replace_portal_contact(self):
+        self.history['host'][2]['owner']='Blue'
+        with self.assertRaisesRegex(AssertionError,'revival or a scene'):self.check()
+
+    def test_waiter_must_leave_the_destination_clear(self):
+        at=[-768,3232,64];receipt=self.evidence['portal_waiting'][0]
+        receipt.update(goal=at,candidates=[at],feet=at)
+        self.history['host'][3]['driver']['neighbors'][0]=[at]
+        self.history['host'][4]['players'][0]['feet']=at
+        with self.assertRaisesRegex(AssertionError,'obstructs the arrival'):self.check()
+
+
+class DoorWaiting(unittest.TestCase):
+    def setUp(self):
+        self.steps=[{} for _ in range(131)]
+        self.steps[128]={'walk':[-3508,2272,192.03125]}
+        self.steps[129]={'wait':1.7};self.steps[130]={'walk':[-3352,2272,192.03125]}
+        self.entities=[{'classname':'info_pathnode'} for _ in range(6)]
+        for i in (4,5):self.entities[i]={'classname':'func_rotatingdoor'}
+        self.arrivals=[dict(step=128,role='host',tick=90),dict(step=128,role='guest',tick=600)]
+        self.receipt=dict(step=128,role='host',goal=self.steps[130]['walk'],before_tick=304,tick=500,
+            command=9,feet=self.steps[130]['walk'],opening_hold=dict(start_tick=100,end_tick=304))
+        self.history={'host':[]}
+        for tick,point in ((100,self.steps[128]['walk']),(304,self.steps[128]['walk']),(500,self.steps[130]['walk'])):
+            self.history['host'].append(dict(tick=tick,players=[dict(feet=point,health=100,grounded=True,spawned_at=0,warped_at=50)],
+                driver=dict(command=9,reached=True),clockwork=dict(doors=[1.,1.])))
+
+    def check(self): verify_door_waiting([self.receipt],self.steps,self.arrivals,self.history,self.entities)
+
+    def test_wait_then_walk_clear_before_follower_arrives(self): self.check()
+
+    def test_authored_wait_cannot_be_removed(self):
+        self.steps[129]={'lever':3}
+        with self.assertRaisesRegex(AssertionError,'opening wait'): self.check()
+
+    def test_short_opening_wait(self):
+        self.receipt['opening_hold']['start_tick']=101;self.history['host'][0]['tick']=101
+        with self.assertRaisesRegex(AssertionError,'too short'): self.check()
+
+    def test_opening_must_follow_personal_arrival(self):
+        self.arrivals[0]['tick']=101
+        with self.assertRaisesRegex(AssertionError,'preceded arrival'): self.check()
+
+    def test_both_leaves_must_open(self):
+        self.history['host'][1]['clockwork']['doors'][1]=.9
+        with self.assertRaisesRegex(AssertionError,'both leaves'): self.check()
+
+    def test_waiter_must_stay_on_the_approach(self):
+        self.history['host'][0]['players'][0]['feet']=[-3600,2272,192.03125]
+        with self.assertRaisesRegex(AssertionError,'left its footing'): self.check()
+
+    def test_reunion_is_not_a_door_crossing(self):
+        self.history['host'][1]['players'][0]['warped_at']=250
+        with self.assertRaisesRegex(AssertionError,'warped'): self.check()
+
+    def test_handoff_cannot_skip_arbitrary_route_sections(self):
+        with self.assertRaisesRegex(AssertionError,'limited'): next_door_footing(self.steps,127)
 
 
 class DoorwayApproaches(unittest.TestCase):

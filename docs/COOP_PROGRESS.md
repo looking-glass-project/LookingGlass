@@ -19,7 +19,35 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | Full campaign verification | 3.08 | 20 |
 | **Total** | **48.58, rounded to 48.6** | **100** |
 
-Latest automation result: Clockwork's resumed **109-116** section passes with
+Latest completed automation result: Clockwork's resumed **136-137** portal section passes
+with two personal approach arrivals, two input-driven native climbs, separate
+portal crossings, one waiting handoff and **202 matching player/world/native
+states**. Both players remain alive at **80/100 health**; the leader takes two
+ordinary hits while waiting beyond the portal. No health is reset for the test.
+
+The preceding **128-135** doorway section is separately audited with ten
+personal arrivals, five waiting handoffs, three timed holds and **562 matching
+states**, ending at 100/100 health. The first player observes both rotating
+leaves opening and walks forward before the partner approaches. The original
+route's later wait and both players' waypoint arrivals remain required.
+
+A reproduced portal bug could place one Alice directly inside the other.
+An occupied exit now waits for the living partner to move clear. The test
+controller also preserves a consumed jump across teleports, while allowing
+new commands and new visits to jump normally. The retained failed portal run
+is rejected by the verifier for its repeated jump at the destination.
+
+Frozen source `04d3b0c` passes **897 active Rust tests** (three ignored), the
+locked release, **72 native paired/driver checks**, the unchanged single-player
+**11+1** baseline and **40 staged scene cases**. All **151 Python guards** and
+seven source-package checks pass. The following **138-143** attempt times out
+at the first chair approach after an incomplete remote ledge pull; it earns no
+completed steps. Both players remain alive at 80/90 health. The chair section, second portal, final
+scene/exit, full-route and recovery/reconnect repeats remain open. No additional
+complete campaign visit is credited; overall remains **48.6%**.
+See [Clockwork evidence](HATTER1.md).
+
+Earlier automation result: Clockwork's resumed **109-116** section passes with
 eight personal arrivals, the watched Blue-owned Gryphon scene, four waiting
 handoffs, three timed holds and **1,353 matching player/world/native states**.
 A separate Red-owned Gryphon replay of **112-113** passes with **960 matching

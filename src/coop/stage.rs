@@ -686,6 +686,12 @@ fn apply(
     transition: &mut Option<(String, Option<String>)>,
     notices: &mut [Option<Notice>; 2],
 ) -> ContactFlow {
+    let partner=&players[id.partner().index()];
+    let occupied=events.teleport.is_some_and(|(feet,_)| {
+        let delta=feet-partner.player.feet;
+        partner.stats.alive() && delta.truncate().length()<super::separation::DISTANCE
+            && delta.z.abs()<crate::collision::PLAYER_HALF.z*2.
+    });
     let body = &mut players[id.index()];
     body.stats.damage(events.damage);
     if let Some(text) = &events.message {
@@ -700,11 +706,23 @@ fn apply(
     }
     let mut flow = ContactFlow::Continue;
     if let Some((feet, yaw)) = events.teleport {
-        if world.body_clear(feet) {
+        if occupied {
+            // Movement separation ran before contacts. Do not publish an
+            // overlapping teleport frame and rely on a later tick to fix it.
+            // The contact resolver retains the portal cooldown and rearms this
+            // player's contact, so ordinary contact can retry after clearance.
+            notices[id.index()]=Some(Notice {
+                text:"Waiting for your partner to move clear".into(),until:tick+120,
+            });
+        } else if world.body_clear(feet) {
             body.player = Player::new(feet);
             body.yaw = yaw;
             body.pitch = 0.;
             body.warped_at = tick;
+            if notices[id.index()].as_ref().is_some_and(|n| matches!(n.text.as_str(),
+                "Waiting for your partner to move clear" | "Teleport destination is obstructed")) {
+                notices[id.index()]=None;
+            }
         } else {
             notices[id.index()] = Some(Notice {
                 text: "Teleport destination is obstructed".into(),
@@ -723,6 +741,76 @@ fn apply(
         flow = ContactFlow::StopWorld;
     }
     flow
+}
+
+#[cfg(test)]
+mod teleport_tests {
+    use super::*;
+    use crate::{inventory::Stats, movement::EYE_HEIGHT};
+
+    #[test]
+    fn occupied_portal_waits_without_changing_either_player_and_retries_after_clearance() {
+        let world=World::fixture(&[(vec3(-1000.,-1000.,-100.),vec3(1000.,1000.,0.))]);
+        let destination=vec3(0.,0.,0.03125);
+        for id in PlayerId::ALL {
+            let mut roster=Roster::new(&world,destination+Vec3::Z*EYE_HEIGHT,0.,Stats::default()).unwrap();
+            roster.players[id.index()].player=Player::spawn(&world,vec3(-200.,0.,EYE_HEIGHT+0.03125)).unwrap();
+            roster.players[id.index()].warped_at=5;
+            roster.players[id.partner().index()].player=Player::spawn(&world,destination+Vec3::Z*EYE_HEIGHT).unwrap();
+            roster.players[id.partner().index()].stats.spend_will(17.);
+            let before=serde_json::to_value(&roster.players).unwrap();
+            let mut story=Story::default();let mut transition=None;let mut notices=[None,None];
+            let event=Events {teleport:Some((destination,1.2)),..Default::default()};
+            assert!(apply(&event,id,&mut roster.players,&world,20,&mut story,&mut transition,&mut notices)==ContactFlow::StopPlayer);
+            assert_eq!(serde_json::to_value(&roster.players).unwrap(),before,"An occupied portal must not overlap players or change personal state");
+            assert!(notices[id.index()].as_ref().is_some_and(|n|n.text.contains("partner")));
+            roster.players[id.partner().index()].player=Player::spawn(&world,vec3(80.,0.,EYE_HEIGHT+0.03125)).unwrap();
+            let partner=serde_json::to_value(&roster.players[id.partner().index()]).unwrap();
+            let resources=serde_json::to_value(&roster.players[id.index()].stats).unwrap();
+            apply(&event,id,&mut roster.players,&world,21,&mut story,&mut transition,&mut notices);
+            let body=&roster.players[id.index()];
+            assert_eq!(body.player.feet,destination);assert_eq!(body.warped_at,21);
+            assert_eq!(body.yaw,1.2);assert_eq!(body.pitch,0.);
+            assert_eq!(serde_json::to_value(&body.stats).unwrap(),resources);
+            assert_eq!(serde_json::to_value(&roster.players[id.partner().index()]).unwrap(),partner);
+            assert!(notices[id.index()].is_none());
+        }
+    }
+
+    #[test]
+    fn separate_or_dead_partners_do_not_block_authored_portal_arrivals() {
+        let world=World::fixture(&[(vec3(-1000.,-1000.,-100.),vec3(1000.,1000.,0.))]);
+        let destination=vec3(0.,0.,0.03125);
+        for id in PlayerId::ALL {for (offset,dead) in [(Vec3::X*36.,false),(Vec3::Z*56.,false),(Vec3::ZERO,true)] {
+            let mut roster=Roster::new(&world,vec3(-200.,0.,EYE_HEIGHT+0.03125),0.,Stats::default()).unwrap();
+            let partner=&mut roster.players[id.partner().index()];
+            partner.player=Player::new(destination+offset);
+            if dead {partner.stats.damage(1000.);}
+            let before=serde_json::to_value(partner).unwrap();
+            let mut story=Story::default();let mut transition=None;let mut notices=[None,None];
+            let event=Events {teleport:Some((destination,0.4)),..Default::default()};
+            apply(&event,id,&mut roster.players,&world,25,&mut story,&mut transition,&mut notices);
+            assert_eq!(roster.players[id.index()].player.feet,destination);
+            assert_eq!(roster.players[id.index()].warped_at,25);
+            assert_eq!(serde_json::to_value(&roster.players[id.partner().index()]).unwrap(),before);
+            assert!(notices[id.index()].is_none());
+        }}
+    }
+
+    #[test]
+    fn an_unoccupied_but_solid_portal_destination_remains_blocked() {
+        let world=World::fixture(&[(vec3(-1000.,-1000.,-100.),vec3(1000.,1000.,0.)),
+            (vec3(-32.,-32.,0.),vec3(32.,32.,100.))]);
+        for id in PlayerId::ALL {
+            let mut roster=Roster::new(&world,vec3(-200.,0.,EYE_HEIGHT+0.03125),0.,Stats::default()).unwrap();
+            let before=serde_json::to_value(&roster.players).unwrap();
+            let mut story=Story::default();let mut transition=None;let mut notices=[None,None];
+            let event=Events {teleport:Some((vec3(0.,0.,0.03125),1.2)),..Default::default()};
+            apply(&event,id,&mut roster.players,&world,20,&mut story,&mut transition,&mut notices);
+            assert_eq!(serde_json::to_value(&roster.players).unwrap(),before);
+            assert_eq!(notices[id.index()].as_ref().unwrap().text,"Teleport destination is obstructed");
+        }
+    }
 }
 
 /// Authored school scene, with each player owning the real trigger in turn.

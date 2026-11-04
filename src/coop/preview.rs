@@ -231,6 +231,9 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
             let now = Instant::now();
             let mut guest_poll_ms = 0.;
             let mut replicate_ms = 0.;
+            let mut driver_ms = 0.;
+            let mut simulation_ms = 0.;
+            let mut send_ms = 0.;
             if let Some(driver) = &mut route_driver { driver.poll(now); }
             if let Some(setup) = &hosting {
                 if let Status::Failed(reason) = setup.status() { anyhow::bail!("{reason}"); }
@@ -462,7 +465,14 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
             if let (Some(host), Some(roster)) = (&mut host, &mut roster) {
                 if playing {
                     let (steps, suspended) = simulation_clock.advance(get_frame_time());
-                    if suspended { host.cancel_controls()?; local_latch.cancel(); }
+                    if suspended {
+                        if let Some(driver)=&mut route_driver {
+                            driver.record_input_event(serde_json::json!({"kind":"suspended",
+                                "epoch":visit.epoch,"tick":roster.tick,"frame_ms":get_frame_time()*1000.,
+                                "before":host.input_timing()}));
+                        }
+                        host.cancel_controls()?; local_latch.cancel();
+                    }
                     for _ in 0..steps {
                         // The diagnostic planner describes exact 24-tick input
                         // segments. Sampling once per render frame can hold a
@@ -472,11 +482,13 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                         // Human controls and the remote input path are unchanged.
                         if launch.drive {
                             if let Some(driver) = &mut route_driver {
+                                let sampling=Instant::now();
                                 let frame = roster.frame(visit.epoch, host.acknowledged_input());
                                 driver.sample(&frame, &arena, &scene.world, &scene.map, local, &mut keys, now);
                                 yaw = keys.yaw; pitch = keys.pitch;
                                 local_sequence += 1;
                                 local_latch.accept(local_sequence, keys, now)?;
+                                driver_ms+=sampling.elapsed().as_secs_f32()*1000.;
                             }
                         }
                         let check_wipe = launch.checkpoint_check && resumed.as_ref().is_some_and(|s|
@@ -490,8 +502,22 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                         if let Some(driver)=&mut route_driver {
                             driver.record_recovery(roster,&arena,&scene.world,visit.epoch,&visit.map,was_cinematic);
                         }
-                        arena.step(roster, &scene.map, &mut scene.world, [local_latch.sample(now), host.controls(now)])?;
+                        let inputs=[local_latch.sample(now), host.controls(now)];
+                        let jump_event=route_driver.as_ref().filter(|_|inputs.iter().any(|(c,_)|c.jump))
+                            .map(|_|serde_json::json!({"kind":"jump","epoch":visit.epoch,"tick":roster.tick,
+                                "input":inputs.iter().map(|(c,_)|c.jump).collect::<Vec<_>>(),
+                                "before":roster.players.each_ref().map(|b|(&b.player.feet,b.player.grounded,b.player.jumps)),
+                                "attack_locked":arena.characters.each_ref().map(|c|c.attack_movement_locked()),
+                                "network":host.input_timing()}));
+                        let stepping=Instant::now();
+                        arena.step(roster, &scene.map, &mut scene.world, inputs)?;
+                        simulation_ms+=stepping.elapsed().as_secs_f32()*1000.;
                         if let Some(driver)=&mut route_driver {
+                            if let Some(mut event)=jump_event {
+                                event["after"]=serde_json::json!(roster.players.each_ref()
+                                    .map(|b|(&b.player.feet,b.player.grounded,b.player.jumps)));
+                                driver.record_input_event(event);
+                            }
                             driver.record_recovery(roster,&arena,&scene.world,visit.epoch,&visit.map,
                                 was_cinematic || arena.stage.busy());
                         }
@@ -523,12 +549,14 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                     let mut frame = roster.frame(visit.epoch, host.acknowledged_input());
                     frame.sounds = Some(arena.stage.sounds.batch(frame.tick));
                     if frame.tick >= last_sent + 6 && host.can_send_frame() {
+                        let sending=Instant::now();
                         let mut network = frame.clone();
                         network.combat = Some(Box::new(arena.snapshot()));
                         if host.send_frame(network)? {
                             if let Some(driver) = &mut route_driver { driver.record_state(&frame, &arena)?; }
                             last_sent = frame.tick;
                         }
+                        send_ms=sending.elapsed().as_secs_f32()*1000.;
                     }
                     display = Some(frame);
                     if launch.drive {
@@ -568,6 +596,7 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                     }
                 } else { simulation_clock = super::clock::Clock::default(); }
             }
+            let drawing=Instant::now();
             clear_background(BLACK);
             if let Some(frame) = &display {
                 let mut visual = frame.clone();
@@ -665,8 +694,11 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                     };
                     ui.toast(&message, screen_height() * 0.4);
                 }
+                let draw_ms=drawing.elapsed().as_secs_f32()*1000.;
                 if report_at.elapsed() >= Duration::from_millis(200) {
+                    let observing=Instant::now();
                     if let Some(driver) = &mut route_driver { driver.observe(frame, &arena, &scene.world); }
+                    let observe_ms=observing.elapsed().as_secs_f32()*1000.;
                     let path = crate::preferences::path("coop-live.json");
                     if let Some(parent) = path.parent() { let _ = std::fs::create_dir_all(parent); }
                     // Diagnostics are optional. A reader/virus scanner can
@@ -683,6 +715,8 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                         "network_timing": guest.as_ref().map(|g| g.input_timing())
                             .or_else(||host.as_ref().map(|h|h.input_timing())),
                         "frame_timing": {"frame_ms": get_frame_time()*1000., "guest_poll_ms": guest_poll_ms, "replicate_ms": replicate_ms,
+                            "driver_ms":driver_ms,"simulation_ms":simulation_ms,"send_ms":send_ms,
+                            "draw_ms":draw_ms,"observe_ms":observe_ms,
                             "simulation_debt_ms": simulation_clock.deferred_ms()},
                         "combat": arena.snapshot(), "visit": visit, "completed_visits": if launch.host { Some(campaign.completed()) } else { None },
                         "route_driver": route_driver.as_ref().map(|d| &d.report) })) {

@@ -1,6 +1,6 @@
 # Co-op progress
 
-Updated 29 October 2026. Branch: `coop`. **Estimated overall completion: 48.1%.**
+Updated 4 November 2026. Branch: `coop`. **Estimated overall completion: 48.1%.**
 The older 42% reports are historical. This percentage measures delivered and
 verified behavior against the full co-op scope; it is not a running test's progress.
 
@@ -19,16 +19,22 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | Full campaign verification | 3.08 | 20 |
 | **Total** | **48.08, rounded to 48.1** | **100** |
 
-Current verification frontier: a fresh Funhouse run independently passes steps
-**0-28** (44 personal arrivals, seven pickups, 2,763 matching states), then fails
-at the mirror. The mirror shooting wait has been corrected and a delayed-hold
-regression is covered by native tests. The guest's return jump still fails; a
-revival at the bank is correctly rejected as traversal. The fresh full-route
-runner is available, but has no passing full-run result. Latest checks: **876
-active Rust tests**, 51 Funhouse guards and unchanged single-player component
-output apart from two timing measurements. Overall remains **48.1%**.
+Current verification frontier: fresh Funhouse steps **0-28** have separate
+verified evidence (44 personal arrivals, seven pickups, 2,763 matching states).
+Resumed mirror **29-32** now passes on source `1839b9f`: four personal arrivals,
+both held approaches, the real shared switch, **816 matching states**, no deaths
+and 97/97 health. Exact input traces confirm both actual return jumps, with no
+control resets. Conservative range rejection removes distant-enemy aiming work
+from the automated driver; its measured host p95 cost drops from 39.5 to 1.1 ms
+per frame against the preceding diagnostic build on the same PC. Gameplay
+physics, combat rules and the control-reset safeguard are unchanged.
 
-Latest verified work: Funhouse's second personal pad and descent now pass
+**877 active Rust tests**, the locked release, Funhouse battle63/world46/scene37/
+single-player8 and Checkmate94 pass. Single-player component output matches the
+baseline except two timings. A fresh full-route retry is in progress, with no
+passing full-run result yet. No campaign row is added; overall remains **48.1%**.
+
+Separate verified work: Funhouse's second personal pad and descent now pass
 steps **151-155** with eight personal arrivals, both actual jumps and 396 matching
 network states. Each player gains their own second 25-health/Will pickup.
 A separate resumed combat run defeats both Tweedles, watches all eight Hatter

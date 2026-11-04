@@ -15,12 +15,20 @@ personal fish deaths, guards and moving pickups. Full two-client traversal and
 recovery remain open for both visits. Report these smaller milestones alongside
 the total; a successful component or segment is not a completed campaign visit.
 
-Status checked on **29 October 2026**: the older approximately 42% figure is
+Status checked on **4 November 2026**: the older approximately 42% figure is
 historical; the current weighted estimate is **48.1% (about 48%)**. Six of 39
 campaign visits have combined evidence, with earlier contact-system repeats
 still required. Repeated component tests do not increase this total.
 
-Latest Funhouse traversal milestone: source `c946266` now passes the resumed
+Current Funhouse mirror check (4 November): source `1839b9f` passes resumed
+steps 29-32 with both actual jumps/holds, one shared switch, 816 matching states
+and no deaths. Read-only input traces and per-stage timings exposed costly
+out-of-range aiming in the automated driver. Conservative hit-box rejection
+reduces its measured host p95 cost from 39.5 to 1.1 ms/frame while preserving
+normal target, occlusion and combat rules. The fresh full-route retry remains
+unverified; see [current progress](COOP_PROGRESS.md).
+
+Earlier Funhouse traversal milestone: source `c946266` now passes the resumed
 return corridor, authored steps **35-42**, in independent public-internet clients
 with 40 ms delay and 20 ms jitter. All **16 personal arrivals** and **1,175
 matching player/world/native states** pass. Red's natural revival takes exactly

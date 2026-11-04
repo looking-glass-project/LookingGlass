@@ -70,6 +70,8 @@ impl TimedInput {
         let remaining=self.accepted.zip(first).map_or(0,|(last,first)|
             (u128::from(last.at-first.at)*120).saturating_sub(self.elapsed));
         serde_json::json!({"received_input":self.sequence(),"applied_input":self.latch.sequence(),
+            "received_jumps":self.accepted.map_or(0,|s|s.input.jumps),
+            "applied_jumps":self.latch.last.jumps,"pending_jumps":self.latch.pending_jumps,
             "queued_input_samples":self.queued.len(),"buffered_control_ms":remaining as f64/120_000.})
     }
 

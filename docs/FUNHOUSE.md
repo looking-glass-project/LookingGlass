@@ -1024,3 +1024,47 @@ return jump**. Red's jump counter does not increase before the fall; her later
 jump against authoritative input and movement timing. Neither run is a mirror or
 full-route pass. No screenshots were opened. Overall stays **48.1%**, with six
 combined campaign rows and the existing remaining scope.
+
+
+### Mirror input timing and driver cost (4 November 2026)
+
+The failed `d30e892...` run's retained reports show the host control-reset counter
+rising from two to three as Red's requested jump counter increases, after the
+host accumulates 386 ms of simulation debt. Those reports do not identify the
+exact consumption tick, so cancellation is a supported candidate cause rather
+than proof of a grounding fault. New opt-in diagnostics retain up to 32 host
+jump/reset events, actual before/after physics, received/applied/pending jump
+counters and driver/simulation/send/draw/observation timings. These fields never
+change gameplay state, network frames or saves.
+
+Diagnostic source `46cc79b` passes resumed mirror 29-32 in run
+`f3c6ad9e7d0947fc85930c60832f9070`: four personal arrivals, two held approaches,
+one actual shared switch, 789 matching states and no deaths. Red's real return
+jump is applied at tick 34,979. Both finish at 97 health; no reset occurs.
+The host's driver costs 10.42 ms median and 39.45 ms p95 per rendered frame.
+
+Source `1839b9f` rejects only attack candidates whose whole hit box lies beyond
+the existing weapon range (with a conservative one-unit margin). Every body
+remains in the collision context and velocity tracker. Closing and Ice queries
+also reject impossible ranges before tracing. A regression compares the original
+unfiltered choices across range edges, tall exposed bosses, walls, the partner
+and funded/dry attacks. Production combat, movement and the suspension barrier
+are unchanged.
+
+Run `84482faac50a40fbad9bf378ce283f6c` passes the same segment: four personal
+arrivals, two holds, the actual switch, 816 matching states (823 retained),
+52 recovery rows, no deaths and 97/97 health. Normal checkpoint33 SHA-256 is
+`509aa1cc7b99cb83356d21ecdb35081a0d6ef9bd3f899d0883bf801028e35b33`.
+The driver costs 0.26 ms median and 1.07 ms p95; frame p95 is 30.21 ms versus
+90.80 ms in the preceding run. Both used the authorized local-PC fallback while
+Anode was occupied, independent public-internet clients, 40 ms delay/20 ms
+jitter, and the unchanged earned checkpoint29. No screenshots were opened.
+These measurements support the driver optimization; they are not an Anode
+repeatability claim or a complete campaign visit.
+
+All 877 active Rust tests (one ignored), the locked release, Funhouse
+battle63/world46/scene37/single-player8, Checkmate94, 51 Funhouse guards and seven
+source-package tests pass. Single-player output differs only in two benchmark
+timings. A fresh full-route retry is running; no full-route pass is claimed.
+Overall remains 48.1%, with six combined campaign visits and the existing open
+contact, recovery, opposite-order and full-route requirements.

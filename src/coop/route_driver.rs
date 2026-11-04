@@ -326,6 +326,8 @@ pub struct Report {
     pub snarks: Vec<EnemyReport<crate::snark::Phase>>,
     pub beyond_steps: Option<[Vec3; 15]>,
     pub network_states: VecDeque<NetworkState>,
+    /// Bounded host-only input evidence; never sent to peers or saved as gameplay.
+    pub input_events: VecDeque<serde_json::Value>,
     pub swim_planning: Option<SwimPlanning>,
     pub garden_course: Option<crate::levels::garden1::CourseReport>,
     pub sanctum_course: Option<serde_json::Value>,
@@ -670,13 +672,19 @@ struct CombatAim {
     tracker: crate::route::fight::Tracker,
     sampled: Option<(u64,u64)>,
 }
+fn target_may_be_in_range(eye:Vec3,target:&crate::combat::Target,range:f32)->bool {
+    // Use the whole hit box: tall bosses can be reachable even when their
+    // centre is distant. Keep every body in Context for occlusion and tracking.
+    // The one-unit margin makes this a conservative cheap rejection only.
+    ((eye-target.center).abs()-target.half).max(Vec3::ZERO).length_squared()<=(range+1.).powi(2)
+}
 fn ice_aim(context:&crate::combat::Context<'_>, foes:&[crate::combat::Target],
     body:&super::world::Body, enabled:bool, keys:&mut Input) -> Option<crate::combat::Target> {
     if !enabled || body.stats.copies(4)==0 || body.stats.will()<0.75 || body.player.immersion.level!=0 {
         return None;
     }
     let eye=body.player.eye();
-    let (target,point)=foes.iter().filter_map(|target|
+    let (target,point)=foes.iter().filter(|target|target_may_be_in_range(eye,target,360.)).filter_map(|target|
         crate::route::fight::aim_point(context,eye,target).map(|point|(*target,point)))
         .filter(|(_,point)|point.distance(eye)<360.)
         .min_by(|a,b|a.1.distance_squared(eye).total_cmp(&b.1.distance_squared(eye)))?;
@@ -696,14 +704,17 @@ impl CombatAim {
             };
             self.tracker.observe(context.targets,dt);self.sampled=Some(stamp);
         }
-        let closing=foes.iter().filter_map(|target|crate::route::fight::aim_point(context,eye,target)
+        let closing=foes.iter().filter(|target|target_may_be_in_range(eye,target,220.))
+            .filter_map(|target|crate::route::fight::aim_point(context,eye,target)
                 .map(|point|(*target,point)))
             .filter(|(_,point)|point.distance(eye)<220.)
             .min_by(|(_,a),(_,b)|a.distance_squared(eye).total_cmp(&b.distance_squared(eye)));
         // A near attacker can reach Alice before the thrown Blade returns.
         // With no Cards to fund, retain it and close using ordinary movement.
         self.tracker.hold_blade=!cards && closing.is_some();
-        let mut plan=crate::route::fight::plan(context,eye,foes,&self.tracker,cards);
+        let reachable=foes.iter().copied().filter(|target|
+            target_may_be_in_range(eye,target,crate::route::fight::THROW_RANGE)).collect::<Vec<_>>();
+        let mut plan=crate::route::fight::plan(context,eye,&reachable,&self.tracker,cards);
         if plan.target.is_none() && self.tracker.hold_blade {
             if let Some((target,point))=closing {
                 plan=crate::route::fight::Plan{target:Some(target.id),aim:(point-eye).normalize_or_zero(),weapon:0,alternate:false};
@@ -785,6 +796,10 @@ pub struct Driver {
     pub report: Report,
 }
 impl Driver {
+    pub fn record_input_event(&mut self, event:serde_json::Value) {
+        self.report.input_events.push_back(event);
+        while self.report.input_events.len()>32 { self.report.input_events.pop_front(); }
+    }
     pub fn record_recovery(&mut self, roster:&super::world::Roster, arena:&Arena, world:&World,
         epoch:u64, map:&str, cinematic:bool) {
         if !self.command.as_ref().is_some_and(|c|c.recovery_trace) || self.report.recovery_trace_error.is_some() {return;}
@@ -1520,6 +1535,46 @@ mod tests {
         let friend=crate::combat::Target{id:crate::combat::COOP_RED,center:vec3(30.,0.,48.),half:Vec3::splat(20.)};
         let both=[enemy,friend];let blocked=crate::combat::Context{world:&world,targets:&both};
         assert!(aim.sample((1,3),&blocked,&targets,eye,true,&mut keys).is_none());
+    }
+    #[test]
+    fn combat_range_rejection_matches_unfiltered_aim_with_large_bodies_and_occluders() {
+        use crate::{combat::{Context,Target},route::fight};
+        let eye=vec3(0.,0.,48.);
+        let open=World::fixture(&[]);
+        let wall=World::fixture(&[(vec3(200.,-200.,-100.),vec3(210.,200.,200.))]);
+        let floor=World::fixture(&[(vec3(-4000.,-4000.,-100.),vec3(4000.,4000.,0.))]);
+        let distant=(0..64).map(|i|Target{id:100+i,center:vec3(3000.+i as f32*30.,500.,48.),
+            half:Vec3::splat(20.)}).collect::<Vec<_>>();
+        for (center,half) in [
+            (vec3(400.,0.,48.),Vec3::splat(20.)),
+            (vec3(1000.,0.,48.),Vec3::splat(20.)),
+            (vec3(1025.,0.,48.),Vec3::splat(20.)),
+            // Its centre is beyond throw range; its exposed upper body is not.
+            (vec3(500.,0.,-1500.),vec3(40.,40.,1600.)),
+        ] {
+            let enemy=Target{id:7,center,half};
+            let mut foes=distant.clone();foes.push(enemy);
+            assert!(distant.iter().all(|t|!target_may_be_in_range(eye,t,fight::THROW_RANGE)));
+            for world in [&open,&wall,&floor] { for friend in [false,true] { for cards in [false,true] {
+                let mut targets=foes.clone();
+                if friend { targets.push(Target{id:crate::combat::COOP_RED,
+                    center:vec3(100.,0.,48.),half:Vec3::splat(25.)}); }
+                let context=Context{world,targets:&targets};
+                let original=fight::plan(&context,eye,&foes,&fight::Tracker::default(),cards);
+                let mut aim=CombatAim::default();let mut keys=Input::default();
+                let selected=aim.sample((1,1),&context,&foes,eye,cards,&mut keys);
+                assert_eq!(selected.map(|t|t.id),original.target);
+                if selected.is_some() {
+                    assert_eq!(keys.weapon,Some(original.weapon as u8));
+                    assert_eq!(keys.alternate,original.alternate);
+                    let direction=vec3(keys.pitch.cos()*keys.yaw.cos(),keys.pitch.cos()*keys.yaw.sin(),keys.pitch.sin());
+                    assert!(direction.distance(original.aim)<0.0001);
+                }
+            }}}
+        }
+        let tall=Target{id:7,center:vec3(500.,0.,-1500.),half:vec3(40.,40.,1600.)};
+        let context=Context{world:&floor,targets:&[tall]};
+        assert_eq!(CombatAim::default().sample((1,1),&context,&[tall],eye,true,&mut Input::default()).unwrap().id,7);
     }
     #[test]
     fn combat_tactics_leads_actual_moving_blade_hits_without_resampling_stale_frames() {

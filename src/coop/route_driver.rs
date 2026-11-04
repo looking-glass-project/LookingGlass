@@ -5,7 +5,7 @@
 //! that process's isolated profile, never authoritative state through the wire.
 use super::{arena::Arena, protocol::Input, world::Frame, PlayerId};
 use crate::{collision::World, movement::{Controls, Player}, route::Route};
-use anyhow::{ensure, Result};
+use anyhow::{ensure, Context, Result};
 use macroquad::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{collections::{BTreeSet, VecDeque}, path::PathBuf, sync::mpsc, time::{Duration, Instant, SystemTime}};
@@ -31,6 +31,9 @@ struct Command {
     recovery_trace: bool,
     #[serde(default)]
     marker: Option<usize>,
+    /// Read-only projection of a pathnode onto this client's collision world.
+    #[serde(default)]
+    pathnode: Option<usize>,
     #[serde(default)]
     horizontal: bool,
     /// Ordinary three-dimensional swim input toward an explicit local test goal.
@@ -159,6 +162,16 @@ pub(crate) fn direct_goal_wish(world:&World,player:&Player,goal:Vec3,lead:f32,ru
 impl Command {
     fn validate(&self) -> Result<()> {
         ensure!(self.id > 0 && self.epoch > 0 && self.heartbeat > 0, "Invalid route command identity");
+        if let Some(id)=self.pathnode {
+            ensure!(id<100_000 && self.goal.is_none() && self.marker.is_none() && self.surface.is_none()
+                && self.rope.is_none() && self.runup.is_none() && self.use_aim.is_none() && self.shoot_switch.is_none()
+                && self.beyond_step.is_none() && self.temple_follow.is_none() && self.garden_follow.is_none()
+                && self.sanctum_follow.is_none() && self.chess_follow.is_none() && self.castling_follow.is_none()
+                && !self.funhouse_exit && !self.funhouse_pendulums && !self.hold_goal && !self.swim
+                && !self.navigate && !self.horizontal && !self.attack && !self.run && !self.jump
+                && !self.checkpoint && !self.finish && !self.skip_scene,
+                "Pathnode observation requires neutral inputs");
+        }
         ensure!(self.input_lead.is_finite() && (0. ..=1.5).contains(&self.input_lead), "Invalid input lead");
         ensure!(self.garden_start.is_none() || self.garden_follow.is_some(),
             "A Garden start requires the Garden course");
@@ -313,6 +326,7 @@ pub struct Report {
     pub reached: bool,
     pub captured: Option<u64>,
     pub checkpoint: Option<CheckpointReport>,
+    pub pathnode: Option<PathnodeReport>,
     pub replans: usize,
     pub error: Option<String>,
     pub recovery_trace_error: Option<String>,
@@ -351,6 +365,24 @@ pub struct Report {
     pub sanctum_course: Option<serde_json::Value>,
     pub chess_course: Option<serde_json::Value>,
     pub castling_course: Option<serde_json::Value>,
+}
+#[derive(Serialize)]
+pub struct PathnodeReport {
+    command:u64,
+    epoch:u64,
+    tick:u64,
+    entity:usize,
+    origin:Vec3,
+    feet:Vec3,
+}
+
+pub(crate) fn pathnode_goal(world:&World,entity:&crate::levels::Entity)->Result<(Vec3,Vec3)> {
+    ensure!(entity.get("classname").is_some_and(|c|c=="info_pathnode"),"Not a pathnode");
+    let origin=entity.get("origin").and_then(|s|crate::interaction::vector(s))
+        .filter(|p|p.is_finite() && p.abs().max_element()<1_000_000.).context("Missing finite pathnode origin")?;
+    let feet=world.actor_footing(origin+Vec3::Z*32.,crate::collision::PLAYER_CENTER,
+        crate::collision::PLAYER_HALF,240.).context("Unsupported pathnode")?;
+    Ok((origin,feet))
 }
 #[derive(Serialize)]
 pub struct SwimPlanning {
@@ -1115,6 +1147,7 @@ impl Driver {
     pub fn sample(&mut self, frame: &Frame, arena: &Arena, world: &World, map: &crate::bsp::Bsp, local: PlayerId, keys: &mut Input, now: Instant) {
         Self::neutral(keys);
         self.report.reached = false;
+        self.report.pathnode = None;
         self.report.carry_velocity = None;
         self.report.expected = self.plan.front().map(|(_, at)| *at);
         self.report.plan_remaining = self.plan.len();
@@ -1186,6 +1219,16 @@ impl Driver {
             self.report.phase = "spectating"; return;
         }
         if command.checkpoint { self.report.phase = "saving checkpoint"; return; }
+        if let Some(id)=command.pathnode {
+            let result=map.entities.get(id).context("Missing pathnode").and_then(|e|pathnode_goal(world,e));
+            match result {
+                Ok((origin,feet))=>self.report.pathnode=Some(PathnodeReport {
+                    command:command.id,epoch:frame.epoch,tick:frame.tick,entity:id,origin,feet,
+                }),
+                Err(error)=>self.report.error=Some(error.to_string()),
+            }
+            self.report.phase="observing pathnode";return;
+        }
         keys.skip_scene = command.skip_scene;
         if !command.watch_dialogue && arena.stage.story.busy() && arena.stage.owner == Some(local)
             && now.duration_since(self.used) >= Duration::from_millis(250) {
@@ -2717,10 +2760,39 @@ mod tests {
         }
     }
     #[test]
+    fn pathnodes_resolve_to_supported_feet_and_reject_other_entities() {
+        let world=World::fixture(&[(vec3(-100.,-100.,-100.),vec3(100.,100.,0.))]);
+        let mut entity=crate::levels::Entity::from([
+            ("classname".into(),"info_pathnode".into()),("origin".into(),"8 12 20".into())]);
+        let (origin,feet)=pathnode_goal(&world,&entity).unwrap();
+        assert_eq!(origin,vec3(8.,12.,20.));
+        assert!(feet.distance(vec3(8.,12.,0.03125))<0.001 && world.body_clear(feet));
+        entity.insert("classname".into(),"info_null".into());
+        assert!(pathnode_goal(&world,&entity).is_err());
+        entity.insert("classname".into(),"info_pathnode".into());
+        for value in ["500 500 20","8 12 1000","NaN 12 20","bad"] {
+            entity.insert("origin".into(),value.into());
+            assert!(pathnode_goal(&world,&entity).is_err(),"{value}");
+        }
+    }
+    #[test]
+    fn pathnode_observation_cannot_supply_movement_or_progression_input() {
+        let base=serde_json::json!({"id":1,"heartbeat":1,"epoch":1,"goal":null,"navigate":false,
+            "attack":false,"capture":false,"finish":false,"pathnode":712});
+        assert!(serde_json::from_value::<Command>(base.clone()).unwrap().validate().is_ok());
+        for (key,value) in [("goal",serde_json::json!([0,0,0])),("marker",1.into()),("pathnode",100000.into()),
+            ("attack",true.into()),("navigate",true.into()),("run",true.into()),("jump",true.into()),
+            ("checkpoint",true.into()),("skip_scene",true.into()),("finish",true.into()),
+            ("use_aim",serde_json::json!([0,0])),("chess_follow","Blue".into())] {
+            let mut bad=base.clone();bad[key]=value;
+            assert!(serde_json::from_value::<Command>(bad).unwrap().validate().is_err(),"{key}");
+        }
+    }
+    #[test]
     fn legacy_route_commands_remain_valid_and_rope_inputs_are_bounded() {
         let base=serde_json::json!({"id":1,"heartbeat":1,"epoch":1,"goal":null,"navigate":false,"attack":true,"capture":false,"finish":false});
         let old:Command=serde_json::from_value(base.clone()).unwrap(); assert!(old.validate().is_ok());
-        assert!(old.rope.is_none() && old.marker.is_none() && !old.horizontal && !old.run && !old.jump);
+        assert!(old.rope.is_none() && old.marker.is_none() && old.pathnode.is_none() && !old.horizontal && !old.run && !old.jump);
         assert!(old.use_aim.is_none() && !old.watch_dialogue && old.beyond_step.is_none());
         assert!(old.speed_limit.is_none() && !old.prefer_cards && old.temple_follow.is_none() && old.garden_follow.is_none());
         assert_eq!(old.arrival_radius,8.);

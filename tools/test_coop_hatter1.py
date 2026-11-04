@@ -2,7 +2,7 @@
 
 Each player must earn a separate waypoint receipt. The first stops at a native
 clear/supported neighbor to let the second arrive. The initial runner supports
-nav/walk/wait/lever steps and a paired gap crossing adapted from steps 36-42;
+nav/walk/node/wait/lever steps and a paired gap crossing adapted from steps 36-42;
 other timed inputs, portals and scene handoffs remain explicit future work.
 An explicit checkpoint can resume a separately labelled segment,
 with an exact native restore receipt. The runner never edits authoritative
@@ -72,8 +72,10 @@ def verify_arrivals(steps, completed, receipts, history):
             assert distance(body['feet'][:2], goal[:2]) < 8 and abs(body['feet'][2] - goal[2]) < 35, 'Missed personal waypoint'
 
 
-def parking_target(candidates, at, incoming, goal):
-    """Take another observed walking step if the first neighbor ring is too near."""
+def parking_target(candidates, at, incoming, goal, visited=()):
+    """Find a waiting spot with bounded, observed steps around nearby corners."""
+    candidates = [p for p in candidates if distance(p[:2], at[:2]) >= 16
+                  and all(distance(p[:2], old[:2]) >= 16 for old in visited)]
     direction = [goal[i] - incoming[i] for i in range(2)]
     def ahead(point):
         return sum((point[i] - goal[i]) * direction[i] for i in range(2)) > 8 * math.hypot(*direction)
@@ -90,14 +92,48 @@ def parking_target(candidates, at, incoming, goal):
         return max(forward, key=lambda p: distance(p[:2], goal[:2])), False
     if usable:
         return waiting_point(usable, at, incoming, goal), True
-    assert farther, 'No observed walking approach to a waiting position'
-    return max(farther, key=lambda p: distance(p[:2], goal[:2])), False
+    if farther:
+        return max(farther, key=lambda p: distance(p[:2], goal[:2])), False
+    # A corner may need a lateral step before the next native neighbor ring
+    # clears the arrival lane. Keep the incoming body reserved and avoid
+    # revisiting prior positions; this step never counts as ready parking.
+    detours = [p for p in candidates if distance(p[:2], incoming[:2]) >= 48]
+    assert detours, 'No observed walking approach to a waiting position'
+    return max(detours, key=lambda p: distance(p[:2], goal[:2])), False
 
 
 def recorded_arrival(row, report, command):
     """Wait for an acknowledgment retained alongside the authoritative frame."""
     return bool(row and (row['epoch'],row['tick']) == (report['frame']['epoch'],report['frame']['tick'])
         and row['driver']['command'] == command and row['driver']['reached'])
+
+
+def recorded_node(row, report, command, entity):
+    projection=report['route_driver'].get('pathnode')
+    return bool(row and projection and projection['command']==command and projection['entity']==entity
+        and (row['epoch'],row['tick'])==(report['frame']['epoch'],report['frame']['tick'])
+        and row['driver']['command']==command and row['driver'].get('pathnode')==projection)
+
+
+def verify_node_resolutions(source, effective, completed, receipts, history, entities):
+    expected={i for i in completed if 'node' in source[i]}
+    assert {r['step'] for r in receipts}==expected, 'Missing or extra pathnode projections'
+    for step in expected:
+        pair=[r for r in receipts if r['step']==step]
+        assert len(pair)==2 and {r['role'] for r in pair}=={'host','guest'}, 'Missing personal pathnode projection'
+        entity=source[step]['node'];native=entities[entity]
+        assert native['classname']=='info_pathnode', 'Wrong native pathnode class'
+        origin=[float(v) for v in native['origin'].split()]
+        assert len(origin)==3 and all(math.isfinite(v) and abs(v)<1_000_000 for v in origin), 'Invalid pathnode origin'
+        for receipt in pair:
+            row=next(r for r in history[receipt['role']] if r['tick']==receipt['tick'])
+            projection=receipt['projection'];goal=projection['feet']
+            assert row['owner'] is None and row['map']=='hatter1' and row['epoch']==projection['epoch']==1, 'Pathnode projection outside free play'
+            assert row['driver']['command']==receipt['command']==projection['command'] and row['driver'].get('pathnode')==projection, 'Pathnode projection unacknowledged'
+            assert not row['driver']['reached'] and row['driver']['phase']=='observing pathnode', 'Projection must not claim arrival'
+            assert projection['entity']==entity and projection['tick']<=row['tick'] and distance(projection['origin'],origin)<.001, 'Projection names a different pathnode'
+            assert len(goal)==3 and all(math.isfinite(v) for v in goal) and distance(goal[:2],origin[:2])<.001 and origin[2]-208<=goal[2]<=origin[2]+40, 'Projection outside native footing bounds'
+            assert set(effective[step])=={'nav'} and distance(effective[step]['nav'],goal)<.01, 'Clients disagree about the pathnode footing'
 
 
 def next_stair_footing(steps, step):
@@ -156,7 +192,7 @@ def validate_course_range(steps, start, last):
     if start<=42 and last>=36:
         assert start<=36 and last>=42, 'The paired gap needs the complete 36-42 sequence'
         validate_gap_course(steps)
-    assert all(next(iter(steps[i])) in ('nav','walk','wait','lever') or 36<=i<=42
+    assert all(next(iter(steps[i])) in ('nav','walk','node','wait','lever') or 36<=i<=42
                for i in range(start,last+1)), 'Requested prefix needs an unimplemented input type'
 
 
@@ -324,6 +360,7 @@ class ClockworkPair(Pair):
         self.deadline = time.monotonic() + 1500
         raw = (ROOT / 'src/levels/hatter1/route_steps.json').read_bytes()
         self.steps = json.loads(raw)
+        self.source_steps=json.loads(raw)
         assert len(self.steps) == 150 and 0 <= args.start_step <= args.last_step < len(self.steps), 'Review changed course'
         validate_course_range(self.steps,args.start_step,args.last_step)
         # The native SP course accepts a 22-unit planning radius. At this
@@ -340,7 +377,7 @@ class ClockworkPair(Pair):
         self.evidence.update(course_sha256=hashlib.sha256(raw).hexdigest(), map_sha256=map_sha,
             effective_course_sha256=hashlib.sha256(effective).hexdigest(), waypoint_adjustments=adjustments,
             executable_sha256=hashlib.sha256(args.exe.read_bytes()).hexdigest(),
-            arrivals=[], levers=[], holds=[], parking=[], stair_waiting=[], corridor_waiting=[], yields=[], descent_arrivals=[], descent_jumps=[], ledge_pulls=[], gear_boarding=[], gear_exits=[], gap_jumps=[], gap_holds=[], gap_waiting=[],
+            arrivals=[], levers=[], holds=[], parking=[], stair_waiting=[], corridor_waiting=[], yields=[], descent_arrivals=[], descent_jumps=[], ledge_pulls=[], gear_boarding=[], gear_exits=[], gap_jumps=[], gap_holds=[], gap_waiting=[], node_resolutions=[],
             completed=self.completed, scope='Fresh Clockwork prefix only')
         if args.start_step<=36<=args.last_step:
             self.evidence['gap_adaptation']='Steps 36-42 run separately per player: original approach, preparation wait and run-up, then actual jump and feedback steering to the original landing. This does not claim identical replay of the single-player timed air inputs.'
@@ -549,6 +586,27 @@ class ClockworkPair(Pair):
         self.evidence[evidence_key].append(receipt)
         self.set(role,park,run=True)
 
+    def resolve_node(self, entity):
+        assert self.entities[entity]['classname']=='info_pathnode', 'Expected an authored pathnode'
+        for role in self.commands:
+            self.set(role,attack=False)
+            self.commands[role]['pathnode']=entity
+        self.until(lambda:all(recorded_node(self.history[r][-1] if self.history[r] else None,
+            self.reports[r],self.commands[r]['id'],entity) for r in self.commands),15)
+        receipts=[]
+        for role in self.commands:
+            report=self.reports[role]
+            receipts.append(dict(step=self.step,role=role,command=self.commands[role]['id'],tick=report['frame']['tick'],
+                projection=report['route_driver']['pathnode']))
+        goal=list(receipts[0]['projection']['feet'])
+        self.steps[self.step]={'nav':goal}
+        verify_node_resolutions(self.source_steps,self.steps,[self.step],receipts,self.history,self.entities)
+        self.evidence['node_resolutions'].extend(receipts)
+        effective=json.dumps(self.steps,indent=2).encode()
+        (self.folder/'effective-course.json').write_bytes(effective)
+        self.evidence['effective_course_sha256']=hashlib.sha256(effective).hexdigest()
+        return goal
+
     def cross_corridor_gap(self):
         first=min(self.commands,key=lambda r:distance(self.body(r)['player']['feet'],self.steps[36]['nav']))
         other='guest' if first=='host' else 'host'
@@ -599,11 +657,14 @@ class ClockworkPair(Pair):
                 if self.step in (21,22,23):
                     self.forward_wait(role,next_stair_footing(self.steps,self.step),False,'stair_waiting')
                     continue
-                for attempt in range(3):
+                visited = []
+                for attempt in range(8):
                     report = self.reports[role]
                     candidates = report['route_driver']['neighbors'][slot]
+                    at = list(self.body(role)['player']['feet'])
                     park, ready = parking_target(candidates, self.body(role)['player']['feet'],
-                                                 self.body(other)['player']['feet'], goal)
+                                                 self.body(other)['player']['feet'], goal, visited)
+                    visited.append(at)
                     self.evidence['parking'].append(dict(step=self.step, role=role, goal=park, ready=ready,
                         selected_tick=report['frame']['tick'], candidates=candidates))
                     # Stopping eight units short on the entrance's small
@@ -656,6 +717,7 @@ class ClockworkPair(Pair):
     def verify(self):
         assert self.completed == list(range(getattr(self.args,'start_step',0), self.args.last_step + 1)), 'Incomplete requested prefix'
         verify_arrivals(self.steps, self.completed, self.evidence['arrivals'], self.history)
+        verify_node_resolutions(self.source_steps,self.steps,self.completed,self.evidence['node_resolutions'],self.history,self.entities)
         if 1 in self.completed:
             verify_descent(self.evidence['descent_arrivals'], self.evidence['descent_jumps'], self.history)
         verify_ledge_pulls(self.evidence['ledge_pulls'], self.history)
@@ -712,7 +774,7 @@ class ClockworkPair(Pair):
             step = self.steps[self.step]
             print('Clockwork step', self.step, step, flush=True)
             self.clear()
-            if self.step in (0, 1, 9, 14, 17, 18, 25, 33, 36): self.save_checkpoint(self.step)
+            if self.step in (0, 1, 9, 14, 17, 18, 25, 33, 36, 43, 44, 51, 52, 60, 64): self.save_checkpoint(self.step)
             if self.step==36:
                 self.cross_corridor_gap()
                 self.completed.extend(range(36,43))
@@ -720,6 +782,7 @@ class ClockworkPair(Pair):
                 continue
             key, value = next(iter(step.items()))
             if key in ('nav', 'walk'): self.go(value, key == 'nav')
+            elif key=='node': self.go(self.resolve_node(value),True)
             elif key == 'lever': self.lever(value)
             elif key == 'wait':
                 start = self.reports['host']['frame']['tick']; self.wait(value)
@@ -751,6 +814,7 @@ def main():
     pair = ClockworkPair(args)
     try: pair.run()
     except BaseException as error:
+        pair.evidence['process_exit_codes_before_cleanup'] = {role: process.poll() for role, process in pair.processes.items()}
         pair.evidence.update(passed=False, failed_step=pair.step, error=str(error))
         raise
     finally: pair.close()

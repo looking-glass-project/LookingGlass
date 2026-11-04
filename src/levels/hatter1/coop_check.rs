@@ -319,11 +319,27 @@ pub(super) fn check(a: &mut Assets) -> Result<()> {
     let mut failures = Vec::new();
     for (name, check) in [("clocks", clocks as fn(&mut Assets, &Bsp) -> Result<()>),
         ("rides", rides), ("gear steering", gear_steering), ("corridor landings",corridor_landings),
-        ("consecutive jumps",consecutive_jumps), ("gap steering",gap_steering), ("boarding", boarding), ("levers", levers), ("sinks", sinks),
+        ("consecutive jumps",consecutive_jumps), ("gap steering",gap_steering), ("pathnodes",pathnodes), ("boarding", boarding), ("levers", levers), ("sinks", sinks),
         ("blocked pull", partner_blocks_pull), ("death", death), ("closing doors", super::coop_door_check::check)] {
         if let Err(error) = check(a, &map) { eprintln!("FAIL Clockwork {name}: {error:#}"); failures.push(name); }
     }
     ensure!(failures.is_empty(), "Clockwork paired components failed: {failures:?}"); Ok(())
+}
+
+fn pathnodes(assets:&mut Assets,map:&Bsp)->Result<()> {
+    let mut o=Clockwork::load(assets,map)?;
+    o.saved.age=100.;o.saved.levers[0]=Some(1.);o.saved.levers[1]=Some(2.);o.saved.levers[2]=Some(3.);o.rebuild(map)?;
+    let w=world(map,&o)?;
+    let course:Vec<serde_json::Value>=serde_json::from_str(include_str!("route_steps.json"))?;
+    for step in &course[44..60] {
+        let id=step["node"].as_u64().context("Changed Clockwork pathnode section")? as usize;
+        let (_,feet)=crate::coop::route_driver::pathnode_goal(&w,map.entities.get(id).context("Missing pathnode")?)?;
+        ensure!(w.body_clear(feet),"Projected pathnode {id} embeds the player");
+        let hit=w.body_trace(feet,feet-Vec3::Z*2.);
+        ensure!(!hit.start_solid && hit.fraction<1. && hit.normal.z>=0.65,"Projected pathnode {id} lacks support");
+    }
+    println!("PASS Clockwork sixteen post-gap pathnode projections: clear and supported native footings");
+    Ok(())
 }
 
 /// A staged native-map regression for the remote diagnostic driver. This is

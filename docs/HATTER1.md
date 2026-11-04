@@ -660,3 +660,62 @@ before 43 at tick 42953 and ends observation at 42957. Evidence:
 This completes the resumed gap sequence, not fresh Clockwork traversal or a
 campaign visit. The later pathnode course, machinery, scenes, recovery and
 reconnect checks remain open. Overall completion stays 48.6%.
+
+## Independent pathnode resolution (4 November 2026)
+
+The paired runner now supports authored pathnode steps. A neutral local query
+in each client resolves the identified `info_pathnode` onto that client's
+collision world, using the same body-footing query and bounds as the
+single-player route. Its report records the entity, original position, resolved
+feet, command, epoch and sample tick. It supplies no movement, activation or
+arrival claim. Legacy marker commands retain their behavior.
+
+The runner requires both retained projection acknowledgments and matching
+footings before converting that course step to an explicit navigation goal.
+It preserves the original course and both native reports alongside the updated
+effective course hash. Each player must still earn a personal grounded arrival
+and the first must provide a separate waiting handoff. Invalid entities,
+unsupported origins, mixed movement/progression queries, missing partner
+reports, unretained acknowledgments and mismatched footings are rejected.
+
+Source `6f589de8d7a765146dfb57b2a2a2bbb9f487566d4752182dd2edce0874994fa1`, executable SHA-256
+`a36d138a1fec2e6ea1dfd7803f848ad5f34cc8aaa1f689cac63eada01567b52c`, passes
+**889 active Rust tests** with three ignored, the locked release, **82 Python
+guards** and **72 native paired/driver checks**. The added native case resolves
+all sixteen post-gap pathnodes to clear, supported footings in the prepared
+level. The single-player 11+1 outputs remain exactly baseline-equivalent.
+The independent-client internet run, with 40 ms delay and 20 ms jitter,
+completes **resumed 43-51** and then fails selecting a waiting position at 52.
+Its original failed result is retained. A separate scoped audit of 43-51
+verifies 18 personal arrivals, 16 independent pathnode projections, nine
+waiting handoffs and **2,634 matching player/world/native states**. Both finish
+alive at 88/100 health; the starting checkpoint restores exactly at tick 42953.
+The audit loads the retained, hash-checked fixture versions. Evidence:
+`private/coop/hatter1-route-4b64211837de463da40f441361c21697/completed-prefix-audit.json`.
+This does not complete Clockwork or extend the fresh-run evidence.
+
+The failed parking selection required a short sideways detour before moving
+farther from the shared waypoint. The runner now permits up to eight observed,
+collision-checked neighbor steps, reserving the incoming player's space and
+avoiding previously visited positions. Intermediate detours never count as a
+completed waiting handoff. All **85 Python guards** pass, including the captured
+corner, loop rejection and partner-space reservation.
+
+The first 44-59 retry stops at 46 when the host session closes and the guest
+reports that closure. Neither log contains a crash message; both driver commands
+have `finish=false`. That failed result remains retained at
+`private/coop/hatter1-route-937a08ae2a92485b9f3176899f3aaf79`. The runner now
+records process exit codes before cleanup to distinguish future closures.
+
+The repeat on the same native build passes **resumed 44-59**, using independent
+internet clients with 40 ms delay and 20 ms jitter. The unchanged ordinary
+checkpoint restores exactly at tick 43797. It verifies **32 personal arrivals**,
+**32 independent pathnode projections**, **16 completed waiting handoffs** and
+**3,565 matching player/world/native states**. At 52, the first Alice takes
+three supported walking steps, including the lateral detour, before the second
+arrives; no recovery warp or state write is used. Both finish alive at 88/78
+health. Copied and current fixture hashes match. Evidence:
+`private/coop/hatter1-route-7934840f90554821bb7e0525b89058a9`.
+The ordinary checkpoint before 60 is saved at tick 76618. Later machinery,
+scenes, recovery, reconnects and full traversal remain open; the overall estimate
+stays 48.6% with six combined campaign visits verified.

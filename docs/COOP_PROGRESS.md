@@ -19,7 +19,30 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | Full campaign verification | 3.08 | 20 |
 | **Total** | **48.58, rounded to 48.6** | **100** |
 
-Latest automation result: Clockwork's resumed **36-42** gap sequence passes
+Latest automation result: Clockwork's resumed **44-59** section passes with
+32 personal arrivals, 32 independent pathnode projections, 16 waiting handoffs
+and **3,565 matching player/world/native states**. Both finish alive at 88/78
+health. The parking controller now takes bounded, observed sideways detours
+around corners; the previously failed corner at 52 passes through ordinary
+movement. A normal checkpoint before 60 is retained. Source `6f589de` passes
+**889 active Rust tests**, the locked release, **72 native checks** and the exact
+single-player **11+1** baseline; **85 Python guards** pass. This is resumed
+section evidence, not fresh traversal or a completed campaign visit. Clockwork's
+later machinery/scenes, recovery, reconnects and complete repeats remain open.
+Overall completion remains **48.6%**. See [Clockwork evidence](HATTER1.md).
+
+Earlier automation result: Clockwork's resumed **43-51** section verifies 18
+personal arrivals, 16 independent pathnode projections, nine waiting handoffs
+and **2,634 matching player/world/native states**. Both finish alive at 88/100
+health. The requested 43-59 run stops at 52 because its parking selector cannot
+take a short sideways detour around a corner. The original failure is retained;
+the completed section has a separate scoped audit. Source `6f589de` passes
+**889 active Rust tests**, the locked release, **72 native checks** and the exact
+single-player **11+1** baseline. The parking fix passes **85 Python guards**.
+No additional complete campaign visit is credited.
+Overall completion remains **48.6%**. See [Clockwork evidence](HATTER1.md).
+
+Earlier automation result: Clockwork's resumed **36-42** gap sequence passes
 through independent internet clients: six personal arrivals, two actual gap
 jumps, two preparation holds, one waiting handoff and **232 matching
 player/world/native states**. Both finish alive at 100/99.867 health. A normal

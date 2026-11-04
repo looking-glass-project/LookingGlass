@@ -7,6 +7,7 @@ from test_coop_hatter1 import DESCENT, GEAR_APPROACH, GEAR_EXIT_APPROACH, parkin
 from test_coop_hatter1 import recorded_arrival, next_stair_footing, verify_stair_waiting
 from test_coop_hatter1 import next_corridor_footing, verify_corridor_waiting
 from test_coop_hatter1 import validate_course_range, verify_gap_hold
+from test_coop_hatter1 import recorded_node, verify_node_resolutions
 
 
 class RecordedArrival(unittest.TestCase):
@@ -26,6 +27,65 @@ class RecordedArrival(unittest.TestCase):
         row=dict(epoch=1,tick=27568,driver=dict(command=142,reached=True))
         report=dict(frame=dict(epoch=1,tick=27583))
         self.assertFalse(recorded_arrival(row,report,142))
+
+
+class NodeResolutions(unittest.TestCase):
+    def setUp(self):
+        self.source=[{'node':0}];self.effective=[{'nav':[10.,20.,.03125]}]
+        self.entities=[dict(classname='info_pathnode',origin='10 20 40')]
+        self.receipts=[];self.history={}
+        for index,role in enumerate(('host','guest')):
+            projection=dict(command=100+index,epoch=1,tick=110+index,entity=0,origin=[10.,20.,40.],feet=[10.,20.,.03125])
+            self.history[role]=[dict(tick=110+index,epoch=1,map='hatter1',owner=None,
+                driver=dict(command=100+index,reached=False,phase='observing pathnode',pathnode=copy.deepcopy(projection)))]
+            self.receipts.append(dict(step=0,role=role,tick=110+index,command=100+index,projection=projection))
+
+    def check(self): verify_node_resolutions(self.source,self.effective,[0],self.receipts,self.history,self.entities)
+
+    def change(self,key,value):
+        self.receipts[1]['projection'][key]=copy.deepcopy(value)
+        self.history['guest'][0]['driver']['pathnode'][key]=copy.deepcopy(value)
+
+    def test_two_independent_native_projections(self): self.check()
+
+    def test_missing_partner(self):
+        self.receipts.pop()
+        with self.assertRaisesRegex(AssertionError,'Missing personal'): self.check()
+
+    def test_wrong_acknowledgment(self):
+        self.history['guest'][0]['driver']['command']+=1
+        with self.assertRaisesRegex(AssertionError,'unacknowledged'): self.check()
+
+    def test_projection_is_not_an_arrival(self):
+        self.history['guest'][0]['driver']['reached']=True
+        with self.assertRaisesRegex(AssertionError,'must not claim arrival'): self.check()
+
+    def test_future_projection(self):
+        self.change('tick',200)
+        with self.assertRaisesRegex(AssertionError,'different pathnode'): self.check()
+
+    def test_different_native_footings(self):
+        self.change('feet',[10.,20.,5.])
+        with self.assertRaisesRegex(AssertionError,'Clients disagree'): self.check()
+
+    def test_wrong_node_identity(self):
+        self.change('entity',1)
+        with self.assertRaisesRegex(AssertionError,'different pathnode'): self.check()
+
+    def test_non_pathnode_entity(self):
+        self.entities[0]['classname']='info_null'
+        with self.assertRaisesRegex(AssertionError,'Wrong native'): self.check()
+
+    def test_projection_outside_drop_bound(self):
+        self.change('feet',[10.,20.,-300.])
+        with self.assertRaisesRegex(AssertionError,'footing bounds'): self.check()
+
+    def test_unretained_projection_is_not_accepted(self):
+        row=self.history['host'][0]
+        report=dict(frame=dict(epoch=1,tick=row['tick']),route_driver=dict(pathnode=self.receipts[0]['projection']))
+        self.assertTrue(recorded_node(row,report,100,0))
+        row['driver']['pathnode']['tick']-=1
+        self.assertFalse(recorded_node(row,report,100,0))
 
 
 class StairWaiting(unittest.TestCase):
@@ -413,6 +473,26 @@ class YieldReceipts(unittest.TestCase):
 
 
 class Parking(unittest.TestCase):
+    def test_corner_detour_can_temporarily_remain_inside_arrival_radius(self):
+        at=[-6239.9565,3350.7563,48.03125]
+        goal=[-6208,3328,48.03125];incoming=[-6215.8867,3167.8276,48.03125]
+        candidates=[[-6191.9565,3350.7563,48.03125],[-6239.9565,3302.7563,48.03125],
+                    [-6206.0156,3316.8152,48.03125]]
+        prior=[[-6210.9932,3321.53,48.03125]]
+        point,ready=parking_target(candidates,at,incoming,goal,prior)
+        self.assertEqual(point,candidates[1])
+        self.assertFalse(ready)
+        self.assertEqual(parking_target([[-6287.9565,3302.7563,48.03125]],point,incoming,goal,prior+[at]),
+                         ([-6287.9565,3302.7563,48.03125],True))
+
+    def test_detour_cannot_return_to_an_observed_position(self):
+        with self.assertRaisesRegex(AssertionError,'No observed walking'):
+            parking_target([[30,0,0]], [0,30,0], [-100,0,0], [0,0,0], [[30,1,0]])
+
+    def test_detour_still_reserves_partner_space(self):
+        with self.assertRaisesRegex(AssertionError,'No observed walking'):
+            parking_target([[30,0,0]], [0,30,0], [35,0,0], [0,0,0])
+
     def test_short_forward_step_preferred_over_incoming_doorway(self):
         candidates = [[-3296.3,2705.6,192],[-3262.3,2787.5,192],[-3330.2,2787.5,192]]
         self.assertEqual(parking_target(candidates,[-3296.3,2753.6,192],[-3326,2989,192],[-3296,2750,192]),

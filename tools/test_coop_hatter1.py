@@ -1,9 +1,11 @@
-"""Drive a fresh Clockwork prefix in independent clients through the real network.
+"""Drive Clockwork prefixes in independent clients through the real network.
 
 Each player must earn a separate waypoint receipt. The first stops at a native
 clear/supported neighbor to let the second arrive. The initial runner supports
 nav/walk/wait/lever steps; timed inputs, portals and scene handoffs remain explicit
-future work. It never edits authoritative positions, resources or progression.
+future work. An explicit checkpoint can resume a separately labelled segment,
+with an exact native restore receipt. The runner never edits authoritative
+positions, resources or progression.
 """
 import argparse
 import hashlib
@@ -18,12 +20,14 @@ import zipfile
 from test_coop_play import ROOT, distance
 from test_coop_village import Pair
 from test_coop_funhouse import waiting_point, combat_pending
+from test_coop_chess_resume import verify_resume_body, verify_resume_receipt
 
 LEVERS = (376, 378, 289, 694, 44)
 THREADS = ('Gear_Bridge_One', 'Gear_Bridge_Two', 'Open_ClockRoom_Door', 'Open_Port', 'stop_clock')
 # Supported footings observed in an ordinary successful entrance descent.
 DESCENT = [[-2848.6, 3228.5, 320.03125], [-3070.9, 2936.8, 176.03125],
            [-3231.4, 2929.1, 128.03125], [-3296, 2960, 192.03125]]
+GEAR_APPROACH = [-4373.3784,3304.2549,208.03125]
 
 
 def map_entities(base):
@@ -91,22 +95,40 @@ def verify_descent(arrivals, jumps, history):
     verify_arrivals([dict(nav=p) for p in DESCENT], list(range(len(DESCENT))), arrivals, history)
     assert len(jumps) == 4 and {(j['role'],j['leg']) for j in jumps} == {
         (r,leg) for r in ('host','guest') for leg in (0,1)}, 'Missing personal entrance jump'
-    for jump in jumps:
-        slot = 0 if jump['role'] == 'host' else 1
-        rows = history[jump['role']]
-        before = next(r for r in rows if r['tick'] == jump['before_tick'])
-        after = next(r for r in rows if r['tick'] == jump['after_tick'])
-        count = before['players'][slot]['jumps']
-        assert before['players'][slot]['grounded'] and after['players'][slot]['jumps'] == count + 1, 'Descent needs one actual jump'
-        assert any(before['tick'] < r['tick'] <= after['tick'] and r['driver']['command'] == jump['command']
-                   for r in rows), 'Entrance jump command unobserved'
-        # Actual input/takeoff events are recorded by the authoritative host,
-        # including Red's events. The guest supplies its own command receipt.
-        events = [e for r in history['host']
-                  for e in r['driver'].get('input_events', []) if e['kind'] == 'jump'
-                  and before['tick'] <= e['tick'] < after['tick'] and e['epoch'] == 1]
-        assert any(e['input'][slot] and e['before'][slot][1] and not e['after'][slot][1]
-                   and e['before'][slot][2] == count and e['after'][slot][2] == count + 1 for e in events), 'Actual descent takeoff unobserved'
+    for jump in jumps: verify_grounded_jump(jump,history)
+
+
+def verify_grounded_jump(jump, history):
+    slot = 0 if jump['role'] == 'host' else 1
+    rows = history[jump['role']]
+    before = next(r for r in rows if r['tick'] == jump['before_tick'])
+    after = next(r for r in rows if r['tick'] == jump['after_tick'])
+    count = before['players'][slot]['jumps']
+    assert before['players'][slot]['grounded'] and after['players'][slot]['jumps'] == count + 1, 'Movement needs one actual jump'
+    assert any(before['tick'] < r['tick'] <= after['tick'] and r['driver']['command'] == jump['command']
+               for r in rows), 'Jump command unobserved'
+    # Actual input/takeoff events are recorded by the authoritative host,
+    # including Red's events. The guest supplies its own command receipt.
+    events = [e for r in history['host'] for e in r['driver'].get('input_events', []) if e['kind'] == 'jump'
+              and before['tick'] <= e['tick'] < after['tick'] and e['epoch'] == 1]
+    assert any(e['input'][slot] and e['before'][slot][1] and not e['after'][slot][1]
+               and e['before'][slot][2] == count and e['after'][slot][2] == count + 1 for e in events), 'Actual takeoff unobserved'
+
+
+def verify_gear_boarding(boardings, goal, history):
+    assert len(boardings) == 2 and {r['role'] for r in boardings} == {'host','guest'}, 'Missing personal gear boarding'
+    for receipt in boardings:
+        verify_grounded_jump(receipt,history)
+        slot = 0 if receipt['role'] == 'host' else 1
+        rows = {r['tick']:r for r in history[receipt['role']]}
+        start, flight, end = [rows[receipt[k]] for k in ('before_tick','after_tick','arrival_tick')]
+        assert start['driver']['command'] == receipt['approach_command'] and start['driver']['reached'], 'Gear approach unacknowledged'
+        assert distance(start['players'][slot]['feet'][:2],GEAR_APPROACH[:2]) < 2, 'Gear run-up started elsewhere'
+        assert not flight['players'][slot]['grounded'], 'Gear flight unobserved'
+        body = end['players'][slot]
+        assert body['health'] > 0 and body['spawned_at'] == 0 and body['grounded'], 'Invalid gear arrival body'
+        assert end['driver']['command'] == receipt['arrival_command'] and end['driver']['reached'], 'Gear arrival unacknowledged'
+        assert distance(body['feet'][:2],goal[:2]) < 8 and abs(body['feet'][2]-goal[2]) < 35, 'Gear arrival missed'
 
 
 def yield_target(candidates, at, incoming, goal, via=None):
@@ -188,8 +210,8 @@ class ClockworkPair(Pair):
         self.deadline = time.monotonic() + 1500
         raw = (ROOT / 'src/levels/hatter1/route_steps.json').read_bytes()
         self.steps = json.loads(raw)
-        assert len(self.steps) == 150 and 0 <= args.last_step < len(self.steps), 'Review changed course'
-        assert all(next(iter(s)) in ('nav', 'walk', 'wait', 'lever') for s in self.steps[:args.last_step + 1]), 'Requested prefix needs an unimplemented input type'
+        assert len(self.steps) == 150 and 0 <= args.start_step <= args.last_step < len(self.steps), 'Review changed course'
+        assert all(next(iter(s)) in ('nav', 'walk', 'wait', 'lever') for s in self.steps[args.start_step:args.last_step + 1]), 'Requested prefix needs an unimplemented input type'
         # The native SP course accepts a 22-unit planning radius. At this
         # boundary its marker cannot be approached within our eight-unit
         # arrival bound. Use the separately observed clear, grounded footing.
@@ -204,7 +226,7 @@ class ClockworkPair(Pair):
         self.evidence.update(course_sha256=hashlib.sha256(raw).hexdigest(), map_sha256=map_sha,
             effective_course_sha256=hashlib.sha256(effective).hexdigest(), waypoint_adjustments=adjustments,
             executable_sha256=hashlib.sha256(args.exe.read_bytes()).hexdigest(),
-            arrivals=[], levers=[], holds=[], parking=[], yields=[], descent_arrivals=[], descent_jumps=[], ledge_pulls=[],
+            arrivals=[], levers=[], holds=[], parking=[], yields=[], descent_arrivals=[], descent_jumps=[], ledge_pulls=[], gear_boarding=[],
             completed=self.completed, scope='Fresh Clockwork prefix only')
         dependencies = self.folder / 'fixture-dependencies'; dependencies.mkdir()
         for name in ('test_coop_hatter1.py', 'test_coop_village.py', 'test_coop_play.py', 'test_coop_chess.py',
@@ -212,6 +234,18 @@ class ClockworkPair(Pair):
             raw = (Path(__file__).parent / name).read_bytes()
             (dependencies / name).write_bytes(raw)
             self.evidence.setdefault('fixture_sha256', {})[name] = hashlib.sha256(raw).hexdigest()
+        self.saved = None
+        if args.checkpoint:
+            raw = args.checkpoint.read_bytes()
+            self.saved = json.loads(raw)['payload']
+            assert self.saved['visit']['map'] == self.map_name and self.saved['visit']['epoch'] == 1
+            assert self.saved['frame']['checkpoint_generation'] == 0
+            self.resume_checkpoint = True
+            (self.folder / 'starting-checkpoint.json').write_bytes(raw)
+            (self.folder / 'host' / 'coop-checkpoint.json').write_bytes(raw)
+            self.evidence.update(checkpoint_sha256=hashlib.sha256(raw).hexdigest(),
+                checkpoint_tick=self.saved['frame']['tick'],
+                scope=f'Resumed Clockwork steps {args.start_step}..{args.last_step}; not fresh traversal')
 
     def set(self, role, *args, use_aim=None, **kwargs):
         kwargs.setdefault('attack', True)
@@ -356,12 +390,33 @@ class ClockworkPair(Pair):
             return quiet is not None and tick - quiet >= 60
         self.until(done, 120)
 
+    def board_gear(self, role, goal):
+        # The successful native approach runs south before jumping onto the
+        # rotor. A static walking plan can instead step into the gap as it turns.
+        self.move(role,GEAR_APPROACH,navigate=True,radius=2)
+        before = self.reports[role]
+        count = self.body(role)['player']['jumps']
+        self.set(role,goal,run=True,jump=True)
+        self.commands[role]['runup'] = dict(millis=250,wish=[-0.196116135,-0.980580676])
+        receipt = dict(role=role,before_tick=before['frame']['tick'],
+            approach_command=before['route_driver']['command'],command=self.commands[role]['id'])
+        self.evidence['gear_boarding'].append(receipt)
+        self.until(lambda:self.reports[role]['route_driver']['command'] == receipt['command']
+            and self.body(role)['player']['jumps'] == count+1 and not self.body(role)['player']['grounded'],15)
+        receipt['after_tick'] = self.reports[role]['frame']['tick']
+        # Keep ordinary air steering, then let the supported carry correction
+        # settle at the original world-space waypoint. Never issue a second jump.
+        self.move(role,goal)
+        receipt.update(arrival_tick=self.reports[role]['frame']['tick'],
+            arrival_command=self.reports[role]['route_driver']['command'])
+
     def go(self, goal, navigate=False):
         first = min(self.commands, key=lambda r: distance(self.body(r)['player']['feet'], goal) + (0 if r == self.first else 16))
         other = 'guest' if first == 'host' else 'host'
         self.set(other, attack=True)
         for role in (first, other):
             if self.step == 1: self.descend(role)
+            if self.step == 16: self.board_gear(role,goal)
             self.move(role, goal, navigate, yield_partner=first if role == other else None)
             report = self.reports[role]
             self.evidence['arrivals'].append(dict(step=self.step, role=role, goal=goal,
@@ -428,12 +483,13 @@ class ClockworkPair(Pair):
         print('PASS ordinary checkpoint before step', step, flush=True)
 
     def verify(self):
-        assert self.completed == list(range(self.args.last_step + 1)), 'Incomplete requested prefix'
+        assert self.completed == list(range(getattr(self.args,'start_step',0), self.args.last_step + 1)), 'Incomplete requested prefix'
         verify_arrivals(self.steps, self.completed, self.evidence['arrivals'], self.history)
         if 1 in self.completed:
             verify_descent(self.evidence['descent_arrivals'], self.evidence['descent_jumps'], self.history)
         verify_ledge_pulls(self.evidence['ledge_pulls'], self.history)
         verify_yields(self.evidence['yields'], self.steps, self.history)
+        if 16 in self.completed: verify_gear_boarding(self.evidence['gear_boarding'],self.steps[16]['nav'],self.history)
         expected = [i for i in self.completed if 'lever' in self.steps[i]]
         assert [r['step'] for r in self.evidence['levers']] == expected, 'Missing lever receipts'
         for receipt in self.evidence['levers']:
@@ -465,7 +521,18 @@ class ClockworkPair(Pair):
 
     def run(self):
         self.start_pair()
-        for self.step, step in enumerate(self.steps[:self.args.last_step + 1]):
+        if self.saved:
+            receipt = json.loads((self.folder / 'host' / 'route-resume.json').read_text())
+            verify_resume_receipt(receipt,self.saved,self.build)
+            self.evidence['exact_resume_receipt'] = receipt
+            for report in self.reports.values():
+                assert report['visit'] == self.saved['visit']
+                elapsed = report['frame']['tick']-self.saved['frame']['tick']
+                for body,old in zip(report['frame']['players'],self.saved['frame']['players']):
+                    verify_resume_body(body,old,elapsed)
+            print('PASS exact shared checkpoint resume',self.saved['frame']['tick'],flush=True)
+        for self.step in range(self.args.start_step,self.args.last_step+1):
+            step = self.steps[self.step]
             print('Clockwork step', self.step, step, flush=True)
             self.clear()
             if self.step in (0, 1, 9, 14, 18, 25, 33): self.save_checkpoint(self.step)
@@ -480,7 +547,7 @@ class ClockworkPair(Pair):
             print('PASS Clockwork prefix step', self.step, flush=True)
         self.save_checkpoint(self.args.last_step + 1)
         self.verify()
-        print('PASS fresh Clockwork prefix', self.completed[0], self.completed[-1], self.evidence['matching_sent_and_restored_states'], 'matching states', flush=True)
+        print('PASS', 'resumed' if self.saved else 'fresh', 'Clockwork prefix', self.completed[0], self.completed[-1], self.evidence['matching_sent_and_restored_states'], 'matching states', flush=True)
 
 
 def main():
@@ -490,10 +557,14 @@ def main():
     parser.add_argument('--data', type=Path, required=True)
     parser.add_argument('--first', choices=('blue','red'), default='blue')
     parser.add_argument('--last-step', type=int, default=17)
+    parser.add_argument('--start-step', type=int, default=0)
+    parser.add_argument('--checkpoint', type=Path)
     parser.add_argument('--local', action='store_true')
     parser.add_argument('--delay-ms', type=int, default=40)
     parser.add_argument('--jitter-ms', type=int, default=20)
     args = parser.parse_args()
+    if not 0 <= args.start_step <= args.last_step < 150: parser.error('Require 0 <= start-step <= last-step < 150')
+    if (args.start_step == 0) != (args.checkpoint is None): parser.error('A nonzero start-step requires a checkpoint; fresh runs start at zero')
     if not all(0 <= v <= 500 for v in (args.delay_ms, args.jitter_ms)): parser.error('Delay/jitter must be 0..500 ms')
     pair = ClockworkPair(args)
     try: pair.run()

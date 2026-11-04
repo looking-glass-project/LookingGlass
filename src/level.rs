@@ -273,6 +273,9 @@ pub trait LevelController: Any {
     /// controller retains its own use behavior; diagnostics never open it.
     fn route_closed_door(&self, _id: Id) -> Option<bool> { None }
     fn route_closed_door_in_reach(&self, _world: &World, _eye: Vec3, _aim: Vec3) -> Option<Id> { None }
+    /// Read-only kinematic carry for ordinary-input route steering. It does
+    /// not move a rider or bypass the controller's normal collision rollback.
+    fn route_carry_velocity(&self, _player: &Player) -> Option<Vec3> { None }
     /// Move movers and riders. A no-op when `dt <= 0`; clamp with `dt.min(0.1)`; never embed Alice.
     fn advance(
         &mut self,

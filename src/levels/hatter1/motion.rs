@@ -1,4 +1,5 @@
 use super::*;
+pub(super) const GREAT_GEAR_SPEED: f32 = 50.;
 pub(super) struct Object {
     pub id: usize,
     pub model: usize,
@@ -102,6 +103,17 @@ fn approach(v: f32, t: f32, d: f32) -> f32 {
     }
 }
 impl Clockwork {
+    pub(super) fn route_gear_velocity(&self, player: &Player) -> Option<Vec3> {
+        if !player.grounded || player.swimming || player.ledge.is_some()
+            || !self.supported_by("astralmonkey",player.feet) { return None; }
+        // Steering begins once the two-lever lowering is complete. The normal
+        // controller still owns the motion and may roll it back on obstruction.
+        if self.saved.age-self.saved.both()? < 1. { return None; }
+        let first=self.saved.levers[0]?.min(self.saved.levers[1]?);
+        if self.saved.age-first < 2. { return None; }
+        let center=self.objects.iter().find(|o|o.name=="astralmonkey")?.pose.translation;
+        Some(Vec3::Z.cross(player.feet-center)*GREAT_GEAR_SPEED.to_radians())
+    }
     pub(super) fn supported_by(&self, name: &str, feet: Vec3) -> bool {
         self.objects.iter().any(|o| o.name == name && o.solid && {
             let trace = o.collider.trace(feet + PLAYER_CENTER, feet + PLAYER_CENTER - Vec3::Z * 3., PLAYER_HALF);
@@ -250,7 +262,7 @@ impl Clockwork {
                         .min_by(|a, b| a.total_cmp(b));
                     o.pose.rotation = Quat::from_rotation_z(
                         first
-                            .map_or(0., |a| (t - a - 2.).max(0.) * 50.)
+                            .map_or(0., |a| (t - a - 2.).max(0.) * GREAT_GEAR_SPEED)
                             .to_radians(),
                     );
                 }

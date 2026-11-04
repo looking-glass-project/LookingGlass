@@ -64,6 +64,45 @@ fn clocks(a: &mut Assets, map: &Bsp) -> Result<()> {
     }
     Ok(())
 }
+fn gear_steering(a: &mut Assets, map: &Bsp) -> Result<()> {
+    use std::collections::VecDeque;
+    use crate::movement::Controls;
+    for delay in [0,12,24,45] { for reversed in [false,true] {
+        let mut o=Clockwork::load(a,map)?;
+        o.saved.age=10.;o.saved.levers[0]=Some(1.);o.saved.levers[1]=Some(2.);o.rebuild(map)?;
+        let mut w=world(map,&o)?;
+        let mut goals=[vec3(-4512.,3008.,208.03125),vec3(-4352.,3168.,208.03125)];
+        if reversed {goals.reverse();}
+        let mut p=people(goals.map(|g|g+vec3(12.,-6.,0.)));let mut s=stats();
+        ensure!(clear(&w,&p) && p.iter().all(|p|o.route_gear_velocity(p).is_some()),"Staged gear footing lacks support");
+        let initial_carry=p.each_ref().map(|p|o.route_gear_velocity(p).unwrap());
+        let mut views=VecDeque::from(vec![(p.clone(),initial_carry);delay+1]);
+        let mut pending=VecDeque::from(vec![[Controls::default();2];delay]);
+        for n in 0..2400 {
+            let (seen,carry)=views.pop_front().unwrap();
+            let controls=std::array::from_fn(|i| {
+                let (wish,_)=crate::coop::route_driver::carried_goal_control(&seen[i],goals[i],carry[i],2.*delay as f32/120.,8.);
+                Controls {wish,run:true,..Default::default()}
+            });
+            pending.push_back(controls);
+            for (p,input) in p.iter_mut().zip(pending.pop_front().unwrap()) {p.tick(&w,input);}
+            tick(&mut o,map,&mut w,&mut p,&mut s)?;
+            ensure!(clear(&w,&p) && p.iter().all(|p|p.grounded && p.jumps==0 && o.route_gear_velocity(p).is_some()),
+                "Native gear lost a rider delay{delay} reversed{reversed} at{n}");
+            views.push_back((p.clone(),p.each_ref().map(|p|o.route_gear_velocity(p).unwrap())));
+            if n>=2160 {
+                ensure!(p.iter().zip(goals).all(|(p,goal)|crate::coop::route_driver::carried_goal_control(
+                    p,goal,o.route_gear_velocity(p).unwrap(),0.,8.).1),"Native carried arrivals did not hold delay{delay} reversed{reversed}");
+            }
+        }
+        let mut airborne=p[0].clone();airborne.grounded=false;
+        ensure!(o.route_gear_velocity(&airborne).is_none(),"Airborne player reported as a carried rider");
+        let mut outside=p[0].clone();outside.feet+=Vec3::X*2000.;
+        ensure!(o.route_gear_velocity(&outside).is_none(),"Unrelated floor reported as gear support");
+        println!("PASS Clockwork ordinary gear steering delay{delay} reversed{reversed}: two supported arrivals and sustained holding");
+    }}
+    Ok(())
+}
 fn rides(a: &mut Assets, map: &Bsp) -> Result<()> {
     for reversed in [false, true] {
         let mut o = Clockwork::load(a, map)?; let mut w = world(map, &o)?;
@@ -279,7 +318,7 @@ pub(super) fn check(a: &mut Assets) -> Result<()> {
     let map = Bsp::parse(&a.read("maps/hatter1.bsp")?)?;
     let mut failures = Vec::new();
     for (name, check) in [("clocks", clocks as fn(&mut Assets, &Bsp) -> Result<()>),
-        ("rides", rides), ("boarding", boarding), ("levers", levers), ("sinks", sinks),
+        ("rides", rides), ("gear steering", gear_steering), ("boarding", boarding), ("levers", levers), ("sinks", sinks),
         ("blocked pull", partner_blocks_pull), ("death", death), ("closing doors", super::coop_door_check::check)] {
         if let Err(error) = check(a, &map) { eprintln!("FAIL Clockwork {name}: {error:#}"); failures.push(name); }
     }

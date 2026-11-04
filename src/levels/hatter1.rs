@@ -512,6 +512,9 @@ impl LevelController for Clockwork {
     fn route_closed_door(&self, id: crate::entity::Id) -> Option<bool> {
         self.route_door_closed(id)
     }
+    fn route_carry_velocity(&self, player: &Player) -> Option<Vec3> {
+        self.route_gear_velocity(player)
+    }
     fn route_closed_door_in_reach(&self, w: &World, eye: Vec3, aim: Vec3) -> Option<crate::entity::Id> {
         let k = self.door_pick(w, eye, aim)?;
         self.route_door_to_open(k)

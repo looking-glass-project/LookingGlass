@@ -372,3 +372,56 @@ scoped audit excludes that attempt. Gear-relative arrival/waiting and continuous
 crossing still need verification. The normal checkpoint before step 14 is
 available for a shorter resumed reproduction; resumed evidence must remain
 separate from fresh traversal. No complete campaign visit is added.
+
+## Rotating gear arrival and waiting (4 November 2026)
+
+The ordinary-input test driver now observes the lowered gear's tangential carry
+velocity and compensates while approaching or holding a world-space waypoint.
+Arrival checks use total world motion; reaching the waypoint keeps the ordinary
+counter-motion input active. Actual collider support gates this observation.
+The shared machinery controller retains its normal movement, collision rollback
+and saved state. Its angular speed is unchanged.
+
+Two new Rust regressions cover delayed arrival/holding and the distinction
+between standing still relative to the gear and standing still in world space.
+Eight staged native-map cases cover both rider orders with observation and
+input delays of 0, 12, 24 and 45 ticks per direction. They require sustained
+supported arrivals without jumps or overlap. These component setups are not
+evidence of fresh route traversal.
+
+Source `623fece836f009f75f550c3eea90434e16a4000445315d38197a32d6a4e5b909`, executable SHA-256
+`e7130c982c5c8e7db0c2d4d3f0b793d1681b6b8ab0755e22d8ae9a55c218703a`, passes
+883 active Rust tests with one ignored, the locked release, all 68 native paired
+machinery/door checks and the unchanged single-player 11+1 baseline. Earlier
+scene checks retain their original build attribution.
+
+The Python runner can resume an unchanged ordinary checkpoint with an exact
+native restore receipt. Its first resumed attempt lets Blue reach and hold the
+gear waypoint, but Red's walking plan enters the gap without taking off and
+Red dies. That failure is retained in
+`private/coop/hatter1-route-6522f5134dd74472b59af253eac60c5c`.
+Boarding now uses an observed supported approach, an ordinary short run-up and
+one jump per player. Verification requires each command acknowledgment, actual
+host-recorded takeoff, airborne observation and personal grounded arrival.
+All 43 Python guards pass, including missing-partner, wrong-footing, missing-
+takeoff and wrong-command rejection.
+
+The next internet run, with 40 ms delay and 20 ms jitter configured, independently
+verifies **resumed steps 14-16**: four personal course arrivals, two actual gear
+jumps, one timed hold and **447 matching player/world/native states**. The
+starting checkpoint is byte-for-byte unchanged and its native restore is exact
+at tick 23083. Blue holds its fixed waiting point for 1,095 observed ticks while
+Red boards, with maximum horizontal error 2.753 units across 48 observations.
+Both remain at 89 health. The scoped audit ends at tick 26721; it does not claim
+a fresh run or a complete visit.
+
+Evidence:
+`private/coop/hatter1-route-27e4e2f0224e41a5bbf6c1888138af2d/completed-prefix-audit.json`.
+The original observations still mark the requested 14-17 run failed: the next
+exit waypoint times out with both alive and repeated planning. The driver drops
+worker results when the body has moved 16 units from the planning start, and
+currently gives neutral movement while waiting for such a result. Rotating carry
+can therefore invalidate the starting position. Holding a supported planning
+position and checking world-relative settling is the next investigation; that
+fix and successful exit traversal are not yet verified. No new campaign credit
+is added.

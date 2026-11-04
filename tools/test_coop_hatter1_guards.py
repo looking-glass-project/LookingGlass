@@ -1,7 +1,7 @@
 """Reject incomplete or unobserved Clockwork route receipts."""
 import copy
 import unittest
-from test_coop_hatter1 import DESCENT, parking_target, partner_contact, yield_target, verify_yields, verify_arrivals, verify_descent, verify_ledge_pulls
+from test_coop_hatter1 import DESCENT, GEAR_APPROACH, parking_target, partner_contact, yield_target, verify_yields, verify_arrivals, verify_descent, verify_ledge_pulls, verify_gear_boarding
 
 
 class Arrivals(unittest.TestCase):
@@ -147,6 +147,47 @@ class LedgePull(unittest.TestCase):
     def test_missing_authoritative_input(self):
         self.history['host'][1]['driver']['input_events'] = []
         with self.assertRaisesRegex(AssertionError,'input unobserved'): self.check()
+
+
+class GearBoarding(unittest.TestCase):
+    def setUp(self):
+        self.goal=[-4512,3008,208.03125]
+        self.history,self.receipts={},[]
+        events=[]
+        for slot,role in enumerate(('host','guest')):
+            rows=[]
+            for index,(feet,grounded,jumps) in enumerate([(GEAR_APPROACH,True,2),
+                    ([GEAR_APPROACH[0],GEAR_APPROACH[1],213],False,3),(self.goal,True,3)]):
+                body=dict(feet=list(feet),grounded=grounded,jumps=jumps,health=89,spawned_at=0)
+                rows.append(dict(tick=100*(index+1)+slot,players=[copy.deepcopy(body),copy.deepcopy(body)],
+                    driver=dict(command=6+index,reached=index!=1,input_events=[])))
+            self.history[role]=rows
+            events.append(dict(kind='jump',epoch=1,tick=150+slot,input=[slot==0,slot==1],
+                before=[[GEAR_APPROACH,True,2],[GEAR_APPROACH,True,2]],
+                after=[[GEAR_APPROACH,False,3],[GEAR_APPROACH,False,3]]))
+            self.receipts.append(dict(role=role,before_tick=100+slot,after_tick=200+slot,
+                arrival_tick=300+slot,approach_command=6,command=7,arrival_command=8))
+        self.history['host'][1]['driver']['input_events']=events
+
+    def check(self): verify_gear_boarding(self.receipts,self.goal,self.history)
+
+    def test_both_actual_jumps_and_arrivals(self): self.check()
+
+    def test_missing_partner(self):
+        self.receipts.pop()
+        with self.assertRaisesRegex(AssertionError,'Missing personal'): self.check()
+
+    def test_wrong_run_up_footing(self):
+        self.history['guest'][0]['players'][1]['feet'][0]+=3
+        with self.assertRaisesRegex(AssertionError,'started elsewhere'): self.check()
+
+    def test_missing_host_takeoff(self):
+        self.history['host'][1]['driver']['input_events'][1]['input'][1]=False
+        with self.assertRaisesRegex(AssertionError,'takeoff unobserved'): self.check()
+
+    def test_wrong_arrival_command(self):
+        self.receipts[1]['arrival_command']+=100
+        with self.assertRaisesRegex(AssertionError,'arrival unacknowledged'): self.check()
 
 
 class Yielding(unittest.TestCase):

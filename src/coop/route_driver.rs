@@ -315,6 +315,7 @@ pub struct Report {
     /// switch. This is a current-world observation, not a guaranteed future hit.
     pub switch_approaches: [Vec<Vec3>; 2],
     pub surface: Option<crate::levels::funhouse::RouteSurface>,
+    pub carry_velocity: Option<Vec3>,
     pub funhouse_exit: Option<crate::levels::funhouse::ExitReport>,
     pub funhouse_pendulums: Option<crate::levels::funhouse::PendulumReport>,
     pub blade_pickups: [bool; 2],
@@ -534,6 +535,16 @@ impl NavigationClock {
 // A broad planner landing is not a settled destination. Correct it at input
 // sampling frequency; the outer harness reports only every 200 ms and can miss
 // a brief landing entirely while delayed movement carries Alice over its edge.
+pub(crate) fn carried_goal_control(player: &Player, goal: Vec3, carry: Vec3, lead: f32, radius: f32) -> (Vec2,bool) {
+    let delta=goal-player.feet;
+    let velocity=(player.velocity+carry).truncate();
+    let settled=player.grounded && delta.truncate().length()<radius && delta.z.abs()<35. && velocity.length()<20.;
+    // Request ordinary running input against the carrier's motion, then add
+    // delayed positional feedback. Keep compensating after arrival: neutral
+    // input would immediately carry the waiting player away from the waypoint.
+    let wish=(straight_wish(delta.truncate(),velocity,lead,true,None)-carry.truncate()/320.).clamp_length_max(1.);
+    (wish,settled)
+}
 pub(crate) fn landing_control(world: &World, player: &Player, goal: Vec3, lead: f32, radius: f32) -> Option<(Vec2, bool)> {
     let delta = goal-player.feet;
     // Waiting for a delayed grounded snapshot is too late on a small pad.
@@ -1068,6 +1079,7 @@ impl Driver {
     pub fn sample(&mut self, frame: &Frame, arena: &Arena, world: &World, map: &crate::bsp::Bsp, local: PlayerId, keys: &mut Input, now: Instant) {
         Self::neutral(keys);
         self.report.reached = false;
+        self.report.carry_velocity = None;
         self.report.expected = self.plan.front().map(|(_, at)| *at);
         self.report.plan_remaining = self.plan.len();
         self.report.jumps = keys.jumps;
@@ -1397,8 +1409,12 @@ impl Driver {
         }
         let goal = surface.as_ref().map_or(goal, |s| s.goal);
         let delta = goal-body.player.feet;
+        let carry=(!command.swim && !command.jump).then(||arena.stage.interactions.levels.iter()
+            .find_map(|s|s.ctl.route_carry_velocity(&body.player))).flatten();
+        self.report.carry_velocity=carry;
         if command.hold_goal {
-            keys.wish=delayed_hold_wish(delta.truncate(),body.player.velocity.truncate(),command.input_lead);keys.run=true;
+            keys.wish=carry.map_or_else(||delayed_hold_wish(delta.truncate(),body.player.velocity.truncate(),command.input_lead),
+                |v|carried_goal_control(&body.player,goal,v,command.input_lead,command.arrival_radius).0);keys.run=true;
             if !keys.primary && !keys.alternate {
                 keys.yaw=keys.wish.y.atan2(keys.wish.x);keys.pitch=0.;
             }
@@ -1408,11 +1424,17 @@ impl Driver {
         let landing = if command.navigate {
             landing_control(world,&body.player,goal,command.input_lead,command.arrival_radius)
         } else { None };
-        self.report.reached = if command.navigate { landing.is_some_and(|(_,settled)|settled) }
+        let carried=carry.filter(|_|!command.navigate || landing.is_some())
+            .map(|v|carried_goal_control(&body.player,goal,v,command.input_lead,command.arrival_radius));
+        self.report.reached = if let Some((_,settled))=carried { settled }
+            else if command.navigate { landing.is_some_and(|(_,settled)|settled) }
             else if command.swim { delta.length()<command.arrival_radius }
             else { delta.truncate().length()<command.arrival_radius && (command.horizontal || delta.z.abs()<35.) };
         self.report.reached &= surface.as_ref().is_none_or(|s| s.supported[local.index()]);
-        if self.report.reached { self.report.phase="reached"; self.plan.clear(); return; }
+        if self.report.reached {
+            if let Some((wish,_))=carried { keys.wish=wish;keys.swim=wish.extend(0.);keys.run=true; }
+            self.report.phase="reached"; self.plan.clear(); return;
+        }
         if command.swim {
             if !body.player.swimming {
                 self.report.error=Some("Explicit swim goal requires a swimming player".into()); return;
@@ -1427,7 +1449,10 @@ impl Driver {
             self.report.expected=Some(goal); self.report.phase="swimming to goal";
             return;
         }
-        if let Some((wish,_)) = landing {
+        if let Some((wish,_)) = carried {
+            self.report.phase="settling carried landing";
+            self.plan.clear();keys.wish=wish;keys.swim=wish.extend(0.);keys.run=true;
+        } else if let Some((wish,_)) = landing {
             self.report.phase="settling landing";
             self.plan.clear();
             keys.wish=wish; keys.swim=wish.extend(0.); keys.run=false;
@@ -1446,11 +1471,12 @@ impl Driver {
                     self.plan.pop_front();
                 }
                 if let Some((_,point))=self.plan.front() {
-                    keys.wish=walking_control(&body.player,*point,command.input_lead,command.run).0;
+                    keys.wish=carry.map_or_else(||walking_control(&body.player,*point,command.input_lead,command.run).0,
+                        |v|carried_goal_control(&body.player,*point,v,command.input_lead,8.).0);
                     keys.swim=keys.wish.extend(0.);
                     // Opt-in ordinary running on grounded routes. Timed jumps
                     // retain their planned speed; final landings still walk.
-                    keys.run=command.run;
+                    keys.run=command.run || carry.is_some();
                 }
             }
             self.report.plan_remaining=self.plan.len();
@@ -2233,6 +2259,42 @@ mod tests {
         let corrected=run(true);
         assert!(corrected.grounded && corrected.feet.distance(goal)<8.,
             "Landing correction abandoned the lateral approach: {:?}",corrected.feet);
+    }
+    #[test]
+    fn carried_waypoint_holds_on_rotating_support_with_delayed_inputs() {
+        let world=World::fixture(&[(vec3(-512.,-512.,-100.),vec3(512.,512.,0.))]);
+        let omega=50_f32.to_radians();
+        let rotate=Quat::from_rotation_z(omega*crate::movement::FIXED_DT);
+        let goal=vec3(160.,0.,0.03125);
+        for delay in [0,12,24,45] {
+            let mut player=Player::spawn(&world,goal+vec3(20.,-10.,crate::movement::EYE_HEIGHT)).unwrap();
+            let mut views=VecDeque::from(vec![player.clone();delay+1]);
+            let mut pending=VecDeque::from(vec![Controls::default();delay]);
+            for tick in 0..2400 {
+                let view=views.pop_front().unwrap();
+                let carry=Vec3::Z.cross(view.feet)*omega;
+                let (wish,_)=carried_goal_control(&view,goal,carry,2.*delay as f32/120.,8.);
+                pending.push_back(Controls {wish,run:true,..Default::default()});
+                player.tick(&world,pending.pop_front().unwrap());
+                player.feet=rotate*player.feet;
+                assert!(player.grounded && player.jumps==0);
+                views.push_back(player.clone());
+                if tick>=2160 {
+                    assert!(carried_goal_control(&player,goal,Vec3::Z.cross(player.feet)*omega,0.,8.).1,
+                        "Lost carried arrival at delay {delay}: {:?}, {:?}",player.feet,player.velocity);
+                }
+            }
+        }
+    }
+    #[test]
+    fn carried_arrival_checks_world_motion_and_keeps_compensating() {
+        let mut p=Player::new(vec3(160.,0.,0.));p.grounded=true;
+        let carry=vec3(0.,140.,0.);
+        assert!(!carried_goal_control(&p,p.feet,carry,0.,8.).1,"Idle input is still moving with the gear");
+        p.velocity=-carry;
+        let (wish,settled)=carried_goal_control(&p,p.feet,carry,0.,8.);
+        assert!(settled && (wish*320.+carry.truncate()).length()<0.001,
+            "Arrived waiter must retain ordinary counter-motion input");
     }
     #[test]
     fn precise_landing_stays_on_a_small_footing_at_internet_tail_latency() {

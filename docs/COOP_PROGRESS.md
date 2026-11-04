@@ -19,7 +19,20 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | Full campaign verification | 3.08 | 20 |
 | **Total** | **48.58, rounded to 48.6** | **100** |
 
-Latest automation result: Clockwork's fresh **0-15** prefix verifies 24 personal
+Latest automation result: Clockwork's resumed **14-16** segment now verifies both
+players boarding the rotating gear, with two actual jumps, four personal course
+arrivals, one timed hold and **447 matching player/world/native states**. The
+first player holds its waiting point within 2.76 units while the partner boards;
+both remain at 89 health. The test driver compensates for observed gear motion
+using ordinary controls. Source `623fece` passes **883 active Rust tests**, the
+locked release, **68 native paired checks**, **43 Python guards**, and the exact
+single-player **11+1** baseline. The native gear checks include both rider orders
+and delayed observations/inputs. The original requested 14-17 run still fails
+at the exit with repeated planning; it remains marked failed. This resumed
+segment does not extend the fresh traversal or complete another campaign visit.
+Overall completion remains **48.6%**. See [Clockwork evidence](HATTER1.md).
+
+Earlier automation result: Clockwork's fresh **0-15** prefix verifies 24 personal
 course arrivals, eight intermediate arrivals, four jumps, one pull-up, two timed
 holds, two lever activations and one ordinary partner yield. All **2,997** compared
 player/world/native states match, with both players alive at 89 health. The

@@ -4,6 +4,8 @@ mod lever;
 mod route;
 pub(crate) use route::drive as drive_route;
 mod check;
+mod coop;
+mod coop_check;
 mod motion;
 mod saves;
 mod scene;
@@ -59,6 +61,8 @@ struct Saved {
     scene: Option<Scene>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pull: Option<lever::Pull>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    coop: Option<coop::State>,
 }
 impl Saved {
     fn new(n: usize) -> Self {
@@ -85,6 +89,7 @@ impl Saved {
             hints: [false; 2],
             scene: None,
             pull: None,
+            coop: None,
         }
     }
     fn both(&self) -> Option<f32> {
@@ -101,6 +106,7 @@ impl state::State for Saved {
     }
     fn validate(&self, _: state::Visit) -> Result<()> {
         if let Some(pull) = &self.pull { pull.validate(self)?; }
+        if let Some(coop) = &self.coop { coop.validate(self)?; }
         state::clock("machinery", self.age, 1e7)?;
         for t in self
             .levers
@@ -440,6 +446,48 @@ impl LevelController for Clockwork {
         }
         Events::default()
     }
+    fn coop_prepare(&mut self, players: &mut [crate::level::CoopPlayer<'_>; 2]) {
+        self.pair_prepare(players);
+    }
+    fn coop_advance_roster(&mut self, dt: f32, map: &Bsp, world: &mut World,
+        players: &mut [crate::level::CoopPlayer<'_>; 2], fixed: &[Collider]) -> Result<()> {
+        self.pair_advance(dt, map, world, players, fixed)
+    }
+    fn coop_contacts(&mut self, _: f32, players: &mut [crate::level::CoopPlayer<'_>; 2]) -> Option<usize> {
+        self.pair_actor(players)
+    }
+    fn coop_update(&mut self, index: usize, world: &mut World, player: &Player, aim: Vec3, pressed: bool) -> Events {
+        let had_pull = self.saved.pull.is_some();
+        let events = self.update(world, player, aim, pressed);
+        if !had_pull && self.saved.pull.is_some() {
+            let lever = self.saved.pull.as_ref().unwrap().lever;
+            let state = self.pair_state();
+            state.actor = Some(index);
+            if lever == 3 { state.port_actor = Some(index); }
+        }
+        events
+    }
+    fn coop_controlled(&self, index: usize) -> bool {
+        self.saved.pull.is_some() && self.saved.coop.as_ref().is_some_and(|s| s.actor == Some(index))
+    }
+    fn coop_hides_player(&self, index: usize) -> bool { self.coop_controlled(index) }
+    fn coop_blocks_weapons(&self, index: usize) -> bool { self.coop_controlled(index) }
+    fn coop_scene_step(&mut self, owner: usize, _: &mut Player, stats: &mut Stats) {
+        let state = self.pair_state();
+        if !state.initialized[owner] && stats.alive() { stats.full_stats(); state.initialized[owner] = true; }
+        state.actor = Some(owner);
+        self.saved.initialized = true;
+    }
+    fn coop_boarding_ready(&self, thread: &str, feet: &[Vec3]) -> Option<bool> {
+        let name = match thread {
+            "Lift_Up" => "Lift1",
+            "Start_Floater1" => "floater1",
+            // The lower-area trigger calls the lift down to its boarding floor.
+            // Gating that recall on upper-deck occupancy would prevent boarding.
+            _ => return None,
+        };
+        Some(!feet.is_empty() && feet.iter().all(|p| self.supported_by(name, *p)))
+    }
     fn prompt(&self, w: &World, eye: Vec3, aim: Vec3) -> Option<&'static str> {
         self.use_lever(w, eye, aim)
             .map(|_| "E  Pull lever")
@@ -707,6 +755,7 @@ pub static REGISTRATION: Registration = Registration {
         ),
     ],
     checks: &[
+        Check { flag: "--hatter1-coop-check", help: "Verify paired Clockwork machinery and owned lever actions.", run: Run::Headless(coop_check::check) },
         Check {flag:"--hatter1-route-native-check",help:"Verify continuous Clockwork traversal with its native cast.",run:Run::Windowed(route::check)},
         Check {
             flag: "--hatter1-traversal-check",

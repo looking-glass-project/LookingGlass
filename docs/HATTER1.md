@@ -58,3 +58,48 @@ These are component and persistence checks, not a new full-map campaign run.
 The existing spline and character renderers interpret the supplied camera and animation assets. The laboratory's introductory walks use bounded timings, and its peripheral child-processing machinery is not fully reenacted. The post-conversation dunk/electric loop is a bounded visual interpretation. Sink limits without an explicit map value use 192 units (16 for cushions), with a capped return speed; native sink dead-time semantics remain an approximation. The mirror renders the room, puzzle brushes and its own Cheshire actor; it does not add reflections of every dynamic creature. The script references a nonexistent `rage_gear`, so there is no such mover to restore. These limits do not replace the required puzzle contacts or enable an early exit.
 
 Native checks run muted on the hidden test desktop. They do not verify audible playback or every combat encounter and difficulty.
+
+
+## Initial paired adapter (4 November 2026)
+
+Co-op now has an explicit world-clock and lever adapter. It aggregates both
+living players' supports and door occupancy, advances shared machinery once,
+and validates both carried bodies before committing their movement. A blocked
+lift rider rolls back the shared motion; a blocked cushion can stop independently.
+Lift departure and the floating platform wait for all living riders on their
+actual supports. The lower-floor contact can still recall the empty upper lift.
+
+Each lever belongs to its actual user. Its approach uses normal collision,
+including the partner's body; a blocked approach times out without consuming
+the lever. The partner remains independently controllable during the hand action.
+The delayed Port scene retains its initiator, and the final Stop scene waits
+for the hand animation. A partner death cannot cancel the owner's pull; an
+owner death rearms an unfinished final lever. Per-player initialization avoids
+refilling a low-health revival. Optional co-op save state retains old SP saves.
+
+`--hatter1-coop-check` passes **38 staged native component records** on source
+`9ce4f981ed1d4c9111c9cf2a706201ee99afaa66e0b090d9452b8360c4f01ea2`, executable SHA-256
+`0faa7bacc4502883bd09dd8b75288fac524851fa8186c6d5c70abb59a4db1d9f`:
+three clock/rate/pause/initialization cases; six lift/floater carry/obstruction
+cases; 13 actual boarding/recall contact cases; ten personal lever cases; two
+independent sinking-pillar cases; two blocked approaches; two final-lever deaths.
+Checks include compressed restore during movement/hand actions, saved waiting
+order, either slot, dead-player exclusion and non-overlapping placement.
+
+The single-player `--hatter1-check` (11 records) and
+`--hatter1-traversal-check` (one record) match their pre-change `f9e7029` logs
+exactly. All 879 active Rust tests, the locked release, seven source-package
+tests and source-worktree 890-file audit pass. Local evidence is retained in
+`private/hatter1-coop-9ce4f98/manifest.json`.
+
+The first boarding fixture failed because separated deck positions missed the
+small central lift trigger by one unit. Moving those staged positions inward
+two units retained 44-unit player separation and exercised the actual trigger.
+The waiting player first contacts the lower recall floor before boarding, as
+on a normal approach. The production boarding guard was retained.
+
+These are components, not a fresh two-client playthrough. Complete paired
+watched/skipped/restored cinematic handoffs, remaining machinery/exit boarding,
+internet traversal, recovery and transition/rejoin coverage are still required.
+No campaign visit is marked complete. Single-player scene/physics paths remain
+unchanged; no original assets are included in the source changes.

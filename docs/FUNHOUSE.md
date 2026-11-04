@@ -1262,3 +1262,25 @@ worktree 888 checks pass. No screenshot was opened; both clients close normally.
 This is a watched Blue-owner checkpoint segment, not a fresh complete route or
 live skipped/Red-owner proof. The earlier fresh run stays failed with verified
 0-88; next is a fresh full repeat. No campaign row is added; total stays 48.1%.
+
+
+### Fresh gas-gate repeat ends in combat wipe (4 November 2026)
+
+Fresh run `6a1f420c41554ee980d55d16e6ae98ad` on unchanged native source
+`f9e7029` and the gas-gate fixture fails at step 36 after both players die.
+It uses independent internet clients with 40 ms delay/20 ms jitter on the
+authorized PC fallback. The strict team-wipe guard is retained. The host
+observes generation 1, both players spawned at tick 44577 with their saved
+97 health near the normally earned checkpoint before 35. The last validated
+guest report is still before that restore. Full two-client restoration is
+therefore not claimed from this failed run.
+
+An independent audit verifies only fresh **0-34**: 52 personal arrivals,
+six own pickups, two paired holds, one switch shot and 4,788 matching states.
+The bounded 288-row recovery trace has no deaths in that prefix; both end at
+97 health. Captured/current fixture hashes match. The normal checkpoint before
+35 has SHA-256
+`4288107db30cd66b9c1ce3df868f5e51b306b297b40a7d1c1acf0fffe48d5d7b`.
+The earlier 0-88 fresh prefix and separate gas 89-94 segment retain their own
+evidence. They cannot be joined into a complete-run pass. No game combat,
+resources, placement or recovery rule was altered to pass this repeat.

@@ -1,53 +1,53 @@
 # Co-op progress
 
-Updated 4 November 2026. Branch: `coop`. **Estimated overall completion: 48.1%.**
+Updated 4 November 2026. Branch: `coop`. **Estimated overall completion: 48.3%.**
 The older 42% reports are historical. This percentage measures delivered and
 verified behavior against the full co-op scope; it is not a running test's progress.
 
 Six of the 39 campaign visits have combined verification evidence; 33 remain open.
-The earlier contact-system repeats are still required. The remaining scope includes
-full paired traversal, both scene owners, deaths and checkpoint recovery, reconnects,
+Earlier contact-system repeats are still required. Remaining work includes full
+paired traversal, both scene owners, deaths and checkpoint recovery, reconnects,
 shared transports, swimming/leaves and single-player regressions across the campaign.
 
 | Area | Credited points | Maximum |
 | --- | ---: | ---: |
 | Foundation and independent client diagnostics | 8 | 10 |
 | Internet Host/Join | 7 | 15 |
-| Two players, movement and presentation | 10.25 | 15 |
+| Two players, movement and presentation | 10.5 | 15 |
 | Combat, individual resources and death | 9.25 | 20 |
 | Scenes, transport and progression | 10.5 | 20 |
 | Full campaign verification | 3.08 | 20 |
-| **Total** | **48.08, rounded to 48.1** | **100** |
+| **Total** | **48.33, rounded to 48.3** | **100** |
 
-Current verification frontier: source `f9e7029` now passes a fresh Funhouse
-**0-88** prefix: **122 personal arrivals, 27 own pickups, 14 paired holds,
-eight switch shots and 13,767 matching player/world/native states**. The original
-opening, mirror, return corridor and cell machinery pass in one continuous run.
-Four natural deaths each pass the exact ten-second revival, 25-health safe
-placement, preserved resources and independently rendered camera checks.
-Both players finish this verified prefix at 100 health.
+New implementation milestone: Clockwork (`hatter1`) now explicitly advances
+one shared machinery clock, carries both living riders, waits for boarding,
+and binds lever actions and their delayed scenes to the actual user. Source
+`9ce4f98` passes **38 native paired component checks** covering lift and floater
+carry, blocked-rider rollback, saved boarding contacts with either requester,
+separate sinking pillars, all five levers with either actor, blocked approaches
+and owner-specific death cleanup. The original single-player 11+1 component
+records match the pre-change baseline exactly. All 879 active Rust tests, the
+locked release, source-package seven and source-worktree 890 checks pass.
 
-The complete run remains failed at step 90, where the fixture treated the
-expected automatic `GasOpenCine` as unexpected during walking. A new explicit
-scene gate now passes the unchanged normal checkpoint **89-94**: both clients
-watch the original 9.3-second scene, hide/freeze its waiting partner, preserve
-personal inventory and health, and observe the same safe reunion tick. Six
-personal arrivals, two paired holds and 578 matching player/world/native states
-pass; both players finish at 100 health without a death. Captured/current fixture
-hashes and the retained evidence pass an independent audit. All 55 Funhouse
-test guards pass. No screenshots are needed for this replay.
+This adds **0.25 movement points**, using the same bounded credit as earlier
+native paired-transport milestones. It adds no scene/progression, internet or
+completed-campaign-row credit. Clockwork still needs full paired scene/reunion
+combinations, the remaining machinery/exit cases and continuous two-client play.
+See [Clockwork coverage](HATTER1.md).
 
-The clean fresh-run boundary remains **88**. The checkpoint replay does not
-extend that continuous run or complete another campaign visit. Next is a fresh
-full Funhouse run with the explicit scene gate; total remains **48.1%**.
+Funhouse's best verified fresh prefix remains **0-88** on source `f9e7029`:
+122 personal arrivals, 27 own pickups, 14 paired holds, eight switch shots,
+13,767 matching states and four exact ten-second revivals. Both finish at 100
+health. The gas-scene fixture correction separately passes unchanged checkpoint
+**89-94**, including the watched scene, safe shared reunion, six arrivals, two
+holds and 578 matching states. That segment does not extend the fresh-run proof.
 
-This run incorporates the tested visible-shooting-position correction. It also
-uses the separate 60-second initial connection allowance; identity checking
-still has 15 seconds and level loading 120 seconds. Both clients connected on
-this attempt in under the old 15-second window, so the controlled regression
-provides the slow-connection proof. All 879 active Rust tests and native checks
-pass. The full route, opposite-owner/recovery cases and remaining campaign visits
-are still open. No completed campaign row is added; overall stays **48.1%**.
+The latest fresh repeat with that correction fails at **36 after a team wipe**.
+Its independently verified **0-34** prefix has 52 arrivals, six own pickups,
+two holds, one switch and 4,788 matching states. The host trace shows both players
+restored together at the normal checkpoint with 97 health; full two-client wipe
+verification remains open. The failure is retained. No combat rule, resource,
+position or team-wipe guard was weakened. Full Funhouse traversal remains open.
 
 Two resumed mirror 29-32 runs also pass, including exact actual-jump evidence.
 Conservative range rejection removes distant-enemy aiming work from the test

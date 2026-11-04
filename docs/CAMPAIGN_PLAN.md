@@ -2052,6 +2052,12 @@ are captured. This is a focused renderer check, not full internet traversal.
 
 Majestic Maze additionally reserves `--hedge1-save-write` and `--hedge1-save-read` for fresh-process native save checks. Its route requires a native window for the existing NPC cast; it has no active cinematic to skip.
 
+`--hatter1-coop-check` reserves staged paired Clockwork components: one shared
+machinery clock, both living riders, obstruction rollback, actual boarding
+contacts, personal lever actions and their saved owners. These checks do not
+replace paired scene/reunion combinations, continuous traversal, internet,
+recovery or single-player regression checks.
+
 Clockwork and Ascension additionally reserve `--hatter1-route-native-check` and
 `--facade-route-native-check` for continuous entrance-to-exit input courses with
 their resident enemies. These use a native window and the existing map owners;

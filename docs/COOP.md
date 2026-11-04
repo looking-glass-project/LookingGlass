@@ -6,7 +6,7 @@ For the concise current status, see [Co-op progress](COOP_PROGRESS.md).
 This is work in progress. A policy test or a connected pair of windows does not
 establish campaign support. Single-player behavior and saves must remain supported.
 
-Current milestone: **48.1% estimated overall; six campaign visits have combined
+Current milestone: **48.3% estimated overall; six campaign visits have combined
 verification evidence, 33 remain open.** Earlier contact-system repeats are still
 required as detailed in the campaign matrix. Pool of Tears has 38 passing native
 component cases plus public two-client opening and bank checkpoint segments.
@@ -16,27 +16,23 @@ recovery remain open for both visits. Report these smaller milestones alongside
 the total; a successful component or segment is not a completed campaign visit.
 
 Status checked on **4 November 2026**: the older approximately 42% figure is
-historical; the current weighted estimate is **48.1% (about 48%)**. Six of 39
+historical; the current weighted estimate is **48.3% (about 48%)**. Six of 39
 campaign visits have combined evidence, with earlier contact-system repeats
 still required. Repeated component tests do not increase this total.
 
-Current fresh Funhouse frontier (4 November): source `f9e7029` verifies
-**0-88**, with 122 personal arrivals, 27 own pickups, 14 paired holds, eight
-switch shots and 13,767 matching states. Four natural ten-second revivals pass
-resource, safe-placement and camera checks; both players end the verified
-prefix at 100 health. This combines the opening, mirror, return corridor and
-cell machinery using the corrected visible shooting approaches.
+Clockwork now has an explicit paired machinery/lever adapter. Native source
+`9ce4f98` passes 38 staged checks for shared clocks, two-rider lifts/floater,
+obstruction rollback, actual boarding contacts, both lever users, personal
+blocked approaches and owner-specific recovery. Single-player component output
+matches the unchanged baseline exactly; 879 active Rust tests and the locked
+release pass. This earns 0.25 movement points; full scenes and paired traversal
+remain open. See [Clockwork coverage](HATTER1.md).
 
-The full run fails at 90 when the fixture rejects the expected automatic
-`GasOpenCine` during walking. Its explicit watched-scene/reunion gate now passes
-an unchanged checkpoint replay of **89-94**: both clients observe the full scene
-and same safe reunion, six personal arrivals, two paired holds and 578 matching
-states. Both finish at 100 health without deaths. All 55 Funhouse guards pass.
-The clean fresh-run boundary remains 88; a full repeat is next. This checkpoint
-segment does not complete a campaign visit. Initial setup has a separate 60-second
-allowance, with the existing 15-second identity and 120-second loading limits.
-879 active Rust tests and the native checks pass. No completed campaign row is
-added; see [current progress](COOP_PROGRESS.md).
+Funhouse's best fresh evidence remains 0-88 on `f9e7029`. Its corrected gas-scene
+gate separately passes checkpoint 89-94 with both clients. A subsequent fresh
+repeat fails at 36 after a real team wipe; its 0-34 prefix independently passes.
+Host-side checkpoint restoration is observed, but two-client wipe verification
+and the complete route remain open. No completed campaign row is added.
 
 Earlier Funhouse traversal milestone: source `c946266` now passes the resumed
 return corridor, authored steps **35-42**, in independent public-internet clients
@@ -5679,3 +5675,14 @@ Red is at step 47 with 100 health. All 1,841 common player/world/native states
 match. Evidence: `private/coop/garden-route-64b6dc21d8f646c2ad8a0dc9bc73fc32/`.
 This remains a failed full-route attempt; the successful checkpoint segment
 cannot replace it. Both clients/helpers close and Anode is released.
+
+
+### Clockwork paired-transport credit (4 November 2026)
+
+Source `9ce4f98` adds 0.25 movement points for actual native paired lift/floater
+boarding/carry, blocked-rider rollback and separate sinking supports. The 38
+staged checks also exercise personal levers and their saved owners, but no
+additional progression credit is assigned before complete paired cinematic
+handoffs are verified. Movement is now 10.5/15; the other category totals remain
+unchanged. Total is about 48.33, reported as 48.3%. Six campaign rows retain
+combined evidence; 33 remain open, plus earlier contact-system repeats.

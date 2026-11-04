@@ -335,7 +335,7 @@ pub static RESERVATIONS: [Reservation; 39] = [
         render: &["--funhouse-render-check"],
     }), ..visit(22, "funhouse") },
     Reservation {flags:Some(VisitFlags {
-        contract:&["--hatter1-check", "--hatter1-traversal-check"],
+        contract:&["--hatter1-check", "--hatter1-traversal-check", "--hatter1-coop-check"],
         route:&["--hatter1-route-check", "--hatter1-route-native-check"], skip:&["--hatter1-skip-route-check"],
         render:&["--hatter1-render-check"],
     }), ..visit(23, "hatter1")},

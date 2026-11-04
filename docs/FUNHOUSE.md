@@ -1125,3 +1125,49 @@ fallback while Anode is occupied. One early input suspension is recorded; this
 is not a zero-reset or Anode-repeatability claim. No screenshots were opened.
 No campaign row is added. Overall remains 48.1%; next is the focused step-56
 switch failure, then fresh full traversal and the remaining campaign cases.
+
+
+### Visible shooting approaches (4 November 2026)
+
+The cell3 failure is now reproduced as a geometry problem: native rotating door
+entity 160 crosses the line from the nearer western retry positions when fully
+open. A northern supported position has a projectile-width sight line at door
+fractions 0, 0.5, 0.8 and 1. The fixture's nearest-only choice could repeatedly select
+blocked positions. The normal aiming, weapon and door rules are unchanged.
+
+`Report.switch_approaches` now filters the existing safe neighboring footings
+through native world/target/partner occlusion. This runs only on the 200 ms
+report observation, not every physics tick. The Python fixture prefers those
+positions while retaining its 96-unit home bound, 48-unit partner clearance,
+ordinary walking and actual movement/shot receipts. No destination is applied
+as an authoritative placement, and no switch is activated by the fixture.
+
+Source `a797a001fca2e86050999ac1dcbdc08eecea6521ef98cf39d45ed33bd630a198`,
+frozen executable SHA-256
+`becf1b7f6faba2785a85548c4cbcb473edc16cf90eff0fd0e9f5ae8c0a9c5af5`, passes
+878 active Rust tests/one ignored, the locked release, native Funhouse
+battle 63/world 50/scene 37/single-player 8, Checkmate 94, 52 Funhouse guards and
+seven source-package tests. SP component output matches the baseline except
+two benchmark timings. The four new world cases prove actual supported footing
+and sight lines at the door angles; these are component checks only.
+
+Anode run `0a0202ca99b741cc9d612b156a17bfe8` resumes the unchanged BLUE63
+checkpoint43 through independent internet clients with 40 ms delay/20 ms jitter.
+It passes 43-56 with 14 personal arrivals, five paired holds, two real switch shots,
+1,753 matching states (1,760 retained), 105 recovery rows and no new deaths.
+Both finish at 75/95 health. The independent retained audit checks captured and
+current fixture hashes, movement/shot receipts, network agreement and recovery.
+Its choice audit shows two visible approaches differ from the old nearest-only
+choice; the third uses the same now-visible point. This exercises the correction.
+Normal checkpoint57 SHA-256 is
+`74d95b04cce602661f70cbce8131d6e6f9841414c1ac26af0baf77621ddc76c3`.
+
+For further headless diagnosis, `LOOKING_GLASS_FUNHOUSE_SWITCH_PROBE` may point
+to a local JSON object with `world` (an Interactions snapshot), `thread`, and
+`feet` (at most 64 finite positions) while running `--funhouse-coop-world-check`.
+It returns `diagnostic_only` sight-line and eye-origin Blade trajectory samples.
+It does not advance a live game or prove a real animated-hand shot, movement,
+NPC combat or traversal. Keep retained snapshots and original assets private.
+
+No screenshots were opened. The combined fresh full route remains unverified;
+this scoped retry adds no campaign row. Overall remains 48.1%.

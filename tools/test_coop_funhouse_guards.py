@@ -723,6 +723,15 @@ class SwitchReceiptGuards(unittest.TestCase):
         self.assertEqual(shooting_neighbor([safe, blocked, far], home, other, target, [home]), safe)
         self.assertIsNone(shooting_neighbor([safe, blocked, far], home, other, target, [home, safe]))
 
+    def test_switch_retry_prefers_visible_footing_without_relaxing_safety(self):
+        home, other, target = [-1648, -54, 0], [-1648, -90, 0], [-1837, -18, 288]
+        closer, visible, far = [-1717, -25, 0], [-1676, 22, 0], [-1900, 22, 0]
+        neighbors = [closer, visible, far, other]
+        self.assertEqual(shooting_neighbor(neighbors, home, other, target, [home],
+                                          [visible, far, other]), visible)
+        self.assertEqual(shooting_neighbor(neighbors, home, other, target, [home, visible],
+                                          [visible, far, other]), closer)
+
     def test_shooting_receipt_rejects_an_invented_approach(self):
         entry, history = shot_fixture()
         point = [-1184, -52, 0]

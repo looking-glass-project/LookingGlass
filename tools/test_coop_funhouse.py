@@ -293,11 +293,13 @@ def verify_switch_receipt(entry, history):
         assert distance(body['feet'][:2], movement['goal'][:2]) < 8, 'Missed shooting approach'
 
 
-def shooting_neighbor(neighbors, home, other, target, tried):
+def shooting_neighbor(neighbors, home, other, target, tried, visible=()):
     choices = [p for p in neighbors if distance(p, home) <= 96
                and distance(p[:2], other[:2]) >= 48
                and all(distance(p, old) >= 24 for old in tried)]
-    return min(choices, key=lambda p: distance(p, target)) if choices else None
+    # A closer point can put a swinging door across the shot. Prefer a native
+    # sight-line observation, retaining the ordinary safe-footing bounds.
+    return min(choices, key=lambda p: (p not in visible, distance(p, target))) if choices else None
 
 
 def verify_holds(steps, completed, holds, history):
@@ -1141,7 +1143,8 @@ class FunhousePair(Pair):
             assert target is not None, 'No active switch target to approach'
             slot = 0 if role == 'host' else 1
             point = shooting_neighbor(report['route_driver']['neighbors'][slot], home,
-                                      self.body(other)['player']['feet'], target, tried)
+                                      self.body(other)['player']['feet'], target, tried,
+                                      report['route_driver']['switch_approaches'][slot])
             assert point is not None, 'No safe nearby shooting approach'
             tick = report['frame']['tick']
             self.move(role, point)

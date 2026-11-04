@@ -311,6 +311,9 @@ pub struct Report {
     pub native_threats: [Option<usize>; 2],
     /// Nearby supported stopping points; only the local fixture reads these.
     pub neighbors: [Vec<Vec3>; 2],
+    /// Supported neighbors with a projectile-width sight line to the commanded
+    /// switch. This is a current-world observation, not a guaranteed future hit.
+    pub switch_approaches: [Vec<Vec3>; 2],
     pub surface: Option<crate::levels::funhouse::RouteSurface>,
     pub funhouse_exit: Option<crate::levels::funhouse::ExitReport>,
     pub funhouse_pendulums: Option<crate::levels::funhouse::PendulumReport>,
@@ -598,6 +601,40 @@ fn attack_target<'a>(world: &World, targets: &'a [crate::combat::Target], eye: V
     targets.iter().filter(|t| eligible(t.id) && t.center.distance(eye) < 1000.)
         .filter_map(|t|attack_point(&context,eye,t).map(|point|(t,point)))
         .min_by(|(a,_),(b,_)| a.center.distance_squared(eye).total_cmp(&b.center.distance_squared(eye)))
+}
+
+pub(crate) fn visible_switch_approaches(context:&crate::combat::Context<'_>,target:crate::combat::Target,
+    neighbors:&[Vec3])->Vec<Vec3> {
+    neighbors.iter().copied().filter(|feet| {
+        let eye=*feet+Vec3::Z*crate::movement::EYE_HEIGHT;
+        attack_point(context,eye,&target).is_some_and(|point|
+            crate::combat::contact(context,eye,point,8.).is_some_and(|(id,_)|id==target.id))
+    }).collect()
+}
+
+/// Read-only headless diagnosis of retained switch positions. This samples the
+/// real collision world but does not activate a switch or advance a game.
+pub(crate) fn switch_probe(context:&crate::combat::Context<'_>,eye:Vec3,target:crate::combat::Target)
+    -> serde_json::Value {
+    let selected=attack_point(context,eye,&target);
+    let sample=|point:Vec3| {
+        let direction=crate::route::fight::lead(eye,point,Vec3::ZERO);
+        let mut blade=crate::weapons::Projectile::thrown_blade(eye,direction);
+        let mut impact=None;
+        for _ in 0..120 {
+            let (hit,normal)=blade.contact_step(1./120.,context);
+            if hit.is_some() || normal.is_some() {impact=Some(hit.map(|h|h.id));break;}
+        }
+        serde_json::json!({"point":point,"ray1":crate::combat::contact(context,eye,point,1.).map(|h|h.0),
+            "ray8":crate::combat::contact(context,eye,point,8.).map(|h|h.0),"impact":impact,
+            "hits_switch":impact==Some(Some(target.id))})
+    };
+    let mut candidates=Vec::new();
+    for z in [-0.75,-0.4,0.,0.4,0.75] {for y in [-0.7,0.,0.7] {for x in [-0.7,0.,0.7] {
+        candidates.push(sample(target.center+target.half*vec3(x,y,z)));
+    }}}
+    serde_json::json!({"eye":eye,"target":{"id":target.id,"center":target.center,"half":target.half},
+        "selected":selected.map(sample),"candidates":candidates})
 }
 
 /// Keep all combat bodies in the visibility context, including friendly ones.
@@ -925,6 +962,24 @@ impl Driver {
                 super::placement::neighbors(world,b.player.feet,|at| !arena.stage.interactions.hazardous(at))
             } else { Vec::new() }
         });
+        self.report.switch_approaches=Default::default();
+        if let Some(target)=self.command.as_ref()
+            .filter(|c|c.epoch==frame.epoch && self.report.command==Some(c.id))
+            .and_then(|c|c.shoot_switch.as_deref())
+            .and_then(|thread|arena.stage.interactions.switch_target(thread)) {
+            // Queries run with the retained report, not on every physics tick.
+            // Only existing safe neighbors are considered; movement still uses
+            // ordinary client controls and must earn its own arrival receipt.
+            let targets=combat_targets(&arena.stage.interactions,arena.npcs.targets());
+            self.report.switch_approaches=std::array::from_fn(|slot| {
+                let mut targets=targets.clone();let other=&frame.players[1-slot];
+                if other.stats.alive() {targets.push(crate::combat::Target {
+                    id:if slot==0 {crate::combat::COOP_RED} else {crate::combat::COOP_BLUE},
+                    center:other.player.feet+crate::collision::PLAYER_CENTER,half:crate::collision::PLAYER_HALF});}
+                visible_switch_approaches(&crate::combat::Context{world,targets:&targets},target,
+                    &self.report.neighbors[slot])
+            });
+        }
         self.report.blade_pickups = frame.players.each_ref().map(|b| b.stats.copies(0) > 0
             && arena.pickups.iter().any(|p| matches!(p.kind, crate::inventory::PickupKind::Weapon(0))
                 && b.stats.collected.contains(&p.id)));
@@ -1736,6 +1791,20 @@ mod tests {
         let wrong=crate::combat::Target{id:8,..target};
         assert!(aim.sample(&context,Some(wrong),eye,&mut Input::default()).is_err());
         assert!(aim.sample(&context,None,eye,&mut Input::default()).unwrap());
+    }
+    #[test]
+    fn switch_approaches_keep_world_and_partner_occlusion() {
+        let world=World::fixture(&[(vec3(40.,-25.,0.),vec3(60.,25.,120.))]);
+        let target=crate::combat::Target{id:7,center:vec3(150.,0.,48.),half:Vec3::splat(8.)};
+        let blocked=Vec3::ZERO;let clear=vec3(0.,120.,0.);
+        let candidates=[blocked,clear];let targets=[target];
+        let context=crate::combat::Context{world:&world,targets:&targets};
+        assert_eq!(visible_switch_approaches(&context,target,&candidates),vec![clear]);
+        let partner=crate::combat::Target{id:crate::combat::COOP_RED,
+            center:vec3(30.,96.,48.),half:crate::collision::PLAYER_HALF};
+        let targets=[target,partner];
+        assert!(visible_switch_approaches(&crate::combat::Context{world:&world,targets:&targets},
+            target,&candidates).is_empty());
     }
     #[test]
     fn shooting_switch_commands_exclude_other_actions_and_bound_names() {

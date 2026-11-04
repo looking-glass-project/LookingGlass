@@ -271,12 +271,54 @@ fn corridor_approach(a:&mut Assets,map:&Bsp)->Result<()> {
     }
     Ok(())
 }
+fn cell_switch_approaches(a:&mut Assets,map:&Bsp)->Result<()> {
+    let mut x=Interactions::load(map)?;x.set_entry(a,map,"funhouse",None)?;
+    let target=x.switch_target("cell3").context("Missing cell3 target")?;
+    // The old retry moved farther west, into the open door's line of fire.
+    // A northern neighbor is reachable without entering that sweep. These are
+    // geometry fixtures, separate from a live route's movement/shot receipts.
+    let blocked=vec3(-1717.4673,-25.179287,0.03125);
+    let north=vec3(-1676.,22.,0.03125);
+    for fraction in [0.,0.5,0.8,1.] {
+        let o=x.levels.iter_mut().find_map(|s|s.ctl.downcast_mut::<Funhouse>()).unwrap();
+        o.saved.scene=None;o.saved.initialized=true;o.saved.arrived=true;o.saved.cells=10;
+        let door=o.objects.iter().position(|o|o.id==160).context("Missing cell door")?;
+        o.saved.doors[door]=fraction;o.saved.door_signs[door]=1.;o.rebuild(map)?;
+        let mut w=World::from_bsp(map)?;x.sync(&mut w);
+        let p=Player::spawn(&w,north+Vec3::Z*crate::movement::EYE_HEIGHT).context("No northern shooting footing")?;
+        ensure!(p.feet.distance(north)<0.1 && w.body_clear(p.feet),"Northern shooting position lacks clear support");
+        let targets=x.shot_targets();let context=crate::combat::Context{world:&w,targets:&targets};
+        let visible=crate::coop::route_driver::visible_switch_approaches(&context,target,&[blocked,north]);
+        ensure!(visible.contains(&north),"Northern switch approach is blocked at door fraction {fraction}");
+        if fraction==1. {ensure!(!visible.contains(&blocked),"Fixture lost the original open-door obstruction");}
+        println!("PASS Funhouse cell3 northern shooting footing and native sight line, door fraction {fraction}");
+    }
+    Ok(())
+}
 pub(super) fn check(a:&mut Assets)->Result<()> {
     let map=Bsp::parse(&a.read("maps/funhouse.bsp")?)?;
+    if let Some(path)=std::env::var_os("LOOKING_GLASS_FUNHOUSE_SWITCH_PROBE") {
+        let input:serde_json::Value=serde_json::from_slice(&std::fs::read(path)?)?;
+        let mut x=Interactions::load(&map)?;x.set_entry(a,&map,"funhouse",None)?;
+        x.restore(&serde_json::from_value(input["world"].clone())?,&map)?;
+        let mut w=World::from_bsp(&map)?;x.sync(&mut w);
+        let thread=input["thread"].as_str().context("Missing diagnostic switch name")?;
+        let target=x.switch_target(thread).context("Diagnostic switch is not currently active")?;
+        let mut targets=x.levels_targets();targets.extend(x.shot_targets());
+        if let Some(cast)=&x.encounters {targets.extend(cast.targets());}
+        let context=crate::combat::Context{world:&w,targets:&targets};
+        let feet:Vec<Vec3>=serde_json::from_value(input["feet"].clone())?;
+        ensure!(feet.len()<=64 && feet.iter().all(|p|p.is_finite()),"Invalid diagnostic positions");
+        let probes=feet.into_iter().map(|p|crate::coop::route_driver::switch_probe(&context,
+            p+Vec3::Z*crate::movement::EYE_HEIGHT,target)).collect::<Vec<_>>();
+        println!("{}",serde_json::to_string(&serde_json::json!({"diagnostic_only":true,"probes":probes}))?);
+        return Ok(());
+    }
     let mut failures=Vec::new();
     for (label,result) in [("fulcrums",tilts(a,&map)),("surface goals",surface_goals(a,&map)),("pendulums",pendulums(a,&map)),("doors/tube",doors_and_tube(a,&map)),
         ("dead/blocked",dead_and_blocked(a,&map)),("boarding",boarding(a,&map)),("gas",gas(a,&map)),
-        ("sloped revival evidence",sloped_revival_evidence(a,&map)),("corridor approach",corridor_approach(a,&map))] {
+        ("sloped revival evidence",sloped_revival_evidence(a,&map)),("corridor approach",corridor_approach(a,&map)),
+        ("cell switch approaches",cell_switch_approaches(a,&map))] {
         if let Err(e)=result {failures.push(format!("{label}: {e:#}"));}
     }
     ensure!(failures.is_empty(),"Funhouse paired world failures:\n{}",failures.join("\n"));

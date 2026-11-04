@@ -29,9 +29,13 @@ normal target, occlusion and combat rules. With the corridor fixture correction,
 the latest fresh run verifies **0-55**: 82 personal arrivals, 16 own pickups,
 seven holds, two switch shots and 10,511 matching states. Four natural revivals
 pass the exact ten-second timer, safe placement, personal resources and camera
-checks. Both survive at 75/95 health. The full run fails at the next switch (56);
-its aiming failure remains under investigation. No completed campaign row is
-added; see [current progress](COOP_PROGRESS.md).
+checks. Both survive at 75/95 health. The full run fails at the next switch (56).
+Geometry probes identify a swinging door across the nearer retry positions.
+The fixture now prefers safe neighbors with native sight-line evidence. A new
+`a797a00` replay passes 43-56 from the earned checkpoint: 14 arrivals, five holds,
+two real switch shots and 1,753 matching states, no deaths, final 75/95. The new
+fresh full route remains required; no campaign row is added. See
+[current progress](COOP_PROGRESS.md).
 
 Earlier Funhouse traversal milestone: source `c946266` now passes the resumed
 return corridor, authored steps **35-42**, in independent public-internet clients

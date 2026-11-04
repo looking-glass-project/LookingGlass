@@ -29,11 +29,17 @@ Four natural deaths each pass the exact 1,200-active-tick revival timer,
 camera checks. Both players finish this prefix alive at 75/95 health. Captured
 and current fixture hashes match; 5,412 recovery trace rows were checked.
 
-The complete run then fails at switch step 56 after five ordinary shooting
-positions. The exact aiming failure is still under investigation. No complete
-campaign row is added; overall remains **48.1%**. Next is a focused switch
-reproduction from this run's unchanged, normally earned checkpoint43, followed
-by another full traversal once that failure is understood.
+The complete run then fails at switch step 56. Headless geometry probes now
+identify the swinging cell door across the nearer retry positions. The test
+controller prefers existing safe neighbors with a verified projectile-width
+sight line, including world and partner occlusion, before retrying the real shot.
+
+On new source `a797a00`, an Anode internet replay from the unchanged earned
+checkpoint43 passes **43-56**: 14 personal arrivals, five holds, both switch
+shots and 1,753 matching states. Both remain alive at 75/95 health, without
+new deaths. Retained records confirm two approach choices differ from the old
+nearest-only rule. A fresh full traversal is still required; no completed
+campaign row is added, and overall remains **48.1%**.
 
 Two resumed mirror 29-32 runs also pass, including exact actual-jump evidence.
 Conservative range rejection removes distant-enemy aiming work from the test

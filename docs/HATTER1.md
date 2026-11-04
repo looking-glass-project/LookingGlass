@@ -293,3 +293,49 @@ Evidence: `private/coop/hatter1-route-f00c1e89aa4642638900339a49ba3fba`.
 The test terminated and its owned clients closed. No fresh-prefix or campaign
 credit is added. The next reproduction should focus on this lower-footing
 approach and its measured delay, before another longer route attempt.
+
+## Delayed final steering (4 November 2026)
+
+The narrowed native reproduction starts on a small platform and uses ordinary
+walking controls with separate delayed observation and input queues. The old
+landing helper leaves the supported final-approach area instead of settling.
+Grounded final corrections now use the existing delay-aware walking gain;
+airborne braking, arrival tolerances and gameplay movement are unchanged.
+The regression stays grounded and settles within two units at per-direction
+delays of 0, 12, 24, 45 and 84 ticks (up to 1.4 seconds combined). All 881 active
+Rust tests pass, with one ignored. The locked release, 27 Python receipt guards
+and seven source-package tests also pass.
+
+The first live retry passes Red's previously failing lower footing and actual
+second jump, then stops with both alive: the waiting Blue body blocks the end
+of Red's native pull-up. The entrance's waiting move now centers within two
+units, leaving that animation room to finish. It uses the same observed footing
+and ordinary movement, with the native collision and spacing checks unchanged.
+
+Source `dbd12c88779018c0678abb3a19c85ad3190fe40b1b7125c9bcc7ba03d96db3cc`, executable SHA-256
+`7182e2884137b318bb0a612944f6495f8ad66bc929c062f05c74e08944f02708`, passes two fresh
+internet entrance runs (steps 0-1), with Blue and Red respectively going first.
+Each verifies four course arrivals, eight intermediate personal arrivals, four
+actual jumps, one completed native pull-up and both players alive at 89 health.
+The runs compare 697 and 693 matching player/world/native states respectively;
+both finish by making the normal shared checkpoint before step 2. Frozen
+fixture dependencies and current source hashes match for both runs.
+
+Evidence: `private/coop/hatter1-route-d177a40e2c1146fc98c7dbfd30350a75` and
+`private/coop/hatter1-route-d454e04f8f9e4ffba903c1b281590855`.
+The blocked-pull-up failure remains in
+`private/coop/hatter1-route-8dab0a63d70142da9b9d3e6546099b6b`.
+This establishes the short entrance in both orders, not the full Clockwork visit.
+The longer opening route, recovery and rejoin remain open. No campaign credit
+is added for this automation correction.
+
+A subsequent fresh 0-17 attempt independently verifies the completed 0-5 prefix:
+ten course arrivals, eight intermediate arrivals, four jumps, one pull-up, one
+timed hold and 981 matching states. The scoped audit ends at tick 9290 and
+excludes the later failed step. Evidence:
+`private/coop/hatter1-route-0a037c4f58ed4b0c92318c4ffcbbdfe5/completed-prefix-audit.json`.
+At step 6 Red reaches the adjusted target and parks, but her waiting body then
+obstructs Blue's planned approach. Their horizontal separation remains 36 units;
+the run times out with both alive, at 89 and 79 health. This needs ordinary
+partner yielding or a better waiting route, rather than relaxing collision or
+counting the obstructed follower as having arrived.

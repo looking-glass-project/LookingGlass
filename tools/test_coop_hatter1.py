@@ -300,7 +300,9 @@ class ClockworkPair(Pair):
                                                  self.body(other)['player']['feet'], goal)
                     self.evidence['parking'].append(dict(step=self.step, role=role, goal=park, ready=ready,
                         selected_tick=report['frame']['tick'], candidates=candidates))
-                    self.move(role, park)
+                    # Stopping eight units short on the entrance's small
+                    # waiting footing can obstruct the partner's pull-up.
+                    self.move(role, park, radius=2 if self.step == 1 else 8)
                     self.evidence['parking'][-1].update(tick=self.reports[role]['frame']['tick'],
                         command=self.reports[role]['route_driver']['command'], feet=list(self.body(role)['player']['feet']))
                     if ready: break

@@ -574,7 +574,13 @@ pub(crate) fn landing_control(world: &World, player: &Player, goal: Vec3, lead: 
     if !(player.grounded && delta.length()<42.) && !nearby_walk && !descent { return None; }
     let settled = player.grounded && delta.truncate().length() < radius && player.velocity.truncate().length() < 20.;
     let steering = delta.truncate()-player.velocity.truncate()*lead;
-    let wish = if settled { Vec2::ZERO } else { steering.normalize_or_zero()*(steering.length()/48.).min(1.) };
+    // Once supported, use the same delay-aware gain as ordinary final walking.
+    // Velocity prediction with a fixed gain oscillates at internet tail latency
+    // and can carry a remote Alice off a small takeoff footing. Airborne braking
+    // retains its stronger correction so it can still catch the landing.
+    let wish = if settled { Vec2::ZERO } else if player.grounded {
+        straight_wish(delta.truncate(),player.velocity.truncate(),lead,false,None)
+    } else { steering.normalize_or_zero()*(steering.length()/48.).min(1.) };
     Some((wish,settled))
 }
 
@@ -2227,6 +2233,33 @@ mod tests {
         let corrected=run(true);
         assert!(corrected.grounded && corrected.feet.distance(goal)<8.,
             "Landing correction abandoned the lateral approach: {:?}",corrected.feet);
+    }
+    #[test]
+    fn precise_landing_stays_on_a_small_footing_at_internet_tail_latency() {
+        let world=World::fixture(&[(vec3(-48.,-48.,-100.),vec3(48.,24.,0.))]);
+        let goal=Vec3::ZERO;
+        // The live Clockwork failure oscillates around a two-unit takeoff
+        // target, then walks off before its next jump. Exercise the observed
+        // median, p95 and peak delay range with ordinary native walking.
+        for delay in [0,12,24,45,84] {
+            let mut player=Player::spawn(&world,
+                vec3(28.,-15.,crate::movement::EYE_HEIGHT+0.03125)).unwrap();
+            let mut views=VecDeque::from(vec![player.clone();delay+1]);
+            let mut pending=VecDeque::from(vec![Controls::default();delay]);
+            let lead=2.*delay as f32/120.;
+            for _ in 0..2400 {
+                let view=views.pop_front().unwrap();
+                let (wish,_)=landing_control(&world,&view,goal,lead,2.)
+                    .unwrap_or_else(||panic!("Left supported final approach at delay {delay}: {:?}",view.feet));
+                pending.push_back(Controls {wish,..Default::default()});
+                player.tick(&world,pending.pop_front().unwrap());
+                assert!(player.grounded && player.jumps==0,
+                    "Walked off takeoff footing at delay {delay}: {:?}",player.feet);
+                views.push_back(player.clone());
+            }
+            assert!(landing_control(&world,&player,goal,lead,2.).unwrap().1,
+                "Did not settle at delay {delay}: {:?}, {:?}",player.feet,player.velocity);
+        }
     }
     #[test]
     fn navigation_finishes_a_nearby_approximate_height_without_a_full_search() {

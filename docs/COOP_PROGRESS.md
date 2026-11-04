@@ -19,7 +19,19 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | Full campaign verification | 3.08 | 20 |
 | **Total** | **48.58, rounded to 48.6** | **100** |
 
-Latest automation milestone: Clockwork now has a fresh two-client internet
+Latest automation result: Clockwork's fresh entrance (steps 0-1) passes with
+either player going first on source `dbd12c8`. The two internet runs verify
+697 and 693 matching states, each with four course arrivals, eight intermediate
+arrivals, four actual jumps and one native pull-up. Both players finish at 89
+health. A delayed final-steering correction and precise waiting-footing arrival
+address the observed overshoot and blocked pull-up. All 881 active Rust tests,
+the locked release, 27 Python guards and seven source-package tests pass.
+A longer fresh run independently verifies steps 0-5 and 981 matching states,
+then stops at step 6 with both alive: the parked first player blocks the
+follower's planned approach. That coordination failure is retained. No additional
+campaign visit is credited, and the overall estimate remains **48.6%**.
+
+Earlier automation milestone: Clockwork now has a fresh two-client internet
 prefix runner with separate personal arrivals, supported waiting moves, normal
 lever inputs and checkpoints, and network-state comparisons. Read-only door
 observations let its normal E input work with Clockwork-owned door groups.

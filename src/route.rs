@@ -313,6 +313,20 @@ impl Route {
         tolerance: f32,
         takeoff_ticks: u32,
     ) -> Result<Vec<(Controls, Vec3)>, usize> {
+        Self::search_inputs(world, start, goal, tolerance, takeoff_ticks, false)
+    }
+    /// Opt-in walking search for feedback-driven remote test navigation.
+    /// Keep grounded steering points with room for the arrival tolerance;
+    /// an unavailable walking route falls back to the existing jump search.
+    pub(crate) fn plan_grounded(
+        world: &World, start: &Player, goal: Vec3, tolerance: f32,
+    ) -> Result<Vec<(Controls, Vec3)>, usize> {
+        if !start.grounded || start.swimming || start.ledge.is_some() { return Err(0); }
+        Self::search_inputs(world, start, goal, tolerance, 0, true)
+    }
+    fn search_inputs(world: &World, start: &Player, goal: Vec3, tolerance: f32,
+        takeoff_ticks: u32, walking: bool,
+    ) -> Result<Vec<(Controls, Vec3)>, usize> {
         use std::cmp::Reverse;
         use std::collections::{BinaryHeap, HashSet};
         let mut nodes = vec![(start.clone(), 0usize, Controls::default(), 0usize)];
@@ -330,7 +344,7 @@ impl Route {
                 path.reverse();
                 return Ok(path);
             }
-            if nodes.len() > 100000 {
+            if nodes.len() > if walking { 30000 } else { 100000 } {
                 break;
             }
             let takeoff_safe = if p.grounded && takeoff_ticks > 0 {
@@ -348,13 +362,13 @@ impl Route {
                     vec2(angle.cos(), angle.sin())
                 };
                 for jump in [false, true] {
-                    if jump && (!takeoff_safe || !p.grounded && p.ledge.is_none()) {
+                    if jump && (walking || !takeoff_safe || !p.grounded && p.ledge.is_none()) {
                         continue;
                     }
                     let input = Controls {
                         wish,
                         jump,
-                        run: true,
+                        run: !walking,
                         ..Default::default()
                     };
                     let mut next = p.clone();
@@ -370,6 +384,12 @@ impl Route {
                     if next.feet.z < goal.z - 320. || !world.body_clear(next.feet) {
                         continue;
                     }
+                    if walking && (!next.grounded || next.swimming || next.ledge.is_some()
+                        || ![Vec3::ZERO, Vec3::X*8., -Vec3::X*8., Vec3::Y*8., -Vec3::Y*8.].iter().all(|offset| {
+                            let high = next.feet + *offset + Vec3::Z;
+                            let floor = world.sweep(high, high-Vec3::Z*19., Vec3::ZERO);
+                            !floor.start_solid && floor.fraction < 1. && floor.normal.z >= 0.65
+                        })) { continue; }
                     let key = (
                         (next.feet.x / 12.).round() as i32,
                         (next.feet.y / 12.).round() as i32,
@@ -1172,6 +1192,8 @@ mod tests {
         ]);
         let start=Player::spawn(&world,vec3(-170.,0.,crate::movement::EYE_HEIGHT)).unwrap();
         let goal=vec3(260.,0.,0.);
+        assert!(Route::plan_grounded(&world,&start,goal,22.).is_err(),
+            "A required jump must not be reported as a grounded route");
         // Reproduce a real input timing failure: the final run segment lasts
         // up to 100 ms longer before the jump packet is applied. Use the same
         // production physics as the host, including its grounded-only jump.

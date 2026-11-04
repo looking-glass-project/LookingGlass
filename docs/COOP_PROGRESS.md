@@ -28,12 +28,24 @@ side had pinned the follower against an open door's tip. Source `f6b1a4f`
 passes **60 native machinery/door records**, all **40 scene cases**, and the
 unchanged single-player **11+1** baseline. Four new local door cases cover
 both actors and the proximity-open starting state, with ordinary partner yield.
-The route runner has 14 receipt/parking guards; all 879 active Rust tests pass.
+The route runner now has 27 receipt/parking/jump/pull-up guards. Source `4fd024c`
+adds grounded navigation to the optional test driver and passes 880 active Rust
+tests and the locked release build. The component results above remain attributed
+to `f6b1a4f`; the new build has not passed the live prefix.
 This is additional automation and component coverage, not another completed
 campaign visit. Total credit remains **48.6%**. See [scope and retained failures](HATTER1.md).
-The fresh internet retry on this build stops at step 1 after Red dies during
-the automated descent. The opening route needs a safer observed approach;
-the strict death guard remains enabled and the failure is retained.
+The earlier fresh retry died at step 1. Observed entrance takeoffs and landings,
+ordinary ledge pull-up input, and precise centering now pass a fresh **0-5**
+prefix: ten course arrivals, eight intermediate personal arrivals, four actual
+jumps, one native pull-up, one timed hold and 872 matching player/world/native
+states. Both finish that prefix alive at 89 health. The run then stops at step 6,
+where the original single-player marker cannot satisfy the stricter co-op
+arrival radius. A repeat passes 0-5 again, then Blue reaches the adjusted step-6
+target before Red falls on the approach. The latest run on `4fd024c` connects
+over the internet but stops at step 1: Red walks beyond the lower entrance
+footing while the test driver is settling the next takeoff position. Its second
+jump has not occurred. This is a failed route test, not a hung process or a
+completed visit. Failures remain retained; full Clockwork remains open.
 
 Earlier fix: Clockwork's gear barrier and laboratory door now wait for all
 living players to pass their authored closing approach. The laboratory lever

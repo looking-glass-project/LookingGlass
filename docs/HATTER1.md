@@ -225,3 +225,71 @@ when health reaches zero; the precise death cause has not been isolated.
 Evidence is retained in `private/coop/hatter1-route-53fb361cf47c4fe1999ff406883e0f55`.
 No death guard, body spacing, combat rule or resource was changed to continue.
 The opening descent and full live prefix remain unverified on this build.
+
+## Observed entrance jumps and ledge pull-ups (4 November 2026)
+
+Later ordinary-input runs isolate the entrance failure. The recorded Red death
+occurs inside the bounds of the authored fatal-fall volume (entity 50, upper
+height 56), while the successful Blue approach jumps over the descent. The
+co-op runner now uses observed takeoff, lower landing and climb footings for
+both players, requiring a real jump and individual arrivals. A tight footing
+can require normal centering to within two units before choosing a waiting spot.
+When a player catches the forward ledge, the runner sends one ordinary pull-up
+input and waits for the native climb to complete. It never writes player state.
+
+Jump proof uses each client's own command acknowledgment and the authoritative
+host's input events for both slots. It checks actual grounded takeoff and exact
+jump-counter increments. Ledge proof additionally requires the initial hang,
+native pulling animation, completed climb counter, grounded finish and the
+host's actual pull-up input. The 27 Python guards reject missing, mismatched or
+unobserved receipts. The optional absent ledge field retains its native meaning.
+
+On unchanged native source `f6b1a4f`, the fresh **0-5** prefix verifies ten course
+arrivals, eight intermediate personal arrivals, four actual jumps, one ledge
+pull-up, one timed hold and **872 matching player/world/native states**. Both
+players remain alive with 89 health. Evidence and independent scoped audit:
+`private/coop/hatter1-route-7e2266f6888f4e0387e3718c5a7795ac/completed-prefix-audit.json`.
+The audit excludes the later stalled portion and does not claim a full run.
+
+That run fails at step 6: the SP route marker is at `[-3904,2750,208.03125]`,
+while the body stops on a clear grounded footing at `[-3919.03125,2750,208.03125]`.
+SP's native planning accepts a 22-unit radius; the co-op verifier requires eight.
+The co-op target is explicitly offset 16 units west to the observed footing.
+Both source and effective courses, their hashes and the adjustment are retained.
+The actual arrival radius remains eight. A later fresh repeat verifies 0-5
+again (830 matching states), then Blue reaches this adjusted target before Red
+falls on the approach. Evidence:
+`private/coop/hatter1-route-38158c87d2684412b34f0373fc7e38eb/completed-prefix-audit.json`.
+The target adjustment still needs a complete live-prefix repeat. Full-route,
+recovery and rejoin coverage stay open.
+
+## Grounded navigation and latest retained failure (4 November 2026)
+
+The optional test driver now tries a grounded walking route before the existing
+timed jump planner. It requires supported steering points with space for arrival
+variation; required gaps still use the existing jump search. Single-player route
+selection and gameplay movement are unchanged. A native regression drives a
+supported detour using delayed observations and inputs at 0, 12 and 24 ticks.
+The waiting-position guard also requires a short forward step before considering
+an incoming-side position that could obstruct the follower at a doorway.
+
+Source `4fd024cc8ae88f702dd1906130cca877f689e138108f9d522f14fce00c8edc0a`, executable SHA-256
+`3bce2ae53c5a8d5fdd229e44e684c9b544f3f622f49af84ccbe32faa1d7da6a8`, passes 880 active
+Rust tests (one ignored), the locked release build, 27 Python guards and seven
+source-package tests. Earlier machinery/scene/SP component checks remain evidence
+for `f6b1a4f`, rather than being relabeled as results for this navigation build.
+
+The first internet attempt fails during invite DNS resolution before gameplay.
+The next connects and completes Blue's entrance, but Red dies at step 1 before
+the second entrance jump. The authoritative trace shows Red walking beyond the
+lower takeoff footing and falling to height 55.16 inside the fatal-fall volume;
+the guest driver is still settling that footing. Red's actual jump count stays
+at one. Observed guest round-trip time has median 340 ms and p95 742 ms, with
+the configured 40 ms delay / 20 ms jitter test conditions. These
+observations identify a remaining delayed steering failure; they do not prove
+that grounded path selection caused it.
+
+Evidence: `private/coop/hatter1-route-f00c1e89aa4642638900339a49ba3fba`.
+The test terminated and its owned clients closed. No fresh-prefix or campaign
+credit is added. The next reproduction should focus on this lower-footing
+approach and its measured delay, before another longer route attempt.

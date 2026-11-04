@@ -1484,9 +1484,11 @@ impl Driver {
                 // arrive with jitter. Avoid plans that jump at the last safe
                 // physics tick of an edge; leave 100 ms of support in reserve.
                 let margin = if local == PlayerId::Red { 12 } else { 0 };
-                std::thread::spawn(move || { let plan=Route::plan_with_takeoff_margin(&world,&player,goal,22.,margin)
-                    .or_else(|_|Route::plan_with_takeoff_margin(&world,&player,goal,40.,margin))
-                    .map(|steps|PlannedRoute {walking:plan_stays_grounded(&world,&player,&steps),steps});
+                std::thread::spawn(move || { let plan=Route::plan_grounded(&world,&player,goal,22.)
+                    .map(|steps|PlannedRoute {walking:true,steps})
+                    .or_else(|_|Route::plan_with_takeoff_margin(&world,&player,goal,22.,margin)
+                        .or_else(|_|Route::plan_with_takeoff_margin(&world,&player,goal,40.,margin))
+                        .map(|steps|PlannedRoute {walking:plan_stays_grounded(&world,&player,&steps),steps}));
                     let _=send.send(plan); });
             }
             if self.worker.is_some() { self.report.phase="planning"; }
@@ -1997,6 +1999,40 @@ mod tests {
             assert_eq!(reached,replan,"Replan={replan}, delay={delay}: {:?}",player.feet);
             assert_eq!(replans>0,replan);
         }}
+    }
+    #[test]
+    fn grounded_search_walks_around_a_gap_with_delayed_observations_and_inputs() {
+        let world=World::fixture(&[
+            (vec3(-200.,-120.,-100.),vec3(100.,120.,0.)),
+            (vec3(80.,60.,-100.),vec3(340.,120.,0.)),
+            (vec3(320.,-120.,-100.),vec3(600.,120.,0.)),
+        ]);
+        let start=Player::spawn(&world,Vec3::Z*crate::movement::EYE_HEIGHT).unwrap();
+        let goal=vec3(420.,0.,0.);
+        let steps=Route::plan_grounded(&world,&start,goal,22.).expect("Walkable route around gap");
+        assert!(steps.iter().all(|(input,_)|!input.jump && !input.run));
+        assert!(steps.iter().any(|(_,at)|at.y>60.),"Must use the supported detour");
+        let steps=straight_grounded_sections(start.feet,steps);
+        for delay in [0,12,24] {
+            let mut player=start.clone();
+            let mut views=VecDeque::from(vec![player.clone();delay+1]);
+            let mut pending=VecDeque::from(vec![Controls::default();delay]);
+            let mut next=0;
+            for _ in 0..3600 {
+                let view=views.pop_front().unwrap();
+                while next<steps.len() && grounded_waypoint_ready(&world,&view,steps[next].1,
+                    steps.get(next+1).map(|s|s.1),true) { next+=1; }
+                let lead=2.*delay as f32/120.;
+                let (wish,run)=landing_control(&world,&view,goal,lead,8.).map_or_else(||
+                    (walking_control(&view,steps.get(next).map_or(goal,|s|s.1),lead,true).0,true),|s|(s.0,false));
+                pending.push_back(Controls {wish,run,..Default::default()});
+                player.tick(&world,pending.pop_front().unwrap());
+                assert!(player.grounded && player.jumps==0,"Left the supported route: delay{delay}, {:?}",player.feet);
+                views.push_back(player.clone());
+                if player.feet.distance(goal)<8. && player.velocity.truncate().length()<20. { break; }
+            }
+            assert!(player.feet.distance(goal)<8.,"Missed goal at delay{delay}: {:?}",player.feet);
+        }
     }
     #[test]
     fn walking_routes_wait_for_progress_before_turning_past_an_obstacle() {

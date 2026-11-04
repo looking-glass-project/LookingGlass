@@ -21,6 +21,9 @@ from test_coop_funhouse import waiting_point, combat_pending
 
 LEVERS = (376, 378, 289, 694, 44)
 THREADS = ('Gear_Bridge_One', 'Gear_Bridge_Two', 'Open_ClockRoom_Door', 'Open_Port', 'stop_clock')
+# Supported footings observed in an ordinary successful entrance descent.
+DESCENT = [[-2848.6, 3228.5, 320.03125], [-3070.9, 2936.8, 176.03125],
+           [-3231.4, 2929.1, 128.03125], [-3296, 2960, 192.03125]]
 
 
 def map_entities(base):
@@ -68,14 +71,59 @@ def parking_target(candidates, at, incoming, goal):
     def ahead(point):
         return sum((point[i] - goal[i]) * direction[i] for i in range(2)) > 8 * math.hypot(*direction)
     usable = [p for p in candidates if distance(p[:2], goal[:2]) >= 48 and distance(p[:2], incoming[:2]) >= 48]
-    if usable:
-        # Prefer the far side of a doorway. Returning to a lateral position on
-        # the incoming side can pin the follower against an open door's tip.
-        return waiting_point([p for p in usable if ahead(p)] or usable, at, incoming, goal), True
+    forward = [p for p in usable if ahead(p)]
+    if forward:
+        return waiting_point(forward, at, incoming, goal), True
     farther = [p for p in candidates if distance(p[:2], incoming[:2]) >= 48
                and distance(p[:2], goal[:2]) >= distance(at[:2], goal[:2]) + 16]
+    forward = [p for p in farther if ahead(p)]
+    if forward:
+        # A short forward step may need another ring before it leaves the
+        # arrival lane clear. Do that before considering an incoming-side spot.
+        return max(forward, key=lambda p: distance(p[:2], goal[:2])), False
+    if usable:
+        return waiting_point(usable, at, incoming, goal), True
     assert farther, 'No observed walking approach to a waiting position'
-    return max([p for p in farther if ahead(p)] or farther, key=lambda p: distance(p[:2], goal[:2])), False
+    return max(farther, key=lambda p: distance(p[:2], goal[:2])), False
+
+
+def verify_descent(arrivals, jumps, history):
+    verify_arrivals([dict(nav=p) for p in DESCENT], list(range(len(DESCENT))), arrivals, history)
+    assert len(jumps) == 4 and {(j['role'],j['leg']) for j in jumps} == {
+        (r,leg) for r in ('host','guest') for leg in (0,1)}, 'Missing personal entrance jump'
+    for jump in jumps:
+        slot = 0 if jump['role'] == 'host' else 1
+        rows = history[jump['role']]
+        before = next(r for r in rows if r['tick'] == jump['before_tick'])
+        after = next(r for r in rows if r['tick'] == jump['after_tick'])
+        count = before['players'][slot]['jumps']
+        assert before['players'][slot]['grounded'] and after['players'][slot]['jumps'] == count + 1, 'Descent needs one actual jump'
+        assert any(before['tick'] < r['tick'] <= after['tick'] and r['driver']['command'] == jump['command']
+                   for r in rows), 'Entrance jump command unobserved'
+        # Actual input/takeoff events are recorded by the authoritative host,
+        # including Red's events. The guest supplies its own command receipt.
+        events = [e for r in history['host']
+                  for e in r['driver'].get('input_events', []) if e['kind'] == 'jump'
+                  and before['tick'] <= e['tick'] < after['tick'] and e['epoch'] == 1]
+        assert any(e['input'][slot] and e['before'][slot][1] and not e['after'][slot][1]
+                   and e['before'][slot][2] == count and e['after'][slot][2] == count + 1 for e in events), 'Actual descent takeoff unobserved'
+
+
+def verify_ledge_pulls(pulls, history):
+    for pull in pulls:
+        slot = 0 if pull['role'] == 'host' else 1
+        rows = history[pull['role']]
+        before = next(r for r in rows if r['tick'] == pull['before_tick'])
+        after = next(r for r in rows if r['tick'] == pull['after_tick'])
+        a, b = before['players'][slot], after['players'][slot]
+        assert a['ledge'] and not a['ledge']['pulling'], 'Pull-up did not begin at an observed ledge'
+        assert b['climbs'] == a['climbs'] + 1 and b['grounded'] and b['ledge'] is None, 'Native pull-up did not finish'
+        assert any(before['tick'] < r['tick'] <= after['tick'] and r['driver']['command'] == pull['command']
+                   and r['players'][slot]['ledge'] and r['players'][slot]['ledge']['pulling'] for r in rows), 'Pull-up animation unobserved'
+        assert any(e['kind'] == 'jump' and e['epoch'] == 1 and before['tick'] <= e['tick'] < after['tick']
+                   and e['input'][slot] and not e['before'][slot][1]
+                   and e['before'][slot][2] == e['after'][slot][2]
+                   for r in history['host'] for e in r['driver'].get('input_events', [])), 'Pull-up input unobserved'
 
 
 class ClockworkPair(Pair):
@@ -93,11 +141,22 @@ class ClockworkPair(Pair):
         self.steps = json.loads(raw)
         assert len(self.steps) == 150 and 0 <= args.last_step < len(self.steps), 'Review changed course'
         assert all(next(iter(s)) in ('nav', 'walk', 'wait', 'lever') for s in self.steps[:args.last_step + 1]), 'Requested prefix needs an unimplemented input type'
+        # The native SP course accepts a 22-unit planning radius. At this
+        # boundary its marker cannot be approached within our eight-unit
+        # arrival bound. Use the separately observed clear, grounded footing.
+        assert self.steps[6] == dict(nav=[-3904,2750,208.03125]), 'Review changed entrance marker'
+        adjustments = [dict(step=6, original=self.steps[6]['nav'], goal=[-3920,2750,208.03125])]
+        assert distance(adjustments[0]['original'], adjustments[0]['goal']) < 22
+        self.steps[6] = dict(nav=adjustments[0]['goal'])
         self.entities, map_sha = map_entities(args.data)
         (self.folder / 'course.json').write_bytes(raw)
+        effective = json.dumps(self.steps, indent=2).encode()
+        (self.folder / 'effective-course.json').write_bytes(effective)
         self.evidence.update(course_sha256=hashlib.sha256(raw).hexdigest(), map_sha256=map_sha,
+            effective_course_sha256=hashlib.sha256(effective).hexdigest(), waypoint_adjustments=adjustments,
             executable_sha256=hashlib.sha256(args.exe.read_bytes()).hexdigest(),
-            arrivals=[], levers=[], holds=[], parking=[], completed=self.completed, scope='Fresh Clockwork prefix only')
+            arrivals=[], levers=[], holds=[], parking=[], descent_arrivals=[], descent_jumps=[], ledge_pulls=[],
+            completed=self.completed, scope='Fresh Clockwork prefix only')
         dependencies = self.folder / 'fixture-dependencies'; dependencies.mkdir()
         for name in ('test_coop_hatter1.py', 'test_coop_village.py', 'test_coop_play.py', 'test_coop_chess.py',
                      'test_coop_funhouse.py', 'test_coop_castling.py', 'test_coop_chess_resume.py', 'coop_diagnostics.py', 'coop_recovery.py'):
@@ -149,6 +208,8 @@ class ClockworkPair(Pair):
                 self.evidence['last_measured_input_lead'] = self.lead
         for role, report in self.reports.items():
             self.history[role][-1]['clockwork'] = self.state(role)
+            for observed, body in zip(self.history[role][-1]['players'], report['frame']['players']):
+                observed.update(ledge=body['player'].get('ledge'), climbs=body['player']['climbs'])
 
     def until(self, predicate, seconds=90):
         end = time.monotonic() + seconds
@@ -160,21 +221,48 @@ class ClockworkPair(Pair):
                 raise AssertionError(f'Clockwork step {self.step} timed out: {summary}')
             self.pump()
 
-    def move(self, role, goal, navigate=False):
-        self.set(role, goal, navigate=navigate, run=True)
+    def move(self, role, goal, navigate=False, jump=False, radius=8):
+        self.set(role, goal, navigate=navigate, run=True, jump=jump)
+        self.commands[role]['arrival_radius'] = radius
+        command = self.commands[role]['id']
+        pullup = None
         best = (distance(self.body(role)['player']['feet'], goal), self.reports[role]['frame']['tick'])
         def done():
-            nonlocal best, navigate
+            nonlocal best, navigate, pullup
             body = self.body(role)['player']; report = self.reports[role]
             assert report['combat']['stage']['owner'] is None, 'Unexpected cinematic in ordinary prefix movement'
             gap = distance(body['feet'], goal); tick = report['frame']['tick']
-            if self.reached(role) and body['grounded'] and distance(body['feet'][:2], goal[:2]) < 8 and abs(body['feet'][2]-goal[2]) < 35:
+            if self.reached(role) and body['grounded'] and distance(body['feet'][:2], goal[:2]) < radius and abs(body['feet'][2]-goal[2]) < 35:
                 return True
+            hang = body.get('ledge')
+            if hang and not hang['pulling'] and pullup is None and goal[2] >= hang['top'] - 35 and sum(
+                    (goal[i]-body['feet'][i])*hang['forward'][i] for i in range(2)) > 0:
+                self.set(role, goal, run=True, jump=True)
+                self.commands[role]['arrival_radius'] = radius
+                pullup = dict(role=role, before_tick=tick, command=self.commands[role]['id'])
+                self.evidence['ledge_pulls'].append(pullup)
             if gap < best[0] - 2: best = gap, tick
-            elif not navigate and tick - best[1] > 240 and body['grounded']:
+            elif not navigate and not jump and tick - best[1] > 240 and body['grounded']:
                 navigate = True; self.set(role, goal, navigate=True, run=True)
+                self.commands[role]['arrival_radius'] = radius
             return False
         self.until(done)
+        if pullup is not None: pullup['after_tick'] = self.reports[role]['frame']['tick']
+        return command
+
+    def descend(self, role):
+        for index, point in enumerate(DESCENT):
+            before = self.reports[role]['frame']['tick']
+            jumping = index % 2 == 1
+            command = self.move(role, point, navigate=not jumping, jump=jumping, radius=2 if index >= 2 else 8)
+            report = self.reports[role]
+            self.evidence['descent_arrivals'].append(dict(step=index, role=role, goal=point,
+                tick=report['frame']['tick'], feet=list(self.body(role)['player']['feet']),
+                command=report['route_driver']['command']))
+            if jumping:
+                self.evidence['descent_jumps'].append(dict(role=role, leg=index//2, command=command,
+                    before_tick=before, after_tick=report['frame']['tick']))
+        print('PASS ordinary entrance descent', role, flush=True)
 
     def clear(self):
         if not any(combat_pending(self.reports[r], r) for r in self.commands): return
@@ -193,6 +281,7 @@ class ClockworkPair(Pair):
         other = 'guest' if first == 'host' else 'host'
         self.set(other, attack=True)
         for role in (first, other):
+            if self.step == 1: self.descend(role)
             self.move(role, goal, navigate)
             report = self.reports[role]
             self.evidence['arrivals'].append(dict(step=self.step, role=role, goal=goal,
@@ -200,6 +289,10 @@ class ClockworkPair(Pair):
                 command=report['route_driver']['command']))
             if role == first:
                 slot = 0 if role == 'host' else 1
+                if not report['route_driver']['neighbors'][slot]:
+                    # An eight-unit arrival can stop on the edge of a small
+                    # footing. Center by walking before asking for neighbors.
+                    self.move(role, goal, radius=2)
                 for attempt in range(3):
                     report = self.reports[role]
                     candidates = report['route_driver']['neighbors'][slot]
@@ -255,6 +348,9 @@ class ClockworkPair(Pair):
     def verify(self):
         assert self.completed == list(range(self.args.last_step + 1)), 'Incomplete requested prefix'
         verify_arrivals(self.steps, self.completed, self.evidence['arrivals'], self.history)
+        if 1 in self.completed:
+            verify_descent(self.evidence['descent_arrivals'], self.evidence['descent_jumps'], self.history)
+        verify_ledge_pulls(self.evidence['ledge_pulls'], self.history)
         expected = [i for i in self.completed if 'lever' in self.steps[i]]
         assert [r['step'] for r in self.evidence['levers']] == expected, 'Missing lever receipts'
         for receipt in self.evidence['levers']:
@@ -289,7 +385,7 @@ class ClockworkPair(Pair):
         for self.step, step in enumerate(self.steps[:self.args.last_step + 1]):
             print('Clockwork step', self.step, step, flush=True)
             self.clear()
-            if self.step in (0, 9, 14, 18, 25, 33): self.save_checkpoint(self.step)
+            if self.step in (0, 1, 9, 14, 18, 25, 33): self.save_checkpoint(self.step)
             key, value = next(iter(step.items()))
             if key in ('nav', 'walk'): self.go(value, key == 'nav')
             elif key == 'lever': self.lever(value)

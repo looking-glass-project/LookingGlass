@@ -1,7 +1,7 @@
 """Reject incomplete or unobserved Clockwork route receipts."""
 import copy
 import unittest
-from test_coop_hatter1 import parking_target, verify_arrivals
+from test_coop_hatter1 import DESCENT, parking_target, verify_arrivals, verify_descent, verify_ledge_pulls
 
 
 class Arrivals(unittest.TestCase):
@@ -61,7 +61,100 @@ class Arrivals(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError, 'not observed'): self.check()
 
 
+class Descent(unittest.TestCase):
+    def setUp(self):
+        self.history, self.arrivals, self.jumps = {}, [], []
+        for slot, role in enumerate(('host','guest')):
+            rows = []
+            for index, goal in enumerate(DESCENT):
+                tick, command = 100 + index * 100 + slot, 5 + index * 2 + slot
+                body = dict(feet=list(goal), health=100, spawned_at=0, grounded=True, jumps=2+(index+1)//2)
+                count = 2+index//2
+                event = dict(kind='jump', epoch=1, tick=tick-50, input=[slot==0,slot==1],
+                             before=[[goal,True,count],[goal,True,count]],
+                             after=[[goal,False,count+1],[goal,False,count+1]])
+                rows.append(dict(tick=tick,owner=None,map='hatter1',epoch=1,
+                    players=[copy.deepcopy(body),copy.deepcopy(body)],
+                    driver=dict(command=command,reached=True,input_events=[event] if index%2 else [])))
+                self.arrivals.append(dict(step=index,role=role,tick=tick,goal=list(goal),feet=list(goal),command=command))
+                if index%2:
+                    self.jumps.append(dict(role=role,leg=index//2,command=command,before_tick=tick-100,after_tick=tick))
+            self.history[role] = rows
+        for index in (1,3):
+            self.history['host'][index]['driver']['input_events'] += self.history['guest'][index]['driver']['input_events']
+            self.history['guest'][index]['driver']['input_events'] = []
+
+    def check(self):
+        verify_descent(self.arrivals,self.jumps,self.history)
+
+    def test_four_host_observed_jumps_with_personal_receipts(self): self.check()
+
+    def test_missing_partner_jump(self):
+        self.jumps.pop()
+        with self.assertRaisesRegex(AssertionError,'Missing personal'): self.check()
+
+    def test_no_actual_jump(self):
+        self.history['guest'][1]['players'][1]['jumps'] = 2
+        with self.assertRaisesRegex(AssertionError,'one actual jump'): self.check()
+
+    def test_input_without_takeoff_is_rejected(self):
+        self.history['host'][1]['driver']['input_events'][1]['after'][1][1] = True
+        with self.assertRaisesRegex(AssertionError,'takeoff unobserved'): self.check()
+
+    def test_wrong_command_event_is_rejected(self):
+        self.jumps[2]['command'] += 100
+        with self.assertRaisesRegex(AssertionError,'command unobserved'): self.check()
+
+    def test_guest_event_does_not_replace_authoritative_event(self):
+        event = self.history['host'][1]['driver']['input_events'].pop()
+        self.history['guest'][1]['driver']['input_events'] = [event]
+        with self.assertRaisesRegex(AssertionError,'takeoff unobserved'): self.check()
+
+    def test_event_uses_pre_step_tick(self):
+        self.history['host'][1]['driver']['input_events'][0]['tick'] = 100
+        self.check()
+
+
+class LedgePull(unittest.TestCase):
+    def setUp(self):
+        self.pulls = [dict(role='guest',before_tick=100,after_tick=400,command=9)]
+        rows = []
+        for tick,ledge,climbs,grounded in [(100,dict(pulling=False),0,False),
+                (200,dict(pulling=True),0,False),(400,None,1,True)]:
+            body = dict(ledge=ledge,climbs=climbs,grounded=grounded)
+            rows.append(dict(tick=tick,players=[copy.deepcopy(body),body],
+                driver=dict(command=8 if tick==100 else 9,input_events=[])))
+        self.history = dict(guest=rows,host=copy.deepcopy(rows))
+        self.history['host'][1]['driver']['input_events'] = [dict(kind='jump',epoch=1,tick=110,input=[False,True],
+            before=[[[0,0,0],True,0],[[0,0,0],False,1]],after=[[[0,0,0],True,0],[[0,0,0],False,1]])]
+
+    def check(self): verify_ledge_pulls(self.pulls,self.history)
+
+    def test_observed_native_pull_up(self): self.check()
+
+    def test_missing_start_ledge(self):
+        self.history['guest'][0]['players'][1]['ledge'] = None
+        with self.assertRaisesRegex(AssertionError,'observed ledge'): self.check()
+
+    def test_no_completed_climb(self):
+        self.history['guest'][2]['players'][1]['climbs'] = 0
+        with self.assertRaisesRegex(AssertionError,'did not finish'): self.check()
+
+    def test_missing_pull_animation(self):
+        self.history['guest'][1]['players'][1]['ledge']['pulling'] = False
+        with self.assertRaisesRegex(AssertionError,'animation unobserved'): self.check()
+
+    def test_missing_authoritative_input(self):
+        self.history['host'][1]['driver']['input_events'] = []
+        with self.assertRaisesRegex(AssertionError,'input unobserved'): self.check()
+
+
 class Parking(unittest.TestCase):
+    def test_short_forward_step_preferred_over_incoming_doorway(self):
+        candidates = [[-3296.3,2705.6,192],[-3262.3,2787.5,192],[-3330.2,2787.5,192]]
+        self.assertEqual(parking_target(candidates,[-3296.3,2753.6,192],[-3326,2989,192],[-3296,2750,192]),
+                         (candidates[0],False))
+
     def test_far_side_preferred_over_incoming_doorway(self):
         candidates = [[-3295,2701,192], [-3261,2783,192], [-3329,2783,192]]
         self.assertEqual(parking_target(candidates, [-3295,2749,192], [-3331,2994,192], [-3296,2750,192]),

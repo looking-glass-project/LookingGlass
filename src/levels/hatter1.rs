@@ -6,6 +6,7 @@ pub(crate) use route::drive as drive_route;
 mod check;
 mod coop;
 mod coop_check;
+mod coop_scene_check;
 mod motion;
 mod saves;
 mod scene;
@@ -756,6 +757,7 @@ pub static REGISTRATION: Registration = Registration {
     ],
     checks: &[
         Check { flag: "--hatter1-coop-check", help: "Verify paired Clockwork machinery and owned lever actions.", run: Run::Headless(coop_check::check) },
+        Check { flag: "--hatter1-coop-scene-check", help: "Verify paired Clockwork scene ownership and reunion.", run: Run::Headless(coop_scene_check::check) },
         Check {flag:"--hatter1-route-native-check",help:"Verify continuous Clockwork traversal with its native cast.",run:Run::Windowed(route::check)},
         Check {
             flag: "--hatter1-traversal-check",

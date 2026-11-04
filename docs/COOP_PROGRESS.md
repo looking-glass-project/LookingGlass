@@ -1,6 +1,6 @@
 # Co-op progress
 
-Updated 4 November 2026. Branch: `coop`. **Estimated overall completion: 48.3%.**
+Updated 4 November 2026. Branch: `coop`. **Estimated overall completion: 48.6%.**
 The older 42% reports are historical. This percentage measures delivered and
 verified behavior against the full co-op scope; it is not a running test's progress.
 
@@ -15,11 +15,22 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | Internet Host/Join | 7 | 15 |
 | Two players, movement and presentation | 10.5 | 15 |
 | Combat, individual resources and death | 9.25 | 20 |
-| Scenes, transport and progression | 10.5 | 20 |
+| Scenes, transport and progression | 10.75 | 20 |
 | Full campaign verification | 3.08 | 20 |
-| **Total** | **48.33, rounded to 48.3** | **100** |
+| **Total** | **48.58, rounded to 48.6** | **100** |
 
-New implementation milestone: Clockwork (`hatter1`) now explicitly advances
+Latest verification milestone: Clockwork's new native scene suite passes all
+**40 cases**: four cinematics with either owner, watched/held-skipped play and
+living/dead partners, plus both ordinary speech scenes with either initiator
+and living/dead partners. It checks actual contact/lever activation, frozen
+waiting positions, pause/compressed restore, camera and authored pose stability,
+owner-only skipping, safe separated reunion and personal resource preservation.
+Ordinary speech advances once while both living players move independently.
+Source `ec48aa7` also passes all 38 machinery checks; the single-player 11+1
+records still match the baseline exactly. This adds **0.25 scene/progression
+points** for complete staged handoff coverage, not a full campaign visit.
+
+Earlier implementation milestone: Clockwork (`hatter1`) now explicitly advances
 one shared machinery clock, carries both living riders, waits for boarding,
 and binds lever actions and their delayed scenes to the actual user. Source
 `9ce4f98` passes **38 native paired component checks** covering lift and floater
@@ -29,11 +40,11 @@ and owner-specific death cleanup. The original single-player 11+1 component
 records match the pre-change baseline exactly. All 879 active Rust tests, the
 locked release, source-package seven and source-worktree 890 checks pass.
 
-This adds **0.25 movement points**, using the same bounded credit as earlier
-native paired-transport milestones. It adds no scene/progression, internet or
-completed-campaign-row credit. Clockwork still needs full paired scene/reunion
-combinations, the remaining machinery/exit cases and continuous two-client play.
-See [Clockwork coverage](HATTER1.md).
+That adapter added **0.25 movement points**, using the same bounded credit as
+earlier native paired-transport milestones. Full paired handoffs are now checked
+separately above. Clockwork still needs closing-door/exit cases, continuous
+two-client traversal, recovery and reconnects. Internet and completed-campaign
+credit are unchanged. See [Clockwork coverage](HATTER1.md).
 
 Funhouse's best verified fresh prefix remains **0-88** on source `f9e7029`:
 122 personal arrivals, 27 own pickups, 14 paired holds, eight switch shots,

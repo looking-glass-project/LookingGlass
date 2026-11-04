@@ -98,8 +98,41 @@ two units retained 44-unit player separation and exercised the actual trigger.
 The waiting player first contacts the lower recall floor before boarding, as
 on a normal approach. The production boarding guard was retained.
 
-These are components, not a fresh two-client playthrough. Complete paired
-watched/skipped/restored cinematic handoffs, remaining machinery/exit boarding,
-internet traversal, recovery and transition/rejoin coverage are still required.
+These are components, not a fresh two-client playthrough. At this initial
+adapter milestone, complete paired cinematic handoffs, remaining machinery/exit
+boarding, internet traversal, recovery and transition/rejoin remained open.
 No campaign visit is marked complete. Single-player scene/physics paths remain
 unchanged; no original assets are included in the source changes.
+
+
+## Paired scene handoffs (4 November 2026)
+
+`--hatter1-coop-scene-check` passes 40 staged native cases (41 PASS records,
+including its final summary) on source
+`ec48aa77d0ab0276003f38857e13150d2d65742a9744fca6fa30c2891e0d687d`, executable SHA-256
+`1aa190a6b475ab2632f485c7cf0b81e6718062cc76e2fe440ecfbe54cce507e0`.
+Hare and Gryphon start through their native contact brushes; Port and Stop
+start through actual lever inputs and the original approach/hand-action delay.
+Prerequisite progress and starting positions are staged explicitly.
+
+All four cinematics run with either owner, watched or held-skipped, and a
+living or dead partner (32 cases). A partner cannot skip the owner's scene.
+Checks retain the waiting player's position, preserve both personal resource
+sets, compare camera, machinery and authored Alice pose after paused/compressed
+restores, and verify the original progression outcome. Living partners reunite
+on supported, clear, nonhazardous, separated positions; dead partners stay put.
+
+Mirror and Hint cover both initiators with living/dead partners (eight cases).
+Their speech clock advances once, neither player acquires scene control or
+hidden-body flags, and both living players can move from distinct entrance
+footings. Dead partners stay put. These are state-level presentation checks,
+not a new rendered-image comparison.
+
+The same build passes all 38 paired machinery records. Single-player component
+logs (11+1 records) match the pre-adapter baseline byte-for-byte after newline
+normalization. Evidence is retained in `private/hatter1-coop-ec48aa7/manifest.json`.
+No gameplay change was needed for these scene cases.
+
+Closing-door catch-up rules (NORETURN and the laboratory door), the end clock
+and exit, continuous two-client traversal, death/checkpoint recovery and
+transition/rejoin remain open. These checks do not complete a campaign visit.

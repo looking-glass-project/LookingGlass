@@ -5686,3 +5686,16 @@ additional progression credit is assigned before complete paired cinematic
 handoffs are verified. Movement is now 10.5/15; the other category totals remain
 unchanged. Total is about 48.33, reported as 48.3%. Six campaign rows retain
 combined evidence; 33 remain open, plus earlier contact-system repeats.
+
+
+### Clockwork paired-scene verification credit (4 November 2026)
+
+Source `ec48aa7` passes 40 staged scene/speech cases: native activation with
+either Alice, watched/held-skipped cinematics, living/dead waiting partners,
+pause/compressed restore, safe reunion and independently moving explorers
+through ordinary speech. All 38 machinery records still pass, and single-player
+11+1 records exactly match baseline. See [Clockwork evidence](HATTER1.md).
+This adds 0.25 scenes/progression points, now 10.75/20. The total is 48.58,
+reported as **48.6%**. Six campaign visits retain combined evidence; 33 remain
+open, plus earlier contact-system repeats. Closing doors, the final transport,
+continuous two-client Clockwork traversal and recovery/rejoin remain unverified.

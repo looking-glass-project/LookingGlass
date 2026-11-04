@@ -19,7 +19,24 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | Full campaign verification | 3.08 | 20 |
 | **Total** | **48.58, rounded to 48.6** | **100** |
 
-Latest automation result: Clockwork's resumed **60-67** section passes with
+Latest automation result: Clockwork's resumed **68-81** section passes with
+26 personal arrivals, 16 pathnode projections, 13 waiting handoffs, one timed
+hold and **2,294 matching player/world/native states**. Both finish alive at
+16.53/100 health. The combat test controller now requires supported footing
+under its full stance through delayed movement and braking. The regression
+fails on the old controller and passes with the correction; the real internet
+replay also passes the fight that previously killed Red. Source `894292f`
+passes **890 active Rust tests**, the release, **72 native checks**, the exact
+single-player **11+1** baseline and **110 Python guards**. Ordinary checkpoints
+allow targeted retries near this fight and the next route section.
+
+The preceding requested 68-108 run remains failed at 77, with a separate scoped
+audit crediting only 68-76 and 1,237 matching states. Later Clockwork traversal,
+recovery, reconnects and complete campaign repeats remain the bottleneck. No
+further complete campaign visit is credited; the estimate stays **48.6%**.
+See [Clockwork evidence](HATTER1.md).
+
+Earlier automation result: Clockwork's resumed **60-67** section passes with
 nine personal arrivals, two native scene handoffs, four waiting handoffs, one
 lever, two timed holds and **2,971 matching player/world/native states**. Blue
 owns the watched Hare scene and Red owns the delayed Port scene. Separate

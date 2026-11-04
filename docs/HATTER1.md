@@ -770,3 +770,39 @@ unchanged build. **110 Python guards**, seven source-package checks and the sour
 audit pass. Frozen fixture versions accompany each result. Both watched scene
 owners now have live evidence; live skipped scenes, recovery/reconnects, later
 machinery and complete fresh traversal remain open. Overall stays 48.6%.
+
+## Raised-path combat and return route (4 November 2026)
+
+A resumed 68-108 attempt completes 68-76, then Red dies during combat at 77.
+An Automaton's punches move her off the raised path onto the damaging floor.
+The original failure remains retained. A separate audit of only the completed
+section verifies 16 personal arrivals, 12 pathnode projections, eight waiting
+handoffs, one timed hold and 1,237 matching player/world/native states, ending
+at 88/66 health. Evidence:
+`private/coop/hatter1-route-535e9d49adb344e1bbb1e6fa4ae9cd4a/completed-prefix-audit.json`.
+
+The opt-in combat controller previously accepted body clearance and predicted
+height while Alice could have only marginal support at the edge. It now requires
+grounded support across the full stance throughout its delayed movement and
+braking prediction. A regression runs ordinary movement with observation/input
+delays of 0, 12 and 24 ticks and still requires useful movement. It fails on the
+old controller at tick 248 with no delay, then passes with the correction.
+Enemy attacks, damage, player movement physics and progression remain unchanged.
+
+The new frozen build `894292f` passes **resumed 68-81** through two independent
+internet clients with 40 ms delay and 20 ms jitter. The unchanged starting
+checkpoint restores exactly at tick 97795. Both clients verify 26 personal
+arrivals, 16 pathnode projections, 13 completed waiting handoffs (23 walking
+steps), one timed hold and **2,294 matching player/world/native states**.
+Both remain alive without respawning, ending at **16.53/100 health**. The low
+remaining Blue health is retained, not reset. An ordinary checkpoint before 82
+is saved at tick 114340 for continuing the route. Evidence:
+`private/coop/hatter1-route-e129882e7deb47c0a8e9b4c68b6f3b0b`.
+
+Validation: **890 active Rust tests** pass (three ignored), the locked release
+build passes, all **72 native paired/driver checks** pass, and the single-player
+11+1 results match the original baseline exactly. All **110 Python guards** and
+seven source-package checks pass. Frozen fixture hashes match the tested files.
+This is a completed resumed section, not complete Clockwork traversal or another
+verified campaign visit. Later scenes, transports, recovery/reconnect repeats
+and fresh traversal remain open; overall completion stays **48.6%**.

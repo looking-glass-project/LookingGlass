@@ -871,7 +871,11 @@ fn combat_dodge(world:&World, player:&Player, home:Vec3, enemy:Vec3, tick:u64, l
             let input=if step<delay {pending.clamp_length_max(1.)}
                 else if step<24+2*delay {wish} else {Vec2::ZERO};
             trial.tick(world,Controls{wish:input,run:true,..Default::default()});
-            world.body_clear(trial.feet) && trial.feet.z>=player.feet.z-12.
+            // A body can remain grounded with only its outer edge on a ledge.
+            // Keep supported room beneath the whole stance before committing
+            // a delayed dodge, including its braking tail.
+            trial.grounded && super::placement::supported(world,trial.feet)
+                && trial.feet.z>=player.feet.z-12.
                 && (trial.feet-home).truncate().length()<=leash && safe(trial.feet)
                 && other.is_none_or(|at| (trial.feet-at).truncate().length()>=36. || (trial.feet.z-at.z).abs()>=56.)
         });
@@ -1814,6 +1818,27 @@ mod tests {
                 views.push_back(p.clone());
             }
             assert!(movement>24.,"Safe prediction disabled all useful dodging");
+        }
+    }
+    #[test]
+    fn combat_dodge_keeps_a_full_footprint_before_enemy_knockback() {
+        let world=World::fixture(&[(vec3(-64.,-300.,-100.),vec3(64.,300.,0.))]);
+        for delay in [0,12,24] {
+            let mut p=Player::spawn(&world,vec3(16.,0.,crate::movement::EYE_HEIGHT+0.03125)).unwrap();
+            let home=p.feet;let enemy=vec3(200.,180.,48.);
+            let mut views=VecDeque::from(vec![p.clone();delay+1]);
+            let mut inputs=VecDeque::from(vec![Controls::default();delay]);
+            let mut movement=0.;
+            for tick in 0..1200 {
+                let view=views.pop_front().unwrap();
+                let wish=combat_dodge(&world,&view,home,enemy,tick,2.*delay as f32/120.,None,false,|_|true);
+                inputs.push_back(Controls{wish,run:true,..Default::default()});
+                let old=p.feet;p.tick(&world,inputs.pop_front().unwrap());movement+=p.feet.distance(old);
+                assert!(super::super::placement::supported(&world,p.feet),
+                    "Combat accepted marginal edge contact: delay{delay},tick{tick},feet{:?}",p.feet);
+                views.push_back(p.clone());
+            }
+            assert!(movement>24.,"Footprint checks disabled all useful dodging");
         }
     }
     #[test]

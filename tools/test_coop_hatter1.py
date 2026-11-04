@@ -913,7 +913,7 @@ class ClockworkPair(Pair):
             step = self.steps[self.step]
             print('Clockwork step', self.step, step, flush=True)
             self.clear()
-            if self.step in (0, 1, 9, 14, 17, 18, 25, 33, 36, 43, 44, 51, 52, 60, 64, 66, 68): self.save_checkpoint(self.step)
+            if self.step in (0, 1, 9, 14, 17, 18, 25, 33, 36, 43, 44, 51, 52, 60, 64, 66, 68, 76, 79, 81, 91, 99, 109): self.save_checkpoint(self.step)
             if self.step==36:
                 self.cross_corridor_gap()
                 self.completed.extend(range(36,43))

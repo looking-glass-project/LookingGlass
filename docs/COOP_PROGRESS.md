@@ -19,7 +19,20 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | Full campaign verification | 3.08 | 20 |
 | **Total** | **48.58, rounded to 48.6** | **100** |
 
-Latest automation result: Clockwork's resumed **44-59** section passes with
+Latest automation result: Clockwork's resumed **60-67** section passes with
+nine personal arrivals, two native scene handoffs, four waiting handoffs, one
+lever, two timed holds and **2,971 matching player/world/native states**. Blue
+owns the watched Hare scene and Red owns the delayed Port scene. Separate
+retained runs verify Red's Hare scene (**1,791 matching states**) and Blue's
+Port lever/scene (**378 matching states**). Both stay at 88/78 health, and the
+scene checks require hidden/frozen partners, preserved resources and safe shared
+reunions. Scripted reunions are recorded separately from walking arrivals.
+All **110 Python guards** pass; native source remains `6f589de`. An intervening
+startup failed DNS resolution; the next new internet session passed. Later
+Clockwork sections, skipped-scene/recovery/reconnect repeats and full traversal
+remain open. Overall completion stays **48.6%**. See [Clockwork evidence](HATTER1.md).
+
+Earlier automation result: Clockwork's resumed **44-59** section passes with
 32 personal arrivals, 32 independent pathnode projections, 16 waiting handoffs
 and **3,565 matching player/world/native states**. Both finish alive at 88/78
 health. The parking controller now takes bounded, observed sideways detours

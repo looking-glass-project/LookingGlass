@@ -8,6 +8,163 @@ from test_coop_hatter1 import recorded_arrival, next_stair_footing, verify_stair
 from test_coop_hatter1 import next_corridor_footing, verify_corridor_waiting
 from test_coop_hatter1 import validate_course_range, verify_gap_hold
 from test_coop_hatter1 import recorded_node, verify_node_resolutions
+from test_coop_hatter1 import verify_scene_handoff, verify_contact_handoff
+
+
+class SceneHandoffs(unittest.TestCase):
+    def setUp(self):
+        self.entry=dict(step=67,scene='Port_Cine',role='host',trigger_command=10,
+                        starts={'host':120,'guest':120},ends={'host':1900,'guest':1900})
+        self.levers=[dict(step=66,lever=3,role='host',command=10)]
+        stats=dict(sanity=75.,will=20.,difficulty='Normal',owned=[1,1],collected=[],
+                   selected=1,school_items={},staff_component=False)
+        bodies=[dict(feet=[x,0,0],grounded=True,health=75.,stats=copy.deepcopy(stats),spawned_at=0,warped_at=0)
+                for x in (0,80)]
+        rows=[]
+        for tick,t in ((120,0),(960,7),(1872,14.6)):
+            rows.append(dict(tick=tick,scene='Port_Cine',owner='Blue',camera_player='Blue',
+                clockwork=dict(port=None,coop=dict(actor=0),scene=dict(kind='Port',time=t,line=0,skip=None)),
+                players=copy.deepcopy(bodies),driver=dict(command=30,clear=[True,True]),
+                presentation=dict(visible_players=[False,False])))
+        after=copy.deepcopy(rows[-1]);after.update(tick=1900,scene=None,owner=None)
+        after['clockwork'].update(port=20.,scene=None)
+        after['presentation']['visible_players']=[True,True]
+        for i,b in enumerate(after['players']):b.update(feet=[100+i*48,100,0],warped_at=1890)
+        rows.append(after)
+        self.history={peer:copy.deepcopy(rows) for peer in ('host','guest')}
+
+    def check(self): verify_scene_handoff(self.entry,self.history,self.levers)
+
+    def test_watched_port_and_shared_reunion(self): self.check()
+
+    def test_red_lever_user_owns_scene(self):
+        self.entry['role']='guest';self.levers[0]['role']='guest'
+        for rows in self.history.values():
+            for row in rows[:-1]:
+                row.update(owner='Red',camera_player='Red');row['clockwork']['coop']['actor']=1
+        self.check()
+
+    def test_wrong_lever_user(self):
+        self.levers[0]['role']='guest'
+        with self.assertRaisesRegex(AssertionError,'lever user'): self.check()
+
+    def test_partner_must_remain_hidden(self):
+        self.history['guest'][1]['presentation']['visible_players'][1]=True
+        with self.assertRaisesRegex(AssertionError,'displayed'): self.check()
+
+    def test_partner_must_remain_frozen(self):
+        self.history['host'][1]['players'][1]['feet'][0]+=1
+        with self.assertRaisesRegex(AssertionError,'moved the waiting'): self.check()
+
+    def test_scene_cannot_change_personal_inventory(self):
+        self.history['guest'][1]['players'][0]['stats']['owned'][0]=0
+        with self.assertRaisesRegex(AssertionError,'personal resources'): self.check()
+
+    def test_no_revival_during_scene(self):
+        self.history['host'][1]['players'][1]['spawned_at']=960
+        with self.assertRaisesRegex(AssertionError,'revived or warped'): self.check()
+
+    def test_skip_is_not_watched_evidence(self):
+        self.history['guest'][1]['clockwork']['scene']['skip']=.1
+        with self.assertRaisesRegex(AssertionError,'skipped'): self.check()
+
+    def test_full_port_duration_required(self):
+        for peer,rows in self.history.items():
+            rows[1]['tick']=300;rows[2]['tick']=480;rows[3]['tick']=600
+            for body in rows[3]['players']:body['warped_at']=590
+            self.entry['ends'][peer]=600
+        with self.assertRaisesRegex(AssertionError,'ended early'): self.check()
+
+    def test_scene_beginning_must_be_observed(self):
+        self.history['host'][0]['clockwork']['scene']['time']=2
+        with self.assertRaisesRegex(AssertionError,'start was not observed'): self.check()
+
+    def test_missing_reunion(self):
+        self.history['guest'].pop()
+        with self.assertRaisesRegex(AssertionError,'Missing completed'): self.check()
+
+    def test_mismatched_shared_stamp(self):
+        self.history['guest'][-1]['players'][1]['warped_at']-=1
+        with self.assertRaisesRegex(AssertionError,'shared reunion stamp'): self.check()
+
+    def test_overlapping_reunion(self):
+        self.history['host'][-1]['players'][1]['feet']=[110,100,0]
+        with self.assertRaisesRegex(AssertionError,'overlaps'): self.check()
+
+    def test_obstructed_reunion(self):
+        self.history['guest'][-1]['driver']['clear'][1]=False
+        with self.assertRaisesRegex(AssertionError,'Unsafe'): self.check()
+
+    def test_reunion_cannot_hide_partner(self):
+        self.history['guest'][-1]['presentation']['visible_players'][0]=False
+        with self.assertRaisesRegex(AssertionError,'remains hidden'): self.check()
+
+    def hare(self):
+        self.entry.update(step=60,scene='Hatter1_Cinema1',trigger_command=30)
+        for peer,rows in self.history.items():
+            initial=rows[0];after=rows[-1];active=[]
+            for line in range(12):
+                time=0 if line==0 else 31+line
+                row=copy.deepcopy(initial);row.update(tick=120+time*120,scene='Hatter1_Cinema1')
+                row['clockwork']=dict(hare=None,coop=dict(actor=0),scene=dict(kind='Hare',time=time,line=line,skip=None))
+                active.append(row)
+            after.update(tick=5290);after['clockwork']=dict(hare=43.,scene=None)
+            for body in after['players']:body['warped_at']=5280
+            self.entry['ends'][peer]=5290;self.history[peer]=active+[after]
+
+    def test_contact_scene_watches_every_hare_line(self):
+        self.hare();self.check()
+
+    def test_hare_cannot_omit_a_dialogue_line(self):
+        self.hare();self.history['guest'].pop(6)
+        with self.assertRaisesRegex(AssertionError,'missed dialogue'): self.check()
+
+    def test_hare_must_retain_triggering_movement(self):
+        self.hare();self.entry['trigger_command']=12
+        with self.assertRaisesRegex(AssertionError,'trigger movement'): self.check()
+
+    def contact(self):
+        self.hare();self.steps=[{} for _ in range(63)];self.steps[60]=dict(nav=[0,0,0])
+        self.entry['interrupted_goal']=[0,0,0]
+
+    def test_actual_scene_replaces_an_interrupted_contact_approach(self):
+        self.contact();verify_contact_handoff(self.entry,self.steps,[],self.history)
+
+    def test_missing_partner_scene_cannot_replace_arrival(self):
+        self.contact();self.history['guest'].pop()
+        with self.assertRaisesRegex(AssertionError,'Missing completed'):
+            verify_contact_handoff(self.entry,self.steps,[],self.history)
+
+    def test_teleport_cannot_be_labelled_as_personal_arrival(self):
+        self.contact()
+        with self.assertRaisesRegex(AssertionError,'actual course approach'):
+            verify_contact_handoff(self.entry,self.steps,[dict(step=60,role='guest')],self.history)
+
+    def test_contact_cannot_replace_an_unrelated_course_goal(self):
+        self.contact();self.entry['interrupted_goal']=[100,0,0]
+        with self.assertRaisesRegex(AssertionError,'actual course approach'):
+            verify_contact_handoff(self.entry,self.steps,[],self.history)
+
+    def parking_contact(self):
+        self.contact();point=[0,48,0]
+        row=copy.deepcopy(self.history['host'][0]);row['tick']=100;row['driver']['neighbors']=[[point],[]]
+        self.history['host'].insert(0,row)
+        self.entry['parking_approach']=dict(step=60,role='host',goal=point,ready=True,selected_tick=100,candidates=[point])
+        self.entry['interrupted_goal']=point
+        self.receipts=[dict(step=60,role='host',tick=90)]
+
+    def test_scene_interrupts_observed_parking_after_first_arrival(self):
+        self.parking_contact();verify_contact_handoff(self.entry,self.steps,self.receipts,self.history)
+
+    def test_interrupted_parking_is_not_a_completed_handoff(self):
+        self.parking_contact();self.entry['parking_approach']['tick']=110
+        with self.assertRaisesRegex(AssertionError,'must not claim arrival'):
+            verify_contact_handoff(self.entry,self.steps,self.receipts,self.history)
+
+    def test_scene_parking_still_requires_observed_native_neighbor(self):
+        self.parking_contact();self.entry['parking_approach']['candidates']=[]
+        with self.assertRaisesRegex(AssertionError,'observed neighbor'):
+            verify_contact_handoff(self.entry,self.steps,self.receipts,self.history)
 
 
 class RecordedArrival(unittest.TestCase):

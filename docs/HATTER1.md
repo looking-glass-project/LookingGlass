@@ -719,3 +719,54 @@ health. Copied and current fixture hashes match. Evidence:
 The ordinary checkpoint before 60 is saved at tick 76618. Later machinery,
 scenes, recovery, reconnects and full traversal remain open; the overall estimate
 stays 48.6% with six combined campaign visits verified.
+
+## Watched Hare and Port handoffs (4 November 2026)
+
+The route runner now observes both clients through these two original scenes.
+It checks the actual moving player or lever user against the shared owner,
+native actor and camera, hides/freezes the partner throughout, and preserves
+each player's resources. Watched Hare playback must retain all twelve dialogue
+cursors and its opening action; Port must run its full 14.75 seconds. A completed
+handoff requires matching new reunion stamps, living supported bodies, clear
+collision, separation, nearby placement and the partner visible again.
+
+An approach interrupted by Hare ends at the native reunion. Its completed scene
+is recorded separately from ordinary personal waypoint arrivals. If the first
+player had reached the waypoint and was beginning a waiting move, that unfinished
+move must name an observed supported neighbor and cannot claim a parking arrival.
+The original single-player trigger relocates the actor; returning to a stale
+waiting position after that transition was an incorrect runner action.
+
+The original resumed 60-67 run watches Hare with Red and verifies its shared
+reunion, then times out while trying to return to the pre-scene waiting point.
+The failed run remains retained. A separate scene-only audit uses its frozen,
+hash-checked fixture and verifies **1,791 matching player/world/native states**,
+with both players at 88/78 health. It credits no completed course step. Evidence:
+`private/coop/hatter1-route-629599a73df44282b6b1c2751eb4bd67/hare-scene-audit.json`.
+
+With the explicit scene handoff, **resumed 60-67 passes**. Blue triggers and
+watches Hare; Red uses the actual Port lever and owns its delayed scene. The run
+verifies nine personal arrivals, four independent pathnode projections, four
+completed waiting handoffs, two timed holds, one lever, both scene handoffs and
+**2,971 matching player/world/native states**. The unchanged checkpoint restores
+exactly at tick 76618. Both finish at 88/78 health, and a normal checkpoint before
+68 is saved at tick 97795. Evidence:
+`private/coop/hatter1-route-93d2ea687faf4849837d2a385b272232`.
+
+A targeted repeat from its unchanged normal pre-lever checkpoint verifies
+**resumed 66-67 with Blue using the lever and owning Port**, with **378 matching
+states** and the same personal health. The `--port-player` option selects which
+client sends ordinary use input; it does not change authoritative state. Evidence:
+`private/coop/hatter1-route-0e01d36e4dfc4dbc836f743d69da480b`.
+The preceding attempt failed before gameplay when the new invite's internet
+address could not be resolved after the built-in retries. That startup failure
+is retained at `private/coop/hatter1-route-a4801fca5b374daeb7bcd5f2433a4438`;
+success with a new session does not prove that transient DNS issue fixed.
+
+All runs use independent internet clients with 40 ms delay and 20 ms jitter.
+Native source stays `6f589de`; its existing 889 active Rust tests, release,
+72 native checks and exact single-player 11+1 baseline remain attributed to that
+unchanged build. **110 Python guards**, seven source-package checks and the source
+audit pass. Frozen fixture versions accompany each result. Both watched scene
+owners now have live evidence; live skipped scenes, recovery/reconnects, later
+machinery and complete fresh traversal remain open. Overall stays 48.6%.

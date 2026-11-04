@@ -1068,3 +1068,33 @@ source-package tests pass. Single-player output differs only in two benchmark
 timings. A fresh full-route retry is running; no full-route pass is claimed.
 Overall remains 48.1%, with six combined campaign visits and the existing open
 contact, recovery, opposite-order and full-route requirements.
+
+
+### Fresh prefix and return-corridor combat (4 November 2026)
+
+Fresh run `bbfc4d741b41498c9ebd2a9f6e6413ae` on `1839b9f` now passes the complete
+prefix verifier through **0-37**: 58 personal arrivals, seven own pickups, two
+holds, the real mirror switch, watched opening ownership/reunion and 5,011
+matching player/world/native states. No one dies before the boundary. Both
+have 22 health by then; the following step38 causes a team wipe. The generation
+change correctly fails the full route. No control reset occurs in this run.
+
+The fixture was continuing long waypoint walks while two active Automatons
+attacked, preventing its no-goal dodge tactic from operating. The existing
+pause-and-fight behavior now also applies to grounded return-corridor steps
+35-42. It uses ordinary combat inputs and collects each player's own available
+drops before restoring the requested waypoint. Enemy stats, weapon costs,
+physics, deaths and checkpoint verification are unchanged.
+
+Retry `2ba972d51d6047bab39655f490d734f0` uses the unchanged checkpoint35 earned by
+that fresh run (SHA268f8ae13799bda709253c3469bbbed4a83364dcd4e3b20387af9971ef2120d4).
+It passes **35-42**: 16 personal arrivals, six personal essence pickups, 2,636
+matching states (2,643 retained), 165 recovery rows, no deaths and final health
+100/80 (minimum30/30). It saves normal checkpoint43 with SHA-256
+`dbed01198f3b48c81a0f4f5f71e08556f48d8217685fcf81d327e800c7cd6dd6`.
+The independent retained audit passes, including all captured/current fixture
+hashes. The 51 Funhouse guards pass. Both runs use independent public-internet
+clients on the authorized PC fallback while Anode is occupied, with 40 ms delay
+and 20 ms jitter. No screenshots were opened. The earlier fresh prefix and this
+resumed corridor are not a combined full-run pass; that remains the next test.
+Overall remains 48.1%, with no new completed campaign visit.

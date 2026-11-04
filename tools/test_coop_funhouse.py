@@ -735,14 +735,19 @@ class FunhousePair(Pair):
             if self.body(role)['stats']['sanity'] <= 0:
                 return False
             assert not self.busy(), 'Unexpected scene during ordinary waypoint movement'
-            if (116 <= self.step <= 127 or 135 <= self.step <= 146) and body['grounded'] and not self.state(role)['fight']:
+            if (35 <= self.step <= 42 or 116 <= self.step <= 127 or 135 <= self.step <= 146) and body['grounded'] and not self.state(role)['fight']:
                 threats = {r: combat_pending(self.reports[r], r) for r in self.commands}
                 if any(threats.values()):
-                    # New attackers become visible while descending. Stop on
-                    # the current footing and fight with normal dodge/weapon
-                    # inputs before continuing across the narrow ledge.
+                    # Fight newly visible corridor/ledge attackers before
+                    # movement-goal steering carries both players past them.
+                    # No-goal combat enables normal dodge/weapon inputs.
                     waiting = {r: dict(self.commands[r]) for r in self.commands if r != role}
                     self.clear()
+                    if 35 <= self.step <= 42:
+                        self.collect_loot()
+                        # The nested pickup walk ends its own moving-role
+                        # scope. This waypoint is still in progress afterwards.
+                        self.moving_role = role
                     self.evidence.setdefault('combat_pauses', []).append(dict(
                         step=self.step, role=role, start_tick=tick,
                         tick=self.reports[role]['frame']['tick'], threats=threats))

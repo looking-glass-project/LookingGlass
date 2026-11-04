@@ -19,20 +19,26 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | Full campaign verification | 3.08 | 20 |
 | **Total** | **48.08, rounded to 48.1** | **100** |
 
-Current verification frontier: fresh Funhouse steps **0-28** have separate
-verified evidence (44 personal arrivals, seven pickups, 2,763 matching states).
-Resumed mirror **29-32** now passes on source `1839b9f`: four personal arrivals,
-both held approaches, the real shared switch, **816 matching states**, no deaths
-and 97/97 health. Exact input traces confirm both actual return jumps, with no
-control resets. Conservative range rejection removes distant-enemy aiming work
-from the automated driver; its measured host p95 cost drops from 39.5 to 1.1 ms
-per frame against the preceding diagnostic build on the same PC. Gameplay
-physics, combat rules and the control-reset safeguard are unchanged.
+Current verification frontier: fresh Funhouse **0-37** now passes the full
+prefix verifier on `1839b9f`: **58 personal arrivals, seven personal pickups,
+two holds, the actual mirror switch and 5,011 matching states**, without deaths
+through that boundary. The full run then fails at 38 when both players die in
+the return corridor. Its checkpoint reset is correctly rejected as route proof.
 
-**877 active Rust tests**, the locked release, Funhouse battle63/world46/scene37/
-single-player8 and Checkmate94 pass. Single-player component output matches the
-baseline except two timings. A fresh full-route retry is in progress, with no
-passing full-run result yet. No campaign row is added; overall remains **48.1%**.
+The input fixture now stops ordinary corridor movement to fight newly active
+attackers using normal dodge/weapon controls and collect each player's drops.
+A resumed **35-42** retry from that run's earned checkpoint passes **16 personal
+arrivals and 2,636 matching states**, with no deaths and final health 100/80.
+These are separate proofs; a fresh full route with the updated fixture remains
+required. No campaign row is added; overall remains **48.1%**.
+
+Two resumed mirror 29-32 runs also pass, including exact actual-jump evidence.
+Conservative range rejection removes distant-enemy aiming work from the test
+driver; its measured host p95 cost drops from 39.5 to 1.1 ms per frame on the same
+PC. The fresh prefix has no control resets. Gameplay physics, combat rules and
+the control-reset safeguard are unchanged. **877 active Rust tests**, the locked
+release, Funhouse battle63/world46/scene37/single-player8 and Checkmate94 pass;
+single-player component output matches baseline except two benchmark timings.
 
 Separate verified work: Funhouse's second personal pad and descent now pass
 steps **151-155** with eight personal arrivals, both actual jumps and 396 matching

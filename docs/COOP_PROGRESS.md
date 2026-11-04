@@ -19,7 +19,27 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | Full campaign verification | 3.08 | 20 |
 | **Total** | **48.58, rounded to 48.6** | **100** |
 
-Latest automation result: Clockwork's resumed **107-108** doorway section passes
+Latest automation result: Clockwork's resumed **109-116** section passes with
+eight personal arrivals, the watched Blue-owned Gryphon scene, four waiting
+handoffs, three timed holds and **1,353 matching player/world/native states**.
+A separate Red-owned Gryphon replay of **112-113** passes with **960 matching
+states**. Both runs finish at 100/100 health and verify all seven dialogue
+stages, hidden/frozen partners, preserved resources and safe shared reunions.
+
+The next requested **117-136** run stops at 128 because its narrow approach
+offers no usable sideways waiting position. Its separately audited **117-127**
+section passes with 22 arrivals, 20 pathnode projections, 11 waiting handoffs
+and **1,514 matching states**, also at 100/100 health. A normal checkpoint
+before 128 is available for the next retry. The original failure is retained.
+
+Native source remains `11c5ba2`; all **40 staged paired scene cases** now pass
+on this exact build, including both owners, watched/skipped scenes, pause/restore
+and living/dead partners. All **131 Python guards** pass. No further complete
+campaign visit is credited. Later traversal, portals, the final scene,
+recovery/reconnects and full-route repeats remain open; overall stays **48.6%**.
+See [Clockwork evidence](HATTER1.md).
+
+Earlier automation result: Clockwork's resumed **107-108** doorway section passes
 on source `11c5ba2`, with four personal arrivals, two observed door approaches,
 one forward handoff, one waiting handoff and **692 matching player/world/native
 states**. Both players finish at 100 health, and an ordinary checkpoint before

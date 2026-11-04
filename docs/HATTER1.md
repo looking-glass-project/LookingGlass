@@ -901,3 +901,38 @@ the locked release, **72 native paired/driver checks** and the exact
 single-player 11+1 baseline. All **124 Python guards** and seven source-package
 checks pass. Later Clockwork scenes and traversal, full fresh/recovery/reconnect
 repeats and the remaining campaign visits stay open. Overall remains **48.6%**.
+
+## Gryphon ownership and return traversal (4 November 2026)
+
+The paired runner now handles the original Gryphon contact at 112. The first
+arriving player owns the scene; `--first` can select either ordinary approach
+for verification. The verifier requires all seven dialogue cursors, the
+5.5-second opening, the triggering movement command, a hidden and frozen
+partner, unchanged personal resources during the scene, and a safe shared
+reunion. Scripted reunion remains separate from personal walking arrivals.
+
+On unchanged frozen source `11c5ba2`, **resumed 109-116** passes with eight
+personal arrivals, four completed waiting handoffs (seven walking steps),
+three timed holds and **1,353 matching player/world/native states**. Blue owns
+the watched Gryphon scene. A separate **112-113** replay verifies Red ownership
+and **960 matching states**. Both finish at **100/100 health**. Each uses two
+independent internet clients with 40 ms delay and 20 ms jitter. Evidence:
+`private/coop/hatter1-route-0ee347bc33704a6eabfa90b5599f27dd` and
+`private/coop/hatter1-route-cf697d08473748d18bf2b66affa01b89`.
+
+The subsequent requested **117-136** run stops at 128 after the leader reaches
+its target: the observed supported neighbors do not offer a waiting position
+clear of the approaching partner. Both rotating leaves 4/5 are already fully
+open. The completed **117-127** section is separately audited, with 22 personal
+arrivals, 20 pathnode projections, 11 waiting handoffs and **1,514 matching
+player/world/native states**, ending at tick 178937 with 100/100 health. Its
+ordinary checkpoint before 128 is saved at tick 179050. The failed step remains
+uncredited. Evidence:
+`private/coop/hatter1-route-4d6d768226d74281978d40ea93c4dabd/completed-prefix-audit.json`.
+
+All **131 Python guards** pass. The exact native build also passes **40 staged
+paired scene cases**: both owners, watched/skipped cinematics, living/dead
+partners, pause/restore and ordinary speech. Those component fixtures do not
+substitute for actual traversal. Later return movement, portals, the final
+scene, recovery/reconnects and complete-route repeats remain open. No new
+complete campaign visit is credited; overall completion remains **48.6%**.

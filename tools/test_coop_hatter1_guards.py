@@ -173,6 +173,53 @@ class SceneHandoffs(unittest.TestCase):
         self.hare();self.entry['trigger_command']=12
         with self.assertRaisesRegex(AssertionError,'trigger movement'): self.check()
 
+    def gryphon(self):
+        self.entry.update(step=112,scene='Hatter1_Cinema2',trigger_command=30)
+        for peer,rows in self.history.items():
+            initial=rows[0];after=rows[-1];active=[]
+            for line in range(7):
+                time=0 if line==0 else 5.5+line
+                row=copy.deepcopy(initial);row.update(tick=120+time*120,scene='Hatter1_Cinema2')
+                row['clockwork']=dict(gryphon=None,coop=dict(actor=0),scene=dict(kind='Gryphon',time=time,line=line,skip=None))
+                active.append(row)
+            after.update(tick=1580);after['clockwork']=dict(gryphon=12.,scene=None)
+            for body in after['players']:body['warped_at']=1570
+            self.entry['ends'][peer]=1580;self.history[peer]=active+[after]
+
+    def test_gryphon_watches_every_line(self):
+        self.gryphon();self.check()
+
+    def test_red_can_own_gryphon(self):
+        self.gryphon();self.entry['role']='guest'
+        for rows in self.history.values():
+            for row in rows[:-1]:
+                row.update(owner='Red',camera_player='Red');row['clockwork']['coop']['actor']=1
+        self.check()
+
+    def test_gryphon_missing_line(self):
+        self.gryphon();self.history['guest'].pop(4)
+        with self.assertRaisesRegex(AssertionError,'missed dialogue'): self.check()
+
+    def test_gryphon_requires_original_opening(self):
+        self.gryphon()
+        for row in self.history['host'][:-1]:row['clockwork']['scene']['time']=.1
+        with self.assertRaisesRegex(AssertionError,'opening action'): self.check()
+
+    def test_gryphon_requires_triggering_command(self):
+        self.gryphon();self.entry['trigger_command']=999
+        with self.assertRaisesRegex(AssertionError,'trigger movement'): self.check()
+
+    def test_gryphon_contact_can_replace_its_approach(self):
+        self.gryphon();steps=[{} for _ in range(113)];steps[112]=dict(walk=[0,0,0])
+        self.entry['interrupted_goal']=[0,0,0]
+        verify_contact_handoff(self.entry,steps,[],self.history)
+
+    def test_gryphon_reunion_is_not_a_personal_arrival(self):
+        self.gryphon();steps=[{} for _ in range(113)];steps[112]=dict(walk=[0,0,0])
+        self.entry['interrupted_goal']=[0,0,0]
+        with self.assertRaisesRegex(AssertionError,'actual course approach'):
+            verify_contact_handoff(self.entry,steps,[dict(step=112,role='guest')],self.history)
+
     def contact(self):
         self.hare();self.steps=[{} for _ in range(63)];self.steps[60]=dict(nav=[0,0,0])
         self.entry['interrupted_goal']=[0,0,0]

@@ -2,7 +2,7 @@
 
 Each player must earn a separate waypoint receipt. The first stops at a native
 clear/supported neighbor to let the second arrive. The initial runner supports
-nav/walk/node/wait/lever steps, the watched Hare/Port handoffs and a paired gap
+nav/walk/node/wait/lever steps, the watched Hare/Port/Gryphon handoffs and a paired gap
 crossing adapted from steps 36-42. A scene-triggered reunion is recorded
 separately from personal walking arrivals. Other timed inputs, portals and
 later scene handoffs remain explicit future work.
@@ -34,7 +34,9 @@ GEAR_APPROACH = [-4373.3784,3304.2549,208.03125]
 GEAR_EXIT_APPROACH = [-4512,3008,208.03125]
 CORRIDOR_HANDOFFS = (25,26,27,28,33,34,35,100,101,102,103,104,105,106,107)
 STAIR_HANDOFFS = (21,22,23,81,82,83,84,85)
-SCENES = {'Hatter1_Cinema1': ('Hare','hare',(60,61,62)), 'Port_Cine': ('Port','port',(67,))}
+SCENES = {'Hatter1_Cinema1': ('Hare','hare',(60,61,62)), 'Port_Cine': ('Port','port',(67,)),
+          'Hatter1_Cinema2': ('Gryphon','gryphon',(112,))}
+CONTACT_SCENES = {'Hatter1_Cinema1': (60,62), 'Hatter1_Cinema2': (112,)}
 
 
 class SceneCompleted(Exception):
@@ -57,7 +59,7 @@ def verify_scene_handoff(entry, history, levers):
         assert active and {r['owner'] for r in active}=={owner}, 'Missing or inconsistent scene owner'
         before=active[0]
         assert before['clockwork']['scene']['time']<=.5, 'Scene start was not observed'
-        if kind=='Hare' and peer==entry['role']:
+        if scene in CONTACT_SCENES and peer==entry['role']:
             assert before['driver']['command']==entry['trigger_command'], 'Scene trigger movement was not observed'
         for row in active:
             clock=row['clockwork'];native=clock['scene']
@@ -68,9 +70,10 @@ def verify_scene_handoff(entry, history, levers):
             for old,body in zip(before['players'],row['players']):
                 assert body['stats']==old['stats'] and body['health']==old['health']>0, 'Scene changed personal resources'
                 assert body['spawned_at']==old['spawned_at'] and body['warped_at']==old['warped_at'], 'Scene revived or warped a player early'
-        if kind=='Hare':
-            assert {r['clockwork']['scene']['line'] for r in active}==set(range(12)), 'Watched Hare scene missed dialogue'
-            assert max(r['clockwork']['scene']['time'] for r in active)>=31, 'Hare scene ended before its opening action'
+        if kind in ('Hare','Gryphon'):
+            count,opening=(12,31) if kind=='Hare' else (7,5.5)
+            assert {r['clockwork']['scene']['line'] for r in active}==set(range(count)), f'Watched {kind} scene missed dialogue'
+            assert max(r['clockwork']['scene']['time'] for r in active)>=opening, f'{kind} scene ended before its opening action'
         reunited=[r for r in rows if r['tick']>active[-1]['tick'] and r['owner'] is None and r['scene'] is None
                   and r['clockwork'][flag] is not None]
         assert reunited, 'Missing completed scene and reunion'
@@ -112,7 +115,7 @@ def map_entities(base):
 
 
 def verify_contact_handoff(entry, steps, receipts, history):
-    assert entry['scene']=='Hatter1_Cinema1' and entry['step'] in (60,62), 'Only the Hare contact replaces a route approach'
+    assert entry['step'] in CONTACT_SCENES.get(entry['scene'],()), 'Only an expected native contact replaces a route approach'
     verify_scene_handoff(entry,history,[])
     step=entry['step'];goal=next(iter(steps[step].values()));pair=[r for r in receipts if r['step']==step]
     park=entry.get('parking_approach')
@@ -619,7 +622,7 @@ class ClockworkPair(Pair):
             nonlocal best, navigate, pullup, yielded, command, cinematic
             body = self.body(role)['player']; report = self.reports[role]
             if report['combat']['stage']['owner'] is not None:
-                assert self.step in (60,62) and report['route_driver']['scene']=='Hatter1_Cinema1', 'Unexpected cinematic in ordinary prefix movement'
+                assert self.step in CONTACT_SCENES.get(report['route_driver']['scene'],()), 'Unexpected cinematic in ordinary prefix movement'
                 assert report['combat']['stage']['owner']==('Blue' if role=='host' else 'Red'), 'Moving player did not own the contact scene'
                 command=report['route_driver']['command']
                 cinematic=report['route_driver']['scene']
@@ -822,7 +825,7 @@ class ClockworkPair(Pair):
         try: self.go_without_scene(goal,navigate)
         except SceneCompleted as finished:
             entry=finished.entry
-            assert entry['step']==self.step and entry['scene']=='Hatter1_Cinema1', 'Unexpected route handoff'
+            assert entry['step']==self.step and self.step in CONTACT_SCENES.get(entry['scene'],()), 'Unexpected route handoff'
             if self.evidence['parking'] and 'tick' not in self.evidence['parking'][-1]:
                 entry['parking_approach']=self.evidence['parking'].pop()
             verify_contact_handoff(entry,self.steps,self.evidence['arrivals'],self.history)
@@ -830,7 +833,7 @@ class ClockworkPair(Pair):
             # never as an independently walked waypoint or completed parking.
 
     def go_without_scene(self, goal, navigate=False):
-        first = self.first if self.step==60 else min(self.commands, key=lambda r: distance(self.body(r)['player']['feet'], goal) + (0 if r == self.first else 16))
+        first = self.first if self.step in (60,112) else min(self.commands, key=lambda r: distance(self.body(r)['player']['feet'], goal) + (0 if r == self.first else 16))
         if 81<=self.step<=108:
             # Either nearby player can lead this static return route. Avoid
             # repeatedly sending an injured Alice into the next room alone
@@ -848,7 +851,7 @@ class ClockworkPair(Pair):
             if self.step == 1: self.descend(role)
             if self.step == 16: self.board_gear(role,goal)
             if self.step == 17: self.exit_gear(role,goal)
-            self.move(role, goal, navigate, yield_partner=first if role == other else other if self.step==60 or 81<=self.step<=108 else None)
+            self.move(role, goal, navigate, yield_partner=first if role == other else other if self.step in (60,112) or 81<=self.step<=108 else None)
             report = self.reports[role]
             self.evidence['arrivals'].append(dict(step=self.step, role=role, goal=goal,
                 tick=report['frame']['tick'], feet=list(self.body(role)['player']['feet']),
@@ -936,6 +939,7 @@ class ClockworkPair(Pair):
         if 62 in self.completed and self.args.start_step<=60:
             assert names.count('Hatter1_Cinema1')==1, 'Missing Hare scene handoff'
         if 67 in self.completed: assert names.count('Port_Cine')==1, 'Missing Port scene handoff'
+        if 112 in self.completed: assert names.count('Hatter1_Cinema2')==1, 'Missing Gryphon scene handoff'
         if 1 in self.completed:
             verify_descent(self.evidence['descent_arrivals'], self.evidence['descent_jumps'], self.history)
         verify_ledge_pulls(self.evidence['ledge_pulls'], self.history)
@@ -996,7 +1000,7 @@ class ClockworkPair(Pair):
             step = self.steps[self.step]
             print('Clockwork step', self.step, step, flush=True)
             self.clear()
-            if self.step in (0, 1, 9, 14, 17, 18, 25, 33, 36, 43, 44, 51, 52, 60, 64, 66, 68, 76, 79, 81, 91, 99, 107, 109): self.save_checkpoint(self.step)
+            if self.step in (0, 1, 9, 14, 17, 18, 25, 33, 36, 43, 44, 51, 52, 60, 64, 66, 68, 76, 79, 81, 91, 99, 107, 109, 112, 114, 128, 131, 136): self.save_checkpoint(self.step)
             if self.step==36:
                 self.cross_corridor_gap()
                 self.completed.extend(range(36,43))

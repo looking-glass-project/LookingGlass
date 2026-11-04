@@ -545,6 +545,18 @@ pub(crate) fn carried_goal_control(player: &Player, goal: Vec3, carry: Vec3, lea
     let wish=(straight_wish(delta.truncate(),velocity,lead,true,None)-carry.truncate()/320.).clamp_length_max(1.);
     (wish,settled)
 }
+fn planning_hold_control(anchor: &mut Option<Vec3>, player: &Player, carry: Option<Vec3>, lead: f32) -> (Vec2,bool) {
+    if let Some(carry)=carry {
+        // A route worker snapshots the current world and starting body. Hold
+        // that world position while it runs so passive carry cannot invalidate
+        // every result. This remains ordinary input, including while settling.
+        let goal=*anchor.get_or_insert(player.feet);
+        carried_goal_control(player,goal,carry,lead,8.)
+    } else {
+        *anchor=None;
+        (Vec2::ZERO,(player.grounded || player.ledge.is_some()) && player.velocity.truncate().length()<20.)
+    }
+}
 pub(crate) fn landing_control(world: &World, player: &Player, goal: Vec3, lead: f32, radius: f32) -> Option<(Vec2, bool)> {
     let delta = goal-player.feet;
     // Waiting for a delayed grounded snapshot is too late on a small pad.
@@ -824,6 +836,7 @@ pub struct Driver {
     door_requests: BTreeSet<crate::entity::Id>,
     door_context: Option<(u64, u64, u64, u64)>,
     worker: Option<Worker>,
+    planning_hold: Option<Vec3>,
     plan: VecDeque<(Controls, Vec3)>,
     walking_plan: bool,
     walking_progress: WalkingProgress,
@@ -895,7 +908,7 @@ impl Driver {
         let now = Instant::now();
         Self { path, recovery_trace:None, command: None, modified: None, polled: now, refreshed: now, used: now,
             door_requests: BTreeSet::new(), door_context: None,
-            worker: None, plan: VecDeque::new(), walking_plan:false, step_tick: 0, step_at: now,
+            worker: None, planning_hold:None, plan: VecDeque::new(), walking_plan:false, step_tick: 0, step_at: now,
             walking_progress:WalkingProgress::new(Vec3::ZERO,now),
             navigation_clock:NavigationClock::new(now), jumped: false, rope_used: false,
             control_used: false, switch_aim:SwitchAim::default(), combat_aim:CombatAim::default(),combat_home:None,combat_location:None,
@@ -925,7 +938,7 @@ impl Driver {
                 if self.command.as_ref().is_none_or(|old| old.id != command.id || old.shoot_switch!=command.shoot_switch) {
                     self.funhouse_exit=None;self.report.funhouse_exit=None;
                     self.funhouse_pendulums=None;self.report.funhouse_pendulums=None;
-                    self.plan.clear(); self.jumped = false; self.rope_used = false; self.location = None;
+                    self.plan.clear(); self.planning_hold=None; self.jumped = false; self.rope_used = false; self.location = None;
                     self.control_used = false;
                     self.switch_aim=SwitchAim::default();
                     self.step_height = None;
@@ -938,7 +951,7 @@ impl Driver {
                 self.command = Some(command); self.modified = Some(modified); self.refreshed = now;
             }
             Ok(None) => (),
-            Err(error) => { self.report.error = Some(error.to_string()); self.command = None; self.plan.clear(); }
+            Err(error) => { self.report.error = Some(error.to_string()); self.command = None; self.plan.clear(); self.planning_hold=None; }
         }
     }
     fn fresh(&self, now: Instant) -> bool { now.duration_since(self.refreshed) < Duration::from_secs(3) }
@@ -1094,7 +1107,7 @@ impl Driver {
             self.combat_aim=Default::default();self.combat_home=None;self.combat_location=Some(location);
         }
         if self.location != Some(location) {
-            self.plan.clear(); self.jumped = false; self.location = Some(location);
+            self.plan.clear(); self.planning_hold=None; self.jumped = false; self.location = Some(location);
             self.swim_goal = None;
             self.step_tick = frame.tick; self.step_at = now;
             self.navigation_clock = NavigationClock::new(now);
@@ -1125,6 +1138,7 @@ impl Driver {
                                 let _ = std::fs::write(crate::preferences::path(&format!("route-plan-{}-{}.json",worker.id,self.report.replans)),bytes);
                             }
                             self.walking_plan=plan.walking;
+                            self.planning_hold=None;
                             self.walking_progress=WalkingProgress::new(body.player.feet,now);
                             self.plan = plan.steps.into(); self.step_tick = frame.tick; self.step_at = now; self.jumped = false;
                             self.navigation_clock = NavigationClock::new(now);
@@ -1137,7 +1151,7 @@ impl Driver {
             }
         }
         let Some(command) = self.command.as_ref().filter(|c| c.epoch == frame.epoch && self.fresh(now)) else {
-            self.report.phase = "waiting for command"; return;
+            self.planning_hold=None; self.report.phase = "waiting for command"; return;
         };
         if !body.stats.alive() {
             if let Some(course)=&mut self.castling_course {
@@ -1202,7 +1216,7 @@ impl Driver {
             return;
         }
         if arena.stage.busy() {
-            self.plan.clear(); self.jumped = false; self.report.phase = "scene";
+            self.plan.clear(); self.planning_hold=None; self.jumped = false; self.report.phase = "scene";
             self.swim_goal = None;
             return;
         }
@@ -1412,6 +1426,7 @@ impl Driver {
         let carry=(!command.swim && !command.jump).then(||arena.stage.interactions.levels.iter()
             .find_map(|s|s.ctl.route_carry_velocity(&body.player))).flatten();
         self.report.carry_velocity=carry;
+        if !self.plan.is_empty() {self.planning_hold=None;}
         if command.hold_goal {
             keys.wish=carry.map_or_else(||delayed_hold_wish(delta.truncate(),body.player.velocity.truncate(),command.input_lead),
                 |v|carried_goal_control(&body.player,goal,v,command.input_lead,command.arrival_radius).0);keys.run=true;
@@ -1506,22 +1521,27 @@ impl Driver {
                 if input.jump && !self.jumped {
                     keys.jumps+=1; self.jumped=true;
                 }
-            } else if self.worker.is_none() && self.report.error.is_none()
-                && (body.player.grounded || body.player.ledge.is_some()) && body.player.velocity.truncate().length()<20. {
-                let (send,result)=mpsc::channel();
-                let world=world.clone(); let player:Player=body.player.clone();
-                self.worker=Some(Worker { id:command.id, epoch:frame.epoch, warped:body.warped_at, start:player.feet,result });
-                self.report.replans+=1;
-                // Remote segments can run longer when updates coalesce or
-                // arrive with jitter. Avoid plans that jump at the last safe
-                // physics tick of an edge; leave 100 ms of support in reserve.
-                let margin = if local == PlayerId::Red { 12 } else { 0 };
-                std::thread::spawn(move || { let plan=Route::plan_grounded(&world,&player,goal,22.)
-                    .map(|steps|PlannedRoute {walking:true,steps})
-                    .or_else(|_|Route::plan_with_takeoff_margin(&world,&player,goal,22.,margin)
-                        .or_else(|_|Route::plan_with_takeoff_margin(&world,&player,goal,40.,margin))
-                        .map(|steps|PlannedRoute {walking:plan_stays_grounded(&world,&player,&steps),steps}));
-                    let _=send.send(plan); });
+            } else {
+                let (wish,settled)=planning_hold_control(&mut self.planning_hold,&body.player,carry,command.input_lead);
+                keys.wish=wish;keys.swim=wish.extend(0.);keys.run=carry.is_some();
+                self.report.expected=self.planning_hold;
+                if carry.is_some() {self.report.phase="settling planning start";}
+                if self.worker.is_none() && self.report.error.is_none() && settled {
+                    let (send,result)=mpsc::channel();
+                    let world=world.clone(); let player:Player=body.player.clone();
+                    self.worker=Some(Worker { id:command.id, epoch:frame.epoch, warped:body.warped_at, start:player.feet,result });
+                    self.report.replans+=1;
+                    // Remote segments can run longer when updates coalesce or
+                    // arrive with jitter. Avoid plans that jump at the last safe
+                    // physics tick of an edge; leave 100 ms of support in reserve.
+                    let margin = if local == PlayerId::Red { 12 } else { 0 };
+                    std::thread::spawn(move || { let plan=Route::plan_grounded(&world,&player,goal,22.)
+                        .map(|steps|PlannedRoute {walking:true,steps})
+                        .or_else(|_|Route::plan_with_takeoff_margin(&world,&player,goal,22.,margin)
+                            .or_else(|_|Route::plan_with_takeoff_margin(&world,&player,goal,40.,margin))
+                            .map(|steps|PlannedRoute {walking:plan_stays_grounded(&world,&player,&steps),steps}));
+                        let _=send.send(plan); });
+                }
             }
             if self.worker.is_some() { self.report.phase="planning"; }
         } else {
@@ -2295,6 +2315,53 @@ mod tests {
         let (wish,settled)=carried_goal_control(&p,p.feet,carry,0.,8.);
         assert!(settled && (wish*320.+carry.truncate()).length()<0.001,
             "Arrived waiter must retain ordinary counter-motion input");
+    }
+    #[test]
+    fn pending_route_keeps_its_start_on_a_rotating_support() {
+        let world=World::fixture(&[(vec3(-512.,-512.,-100.),vec3(512.,512.,0.))]);
+        let omega=50_f32.to_radians();
+        let rotate=Quat::from_rotation_z(omega*crate::movement::FIXED_DT);
+        for delay in [0,12,24,45] {
+            let mut player=Player::spawn(&world,vec3(160.,0.,crate::movement::EYE_HEIGHT+0.03125)).unwrap();
+            let mut views=VecDeque::from(vec![player.clone();delay+1]);
+            let mut pending=VecDeque::from(vec![Controls::default();delay]);
+            let mut anchor=None;let mut worker_start=None;let mut held=0;
+            // Allow convergence at the longest delay, then require ten full
+            // seconds with the same valid worker start. A planner must not
+            // repeatedly recapture its start to hide drift.
+            for _ in 0..3600 {
+                let view=views.pop_front().unwrap();
+                let carry=Vec3::Z.cross(view.feet)*omega;
+                let (wish,ready)=planning_hold_control(&mut anchor,&view,Some(carry),2.*delay as f32/120.);
+                if ready && worker_start.is_none() {worker_start=Some(view.feet);}
+                pending.push_back(Controls{wish,run:true,..Default::default()});
+                player.tick(&world,pending.pop_front().unwrap());
+                player.feet=rotate*player.feet;
+                views.push_back(player.clone());
+                assert!(player.grounded && player.jumps==0);
+                if let Some(start)=worker_start {
+                    assert!(player.feet.distance(start)<16.,"Pending plan start drifted at delay {delay}: {:?}",player.feet-start);
+                    held+=1;
+                }
+            }
+            assert!(held>=1200,"Insufficient stable planning time at delay {delay}: {held} ticks, feet {:?}, velocity {:?}, anchor {anchor:?}",player.feet,player.velocity);
+        }
+    }
+    #[test]
+    fn planning_hold_requires_world_settling_and_releases_lost_support() {
+        let mut p=Player::new(vec3(160.,0.,0.));p.grounded=true;
+        let carry=vec3(0.,140.,0.);let mut anchor=None;
+        assert!(!planning_hold_control(&mut anchor,&p,Some(carry),0.).1);
+        p.velocity=-carry;
+        let (wish,ready)=planning_hold_control(&mut anchor,&p,Some(carry),0.);
+        assert!(ready && wish.length()>0. && anchor==Some(p.feet));
+        p.grounded=false;
+        assert_eq!(planning_hold_control(&mut anchor,&p,None,0.),(Vec2::ZERO,false));
+        assert!(anchor.is_none());
+        p.feet+=Vec3::X*100.;p.grounded=true;p.velocity=Vec3::ZERO;
+        assert_eq!(planning_hold_control(&mut anchor,&p,None,0.),(Vec2::ZERO,true));
+        planning_hold_control(&mut anchor,&p,Some(carry),0.);
+        assert_eq!(anchor,Some(p.feet));
     }
     #[test]
     fn precise_landing_stays_on_a_small_footing_at_internet_tail_latency() {

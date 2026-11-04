@@ -425,3 +425,78 @@ can therefore invalidate the starting position. Holding a supported planning
 position and checking world-relative settling is the next investigation; that
 fix and successful exit traversal are not yet verified. No new campaign credit
 is added.
+
+## Stable route planning and gear exit (4 November 2026)
+
+The test driver now holds a world-space starting point with ordinary movement
+while its route worker runs. On a carrier, readiness requires settled world
+motion; own velocity alone is insufficient. This fixes repeated rejection of
+plans whose starting body had drifted with the gear. The existing 16-unit
+stale-start rejection is unchanged. A new command, relocation, expired input,
+scene or accepted plan clears the held start; losing support also clears it.
+
+Two new Rust regressions check delayed settling and continued holding of one
+valid start, plus support loss and reacquisition. At 0, 12, 24 and 45 ticks of
+observation/input delay per direction, a 30-second simulation requires at least
+ten seconds of holding and stays within the stale-start limit throughout the
+period after first readiness. The initial shorter test did not allow that much
+stable time at the longest delay; its failure is retained.
+
+Source `cf5d5511069355b2f0f1c096174c596db789e4daf5518ccb991eb6ab53c9ca89`, executable SHA-256
+`a9861fdb8da6bf11e9413f77376045cd5ef16c4529c5dd2b73f65dd14970cd62`, passes
+885 active Rust tests with one ignored, the locked release and all 68 paired
+native cases. The single-player 11+1 outputs still match the baseline exactly.
+
+The first resumed internet attempt accepts both exit plans; Red reaches the
+exit, but Blue loses the rotating support on a walking route and dies on the
+floor. That whole run remains failed in
+`private/coop/hatter1-route-e32215f5d76e4bce8258c98f239c3f2f`.
+It creates a normal checkpoint before step 17, enabling short exit retries.
+
+The exit fixture now returns each player to the previously verified gear
+waypoint and uses a short ordinary westward run-up and jump. Its verifier checks
+both players' acknowledged takeoff footing, authoritative jump events, airborne
+observations and personal grounded arrivals. The waiting partner holds its
+observed world position on the gear. All 50 Python guards pass, including
+missing-partner, missing-takeoff, wrong-command and wrong-floor rejection.
+
+A resumed step-17 internet run with 40 ms delay and 20 ms jitter passes both
+actual exit jumps and personal arrivals, comparing **245 matching player/world/
+native states**. Both remain at 89 health. The starting checkpoint is unchanged;
+the native exact restore is verified at tick 26704. The normal checkpoint before
+18 is retained at tick 28713. Copied and current fixture hashes match.
+Evidence: `private/coop/hatter1-route-6345aaf2de8b476eabf0b34a938cd817`.
+This proves the resumed exit segment, not fresh traversal or a complete campaign
+visit. Full Clockwork, recovery, reconnects and later machinery remain open.
+
+The following fresh run physically reaches step 21, where the stair tread has
+no supported waiting neighbor. Its audit separately catches an unretained
+step-17 duplicate command acknowledgment: the guest accepted command 142 at
+tick 27568, but the one-row-per-tick history still contained command 141.
+The original record is unchanged. The strict scoped audit therefore credits
+only **fresh 0-16**: 26 course arrivals, eight intermediate arrivals, four
+entrance and two gear jumps, one pull-up, two holds, two levers, one partner yield
+and **3,318 matching states**, with both at 89 health.
+Evidence: `private/coop/hatter1-route-4287b3e171a547dc87a12a8eb752d3f5/completed-prefix-audit.json`.
+The separately verified resumed step-17 evidence above remains valid.
+
+Clockwork arrivals now wait until the command acknowledgment and reached flag
+are present in the retained observation for the same authoritative epoch/tick.
+They do not overwrite history or weaken the final verifier. The stair fixture
+centers the first player and walks to the next authored footing before bringing
+the follower to the original target. This is limited to steps 21-23, with
+bounded ordinary walking targets and separate arrival/order receipts. The
+first stair retry passes 21 but fails at 22 when it still attempts a sideward
+neighbor; the fixture now uses the next tread throughout the short flight.
+All **59 Python guards** pass, including the captured acknowledgment case and
+stair handoff ordering. Native source remains `cf5d551`.
+
+The next Anode internet run independently verifies **resumed 18-24**: 12 personal
+arrivals, three stair handoffs, one timed hold and **454 matching player/world/
+native states**, with both at 89 health. The unchanged starting checkpoint is
+restored exactly at tick 28713; the scoped audit ends at 32526. Copied and current
+fixture hashes match. Evidence:
+`private/coop/hatter1-route-2f6496a9b42348c7ac8e21ec3a0bc75e/completed-prefix-audit.json`.
+The original 18-38 request remains failed at 25 because the first arrival has no
+suitable corridor waiting position. A normal checkpoint before 25 is retained
+at tick 32620 for the next short reproduction. No complete visit is credited.

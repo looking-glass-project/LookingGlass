@@ -19,7 +19,26 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | Full campaign verification | 3.08 | 20 |
 | **Total** | **48.58, rounded to 48.6** | **100** |
 
-Latest automation result: Clockwork's resumed **14-16** segment now verifies both
+Latest automation result: Clockwork's resumed **18-24** section verifies 12
+personal arrivals, all three stair handoffs, one timed hold and **454 matching
+player/world/native states**, with both players at 89 health. The leader moves
+to the next tread before the follower arrives. The runner also waits for command
+acknowledgments retained in its history; **59 Python guards** pass. The requested
+18-38 run stops at step 25 while selecting a corridor waiting position. Its
+completed section is audited separately, and a normal checkpoint before 25 is
+retained. Full Clockwork remains open; total completion stays **48.6%**.
+
+Earlier automation result: Clockwork's resumed gear exit, **step 17**, now verifies
+both actual jumps and personal landings, with **245 matching player/world/native
+states** and both players alive at 89 health. Route planning now holds a stable
+position against gear carry using ordinary controls. The exit test jumps from
+the verified gear waypoint because a static walking route can lose support as
+the gear turns. Source `cf5d551` passes **885 active Rust tests**, the locked
+release, **68 native paired checks**, **50 Python guards**, and the unchanged
+single-player **11+1** baseline. The resumed exit is separate from fresh traversal
+and does not complete another campaign visit. Overall remains **48.6%**.
+
+Earlier automation result: Clockwork's resumed **14-16** segment now verifies both
 players boarding the rotating gear, with two actual jumps, four personal course
 arrivals, one timed hold and **447 matching player/world/native states**. The
 first player holds its waiting point within 2.76 units while the partner boards;

@@ -28,6 +28,7 @@ THREADS = ('Gear_Bridge_One', 'Gear_Bridge_Two', 'Open_ClockRoom_Door', 'Open_Po
 DESCENT = [[-2848.6, 3228.5, 320.03125], [-3070.9, 2936.8, 176.03125],
            [-3231.4, 2929.1, 128.03125], [-3296, 2960, 192.03125]]
 GEAR_APPROACH = [-4373.3784,3304.2549,208.03125]
+GEAR_EXIT_APPROACH = [-4512,3008,208.03125]
 
 
 def map_entities(base):
@@ -91,6 +92,38 @@ def parking_target(candidates, at, incoming, goal):
     return max(farther, key=lambda p: distance(p[:2], goal[:2])), False
 
 
+def recorded_arrival(row, report, command):
+    """Wait for an acknowledgment retained alongside the authoritative frame."""
+    return bool(row and (row['epoch'],row['tick']) == (report['frame']['epoch'],report['frame']['tick'])
+        and row['driver']['command'] == command and row['driver']['reached'])
+
+
+def next_stair_footing(steps, step):
+    assert step in (21,22,23), 'Forward waiting is limited to the stair flight'
+    goal=steps[step]['walk'];following=steps[step+1]
+    assert set(following)=={'walk'}, 'Next stair footing must be an ordinary walking step'
+    point=following['walk']
+    assert 48 <= distance(goal[:2],point[:2]) <= 192 and 0 <= point[2]-goal[2] <= 48, 'Invalid next stair footing'
+    return point
+
+
+def verify_stair_waiting(receipts, steps, arrivals, history):
+    for receipt in receipts:
+        step,role=receipt['step'],receipt['role'];slot=0 if role=='host' else 1
+        goal=next_stair_footing(steps,step)
+        assert receipt['goal']==goal, 'Stair waiting target differs from the course'
+        pair=[r for r in arrivals if r['step']==step]
+        assert len(pair)==2 and pair[0]['role']==role, 'Stair waiter must be the first arrival'
+        rows={r['tick']:r for r in history[role]}
+        before,end=rows[receipt['before_tick']],rows[receipt['tick']]
+        assert pair[0]['tick']<=before['tick']<=end['tick']<pair[1]['tick'], 'Stair handoff out of order'
+        assert distance(before['players'][slot]['feet'][:2],steps[step]['walk'][:2])<2, 'Stair waiter did not center first'
+        body=end['players'][slot]
+        assert body['health']>0 and body['spawned_at']==0 and body['grounded'], 'Invalid stair waiting body'
+        assert end['driver']['command']==receipt['command'] and end['driver']['reached'], 'Stair waiting arrival unacknowledged'
+        assert body['feet']==receipt['feet'] and distance(body['feet'][:2],goal[:2])<8 and abs(body['feet'][2]-goal[2])<35, 'Stair waiting arrival missed'
+
+
 def verify_descent(arrivals, jumps, history):
     verify_arrivals([dict(nav=p) for p in DESCENT], list(range(len(DESCENT))), arrivals, history)
     assert len(jumps) == 4 and {(j['role'],j['leg']) for j in jumps} == {
@@ -116,6 +149,14 @@ def verify_grounded_jump(jump, history):
 
 
 def verify_gear_boarding(boardings, goal, history):
+    verify_gear_crossing(boardings,goal,GEAR_APPROACH,history)
+
+
+def verify_gear_exit(exits, goal, history):
+    verify_gear_crossing(exits,goal,GEAR_EXIT_APPROACH,history)
+
+
+def verify_gear_crossing(boardings, goal, approach, history):
     assert len(boardings) == 2 and {r['role'] for r in boardings} == {'host','guest'}, 'Missing personal gear boarding'
     for receipt in boardings:
         verify_grounded_jump(receipt,history)
@@ -123,7 +164,8 @@ def verify_gear_boarding(boardings, goal, history):
         rows = {r['tick']:r for r in history[receipt['role']]}
         start, flight, end = [rows[receipt[k]] for k in ('before_tick','after_tick','arrival_tick')]
         assert start['driver']['command'] == receipt['approach_command'] and start['driver']['reached'], 'Gear approach unacknowledged'
-        assert distance(start['players'][slot]['feet'][:2],GEAR_APPROACH[:2]) < 2, 'Gear run-up started elsewhere'
+        start_feet=start['players'][slot]['feet']
+        assert distance(start_feet[:2],approach[:2]) < 2 and abs(start_feet[2]-approach[2]) < 35, 'Gear run-up started elsewhere'
         assert not flight['players'][slot]['grounded'], 'Gear flight unobserved'
         body = end['players'][slot]
         assert body['health'] > 0 and body['spawned_at'] == 0 and body['grounded'], 'Invalid gear arrival body'
@@ -226,7 +268,7 @@ class ClockworkPair(Pair):
         self.evidence.update(course_sha256=hashlib.sha256(raw).hexdigest(), map_sha256=map_sha,
             effective_course_sha256=hashlib.sha256(effective).hexdigest(), waypoint_adjustments=adjustments,
             executable_sha256=hashlib.sha256(args.exe.read_bytes()).hexdigest(),
-            arrivals=[], levers=[], holds=[], parking=[], yields=[], descent_arrivals=[], descent_jumps=[], ledge_pulls=[], gear_boarding=[],
+            arrivals=[], levers=[], holds=[], parking=[], stair_waiting=[], yields=[], descent_arrivals=[], descent_jumps=[], ledge_pulls=[], gear_boarding=[], gear_exits=[],
             completed=self.completed, scope='Fresh Clockwork prefix only')
         dependencies = self.folder / 'fixture-dependencies'; dependencies.mkdir()
         for name in ('test_coop_hatter1.py', 'test_coop_village.py', 'test_coop_play.py', 'test_coop_chess.py',
@@ -257,6 +299,13 @@ class ClockworkPair(Pair):
 
     def body(self, role):
         return self.reports[role]['frame']['players'][0 if role == 'host' else 1]
+
+    def reached(self, role):
+        # Pair retains one row per authoritative tick. A new command can be
+        # acknowledged against that same tick; wait for a retained observation
+        # instead of issuing the next command before its receipt is recorded.
+        return super().reached(role) and recorded_arrival(
+            self.history[role][-1] if self.history[role] else None,self.reports[role],self.commands[role]['id'])
 
     def state(self, role):
         return self.reports[role]['combat']['stage']['world']['levels'][self.map_name]
@@ -393,14 +442,22 @@ class ClockworkPair(Pair):
     def board_gear(self, role, goal):
         # The successful native approach runs south before jumping onto the
         # rotor. A static walking plan can instead step into the gap as it turns.
-        self.move(role,GEAR_APPROACH,navigate=True,radius=2)
+        self.cross_gear(role,goal,GEAR_APPROACH,True,250,[-0.196116135,-0.980580676],'gear_boarding')
+
+    def exit_gear(self, role, goal):
+        # Return to the observed supported waypoint, then jump west before the
+        # rotating edge. A static walking route across it can lose its support.
+        self.cross_gear(role,goal,GEAR_EXIT_APPROACH,False,150,[-1,0],'gear_exits')
+
+    def cross_gear(self, role, goal, approach, navigate, millis, wish, evidence_key):
+        self.move(role,approach,navigate=navigate,radius=2)
         before = self.reports[role]
         count = self.body(role)['player']['jumps']
         self.set(role,goal,run=True,jump=True)
-        self.commands[role]['runup'] = dict(millis=250,wish=[-0.196116135,-0.980580676])
+        self.commands[role]['runup'] = dict(millis=millis,wish=wish)
         receipt = dict(role=role,before_tick=before['frame']['tick'],
             approach_command=before['route_driver']['command'],command=self.commands[role]['id'])
-        self.evidence['gear_boarding'].append(receipt)
+        self.evidence[evidence_key].append(receipt)
         self.until(lambda:self.reports[role]['route_driver']['command'] == receipt['command']
             and self.body(role)['player']['jumps'] == count+1 and not self.body(role)['player']['grounded'],15)
         receipt['after_tick'] = self.reports[role]['frame']['tick']
@@ -414,9 +471,12 @@ class ClockworkPair(Pair):
         first = min(self.commands, key=lambda r: distance(self.body(r)['player']['feet'], goal) + (0 if r == self.first else 16))
         other = 'guest' if first == 'host' else 'host'
         self.set(other, attack=True)
+        if self.step == 17:
+            self.set(other,list(self.body(other)['player']['feet']),run=True)
         for role in (first, other):
             if self.step == 1: self.descend(role)
             if self.step == 16: self.board_gear(role,goal)
+            if self.step == 17: self.exit_gear(role,goal)
             self.move(role, goal, navigate, yield_partner=first if role == other else None)
             report = self.reports[role]
             self.evidence['arrivals'].append(dict(step=self.step, role=role, goal=goal,
@@ -424,10 +484,19 @@ class ClockworkPair(Pair):
                 command=report['route_driver']['command']))
             if role == first:
                 slot = 0 if role == 'host' else 1
-                if not report['route_driver']['neighbors'][slot]:
+                if self.step in (21,22,23) or not report['route_driver']['neighbors'][slot]:
                     # An eight-unit arrival can stop on the edge of a small
                     # footing. Center by walking before asking for neighbors.
                     self.move(role, goal, radius=2)
+                if self.step in (21,22,23):
+                    park=next_stair_footing(self.steps,self.step)
+                    receipt=dict(step=self.step,role=role,goal=park,before_tick=self.reports[role]['frame']['tick'])
+                    self.move(role,park)
+                    receipt.update(tick=self.reports[role]['frame']['tick'],command=self.reports[role]['route_driver']['command'],
+                        feet=list(self.body(role)['player']['feet']))
+                    self.evidence['stair_waiting'].append(receipt)
+                    self.set(role,park,run=True)
+                    continue
                 for attempt in range(3):
                     report = self.reports[role]
                     candidates = report['route_driver']['neighbors'][slot]
@@ -489,7 +558,9 @@ class ClockworkPair(Pair):
             verify_descent(self.evidence['descent_arrivals'], self.evidence['descent_jumps'], self.history)
         verify_ledge_pulls(self.evidence['ledge_pulls'], self.history)
         verify_yields(self.evidence['yields'], self.steps, self.history)
+        verify_stair_waiting(self.evidence['stair_waiting'],self.steps,self.evidence['arrivals'],self.history)
         if 16 in self.completed: verify_gear_boarding(self.evidence['gear_boarding'],self.steps[16]['nav'],self.history)
+        if 17 in self.completed: verify_gear_exit(self.evidence['gear_exits'],self.steps[17]['nav'],self.history)
         expected = [i for i in self.completed if 'lever' in self.steps[i]]
         assert [r['step'] for r in self.evidence['levers']] == expected, 'Missing lever receipts'
         for receipt in self.evidence['levers']:
@@ -510,7 +581,7 @@ class ClockworkPair(Pair):
             if park['ready']:
                 goal = next(iter(self.steps[park['step']].values()))
                 assert distance(park['goal'][:2], goal[:2]) >= 48, 'Waiting target obstructs the arrival lane'
-        assert [p['step'] for p in self.evidence['parking'] if p['ready']] == [i for i in self.completed
+        assert sorted([p['step'] for p in self.evidence['parking'] if p['ready']]+[p['step'] for p in self.evidence['stair_waiting']]) == [i for i in self.completed
             if next(iter(self.steps[i])) in ('nav','walk')], 'Missing completed parking handoff'
         for role, rows in self.history.items():
             assert rows and all(r['map'] == self.map_name and r['epoch'] == 1 and r['checkpoint_generation'] == 0 for r in rows)
@@ -535,7 +606,7 @@ class ClockworkPair(Pair):
             step = self.steps[self.step]
             print('Clockwork step', self.step, step, flush=True)
             self.clear()
-            if self.step in (0, 1, 9, 14, 18, 25, 33): self.save_checkpoint(self.step)
+            if self.step in (0, 1, 9, 14, 17, 18, 25, 33): self.save_checkpoint(self.step)
             key, value = next(iter(step.items()))
             if key in ('nav', 'walk'): self.go(value, key == 'nav')
             elif key == 'lever': self.lever(value)

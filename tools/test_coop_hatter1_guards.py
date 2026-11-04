@@ -1,7 +1,64 @@
 """Reject incomplete or unobserved Clockwork route receipts."""
 import copy
 import unittest
-from test_coop_hatter1 import DESCENT, GEAR_APPROACH, parking_target, partner_contact, yield_target, verify_yields, verify_arrivals, verify_descent, verify_ledge_pulls, verify_gear_boarding
+from test_coop_hatter1 import DESCENT, GEAR_APPROACH, GEAR_EXIT_APPROACH, parking_target, partner_contact, yield_target, verify_yields, verify_arrivals, verify_descent, verify_ledge_pulls, verify_gear_boarding, verify_gear_exit
+from test_coop_hatter1 import recorded_arrival, next_stair_footing, verify_stair_waiting
+
+
+class RecordedArrival(unittest.TestCase):
+    def test_same_tick_old_command_is_not_a_recorded_arrival(self):
+        row=dict(epoch=1,tick=27568,driver=dict(command=141,reached=True))
+        report=dict(frame=dict(epoch=1,tick=27568))
+        self.assertFalse(recorded_arrival(row,report,142))
+
+    def test_waits_for_recorded_reached_flag(self):
+        row=dict(epoch=1,tick=27568,driver=dict(command=142,reached=False))
+        report=dict(frame=dict(epoch=1,tick=27568))
+        self.assertFalse(recorded_arrival(row,report,142))
+        row['driver']['reached']=True
+        self.assertTrue(recorded_arrival(row,report,142))
+
+    def test_old_frame_cannot_supply_the_receipt(self):
+        row=dict(epoch=1,tick=27568,driver=dict(command=142,reached=True))
+        report=dict(frame=dict(epoch=1,tick=27583))
+        self.assertFalse(recorded_arrival(row,report,142))
+
+
+class StairWaiting(unittest.TestCase):
+    def setUp(self):
+        self.steps=[{} for _ in range(23)]
+        self.steps[21]=dict(walk=[-4848,2688,256.03125])
+        self.steps[22]=dict(walk=[-4848,2592,288.03125])
+        self.receipt=dict(step=21,role='host',goal=self.steps[22]['walk'],before_tick=110,tick=200,
+                          command=172,feet=list(self.steps[22]['walk']))
+        self.arrivals=[dict(step=21,role='host',tick=100),dict(step=21,role='guest',tick=300)]
+        self.history={'host':[]}
+        for tick,point in [(110,self.steps[21]['walk']),(200,self.steps[22]['walk'])]:
+            body=dict(feet=list(point),health=89,spawned_at=0,grounded=True)
+            self.history['host'].append(dict(tick=tick,players=[body,body],driver=dict(command=172,reached=True)))
+
+    def check(self): verify_stair_waiting([self.receipt],self.steps,self.arrivals,self.history)
+
+    def test_first_player_walks_to_next_footing_before_second_arrives(self): self.check()
+
+    def test_wrong_course_target(self):
+        self.receipt['goal']=[0,0,0]
+        with self.assertRaisesRegex(AssertionError,'differs'): self.check()
+
+    def test_missing_waiting_acknowledgment(self):
+        self.history['host'][-1]['driver']['command']+=1
+        with self.assertRaisesRegex(AssertionError,'unacknowledged'): self.check()
+
+    def test_waiter_must_move_before_follower_arrives(self):
+        self.arrivals[1]['tick']=150
+        with self.assertRaisesRegex(AssertionError,'out of order'): self.check()
+
+    def test_cannot_skip_a_nonwalking_step(self):
+        self.steps[22]=dict(lever=2)
+        with self.assertRaisesRegex(AssertionError,'ordinary walking'): self.check()
+
+    def test_not_a_general_route_skip(self):
+        with self.assertRaisesRegex(AssertionError,'limited'): next_stair_footing(self.steps,20)
 
 
 class Arrivals(unittest.TestCase):
@@ -181,6 +238,10 @@ class GearBoarding(unittest.TestCase):
         self.history['guest'][0]['players'][1]['feet'][0]+=3
         with self.assertRaisesRegex(AssertionError,'started elsewhere'): self.check()
 
+    def test_run_up_on_wrong_floor(self):
+        self.history['guest'][0]['players'][1]['feet'][2]-=100
+        with self.assertRaisesRegex(AssertionError,'started elsewhere'): self.check()
+
     def test_missing_host_takeoff(self):
         self.history['host'][1]['driver']['input_events'][1]['input'][1]=False
         with self.assertRaisesRegex(AssertionError,'takeoff unobserved'): self.check()
@@ -188,6 +249,17 @@ class GearBoarding(unittest.TestCase):
     def test_wrong_arrival_command(self):
         self.receipts[1]['arrival_command']+=100
         with self.assertRaisesRegex(AssertionError,'arrival unacknowledged'): self.check()
+
+
+class GearExit(GearBoarding):
+    def setUp(self):
+        super().setUp()
+        self.goal=[-4752,3008,208.03125]
+        for rows in self.history.values():
+            for body in rows[0]['players']: body['feet']=list(GEAR_EXIT_APPROACH)
+            for body in rows[-1]['players']: body['feet']=list(self.goal)
+
+    def check(self): verify_gear_exit(self.receipts,self.goal,self.history)
 
 
 class Yielding(unittest.TestCase):

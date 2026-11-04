@@ -41,6 +41,15 @@ new deaths. Retained records confirm two approach choices differ from the old
 nearest-only rule. A fresh full traversal is still required; no completed
 campaign row is added, and overall remains **48.1%**.
 
+A subsequent fresh run failed during internet startup, before paired gameplay.
+The guest's 15-second initial deadline was shorter than the connection worker's
+20-second DNS retry budget alone. Source `f9e7029` now gives initial setup a
+separate 60-second ceiling, retaining the 15-second identity check and 120-second
+level-load limits. Its controlled timeout/cancellation regression passes with
+879 active Rust tests. A new fresh internet run has connected both clients and
+is in progress; this is not yet a full-route pass or proof of the failed run's
+exact external delay. The original failure did not retain the guest's phase.
+
 Two resumed mirror 29-32 runs also pass, including exact actual-jump evidence.
 Conservative range rejection removes distant-enemy aiming work from the test
 driver; its measured host p95 cost drops from 39.5 to 1.1 ms per frame on the same

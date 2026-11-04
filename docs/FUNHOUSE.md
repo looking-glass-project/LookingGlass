@@ -1171,3 +1171,34 @@ NPC combat or traversal. Keep retained snapshots and original assets private.
 
 No screenshots were opened. The combined fresh full route remains unverified;
 this scoped retry adds no campaign row. Overall remains 48.1%.
+
+
+### Separate connection-setup timeout (4 November 2026)
+
+Fresh run `6c46a1aa2c7a4024a2464b1db0795967` on `a797a00` failed before paired
+reports or gameplay. The guest exited with the old generic connection/load
+timeout. The host's first ready report was created about 1.3 seconds after the
+guest launched, about 14 seconds before the failure. No guest phase was retained,
+so the exact external network delay is not proven.
+
+Source inspection found an independent startup mismatch: Guest initialized its
+connection deadline with the 15-second identity-check limit, while DNS retries
+alone allow 20 seconds, followed by TCP/TLS setup. Initial setup now has its own
+60-second ceiling. Once connected, the original 15-second identity deadline
+starts afresh; the 120-second load deadline remains. Errors distinguish initial
+connection from host check/load. A controlled pending-worker test passes beyond
+21 seconds, checks both connection and handshake expiry, and proves timeout and
+cancellation stop the worker without real waiting.
+
+Source `f9e702908fcaa1e7cd7713cd3364d0e5ea24ac1881948e8c7b3315f3b0e21c24`,
+frozen executable SHA-256
+`67079bbc64910eb0841daf22f98b75448ba2adfd6b51cec374e320de068e43f7`, passes
+879 active Rust tests/one ignored, the locked release, Funhouse native
+battle63/world50/scene37/single-player8 and Checkmate94. SP component output
+matches baseline except two benchmark timings; worktree888/package7 also pass.
+
+Fresh retry `1b9f5c22091942ccbd68466a497bfef9` uses two independent internet
+clients with 40 ms delay/20 ms jitter on the authorized PC fallback while Anode
+is occupied. Both have connected and entered the original opening at 100/100
+health. The full run is still in progress; no route pass is claimed. Overall
+remains 48.1%, with six combined visits and the remaining campaign checks open.

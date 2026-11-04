@@ -37,6 +37,15 @@ two real switch shots and 1,753 matching states, no deaths, final 75/95. The new
 fresh full route remains required; no campaign row is added. See
 [current progress](COOP_PROGRESS.md).
 
+A subsequent fresh run failed during internet startup, before paired gameplay.
+The guest's 15-second initial deadline was shorter than the connection worker's
+20-second DNS retry budget alone. Source `f9e7029` now gives initial setup a
+separate 60-second ceiling, retaining the 15-second identity check and 120-second
+level-load limits. Its controlled timeout/cancellation regression passes with
+879 active Rust tests. A new fresh internet run has connected both clients and
+is in progress; this is not yet a full-route pass or proof of the failed run's
+exact external delay. The original failure did not retain the guest's phase.
+
 Earlier Funhouse traversal milestone: source `c946266` now passes the resumed
 return corridor, authored steps **35-42**, in independent public-internet clients
 with 40 ms delay and 20 ms jitter. All **16 personal arrivals** and **1,175

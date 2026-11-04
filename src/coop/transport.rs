@@ -26,6 +26,10 @@ pub const MAX_INPUT: usize = 8 * 1024;
 pub const MAX_STATE: usize = 8 * 1024 * 1024;
 const QUEUE: usize = 4;
 const IDLE: Duration = Duration::from_secs(15);
+/// Session-level ceiling for connection setup: DNS may retry for 20 seconds,
+/// followed by up to four TCP attempts and the TLS/WebSocket handshake. Keep
+/// this separate from the shorter identity-check timeout after connection.
+pub(super) const CONNECT_TIMEOUT: Duration = Duration::from_secs(60);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum State {
@@ -567,6 +571,35 @@ fn exchange<S: Read + Write>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn guest_waits_for_connection_setup_but_keeps_handshake_and_cancel_bounds() {
+        use crate::coop::{protocol::Identity,session::{Guest,Phase}};
+        for connects in [false,true] {
+            let (peer,_outgoing,_incoming,shared)=channels(State::Connecting,MAX_INPUT);
+            let start=Instant::now();
+            let mut guest=Guest::new(peer,Identity::current("b".repeat(64)),start).unwrap();
+            // A DNS retry can legitimately consume more than the old 15-second
+            // identity-check allowance before the socket is even connected.
+            let resolved=start+Duration::from_secs(21);
+            guest.poll(resolved).unwrap();
+            assert_eq!(guest.phase(),Phase::Connecting);assert!(!shared.stopped());
+            let expired=if connects {
+                shared.set(State::Connected);
+                guest.poll(resolved).unwrap();
+                assert_eq!(guest.phase(),Phase::Checking);
+                guest.poll(resolved+Duration::from_secs(14)).unwrap();
+                resolved+Duration::from_secs(15)
+            } else {
+                guest.poll(start+CONNECT_TIMEOUT-Duration::from_millis(1)).unwrap();
+                start+CONNECT_TIMEOUT
+            };
+            assert!(guest.poll(expired).is_err());
+            assert_eq!(guest.phase(),Phase::Ended);assert!(shared.stopped());
+        }
+        let (peer,_outgoing,_incoming,shared)=channels(State::Connecting,MAX_INPUT);
+        let guest=Guest::new(peer,Identity::current("b".repeat(64)),Instant::now()).unwrap();
+        drop(guest);assert!(shared.stopped(),"Cancelling setup left the connection worker live");
+    }
     #[test]
     fn transient_and_empty_dns_results_recover_to_a_reachable_listener() {
         let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();

@@ -417,7 +417,7 @@ impl Guest {
             peer,
             identity,
             phase: Phase::Connecting,
-            deadline: now + CHECK_TIMEOUT,
+            deadline: now + super::transport::CONNECT_TIMEOUT,
             verified: false,
             visit: None,
             new_visit: false,
@@ -488,7 +488,9 @@ impl Guest {
         }
         ensure!(
             self.phase == Phase::Playing || now < self.deadline,
-            "The host took too long to connect or load the level."
+            "{}", if self.phase==Phase::Connecting {
+                "The connection took too long. Check your internet connection and try joining again."
+            } else { "The host took too long to check the connection or load the level." }
         );
         for _ in 0..4 {
             let Some(bytes) = self.peer.receive() else {

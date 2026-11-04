@@ -7,6 +7,7 @@ mod check;
 mod coop;
 mod coop_check;
 mod coop_scene_check;
+mod coop_door_check;
 mod motion;
 mod saves;
 mod scene;
@@ -200,6 +201,7 @@ struct Clockwork {
     pull_duration: f32,
     cameras: BTreeMap<String, crate::fortress::spline::Spline>,
     floater: crate::fortress::spline::Spline,
+    closing_x: [f32; 2],
 }
 fn at(e: &super::Entity) -> Transform {
     Transform {
@@ -277,6 +279,8 @@ impl Clockwork {
             floater,
             levers: LEVERS.into_iter().map(|i| at(&map.entities[i])).collect(),
             pull_duration: lever::duration(a)?,
+            closing_x: [coop::closing_approach(map, "NORETURN")?,
+                coop::closing_approach(map, "Close_ClockRoom_Door")?],
         };
         o.rebuild(map)?;
         Ok(o)
@@ -480,6 +484,17 @@ impl LevelController for Clockwork {
         self.saved.initialized = true;
     }
     fn coop_boarding_ready(&self, thread: &str, feet: &[Vec3]) -> Option<bool> {
+        // Both approaches run west, beyond the closing brush. The laboratory
+        // lever alcove is also west of its door but remains outside this gate.
+        let closing = match thread {
+            "NORETURN" => Some(0),
+            "Close_ClockRoom_Door" => Some(1),
+            _ => None,
+        };
+        if let Some(k) = closing {
+            return Some(!feet.is_empty()
+                && feet.iter().all(|p| p.x + PLAYER_HALF.x <= self.closing_x[k]));
+        }
         let name = match thread {
             "Lift_Up" => "Lift1",
             "Start_Floater1" => "floater1",

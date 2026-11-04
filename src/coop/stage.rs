@@ -452,7 +452,7 @@ impl Stage {
         for id in PlayerId::ALL {
             if result.waiting[id.index()] {
                 self.notices[id.index()] = Some(Notice {
-                    text: "Waiting for both players to board".into(),
+                    text: "Waiting for your partner".into(),
                     until: roster.tick + 120,
                 });
             }

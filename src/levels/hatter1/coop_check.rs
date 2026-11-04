@@ -280,7 +280,7 @@ pub(super) fn check(a: &mut Assets) -> Result<()> {
     let mut failures = Vec::new();
     for (name, check) in [("clocks", clocks as fn(&mut Assets, &Bsp) -> Result<()>),
         ("rides", rides), ("boarding", boarding), ("levers", levers), ("sinks", sinks),
-        ("blocked pull", partner_blocks_pull), ("death", death)] {
+        ("blocked pull", partner_blocks_pull), ("death", death), ("closing doors", super::coop_door_check::check)] {
         if let Err(error) = check(a, &map) { eprintln!("FAIL Clockwork {name}: {error:#}"); failures.push(name); }
     }
     ensure!(failures.is_empty(), "Clockwork paired components failed: {failures:?}"); Ok(())

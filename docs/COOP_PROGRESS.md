@@ -19,7 +19,17 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | Full campaign verification | 3.08 | 20 |
 | **Total** | **48.58, rounded to 48.6** | **100** |
 
-Latest verification milestone: Clockwork's new native scene suite passes all
+Latest fix: Clockwork's gear barrier and laboratory door now wait for all
+living players to pass their authored closing approach. The laboratory lever
+alcove does not count as inside. Source `a007099` passes **18 local door cases**
+with either first player, paused/compressed waiting-state restore, either/both
+players dead and the outside-lever case. All 38 earlier machinery records,
+40 scene cases and the unchanged single-player 11+1 baseline also pass.
+The gear-door course begins at its open doorway; traversal/waiting on the
+rotating great gear remains unverified. Total credit stays **48.6%** and the
+completed campaign count is unchanged.
+
+Earlier verification milestone: Clockwork's new native scene suite passes all
 **40 cases**: four cinematics with either owner, watched/held-skipped play and
 living/dead partners, plus both ordinary speech scenes with either initiator
 and living/dead partners. It checks actual contact/lever activation, frozen
@@ -42,7 +52,7 @@ locked release, source-package seven and source-worktree 890 checks pass.
 
 That adapter added **0.25 movement points**, using the same bounded credit as
 earlier native paired-transport milestones. Full paired handoffs are now checked
-separately above. Clockwork still needs closing-door/exit cases, continuous
+separately above. Clockwork still needs rotating-gear/exit cases, continuous
 two-client traversal, recovery and reconnects. Internet and completed-campaign
 credit are unchanged. See [Clockwork coverage](HATTER1.md).
 

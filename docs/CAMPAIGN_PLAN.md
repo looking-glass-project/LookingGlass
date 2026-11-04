@@ -2054,7 +2054,8 @@ Majestic Maze additionally reserves `--hedge1-save-write` and `--hedge1-save-rea
 
 `--hatter1-coop-check` reserves staged paired Clockwork components: one shared
 machinery clock, both living riders, obstruction rollback, actual boarding
-contacts, personal lever actions and their saved owners. These checks do not
+contacts, personal lever actions and their saved owners, plus local closing-door
+catch-up with either first player and living/dead partners. These checks do not
 replace continuous traversal, internet, recovery or single-player regression
 checks. `--hatter1-coop-scene-check` separately reserves native Hare, Port,
 Gryphon and Stop scene handoffs with both owners, watched/held-skipped play,

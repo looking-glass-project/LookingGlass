@@ -2,6 +2,16 @@
 use super::*;
 use crate::level::CoopPlayer;
 
+pub(super) fn closing_approach(map: &Bsp, thread: &str) -> Result<f32> {
+    let e = map.entities.iter().find(|e| e.get("thread").is_some_and(|s| s == thread))
+        .context("Missing Clockwork closing contact")?;
+    let model: usize = e.get("model").and_then(|s| s.strip_prefix('*'))
+        .context("Clockwork closing contact has no brush")?.parse()?;
+    let x = at(e).translation.x + map.models.get(model).context("Missing closing contact model")?.max.x;
+    ensure!(x.is_finite(), "Invalid Clockwork closing approach");
+    Ok(x)
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub(super) struct State {
     pub initialized: [bool; 2],

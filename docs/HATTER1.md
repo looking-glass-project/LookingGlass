@@ -133,6 +133,41 @@ logs (11+1 records) match the pre-adapter baseline byte-for-byte after newline
 normalization. Evidence is retained in `private/hatter1-coop-ec48aa7/manifest.json`.
 No gameplay change was needed for these scene cases.
 
-Closing-door catch-up rules (NORETURN and the laboratory door), the end clock
-and exit, continuous two-client traversal, death/checkpoint recovery and
-transition/rejoin remain open. These checks do not complete a campaign visit.
+At this scene milestone, closing-door catch-up rules, the end clock and exit,
+continuous two-client traversal, death/checkpoint recovery and transition/rejoin
+remained open. These checks did not complete a campaign visit.
+
+
+## Closing doors wait for living partners (4 November 2026)
+
+A native input fixture reproduced premature laboratory closure with either
+first player, including when the partner was still at the outside lever.
+Co-op now defers NORETURN and Close_ClockRoom_Door until every living body is
+past the east boundary of that door's authored closing-trigger brush. Both
+routes enter westward. Using the closing approach also excludes the laboratory
+lever alcove, which is west of the door but has not entered the laboratory.
+The existing contact system retains the first living requester and unconsumed
+one-shot event while waiting. The notice reads "Waiting for your partner".
+Original closing motion and single-player callbacks are unchanged.
+
+Source `a00709984d156f1da223004de955c4371a962bd27e983d5d7f77911467e7adf2`, executable SHA-256
+`5860ca23d0027e10a2bae75a77d90b06b4216cb8eda0792249336d640c605c9f`, passes **18 new staged local input cases** under
+`--hatter1-coop-check`: both doors, either first player and four living/dead
+combinations (16), plus a waiting partner at the laboratory lever (two).
+Each begins with staged prerequisites and footings; subsequent traversal uses
+ordinary movement. Checks preserve personal health and separation, restore a
+paused/compressed waiting checkpoint, exclude dead partners, stop both-dead
+machinery, retain living ownership and verify completed original closing poses.
+Resetting contact history does not replay a consumed closure.
+
+The gear-door cases begin at the static open doorway. An earlier attempt to
+include the rotating great gear stalled with idle movement; an attempt to hold
+position using running inputs changed health. Those failures remain retained.
+They were not converted into a full gear-traversal pass. The safe doorway fixture
+isolates closure; it does not verify the preceding gear course or native combat.
+
+The final batch has **56 machinery/door records** and **41 scene records**
+(40 cases plus summary). Single-player 11+1 logs still match the pre-adapter
+baseline exactly. Evidence: `private/hatter1-coop-a007099/manifest.json`.
+Overall credit remains 48.6%, with six combined campaign visits. The rotating
+gear, final clock/exit, full two-client route, recovery and rejoin remain open.

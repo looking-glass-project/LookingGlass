@@ -109,6 +109,55 @@ def verify_descent(arrivals, jumps, history):
                    and e['before'][slot][2] == count and e['after'][slot][2] == count + 1 for e in events), 'Actual descent takeoff unobserved'
 
 
+def yield_target(candidates, at, incoming, goal, via=None):
+    """Choose an observed walking neighbor clear of the follower's approach."""
+    route = [incoming] + ([via] if via is not None else []) + [goal]
+    def segment_gap(point, a, b):
+        line = [b[i]-a[i] for i in range(2)]
+        length2 = sum(v*v for v in line)
+        t = max(0, min(1, sum((point[i]-a[i])*line[i] for i in range(2))/length2)) if length2 else 0
+        return distance(point[:2], [a[i]+t*line[i] for i in range(2)])
+    def clearance(point):
+        return min(segment_gap(point,a,b) for a,b in zip(route,route[1:]))
+    usable = [p for p in candidates if distance(p[:2],incoming[:2]) >= 64 and clearance(p) >= 48
+              and sum((p[i]-at[i])*(at[i]-incoming[i]) for i in range(2)) >= 0]
+    assert usable, 'No observed supported yield clear of the follower'
+    return max(usable, key=lambda p: (clearance(p),distance(p[:2],incoming[:2])))
+
+
+def verify_yields(yields, steps, history):
+    counts = {}
+    for receipt in yields:
+        role, follower = receipt['role'], receipt['follower']
+        assert {role,follower} == {'host','guest'}, 'Yield needs two different players'
+        key = receipt['step'], follower
+        counts[key] = counts.get(key,0)+1
+        assert counts[key] <= 3, 'Unbounded partner yielding'
+        slot, other = (0,1) if role == 'host' else (1,0)
+        selected = next(r for r in history[role] if r['tick'] == receipt['selected_tick'])
+        paused = next(r for r in history[follower] if r['tick'] == receipt['paused_tick'])
+        assert paused['driver']['command'] == receipt['pause_command'], 'Follower pause not acknowledged'
+        assert paused['players'][other]['grounded'] and math.hypot(*paused['players'][other]['velocity'][:2]) < 20, 'Follower did not stop'
+        candidates = selected['driver']['neighbors'][slot]
+        assert receipt['candidates'] == candidates, 'Yield candidates were not observed'
+        goal = next(iter(steps[receipt['step']].values()))
+        assert receipt['goal'] == yield_target(candidates,selected['players'][slot]['feet'],
+            selected['players'][other]['feet'],goal,receipt['via']), 'Yield target does not clear the approach'
+        arrived = next(r for r in history[role] if r['tick'] == receipt['tick'])
+        body = arrived['players'][slot]
+        assert body['health'] > 0 and body['spawned_at'] == 0 and body['grounded'], 'Invalid yield body'
+        assert body['feet'] == receipt['feet'] and arrived['driver']['command'] == receipt['command'] and arrived['driver']['reached'], 'Yield arrival not acknowledged'
+        assert distance(body['feet'][:2],receipt['goal'][:2]) < 8 and abs(body['feet'][2]-receipt['goal'][2]) < 35, 'Yield did not arrive'
+
+
+def partner_contact(player, waiter):
+    # A blocked body's attempted velocity can remain nonzero. The caller
+    # establishes stalled positional progress before considering this contact.
+    return player['grounded'] and waiter['grounded'] and abs(player['feet'][2]-waiter['feet'][2]) < 56 \
+        and distance(player['feet'][:2],waiter['feet'][:2]) < 40 \
+        and math.hypot(*waiter['velocity'][:2]) < 20
+
+
 def verify_ledge_pulls(pulls, history):
     for pull in pulls:
         slot = 0 if pull['role'] == 'host' else 1
@@ -155,7 +204,7 @@ class ClockworkPair(Pair):
         self.evidence.update(course_sha256=hashlib.sha256(raw).hexdigest(), map_sha256=map_sha,
             effective_course_sha256=hashlib.sha256(effective).hexdigest(), waypoint_adjustments=adjustments,
             executable_sha256=hashlib.sha256(args.exe.read_bytes()).hexdigest(),
-            arrivals=[], levers=[], holds=[], parking=[], descent_arrivals=[], descent_jumps=[], ledge_pulls=[],
+            arrivals=[], levers=[], holds=[], parking=[], yields=[], descent_arrivals=[], descent_jumps=[], ledge_pulls=[],
             completed=self.completed, scope='Fresh Clockwork prefix only')
         dependencies = self.folder / 'fixture-dependencies'; dependencies.mkdir()
         for name in ('test_coop_hatter1.py', 'test_coop_village.py', 'test_coop_play.py', 'test_coop_chess.py',
@@ -221,14 +270,15 @@ class ClockworkPair(Pair):
                 raise AssertionError(f'Clockwork step {self.step} timed out: {summary}')
             self.pump()
 
-    def move(self, role, goal, navigate=False, jump=False, radius=8):
+    def move(self, role, goal, navigate=False, jump=False, radius=8, yield_partner=None):
         self.set(role, goal, navigate=navigate, run=True, jump=jump)
         self.commands[role]['arrival_radius'] = radius
         command = self.commands[role]['id']
         pullup = None
+        yielded = 0
         best = (distance(self.body(role)['player']['feet'], goal), self.reports[role]['frame']['tick'])
         def done():
-            nonlocal best, navigate, pullup
+            nonlocal best, navigate, pullup, yielded, command
             body = self.body(role)['player']; report = self.reports[role]
             assert report['combat']['stage']['owner'] is None, 'Unexpected cinematic in ordinary prefix movement'
             gap = distance(body['feet'], goal); tick = report['frame']['tick']
@@ -242,7 +292,37 @@ class ClockworkPair(Pair):
                 pullup = dict(role=role, before_tick=tick, command=self.commands[role]['id'])
                 self.evidence['ledge_pulls'].append(pullup)
             if gap < best[0] - 2: best = gap, tick
-            elif not navigate and not jump and tick - best[1] > 240 and body['grounded']:
+            elif yield_partner is not None and not jump and pullup is None and tick-best[1] > 240:
+                peer = self.body(yield_partner)['player']
+                if partner_contact(body,peer):
+                    assert yielded < 3, 'Partner still obstructs the approach after three yields'
+                    via = report['route_driver']['expected']
+                    self.set(role, attack=False)
+                    pause = self.commands[role]['id']
+                    self.until(lambda: self.reports[role]['route_driver']['command'] == pause
+                        and self.body(role)['player']['grounded']
+                        and math.hypot(*self.body(role)['player']['velocity'][:2]) < 20, 15)
+                    selected = self.reports[yield_partner]
+                    slot, other = (0,1) if yield_partner == 'host' else (1,0)
+                    candidates = selected['route_driver']['neighbors'][slot]
+                    park = yield_target(candidates,selected['frame']['players'][slot]['player']['feet'],
+                        selected['frame']['players'][other]['player']['feet'],goal,via)
+                    receipt = dict(step=self.step,role=yield_partner,follower=role,goal=park,via=via,
+                        selected_tick=selected['frame']['tick'],candidates=candidates,
+                        pause_command=pause,paused_tick=self.reports[role]['frame']['tick'])
+                    self.evidence['yields'].append(receipt)
+                    self.move(yield_partner,park)
+                    receipt.update(tick=self.reports[yield_partner]['frame']['tick'],
+                        command=self.reports[yield_partner]['route_driver']['command'],
+                        feet=list(self.body(yield_partner)['player']['feet']))
+                    self.set(yield_partner,park,run=True)
+                    self.set(role,goal,navigate=navigate,run=True)
+                    self.commands[role]['arrival_radius'] = radius
+                    command = self.commands[role]['id']
+                    best = distance(self.body(role)['player']['feet'],goal), self.reports[role]['frame']['tick']
+                    yielded += 1
+                    print('PASS ordinary partner yield',self.step,yield_partner,flush=True)
+            if not navigate and not jump and tick - best[1] > 240 and body['grounded']:
                 navigate = True; self.set(role, goal, navigate=True, run=True)
                 self.commands[role]['arrival_radius'] = radius
             return False
@@ -282,7 +362,7 @@ class ClockworkPair(Pair):
         self.set(other, attack=True)
         for role in (first, other):
             if self.step == 1: self.descend(role)
-            self.move(role, goal, navigate)
+            self.move(role, goal, navigate, yield_partner=first if role == other else None)
             report = self.reports[role]
             self.evidence['arrivals'].append(dict(step=self.step, role=role, goal=goal,
                 tick=report['frame']['tick'], feet=list(self.body(role)['player']['feet']),
@@ -353,6 +433,7 @@ class ClockworkPair(Pair):
         if 1 in self.completed:
             verify_descent(self.evidence['descent_arrivals'], self.evidence['descent_jumps'], self.history)
         verify_ledge_pulls(self.evidence['ledge_pulls'], self.history)
+        verify_yields(self.evidence['yields'], self.steps, self.history)
         expected = [i for i in self.completed if 'lever' in self.steps[i]]
         assert [r['step'] for r in self.evidence['levers']] == expected, 'Missing lever receipts'
         for receipt in self.evidence['levers']:

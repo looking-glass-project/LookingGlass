@@ -1,7 +1,7 @@
 """Reject incomplete or unobserved Clockwork route receipts."""
 import copy
 import unittest
-from test_coop_hatter1 import DESCENT, parking_target, verify_arrivals, verify_descent, verify_ledge_pulls
+from test_coop_hatter1 import DESCENT, parking_target, partner_contact, yield_target, verify_yields, verify_arrivals, verify_descent, verify_ledge_pulls
 
 
 class Arrivals(unittest.TestCase):
@@ -147,6 +147,74 @@ class LedgePull(unittest.TestCase):
     def test_missing_authoritative_input(self):
         self.history['host'][1]['driver']['input_events'] = []
         with self.assertRaisesRegex(AssertionError,'input unobserved'): self.check()
+
+
+class Yielding(unittest.TestCase):
+    def test_blocked_body_can_retain_attempted_velocity(self):
+        body = dict(feet=[-3919.305,2799.345,208],velocity=[39.46,-114.75,0],grounded=True)
+        waiter = dict(feet=[-3953.348,2787.638,208],velocity=[0,0,0],grounded=True)
+        self.assertTrue(partner_contact(body,waiter))
+
+    def test_moving_partner_is_not_a_waiting_obstruction(self):
+        body = dict(feet=[0,0,0],velocity=[100,0,0],grounded=True)
+        waiter = dict(feet=[36,0,0],velocity=[30,0,0],grounded=True)
+        self.assertFalse(partner_contact(body,waiter))
+
+    def test_airborne_or_separate_bodies_do_not_trigger_yield(self):
+        body = dict(feet=[0,0,0],velocity=[100,0,0],grounded=True)
+        for feet,grounded in [([36,0,0],False),([36,0,60],True),([80,0,0],True)]:
+            with self.subTest(feet=feet,grounded=grounded):
+                self.assertFalse(partner_contact(body,dict(feet=feet,velocity=[0,0,0],grounded=grounded)))
+
+    def test_recorded_step_six_contact_has_a_clear_supported_yield(self):
+        candidates = [[-4001.0681,2787.666,208],[-3953.0681,2835.666,208],
+            [-3953.0681,2739.666,208],[-3987.0093,2821.6072,208],[-3987.0093,2753.7249,208]]
+        self.assertEqual(yield_target(candidates,[-3953.0681,2787.666,208],
+            [-3919.2285,2799.9497,208],[-3920,2750,208],[-3937.9297,2760.5012,208]),candidates[3])
+
+    def test_walking_across_the_follower_is_rejected(self):
+        with self.assertRaisesRegex(AssertionError,'No observed'):
+            yield_target([[-80,60,0]],[36,0,0],[0,0,0],[100,0,0])
+
+    def test_parking_in_the_planned_approach_is_rejected(self):
+        with self.assertRaisesRegex(AssertionError,'No observed'):
+            yield_target([[80,10,0]],[36,0,0],[0,0,0],[100,0,0])
+
+    def test_no_synthetic_neighbor_is_invented(self):
+        with self.assertRaisesRegex(AssertionError,'No observed'):
+            yield_target([],[36,0,0],[0,0,0],[100,0,0])
+
+
+class YieldReceipts(unittest.TestCase):
+    def setUp(self):
+        body = dict(feet=[36,0,0],velocity=[0,0,0],health=89,spawned_at=0,grounded=True)
+        incoming = dict(body,feet=[0,0,0])
+        selected = dict(tick=100,players=[body,incoming],driver=dict(command=6,neighbors=[[[84,0,0]],[]]))
+        arrived = copy.deepcopy(selected)
+        arrived.update(tick=200)
+        arrived['players'][0]['feet'] = [84,0,0]
+        arrived['driver'].update(command=8,reached=True)
+        paused = copy.deepcopy(selected);paused['driver']['command'] = 7
+        self.history = dict(host=[selected,arrived],guest=[paused])
+        self.receipts = [dict(step=0,role='host',follower='guest',goal=[84,0,0],via=[0,-50,0],
+            selected_tick=100,candidates=[[84,0,0]],pause_command=7,paused_tick=100,
+            tick=200,command=8,feet=[84,0,0])]
+
+    def check(self): verify_yields(self.receipts,[dict(nav=[0,-100,0])],self.history)
+
+    def test_observed_stop_and_yield(self): self.check()
+
+    def test_unacknowledged_follower_pause(self):
+        self.history['guest'][0]['driver']['command'] += 1
+        with self.assertRaisesRegex(AssertionError,'pause not acknowledged'): self.check()
+
+    def test_unobserved_neighbor(self):
+        self.receipts[0]['candidates'] = []
+        with self.assertRaisesRegex(AssertionError,'not observed'): self.check()
+
+    def test_unacknowledged_yield_arrival(self):
+        self.history['host'][-1]['driver']['reached'] = False
+        with self.assertRaisesRegex(AssertionError,'arrival not acknowledged'): self.check()
 
 
 class Parking(unittest.TestCase):

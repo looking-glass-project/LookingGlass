@@ -339,3 +339,36 @@ obstructs Blue's planned approach. Their horizontal separation remains 36 units;
 the run times out with both alive, at 89 and 79 health. This needs ordinary
 partner yielding or a better waiting route, rather than relaxing collision or
 counting the obstructed follower as having arrived.
+
+## Ordinary partner yield and first two levers (4 November 2026)
+
+The route runner now handles a stalled follower in contact with the waiting
+first player. It sends a neutral command to the follower and checks its
+acknowledgment and stopped body. The waiter then walks to an observed native
+supported neighbor clear of the planned approach, and the follower resumes.
+The yield is bounded to three attempts per arrival. Its verifier checks the
+observed candidate list, the follower's stop and the waiter's separate arrival.
+The original collision, spacing, death and waypoint checks remain in force.
+
+An initial reproduction showed that a pinned player can retain nonzero attempted
+velocity while its position stays fixed. Contact detection therefore uses stalled
+positional progress and a stationary waiter; it still requires the follower to
+stop after the neutral command. All 38 Python guards pass, including that captured
+case, unsafe candidate rejection and missing acknowledgment rejection. Native
+source remains `dbd12c8`; its 881 active Rust tests and locked release are unchanged.
+
+A fresh internet run now independently verifies **steps 0-15**: 24 course
+arrivals, eight intermediate personal arrivals, four actual jumps, one native
+pull-up, two timed holds, two ordinary lever activations and one partner yield.
+It compares **2,997 matching player/world/native states**, ending at tick 24945
+with both players alive at 89 health. Copied and current fixture hashes match.
+Evidence:
+`private/coop/hatter1-route-ee5c6bed594b480faf570313031ba090/completed-prefix-audit.json`.
+
+The requested 0-17 run fails at step 16 and remains marked failed in its original
+observations. The first player repeatedly replans on the rotating great gear;
+the partner is far away, so this is not another personal-space blockage. The
+scoped audit excludes that attempt. Gear-relative arrival/waiting and continuous
+crossing still need verification. The normal checkpoint before step 14 is
+available for a shorter resumed reproduction; resumed evidence must remain
+separate from fresh traversal. No complete campaign visit is added.

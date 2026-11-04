@@ -19,7 +19,18 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | Full campaign verification | 3.08 | 20 |
 | **Total** | **48.58, rounded to 48.6** | **100** |
 
-Latest automation result: Clockwork's fresh entrance (steps 0-1) passes with
+Latest automation result: Clockwork's fresh **0-15** prefix verifies 24 personal
+course arrivals, eight intermediate arrivals, four jumps, one pull-up, two timed
+holds, two lever activations and one ordinary partner yield. All **2,997** compared
+player/world/native states match, with both players alive at 89 health. The
+runner now detects stalled contact even when attempted velocity remains high,
+stops the follower, walks the waiting player to an observed clear position and
+resumes the follower. **38 Python guards** pass. Native source stays `dbd12c8`.
+The requested 0-17 run still fails at step 16 while repeatedly replanning on the
+rotating gear; its scoped audit excludes that failed segment. No new complete
+campaign visit is credited. Overall completion remains **48.6%**.
+
+Earlier automation result: Clockwork's fresh entrance (steps 0-1) passes with
 either player going first on source `dbd12c8`. The two internet runs verify
 697 and 693 matching states, each with four course arrivals, eight intermediate
 arrivals, four actual jumps and one native pull-up. Both players finish at 89

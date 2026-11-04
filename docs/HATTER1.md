@@ -171,3 +171,57 @@ The final batch has **56 machinery/door records** and **41 scene records**
 baseline exactly. Evidence: `private/hatter1-coop-a007099/manifest.json`.
 Overall credit remains 48.6%, with six combined campaign visits. The rotating
 gear, final clock/exit, full two-client route, recovery and rejoin remain open.
+
+## Independent client route automation (4 November 2026)
+
+`tools/test_coop_hatter1.py` drives a fresh prefix with two independent profiles
+and the real internet Host/Join path by default. Both players must physically
+reach every movement waypoint and receive their own acknowledged command.
+The first walks to an observed clear, supported neighbor before the second
+arrives; a narrow passage can require another observed walking step to leave
+the arrival lane clear. It prefers waiting beyond the doorway to avoid pinning
+the incoming player against an open door's tip. Final arrival tolerances and
+player spacing are unchanged.
+Lever actions use ordinary E input, checkpoints require neutral controls, and
+the verifier compares sent/restored player, world and native state hashes.
+The evidence retains exact fixture, executable, course and local map identities.
+
+The initial runner supports nav/walk/wait/lever prefixes and rejects a requested
+prefix containing unsupported actions. Its default stops after step 17; timed
+input, later path nodes, scene handoffs and the exit are still future work.
+It aborts on death, respawn or team wipe, so this is not a recovery test.
+No authoritative position, resource or progression is written by the runner.
+
+The first live attempts exposed two automation gaps: Clockwork owns its doors
+outside the generic door list, and proximity can open the selected door while
+leaving a neighboring door closed. Read-only controller observations now tell
+the route driver which closed door its ordinary E press will open, including
+the existing native nearby-door group. Native use and single-player door
+behavior are unchanged. Local passage fixtures start at captured door footings
+with either Alice and either a closed or proximity-open first door; their staged
+starting state does not count as fresh route traversal. In the proximity-open
+case the waiting partner must walk out of the incoming approach before the
+follower crosses; an E press cannot bypass personal space or door geometry.
+
+On source `a96876c`, a retained fresh prefix independently verifies steps 0-2,
+six personal arrivals and 493 matching player/world/native states. That run
+failed at step 3 because its first neighbor ring did not leave enough waiting
+space. A repeat failed at step 2 with the proximity-open door edge case.
+The native reproduction retained that failure with both actors before adding
+the ordinary partner yield. Neither run establishes a completed Clockwork visit.
+
+Source `f6b1a4f2a21759258b9c6f3e533adb46de2aa3f2e1463dfaa23bb52547cf5be3`, executable SHA-256
+`30be7e42ddec7be031b2f617b4c0036c5a64777e06a5ce97c052b6a4e08bb158`, passes all
+60 machinery/door records and 40 scene cases plus summary. The four ordinary
+door cases include both actors and proximity-open starts with partner yield.
+Single-player 11+1 logs still match the pre-adapter baseline exactly. All 879
+active Rust tests and the 14 Python receipt/parking guards pass.
+Native evidence: `private/hatter1-coop-f6b1a4f/manifest.json`.
+
+The fresh internet retry on this source completes both step-0 arrivals, then
+stops at step 1 after Red dies during the automated descent. Blue reaches the
+step-1 footing with 89 health after ordinary fall damage. Red is still airborne
+when health reaches zero; the precise death cause has not been isolated.
+Evidence is retained in `private/coop/hatter1-route-53fb361cf47c4fe1999ff406883e0f55`.
+No death guard, body spacing, combat rule or resource was changed to continue.
+The opening descent and full live prefix remain unverified on this build.

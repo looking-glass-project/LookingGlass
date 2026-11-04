@@ -509,6 +509,13 @@ impl LevelController for Clockwork {
             .map(|_| "E  Pull lever")
             .or_else(|| self.door_pick(w, eye, aim).map(|_| "E  open door"))
     }
+    fn route_closed_door(&self, id: crate::entity::Id) -> Option<bool> {
+        self.route_door_closed(id)
+    }
+    fn route_closed_door_in_reach(&self, w: &World, eye: Vec3, aim: Vec3) -> Option<crate::entity::Id> {
+        let k = self.door_pick(w, eye, aim)?;
+        self.route_door_to_open(k)
+    }
     fn advance(
         &mut self,
         dt: f32,

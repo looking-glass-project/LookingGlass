@@ -429,6 +429,23 @@ impl Clockwork {
                 .then_some(k)
         })
     }
+    pub(super) fn route_door_closed(&self, id: crate::entity::Id) -> Option<bool> {
+        let k = self.objects.iter().position(|o| o.id == id.0 && o.class.contains("door"))?;
+        let o = &self.objects[k];
+        Some(self.door_target(o).is_none() && o.flags & (8 | 128) == 0
+            && self.saved.holds[k] <= 0. && self.saved.doors[k] < 1.)
+    }
+    pub(super) fn route_door_to_open(&self, selected: usize) -> Option<crate::entity::Id> {
+        let center = (self.objects[selected].bounds.0 + self.objects[selected].bounds.1) * 0.5;
+        // Native use opens nearby leaves together. Proximity may have opened
+        // only the selected leaf already; observe its still-closed neighbor
+        // so an ordinary E press can finish opening the same native group.
+        self.objects.iter().find_map(|o| {
+            let id = crate::entity::Id(o.id);
+            (self.route_door_closed(id) == Some(true)
+                && ((o.bounds.0 + o.bounds.1) * 0.5).distance(center) < 150.).then_some(id)
+        })
+    }
     pub(super) fn use_door(&mut self, w: &World, p: &Player, aim: Vec3) {
         let selected = self.door_pick(w, p.eye(), aim);
         if let Some(k) = selected {

@@ -2062,6 +2062,14 @@ Gryphon and Stop scene handoffs with both owners, watched/held-skipped play,
 living/dead waiting partners and paused/compressed restores, plus ordinary
 Mirror/Hint speech during exploration.
 
+`tools/test_coop_hatter1.py` separately reserves fresh two-client Clockwork
+prefix tests, using the internet session by default, individual waypoint
+receipts, supported waiting moves, ordinary lever inputs and normal checkpoints.
+It currently supports nav/walk/wait/lever actions and rejects unsupported
+requested prefixes. Native local door cases include read-only observations of
+Clockwork-owned doors, actual E use and partner yield at an open leaf. These
+fixtures do not establish the complete route or death/rejoin coverage.
+
 Clockwork and Ascension additionally reserve `--hatter1-route-native-check` and
 `--facade-route-native-check` for continuous entrance-to-exit input courses with
 their resident enemies. These use a native window and the existing map owners;

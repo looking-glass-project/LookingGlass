@@ -180,6 +180,59 @@ fn lever_wait(a: &mut Assets, map: &Bsp, first: PlayerId) -> Result<()> {
     println!("PASS Clockwork laboratory first{first:?}: a partner at the outside lever does not permit closure");
     Ok(())
 }
+fn ordinary_door(a: &mut Assets, map: &Bsp, first: PlayerId, proximity_open: bool) -> Result<()> {
+    let mut c = Course::new(a, map, true, first, false)?;
+    for id in PlayerId::ALL {
+        let feet = if id == first { vec3(-3302.0173, 2779.03125, 192.03125) }
+            else { vec3(-3266.425, 2784.4333, 192.03125) };
+        let body = &mut c.roster.players[id.index()];
+        body.player = Player::new(feet); body.player.grounded = true;
+        c.anchors[id.index()] = feet.truncate();
+    }
+    if proximity_open {
+        // Captured fresh-route stall: the northern automatic leaf has opened,
+        // but E must still open its closed neighbor through native use_door.
+        let o = ctl(&mut c.stage);
+        let k = o.objects.iter().position(|o| o.id == 119).context("Missing entrance door")?;
+        o.saved.doors[k] = 1.; o.saved.holds[k] = 3.;
+        o.rebuild(map)?; c.stage.interactions.sync_coop(&mut c.world);
+    }
+    c.safe()?;
+    let eye = c.roster.players[first.index()].player.eye();
+    let door = c.stage.interactions.closed_door_in_reach(&c.world, eye, Vec3::NEG_Y)
+        .context("Route driver cannot observe Clockwork's ordinary door")?;
+    ensure!(c.stage.interactions.closed_door(door), "Closed native door was not identified");
+    let mut input = [(Controls::default(), Input::default()); 2];
+    input[first.index()].0.use_pressed = true;
+    input[first.index()].1.yaw = -std::f32::consts::FRAC_PI_2;
+    c.stage.before_move(&mut c.roster, map, &mut c.world, &input, FIXED_DT)?;
+    ensure!(!c.stage.interactions.closed_door(door), "Ordinary E press did not acknowledge opening");
+    if proximity_open {
+        // The captured partner was standing on the incoming side beside the
+        // open leaf, pinning the actor against its tip. Walk that partner
+        // through first; opening a door must not bypass personal space.
+        let partner = first.partner();
+        let waiting = vec2(-3266.425, 2700.);
+        for _ in 0..240 {
+            let mut goals = [None; 2]; goals[partner.index()] = Some(waiting);
+            c.step(map, goals, true)?;
+            if c.roster.players[partner.index()].player.feet.truncate().distance(waiting) < 5. { break; }
+        }
+        ensure!(c.roster.players[partner.index()].player.feet.truncate().distance(waiting) < 5.,
+            "Waiting partner could not walk out of the incoming door approach");
+        c.anchors[partner.index()] = waiting;
+    }
+    let goal = vec2(-3296., 2750.);
+    for _ in 0..240 {
+        let mut goals = [None; 2]; goals[first.index()] = Some(goal);
+        c.step(map, goals, true)?;
+        if c.roster.players[first.index()].player.feet.truncate().distance(goal) < 5. { break; }
+    }
+    ensure!(c.roster.players[first.index()].player.feet.truncate().distance(goal) < 5.,
+        "Ordinary E did not allow the player to cross the door");
+    println!("PASS Clockwork ordinary door {first:?} proximity_open{proximity_open}: native observation, one E press and actual passage");
+    Ok(())
+}
 pub(super) fn check(a: &mut Assets, map: &Bsp) -> Result<()> {
     let mut failures = Vec::new();
     for laboratory in [false, true] { for first in PlayerId::ALL { for dead in 0..4 {
@@ -193,6 +246,10 @@ pub(super) fn check(a: &mut Assets, map: &Bsp) -> Result<()> {
             let message = format!("laboratory lever first{first:?}: {e:#}");
             eprintln!("FAIL Clockwork closing {message}"); failures.push(message);
         }
+        for proximity_open in [false, true] { if let Err(e) = ordinary_door(a, map, first, proximity_open) {
+            let message = format!("ordinary door first{first:?} proximity_open{proximity_open}: {e:#}");
+            eprintln!("FAIL Clockwork {message}"); failures.push(message);
+        } }
     }
     ensure!(failures.is_empty(), "Closing door cases failed: {}", failures.join("; "));
     Ok(())

@@ -19,7 +19,23 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | Full campaign verification | 3.08 | 20 |
 | **Total** | **48.58, rounded to 48.6** | **100** |
 
-Latest fix: Clockwork's gear barrier and laboratory door now wait for all
+Latest automation milestone: Clockwork now has a fresh two-client internet
+prefix runner with separate personal arrivals, supported waiting moves, normal
+lever inputs and checkpoints, and network-state comparisons. Read-only door
+observations let its normal E input work with Clockwork-owned door groups.
+Waiting positions prefer the far side of a doorway; parking on the incoming
+side had pinned the follower against an open door's tip. Source `f6b1a4f`
+passes **60 native machinery/door records**, all **40 scene cases**, and the
+unchanged single-player **11+1** baseline. Four new local door cases cover
+both actors and the proximity-open starting state, with ordinary partner yield.
+The route runner has 14 receipt/parking guards; all 879 active Rust tests pass.
+This is additional automation and component coverage, not another completed
+campaign visit. Total credit remains **48.6%**. See [scope and retained failures](HATTER1.md).
+The fresh internet retry on this build stops at step 1 after Red dies during
+the automated descent. The opening route needs a safer observed approach;
+the strict death guard remains enabled and the failure is retained.
+
+Earlier fix: Clockwork's gear barrier and laboratory door now wait for all
 living players to pass their authored closing approach. The laboratory lever
 alcove does not count as inside. Source `a007099` passes **18 local door cases**
 with either first player, paused/compressed waiting-state restore, either/both

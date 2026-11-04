@@ -555,3 +555,108 @@ during a different jump approach while Blue waits safely at 36. The gap
 sequence is still untested in the live game. The failure and original
 observations are retained; this partial retry does not complete Clockwork or
 add campaign credit.
+
+## Supported remote landing plans (4 November 2026)
+
+The step-35 failure reproduces headlessly in the actual map: the captured
+route lands with its original input timing, but extending one northward air
+input by six physics ticks (50 ms) misses the platform. Its nominal first
+contact barely catches the platform with the side of the body. Later walking
+onto the platform hides that fragile contact in the planned endpoint.
+
+Remote diagnostic plans now check support at the first airborne-to-grounded
+transition in each candidate, using the center and four eight-unit offsets.
+The existing supported-walking criterion is shared by that check. Zero-margin
+single-player planning is unchanged. A synthetic regression distinguishes
+marginal first contact from the later safe endpoint and checks the new plan.
+
+The native Clockwork suite retains the old route as a negative comparison,
+then runs the newly searched route with each input segment shortened, unchanged
+and lengthened by six ticks, at 0, 6, 12 and 18 ticks of observation and input
+delay per direction. All **60 variants** remain above the landing floor and
+settle at the destination. These are staged component fixtures, not continuous
+paired traversal evidence.
+
+Source `6c7c12dc145ce999ea440dbf2d94c2d5544dbc0ef11e0a4461afe8d5614ecd7e`, executable SHA-256
+`cab2b3023290114231943f50b7599e99c8ddc66ba9fa1f0f8ae806e179e62313`, passes
+**887 active Rust tests** with one ignored, the locked release and all **69
+native paired/driver checks**. The single-player 11+1 outputs still match the
+baseline exactly.
+
+The independent-client retry verifies **resumed 33-35**: six personal arrivals,
+three corridor handoffs and **271 matching player/world/native states**, ending
+at tick 41035 with 89/100 health. The unchanged checkpoint restores exactly at
+tick 38760; copied and current fixture hashes match. Evidence:
+`private/coop/hatter1-route-c45a934cfbfe4b75b3f497eb6aa29dce/completed-prefix-audit.json`.
+Blue then crosses the gap and reaches the landing-side waiting point. Red fails
+on the approach to step 36, where premature final-landing control clears a
+second planned jump from an intermediate sinking pillar. The original 33-42
+request remains failed, and the paired gap has not passed.
+
+## Retaining consecutive jumps (4 November 2026)
+
+Final landing control now waits until the route has issued every planned jump.
+An unissued jump at the front of the plan also blocks that handoff. This keeps
+a supported intermediate island from causing the driver to discard the next
+takeoff while steering toward the final destination.
+
+The first headless reproduction held the geometry still and did not reproduce
+the failure. The corrected case advances the actual paired Clockwork machinery,
+including its sinking pillars, and delays both player and collision-world
+observations. The old handoff loses the second jump and falls. The new handoff
+performs both actual jumps and settles at the goal with 0, 6, 12 and 18 ticks
+of observation and input delay per direction. This is a staged component check.
+An optional ignored Rust test runs the same native-map case when
+`LOOKING_GLASS_TEST_DATA` points to the original game data; the release native
+suite also includes it. All **887 active Rust tests** pass, with two ignored.
+The native-map test was separately run and passed.
+
+Source `628eba9be19a2e593aa504a87c7c071b6b3c14907f59344cb36cf026cb92d87e`, executable SHA-256
+`edc13ae3e410705c5d0736f7914bf1165015b4d73f28b0533ec22985a3968afc`, passes
+the locked release and all **70 native paired/driver checks**. The single-player
+11+1 outputs still match the baseline exactly.
+
+The resumed live attempt independently verifies both personal approaches to
+36/37 and both preparation holds: four arrivals, two holds, Red's two actual
+approach jumps and **177 matching player/world/native states**. The unchanged
+checkpoint restores exactly at tick 41127; the audit ends at 42717 with
+100/98.867 health. Copied and current fixture hashes match. Evidence:
+`private/coop/hatter1-route-6f3d23c11fad42819a6b019811cc8fea/approaches-audit.json`.
+Blue crosses the main gap and waits beyond it. Red takes off but slows too soon
+over empty space, falls short of the far bank and dies. The whole 36-42 bundle
+remains failed; the approach audit does not mark any bundled course step or
+campaign visit complete.
+
+## Direct airborne steering (4 November 2026)
+
+Direct waypoint steering now uses an air-acceleration stopping-distance rule
+while an ordinary jump remains over unsupported space. Above a supported
+landing it resumes the existing damped approach. Grounded, swimming, ledge and
+updraft steering keep the existing rule, and explicit speed limits still apply.
+Movement physics and jump strength are unchanged.
+
+A native-map regression performs the original short run-up and one actual
+jump, with paired machinery and delayed player/world observations. The old
+grounded-arrival rule reproduces the shortfall. The new steering settles at
+the far waypoint with 0, 6, 12, 18, 24 and 30 ticks of observation and input
+delay per direction, covering up to 500 ms combined delay. This includes the
+roughly 418 ms lead recorded in the failed live run. All **887 active Rust
+tests** pass with three ignored; the optional native gap test was run separately
+and passes all six delays.
+
+Source `a07517e9ff6621d46dd14d084bf1708c8ec1d4de64f28116a1a26623d047a305`, executable SHA-256
+`ee9b04beb5c2def5c9b0b4cf1902e855b9bbd84d5d2d0c5c04231d32e80448fc`, passes
+the locked release and all **71 native paired/driver checks**. The single-player
+11+1 outputs still match the baseline exactly.
+
+The independent-client internet retry, with 40 ms delay and 20 ms jitter
+configured, passes **resumed 36-42**. It verifies six personal arrivals, both
+actual gap jumps, both preparation holds, the first player's separate waiting
+handoff and **232 matching player/world/native states**. Both finish alive at
+100/99.867 health. The unchanged checkpoint restores exactly at tick 41127;
+copied and current fixture hashes match. The runner saves an ordinary checkpoint
+before 43 at tick 42953 and ends observation at 42957. Evidence:
+`private/coop/hatter1-route-6d83c0428b584f6d956209de30da932f`.
+This completes the resumed gap sequence, not fresh Clockwork traversal or a
+campaign visit. The later pathnode course, machinery, scenes, recovery and
+reconnect checks remain open. Overall completion stays 48.6%.

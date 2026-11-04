@@ -304,7 +304,8 @@ impl Route {
         Self::plan_with_takeoff_margin(world, start, goal, tolerance, 0)
     }
     /// Optional remote-input margin for diagnostic routes. A planned jump must
-    /// remain possible if the preceding input lasts a little longer in transit.
+    /// remain possible if the preceding input lasts a little longer in transit,
+    /// and its first landing must have support around the center of the body.
     /// Native routes retain their exact zero-margin search and gameplay physics.
     pub(crate) fn plan_with_takeoff_margin(
         world: &World,
@@ -372,7 +373,9 @@ impl Route {
                         ..Default::default()
                     };
                     let mut next = p.clone();
+                    let mut unsafe_landing=false;
                     for t in 0..24 {
+                        let airborne=!next.grounded;
                         next.tick(
                             world,
                             Controls {
@@ -380,16 +383,22 @@ impl Route {
                                 ..input
                             },
                         );
+                        // A body can barely catch a platform with its side.
+                        // That route loses support after a few ticks of remote
+                        // timing variation, even if the later endpoint is safe.
+                        // Check first contact, before subsequent ground motion
+                        // conceals the marginal landing. Native routes retain
+                        // their original zero-margin search.
+                        if takeoff_ticks>0 && airborne && next.grounded
+                            && !supported_footing(world,next.feet) {
+                            unsafe_landing=true;break;
+                        }
                     }
-                    if next.feet.z < goal.z - 320. || !world.body_clear(next.feet) {
+                    if unsafe_landing || next.feet.z < goal.z - 320. || !world.body_clear(next.feet) {
                         continue;
                     }
                     if walking && (!next.grounded || next.swimming || next.ledge.is_some()
-                        || ![Vec3::ZERO, Vec3::X*8., -Vec3::X*8., Vec3::Y*8., -Vec3::Y*8.].iter().all(|offset| {
-                            let high = next.feet + *offset + Vec3::Z;
-                            let floor = world.sweep(high, high-Vec3::Z*19., Vec3::ZERO);
-                            !floor.start_solid && floor.fraction < 1. && floor.normal.z >= 0.65
-                        })) { continue; }
+                        || !supported_footing(world,next.feet)) { continue; }
                     let key = (
                         (next.feet.x / 12.).round() as i32,
                         (next.feet.y / 12.).round() as i32,
@@ -1180,9 +1189,50 @@ impl Route {
     }
 }
 
+fn supported_footing(world:&World,feet:Vec3)->bool {
+    [Vec3::ZERO,Vec3::X*8.,-Vec3::X*8.,Vec3::Y*8.,-Vec3::Y*8.].iter().all(|offset| {
+        let high=feet+*offset+Vec3::Z;
+        let floor=world.sweep(high,high-Vec3::Z*19.,Vec3::ZERO);
+        !floor.start_solid && floor.fraction<1. && floor.normal.z>=0.65
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn remote_plan_lands_on_supported_center_before_walking_inward() {
+        let world=World::fixture(&[
+            (vec3(-60.,-60.,-100.),vec3(40.,40.,0.)),
+            (vec3(83.,120.,-100.),vec3(200.,220.,0.)),
+        ]);
+        let mut start=Player::new(vec3(0.,0.,0.03125));start.grounded=true;
+        let goal=vec3(115.,142.,0.03125);
+        // The old corner-catching jump can be grounded while its center is
+        // still outside the platform. Later walking hides this fragile contact.
+        let mut marginal=start.clone();
+        for (i,wish) in [vec2(1.,1.).normalize(),Vec2::Y,Vec2::Y,
+            vec2(1.,1.).normalize(),vec2(1.,1.).normalize()].into_iter().enumerate() {
+            for t in 0..24 {marginal.tick(&world,Controls{wish,run:true,jump:i==0&&t==0,..Default::default()});}
+        }
+        assert!(marginal.grounded && !supported_footing(&world,marginal.feet),"Missing marginal contact: {:?}",marginal.feet);
+        for _ in 0..24 {marginal.tick(&world,Controls{wish:Vec2::X,run:true,..Default::default()});}
+        assert!(marginal.grounded && supported_footing(&world,marginal.feet));
+        let route=Route::plan_with_takeoff_margin(&world,&start,goal,22.,12).unwrap();
+        let mut p=start;let mut landings=0;
+        for (input,_) in route {
+            for tick in 0..24 {
+                let airborne=!p.grounded;
+                p.tick(&world,Controls{jump:input.jump&&tick==0,..input});
+                if airborne && p.grounded {
+                    landings+=1;
+                    assert!(supported_footing(&world,p.feet),"Planner accepted marginal first contact: {:?}",p.feet);
+                }
+            }
+        }
+        assert!(landings>0 && p.grounded && p.feet.distance(goal)<22.);
+    }
 
     #[test]
     fn remote_plan_reserves_support_for_delayed_jump_input() {

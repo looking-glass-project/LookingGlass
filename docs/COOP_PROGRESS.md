@@ -19,7 +19,19 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | Full campaign verification | 3.08 | 20 |
 | **Total** | **48.58, rounded to 48.6** | **100** |
 
-Latest automation result: Clockwork's resumed **25-35** section verifies 16
+Latest automation result: Clockwork's resumed **36-42** gap sequence passes
+through independent internet clients: six personal arrivals, two actual gap
+jumps, two preparation holds, one waiting handoff and **232 matching
+player/world/native states**. Both finish alive at 100/99.867 health. A normal
+checkpoint beyond the gap is retained for the next section. Remote plans now
+require supported first landings and retain subsequent jumps; direct airborne
+steering preserves enough speed to cross the gap before settling. Source
+`a07517e` passes **887 active Rust tests**, the locked release, **71 native
+paired/driver checks** and the exact single-player **11+1** baseline. This is
+resumed segment evidence; full Clockwork and campaign repeats remain open.
+Overall completion remains **48.6%**. See [Clockwork evidence](HATTER1.md).
+
+Earlier automation result: Clockwork's resumed **25-35** section verifies 16
 personal arrivals, seven corridor handoffs, two timed holds, one lever and
 **1,073 matching player/world/native states**, ending with both alive at 89/100
 health. This is a scoped audit of a longer run that stopped at the gap approach.

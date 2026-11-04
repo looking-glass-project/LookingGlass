@@ -318,9 +318,149 @@ pub(super) fn check(a: &mut Assets) -> Result<()> {
     let map = Bsp::parse(&a.read("maps/hatter1.bsp")?)?;
     let mut failures = Vec::new();
     for (name, check) in [("clocks", clocks as fn(&mut Assets, &Bsp) -> Result<()>),
-        ("rides", rides), ("gear steering", gear_steering), ("boarding", boarding), ("levers", levers), ("sinks", sinks),
+        ("rides", rides), ("gear steering", gear_steering), ("corridor landings",corridor_landings),
+        ("consecutive jumps",consecutive_jumps), ("gap steering",gap_steering), ("boarding", boarding), ("levers", levers), ("sinks", sinks),
         ("blocked pull", partner_blocks_pull), ("death", death), ("closing doors", super::coop_door_check::check)] {
         if let Err(error) = check(a, &map) { eprintln!("FAIL Clockwork {name}: {error:#}"); failures.push(name); }
     }
     ensure!(failures.is_empty(), "Clockwork paired components failed: {failures:?}"); Ok(())
+}
+
+/// A staged native-map regression for the remote diagnostic driver. This is
+/// not a full route or paired campaign completion claim.
+fn corridor_landings(assets:&mut Assets,map:&Bsp)->Result<()> {
+    use crate::movement::Controls;
+    use std::collections::VecDeque;
+    let o=Clockwork::load(assets,map)?;let w=world(map,&o)?;
+    let goal=vec3(-5120.,2544.,320.03125);
+    let mut start=Player::new(vec3(-5235.65185546875,2402.392822265625,320.03125));start.grounded=true;
+    // Captured old route: ordinary timing lands, but 50 ms extra northward
+    // input makes the body miss the edge before final landing control applies.
+    for extra in [0,6] {
+        let mut p=start.clone();
+        for (index,wish) in [vec2(1.,1.).normalize(),Vec2::Y,Vec2::Y,vec2(1.,1.).normalize(),
+            vec2(1.,1.).normalize(),vec2(1.,-1.).normalize(),-Vec2::X].into_iter().enumerate() {
+            for t in 0..24+if index==2 {extra} else {0} {
+                p.tick(&w,Controls{wish,run:true,jump:index==0&&t==0,..Default::default()});
+            }
+        }
+        ensure!(if extra==0 {p.grounded && p.feet.distance(goal)<22.} else {!p.grounded && p.feet.z<goal.z-60.},
+            "Old corridor timing reproduction changed: extra{extra}, {:?}",p.feet);
+    }
+    let plan=crate::route::Route::plan_with_takeoff_margin(&w,&start,goal,22.,12)
+        .map_err(|states|anyhow::anyhow!("No supported corridor route after {states} states"))?;
+    let mut cases=0;
+    for delay in [0,6,12,18] { for changed in 0..plan.len() { for extra in [-6,0,6] {
+        let sequence=plan.iter().enumerate().flat_map(|(i,(c,_))| {
+            (0..24+if i==changed {extra} else {0}).map(move |t|Controls{jump:c.jump&&t==0,..*c})
+        }).collect::<Vec<_>>();
+        let mut p=start.clone();
+        let mut views=VecDeque::from(vec![p.clone();delay+1]);
+        let mut pending=VecDeque::from(vec![Controls::default();delay]);
+        for tick in 0..720 {
+            let view=views.pop_front().unwrap();
+            let control=crate::coop::route_driver::landing_control(&w,&view,goal,2.*delay as f32/120.,8.)
+                .map(|(wish,_)|Controls{wish,..Default::default()})
+                .unwrap_or_else(||sequence.get(tick).copied().unwrap_or_default());
+            pending.push_back(control);p.tick(&w,pending.pop_front().unwrap());views.push_back(p.clone());
+            ensure!(p.feet.z>=goal.z-1.,"Remote plan fell delay{delay} segment{changed} extra{extra} tick{tick}: {:?}",p.feet);
+        }
+        ensure!(crate::coop::route_driver::landing_control(&w,&p,goal,0.,8.).is_some_and(|(_,settled)|settled),
+            "Remote plan did not settle delay{delay} segment{changed} extra{extra}: {:?}",p.feet);
+        cases+=1;
+    }}}
+    println!("PASS Clockwork remote corridor landing: old timing failure reproduced; {cases} delayed and varied-input arrivals");
+    Ok(())
+}
+
+fn consecutive_jumps(assets:&mut Assets,map:&Bsp)->Result<()> {
+    use crate::movement::Controls;
+    use crate::coop::route_driver::{landing_control,pending_jump};
+    use std::collections::VecDeque;
+    let o=Clockwork::load(assets,map)?;let w=world(map,&o)?;
+    let goal=vec3(-5080.,2784.,320.03125);
+    let mut start=Player::new(vec3(-5115.419921875,2547.447998046875,320.03125));start.grounded=true;
+    let plan=crate::route::Route::plan_with_takeoff_margin(&w,&start,goal,22.,12)
+        .map_err(|states|anyhow::anyhow!("No consecutive jump route after {states} states"))?;
+    let jumps=plan.iter().filter(|(c,_)|c.jump).count() as u64;
+    ensure!(jumps>=2,"Consecutive jump fixture no longer needs two takeoffs");
+    let sequence=plan.iter().flat_map(|(c,_)|(0..24).map(move |t|Controls{jump:c.jump&&t==0,..*c})).collect::<Vec<_>>();
+    for (delay,legacy) in [(0,true),(0,false),(6,false),(12,false),(18,false)] {
+        let mut o=Clockwork::load(assets,map)?;
+        o.saved.initialized=true;o.saved.age=100.;o.saved.levers[0]=Some(1.);o.saved.levers[1]=Some(2.);o.rebuild(map)?;
+        let mut w=world(map,&o)?;
+        let mut pair=people([vec3(-5296.,3008.,320.03125),start.feet]);let mut health=stats();
+        let mut fell=false;let mut handed_off=false;
+        let mut views=VecDeque::from(vec![(pair[1].clone(),w.clone());delay+1]);
+        let mut pending=VecDeque::from(vec![Controls::default();delay]);
+        for step in 0..960 {
+            let (view,seen_world)=views.pop_front().unwrap();
+            let remains=pending_jump(sequence.iter().skip(step).map(|c|c.jump),false);
+            let landing=(!remains || legacy).then(||landing_control(&seen_world,&view,goal,2.*delay as f32/120.,8.)).flatten();
+            let control=if let Some((wish,_))=landing {handed_off=true;Controls{wish,..Default::default()}}
+                else if handed_off {Controls::default()}
+                else {sequence.get(step).copied().unwrap_or_default()};
+            pending.push_back(control);pair[1].tick(&w,pending.pop_front().unwrap());
+            tick(&mut o,map,&mut w,&mut pair,&mut health)?;
+            views.push_back((pair[1].clone(),w.clone()));
+            if pair[1].feet.z<goal.z-35. {fell=true;break;}
+        }
+        let p=&pair[1];
+        if legacy {ensure!(fell && p.jumps<jumps,"Old premature handoff did not reproduce the missing jump: {:?}",p.feet);}
+        else {ensure!(!fell && p.jumps==jumps && landing_control(&w,p,goal,0.,8.).is_some_and(|(_,settled)|settled),
+            "Consecutive jumps failed delay{delay}: {:?}, {}/{jumps} jumps",p.feet,p.jumps);}
+    }
+    println!("PASS Clockwork consecutive jumps: old premature handoff reproduced; both takeoffs and settled landing at four delays");
+    Ok(())
+}
+
+#[cfg(test)]
+mod consecutive_probe {
+    use super::*;
+    #[test]
+    #[ignore = "requires LOOKING_GLASS_TEST_DATA"]
+    fn native_consecutive_jump_probe() {
+        let base=std::env::var_os("LOOKING_GLASS_TEST_DATA").unwrap();
+        let mut assets=Assets::open(std::path::Path::new(&base)).unwrap();
+        let map=Bsp::parse(&assets.read("maps/hatter1.bsp").unwrap()).unwrap();
+        consecutive_jumps(&mut assets,&map).unwrap();
+    }
+    #[test]
+    #[ignore = "requires LOOKING_GLASS_TEST_DATA"]
+    fn native_gap_steering_probe() {
+        let base=std::env::var_os("LOOKING_GLASS_TEST_DATA").unwrap();
+        let mut assets=Assets::open(std::path::Path::new(&base)).unwrap();
+        let map=Bsp::parse(&assets.read("maps/hatter1.bsp").unwrap()).unwrap();
+        gap_steering(&mut assets,&map).unwrap();
+    }
+}
+
+fn gap_steering(assets:&mut Assets,map:&Bsp)->Result<()> {
+    use crate::movement::Controls;
+    use crate::coop::route_driver::{direct_goal_wish,straight_wish,landing_control};
+    use std::collections::VecDeque;
+    let goal=vec3(-5080.,3024.,320.03125);
+    for (delay,legacy) in [(18,true),(0,false),(6,false),(12,false),(18,false),(24,false),(30,false)] {
+        let mut o=Clockwork::load(assets,map)?;let mut w=world(map,&o)?;
+        let mut p=people([vec3(-5296.,3008.,320.03125),vec3(-5079.9365234375,2793.36669921875,320.03125)]);
+        let mut health=stats();let mut fell=false;
+        let mut views=VecDeque::from(vec![(p[1].clone(),w.clone());delay+1]);
+        let mut pending=VecDeque::from(vec![Controls::default();delay]);
+        for step in 0..960 {
+            let (view,seen_world)=views.pop_front().unwrap();
+            let lead=2.*delay as f32/120.;
+            let wish=if step<12 {Vec2::Y}
+                else if legacy {straight_wish((goal-view.feet).truncate(),view.velocity.truncate(),lead,true,None)}
+                else {direct_goal_wish(&seen_world,&view,goal,lead,true,None)};
+            pending.push_back(Controls{wish,run:true,jump:step==12,..Default::default()});
+            p[1].tick(&w,pending.pop_front().unwrap());tick(&mut o,map,&mut w,&mut p,&mut health)?;
+            views.push_back((p[1].clone(),w.clone()));
+            if p[1].feet.z<goal.z-35. {fell=true;break;}
+        }
+        if legacy {ensure!(fell && p[1].jumps==1,"Old early gap braking no longer reproduces: {:?}",p[1].feet);}
+        else {ensure!(!fell && p[1].jumps==1 && landing_control(&w,&p[1],goal,0.,8.).is_some_and(|(_,settled)|settled),
+            "Gap steering failed delay{delay}: {:?}, velocity{:?}",p[1].feet,p[1].velocity);}
+    }
+    println!("PASS Clockwork direct gap steering: old early braking reproduced; one actual jump and settled landing at six delays");
+    Ok(())
 }

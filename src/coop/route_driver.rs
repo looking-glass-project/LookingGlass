@@ -132,7 +132,7 @@ fn delayed_hold_wish(delta:Vec2, velocity:Vec2, lead:f32)->Vec2 {
     if wish.length_squared()<0.000001 {vec2(0.001,0.)} else {wish}
 }
 
-fn straight_wish(delta: Vec2, velocity: Vec2, lead: f32, run: bool, limit: Option<f32>) -> Vec2 {
+pub(crate) fn straight_wish(delta: Vec2, velocity: Vec2, lead: f32, run: bool, limit: Option<f32>) -> Vec2 {
     let steering = delta - velocity * lead;
     let full = if run { 320. } else { crate::movement::WALK_SPEED };
     // Delayed velocity feedback also needs a smaller gain. Keeping the local
@@ -141,6 +141,20 @@ fn straight_wish(delta: Vec2, velocity: Vec2, lead: f32, run: bool, limit: Optio
     // The limit caps requested speed; multiplying every input by it also
     // suppresses already-slow final corrections and can stall on a slope.
     limit.map_or(wish, |speed| wish.clamp_length_max((speed / full).min(1.)))
+}
+
+pub(crate) fn direct_goal_wish(world:&World,player:&Player,goal:Vec3,lead:f32,run:bool,limit:Option<f32>)->Vec2 {
+    let delta=(goal-player.feet).truncate();let velocity=player.velocity.truncate();
+    if !player.grounded && !player.swimming && player.ledge.is_none() && player.updraft_time<=0.
+        && landing_control(world,player,goal,lead,8.).is_none() {
+        // Grounded arrival damping spends too much of a long jump moving
+        // slowly. Over a gap, use the ordinary air acceleration's stopping
+        // distance; resume the damped approach above supported landing ground.
+        let steering=delta-velocity*lead;
+        let full=if run {320.} else {crate::movement::WALK_SPEED};
+        let wish=steering.normalize_or_zero()*((2.*420.*steering.length()).sqrt().min(full)*0.95/full);
+        limit.map_or(wish,|speed|wish.clamp_length_max((speed/full).min(1.)))
+    } else {straight_wish(delta,velocity,lead,run,limit)}
 }
 impl Command {
     fn validate(&self) -> Result<()> {
@@ -557,6 +571,10 @@ fn planning_hold_control(anchor: &mut Option<Vec3>, player: &Player, carry: Opti
         (Vec2::ZERO,(player.grounded || player.ledge.is_some()) && player.velocity.truncate().length()<20.)
     }
 }
+pub(crate) fn pending_jump(steps:impl IntoIterator<Item=bool>,current_issued:bool)->bool {
+    steps.into_iter().enumerate().any(|(index,jump)|jump && (index>0 || !current_issued))
+}
+
 pub(crate) fn landing_control(world: &World, player: &Player, goal: Vec3, lead: f32, radius: f32) -> Option<(Vec2, bool)> {
     let delta = goal-player.feet;
     // Waiting for a delayed grounded snapshot is too late on a small pad.
@@ -1441,7 +1459,9 @@ impl Driver {
             self.report.expected=Some(goal);self.report.phase="holding toward goal";
             return;
         }
-        let landing = if command.navigate {
+        // A nearby supported intermediate island can still require another
+        // jump. Settling toward the final goal would erase that queued takeoff.
+        let landing = if command.navigate && !pending_jump(self.plan.iter().map(|(input,_)|input.jump),self.jumped) {
             landing_control(world,&body.player,goal,command.input_lead,command.arrival_radius)
         } else { None };
         let carried=carry.filter(|_|!command.navigate || landing.is_some())
@@ -1551,8 +1571,8 @@ impl Driver {
             if self.worker.is_some() { self.report.phase="planning"; }
         } else {
             self.report.phase="walking";
-            keys.wish=straight_wish(delta.truncate(), body.player.velocity.truncate(),
-                command.input_lead, command.run, command.speed_limit);
+            keys.wish=direct_goal_wish(world,&body.player,goal,
+                command.input_lead,command.run,command.speed_limit);
             keys.swim=keys.wish.extend(0.);
             keys.run=command.run;
             if let Some(runup) = command.runup.as_ref().filter(|r|

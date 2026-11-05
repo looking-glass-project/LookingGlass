@@ -23,6 +23,8 @@ ROLES = ('host', 'guest')
 ARRIVAL = 'JLair1_Start'
 PLATFORM_LEFT = [-7048, 698, 1632]
 PLATFORM_RIGHT = [-7000, 698, 1632]
+PLATFORM_BANK = [-7208, 768, 1632.03125]
+PLATFORM_PARK = [-7256, 768, 1632.03125]
 
 
 def waiting_target(candidates, at, incoming, goal, visited):
@@ -70,7 +72,10 @@ def verify_course(steps, completed, arrivals, history, start, last):
     assert {(r['step'], r['role']) for r in arrivals} == {(s, r) for s in completed for r in ROLES}, 'Missing personal arrival'
     assert len(arrivals) == 2 * len(completed), 'Duplicate personal arrival'
     for receipt in arrivals:
-        assert receipt['goal'] == steps[receipt['step']]['pos'], 'Waypoint changed'
+        # The single-player route's point 54 is a sloping transit point, not a
+        # game trigger. For paired crossing, land on the actual adjacent bank.
+        goal = PLATFORM_BANK if receipt['step'] == 54 else steps[receipt['step']]['pos']
+        assert receipt['goal'] == goal, 'Waypoint changed'
         verify_arrival(receipt, history)
 
 
@@ -161,6 +166,19 @@ def verify_platform_climb(entry, history):
     assert distance(c['feet'][:2], b['climb']['end'][:2]) < 8 and abs(c['feet'][2] - b['climb']['end'][2]) < 35, 'Missed climb landing'
 
 
+def verify_bank_wait(entry, history):
+    slot = ROLES.index(entry['role'])
+    for peer in ROLES:
+        rows = [r for r in history[peer] if entry['start'][peer] <= r['tick'] <= entry['end'][peer]]
+        assert rows and rows[0]['tick'] == entry['start'][peer] and rows[-1]['tick'] == entry['end'][peer]
+        assert rows[-1]['tick'] - rows[0]['tick'] >= 60, 'Missing bank waiting interval'
+        for r in rows:
+            body = r['players'][slot]
+            assert body['grounded'] and r['driver']['clear'][slot] and body['immersion']['kind'] == 'Dry', 'Unstable bank waiting body'
+            assert body['health'] == rows[0]['players'][slot]['health'] > 0 and body['spawned_at'] == 0
+            assert distance(body['feet'], PLATFORM_PARK) < 8, 'Waiting player left the bank'
+
+
 class CuriosityPair(Pair):
     map_name, entry, next_map = 'jlair1', 'jlair1_start1', 'jlair2'
     evidence_prefix, capture_scenes = 'jlair1-route-', False
@@ -178,7 +196,8 @@ class CuriosityPair(Pair):
         self.evidence.update(course_sha256=hashlib.sha256(raw).hexdigest(),
             executable_sha256=hashlib.sha256(args.exe.read_bytes()).hexdigest(),
             arrivals=[], parking=[], approaches=[], forward_waiting=[], hazard_exits=[], hazard_jumps=[], combat_waits=[],
-            platform_moves=[], platform_waits=[], platform_carries=[], platform_jumps=[], platform_climbs=[],
+            platform_moves=[], platform_waits=[], platform_carries=[], platform_jumps=[], platform_climbs=[], bank_waits=[],
+            crossing_exit_goal=PLATFORM_BANK,
             completed=self.completed, fresh=args.checkpoint is None,
             scope='Approach/platform segment only; ending and full visit remain unverified')
         deps = self.folder / 'fixture-dependencies'; deps.mkdir()
@@ -396,6 +415,37 @@ class CuriosityPair(Pair):
             first = min(ROLES, key=lambda r: distance(self.body(r)['player']['feet'], approach))
         other = 'guest' if first == 'host' else 'host'
         self.set(other)
+        for role in (first, other):
+            if approach is not None:
+                self.evidence['approaches'].append(self.move(role, approach, navigate=True))
+            entry = self.move(role, goal, navigate=True)
+            self.escape_hazard(role)
+            if self.clear():
+                entry = self.move(role, goal, navigate=True)
+                self.escape_hazard(role)
+            self.evidence['arrivals'].append(entry)
+            if role == first:
+                visited = []
+                for _ in range(8):
+                    report = self.reports[role]; slot = ROLES.index(role)
+                    at = list(self.body(role)['player']['feet'])
+                    candidates = report['route_driver']['neighbors'][slot]
+                    selection = waiting_target(candidates, at, self.body(other)['player']['feet'], goal, visited)
+                    if selection is None:
+                        # The next original point may itself be in shallow lava.
+                        # Follow its approach only until a native safe bay is
+                        # observed, then leave room for the incoming player.
+                        park = self.forward_bay(role, goal)
+                        break
+                    park, ready = selection
+                    visited.append(at)
+                    entry = dict(selected_tick=report['frame']['tick'], candidates=candidates, ready=ready)
+                    entry.update(self.move(role, park, radius=2))
+                    self.evidence['parking'].append(entry)
+                    if ready: break
+                else: raise AssertionError('No clear waiting position for the second player')
+                self.set(role, park, run=True)
+        self.set(other)
 
     def platform_roles(self):
         first = 'host' if self.args.first == 'blue' else 'guest'
@@ -433,7 +483,12 @@ class CuriosityPair(Pair):
             before = self.history[role][-1]
             assert before['players'][slot]['grounded'], 'Platform jump has no grounded takeoff'
             assert before['players'][slot]['immersion']['kind'] == 'Dry', 'Platform takeoff already reached lava'
-            self.set(role, self.steps[54]['pos'], run=True, jump=True)
+            self.set(role, PLATFORM_BANK, run=True, jump=True)
+            runup = distance(before['players'][slot]['feet'][:2], PLATFORM_RIGHT[:2]) < 8
+            if runup:
+                delta = [PLATFORM_BANK[i] - before['players'][slot]['feet'][i] for i in range(2)]
+                length = distance(delta, [0,0])
+                self.commands[role]['runup'] = dict(millis=150, wish=[v/length for v in delta])
             command = self.commands[role]['id']; count = before['players'][slot]['jumps']
             self.until(lambda: (self.body(role)['player']['jumps'] == count + 1 and not self.body(role)['player']['grounded'])
                        or self.body(role)['player'].get('climb') is not None, 10)
@@ -450,7 +505,7 @@ class CuriosityPair(Pair):
             self.evidence['platform_climbs'].append(entry)
         else: raise AssertionError('Platform approach did not produce an ordinary jump after climbing')
         self.until(lambda: self.reached(role) and self.body(role)['player']['grounded'], 20)
-        receipt = self.receipt(role, self.steps[54]['pos'])
+        receipt = self.receipt(role, PLATFORM_BANK)
         self.evidence['arrivals'].append(receipt)
         self.evidence['platform_jumps'].append(dict(role=role, before=before['tick'], flight=flight, arrival=receipt))
 
@@ -474,42 +529,16 @@ class CuriosityPair(Pair):
         verify_platform_carry(entry, self.history)
         self.evidence['platform_carries'].append(entry)
         self.platform_jump(first)
-        # Leave the landing for the second Alice using the original next point.
-        # This is an explicit approach receipt, not paired step-55 credit.
-        self.evidence['platform_moves'].append(self.move(first, self.steps[55]['pos'], navigate=True))
-        self.set(first, self.steps[55]['pos'], run=True)
+        # This narrow authored bank has no full-margin respawn neighbors.
+        # Walk to its collision-probed waiting point and verify actual dry,
+        # clear, grounded contact throughout the partner's crossing instead.
+        self.evidence['platform_moves'].append(self.move(first, PLATFORM_PARK, radius=2))
+        self.set(first, PLATFORM_PARK, run=True, radius=2)
+        entry = dict(role=first, start={r:self.history[r][-1]['tick'] for r in ROLES})
         self.platform_jump(other)
-        for role in (first, other):
-            if approach is not None:
-                self.evidence['approaches'].append(self.move(role, approach, navigate=True))
-            entry = self.move(role, goal, navigate=True)
-            self.escape_hazard(role)
-            if self.clear():
-                entry = self.move(role, goal, navigate=True)
-                self.escape_hazard(role)
-            self.evidence['arrivals'].append(entry)
-            if role == first:
-                visited = []
-                for _ in range(8):
-                    report = self.reports[role]; slot = ROLES.index(role)
-                    at = list(self.body(role)['player']['feet'])
-                    candidates = report['route_driver']['neighbors'][slot]
-                    selection = waiting_target(candidates, at, self.body(other)['player']['feet'], goal, visited)
-                    if selection is None:
-                        # The next original point may itself be in shallow lava.
-                        # Follow its approach only until a native safe bay is
-                        # observed, then leave room for the incoming player.
-                        park = self.forward_bay(role, goal)
-                        break
-                    park, ready = selection
-                    visited.append(at)
-                    entry = dict(selected_tick=report['frame']['tick'], candidates=candidates, ready=ready)
-                    entry.update(self.move(role, park, radius=2))
-                    self.evidence['parking'].append(entry)
-                    if ready: break
-                else: raise AssertionError('No clear waiting position for the second player')
-                self.set(role, park, run=True)
-        self.set(other)
+        entry['end'] = {r:self.history[r][-1]['tick'] for r in ROLES}
+        verify_bank_wait(entry, self.history)
+        self.evidence['bank_waits'].append(entry)
 
     def checkpoint(self, step):
         for role in ROLES: self.set(role, attack=False)
@@ -533,11 +562,13 @@ class CuriosityPair(Pair):
         for entry in self.evidence['platform_waits']: verify_platform_wait(entry, self.history)
         for entry in self.evidence['platform_carries']: verify_platform_carry(entry, self.history)
         for entry in self.evidence['platform_climbs']: verify_platform_climb(entry, self.history)
+        for entry in self.evidence['bank_waits']: verify_bank_wait(entry, self.history)
         for entry in self.evidence['platform_jumps']:
             role = entry['role']; receipt = entry['arrival']
-            before, flight, after = [next(r for r in self.history[role] if r['tick'] == t)
-                                    for t in (entry['before'], entry['flight'], receipt['tick'])]
-            assert receipt['step'] == 54 and receipt['goal'] == self.steps[54]['pos']
+            before, flight = [next(r for r in self.history[role] if r['tick'] == t)
+                             for t in (entry['before'], entry['flight'])]
+            after = next(r for r in self.history[role] if r['tick'] == receipt['tick'])
+            assert receipt['step'] == 54 and receipt['goal'] == PLATFORM_BANK
             verify_jump_flight(before, flight, after, ROLES.index(role), receipt['command'])
         if 53 in self.completed: assert self.evidence['platform_waits'], 'Missing boarding wait'
         if 54 in self.completed:

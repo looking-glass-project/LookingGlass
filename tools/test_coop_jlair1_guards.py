@@ -1,8 +1,9 @@
 """Reject false personal arrival and scene evidence without running the game."""
 import copy
 import unittest
+from types import SimpleNamespace
 
-from test_coop_jlair1 import verify_arrival, verify_course, verify_combat_wait, waiting_target, escape_target, hot_approach_target, verify_jump_flight, verify_forward_approaches, verify_platform_wait, verify_platform_carry, verify_platform_climb
+from test_coop_jlair1 import verify_arrival, verify_course, verify_combat_wait, waiting_target, escape_target, hot_approach_target, verify_jump_flight, verify_forward_approaches, verify_platform_wait, verify_platform_carry, verify_platform_climb, verify_bank_wait, PLATFORM_BANK, PLATFORM_PARK, CuriosityPair
 
 
 class CuriosityEvidenceTests(unittest.TestCase):
@@ -39,6 +40,37 @@ class CuriosityEvidenceTests(unittest.TestCase):
         verify_course([dict(pos=self.goal)], [0], [self.receipt, guest], self.history, 0, 0)
         with self.assertRaisesRegex(AssertionError, 'Duplicate'):
             verify_course([dict(pos=self.goal)], [0], [self.receipt, guest, guest], self.history, 0, 0)
+
+    def test_platform_crossing_requires_both_actual_bank_arrivals(self):
+        steps = [dict(pos=[0,0,0]) for _ in range(55)]
+        steps[54] = dict(pos=[-7168,788,1615.0443], mode='jump')
+        receipts = []
+        for slot, role in enumerate(('host','guest')):
+            self.history[role][0]['players'][slot]['feet'] = list(PLATFORM_BANK)
+            receipts.append(dict(self.receipt, step=54, role=role, goal=PLATFORM_BANK, feet=list(PLATFORM_BANK)))
+        verify_course(steps, [54], receipts, self.history, 54, 54)
+        receipts[0]['goal'] = steps[54]['pos']
+        with self.assertRaisesRegex(AssertionError, 'Waypoint changed'):
+            verify_course(steps, [54], receipts, self.history, 54, 54)
+
+    def test_ordinary_navigation_still_moves_both_players_and_parks_the_first(self):
+        pair = CuriosityPair.__new__(CuriosityPair)
+        pair.args = SimpleNamespace(first='blue'); pair.step = 1; pair.approach_goals = {}
+        pair.evidence = dict(arrivals=[], approaches=[], parking=[])
+        bodies = {r:dict(player=dict(feet=p)) for r,p in [('host',[0,0,0]),('guest',[-100,0,0])]}
+        pair.body = lambda role: bodies[role]
+        pair.clear = lambda: False
+        pair.escape_hazard = lambda role: None
+        pair.set = lambda *args, **kwargs: None
+        pair.reports = dict(host=dict(frame=dict(tick=1), route_driver=dict(neighbors=[[[48,0,0]],[]])))
+        moved = []
+        def move(role, goal, navigate=False, **kwargs):
+            moved.append((role, goal, navigate)); bodies[role]['player']['feet'] = list(goal)
+            return dict(role=role, goal=goal)
+        pair.move = move
+        pair.go([0,0,0])
+        self.assertEqual(moved, [('host',[0,0,0],True),('host',[48,0,0],False),('guest',[0,0,0],True)])
+        self.assertEqual([r['role'] for r in pair.evidence['arrivals']], ['host','guest'])
 
     def test_combat_wait_needs_both_acknowledgements_and_living_players(self):
         history = {r:[dict(copy.deepcopy(self.row), tick=t) for t in (10, 40, 80)] for r in ('host','guest')}
@@ -121,6 +153,17 @@ class CuriosityEvidenceTests(unittest.TestCase):
         bad = copy.deepcopy(history); bad['host'][1]['driver']['curiosity_platform']['sink'] = 1
         with self.assertRaisesRegex(AssertionError, 'departed without'):
             verify_platform_wait(entry, bad)
+
+    def test_bank_wait_rejects_falling_drift_and_damage(self):
+        history = {r:[dict(copy.deepcopy(self.row), tick=t) for t in (10,40,80)] for r in ('host','guest')}
+        for rows in history.values():
+            for row in rows:
+                row['players'][0].update(feet=list(PLATFORM_PARK), immersion=dict(kind='Dry'))
+        entry = dict(role='host', start={r:10 for r in history}, end={r:80 for r in history})
+        verify_bank_wait(entry, history)
+        for change in (dict(grounded=False), dict(health=99), dict(feet=[0,0,0])):
+            bad = copy.deepcopy(history); bad['guest'][1]['players'][0].update(change)
+            with self.assertRaises(AssertionError): verify_bank_wait(entry, bad)
 
     def test_platform_carry_rejects_motion_without_rider_contact_or_body_descent(self):
         history = dict(host=[dict(copy.deepcopy(self.row), tick=t) for t in (10,40)])

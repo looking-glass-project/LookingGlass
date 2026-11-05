@@ -2,7 +2,7 @@
 import copy
 import unittest
 
-from test_coop_jlair1 import verify_arrival, verify_course, verify_combat_wait
+from test_coop_jlair1 import verify_arrival, verify_course, verify_combat_wait, waiting_target, escape_target, hot_approach_target, verify_jump_flight
 
 
 class CuriosityEvidenceTests(unittest.TestCase):
@@ -55,6 +55,44 @@ class CuriosityEvidenceTests(unittest.TestCase):
         bad['host'][1]['players'][0]['health'] = 0
         with self.assertRaisesRegex(AssertionError, 'lost a player'):
             verify_combat_wait(entry, bad)
+
+    def test_exhausted_waiting_ring_does_not_revisit_or_bypass_a_free_bay(self):
+        at, incoming, goal = [0,48,0], [-160,-320,0], [0,0,0]
+        # The only same-height neighbor leads straight back to the visited spot.
+        assert waiting_target([[0,0,0]], at, incoming, goal, [[0,0,0]]) is None
+        assert waiting_target([incoming], at, incoming, goal, []) is None
+        chosen = waiting_target([[0,0,0],[0,96,0]], at, incoming, goal, [[0,0,0]])
+        self.assertEqual(chosen, ([0,96,0], True))
+
+    def test_hazard_exit_requires_a_recent_native_candidate_clear_of_partner(self):
+        before = dict(tick=600, players=[dict(feet=[0,0,0]),dict(feet=[100,0,0])])
+        row = dict(tick=500, driver=dict(neighbors=[[[60,0,0],[-60,0,0]],[]]))
+        self.assertEqual(escape_target([row],0,before), (500,[-60,0,0]))
+        row['tick'] = 100
+        self.assertIsNone(escape_target([row],0,before))
+        row['tick'] = 601
+        self.assertIsNone(escape_target([row],0,before))
+        row['tick'] = 500; row['driver']['neighbors'][0] = [[200,0,0],[60,0,0]]
+        self.assertIsNone(escape_target([row],0,before))
+
+    def test_hot_takeoff_requires_an_observed_high_pad_with_room(self):
+        row = dict(players=[dict(feet=[0,0,0]),dict(feet=[80,0,32])],
+                   driver=dict(neighbors=[[[80,0,32],[-80,0,0],[-160,0,32]],[]]))
+        self.assertIsNone(hot_approach_target(row,0,[0,0,0]))
+        row['driver']['neighbors'][0].append([-80,0,32])
+        self.assertEqual(hot_approach_target(row,0,[0,0,0]),[-80,0,32])
+
+    def test_hot_crossing_requires_a_real_jump_and_acknowledged_flight(self):
+        def row(tick, jumps, grounded):
+            return dict(tick=tick,driver=dict(command=3),players=[dict(jumps=jumps,grounded=grounded)])
+        before, flight, after = row(10,2,True),row(20,3,False),row(30,3,True)
+        verify_jump_flight(before,flight,after,0,3)
+        with self.assertRaisesRegex(AssertionError,'left the ground'):
+            verify_jump_flight(before,row(20,3,True),after,0,3)
+        with self.assertRaisesRegex(AssertionError,'Missing ordinary jump'):
+            verify_jump_flight(before,row(20,2,False),after,0,3)
+        with self.assertRaisesRegex(AssertionError,'acknowledged'):
+            verify_jump_flight(before,flight,after,0,4)
 
 
 if __name__ == '__main__': unittest.main()

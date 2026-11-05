@@ -183,15 +183,64 @@ waiting climb from 32 toward 33 when Red misses the ascent and falls into lava.
 This bounded prefix is not a passing full attempt. No added campaign visit or
 percentage credit is claimed for these separate segments.
 
+A separate retry has bounded **30-32** evidence: six arrivals, three parking
+walks, one forward walk and **783 matching states**, without death or revival.
+It takes a different route up the climb and then fails parking at 33. This
+does not establish a fix for the earlier missed climb. The waiting routine now
+recognizes an exhausted set of previously visited nearby positions.
+
+Another attempt exposes an unsafe assumption: the next original route point,
+38, is in shallow lava. It is a transit point, not somewhere to wait for the
+partner. Forward waiting now stops at an observed native dry, supported bay
+along the approach. Bounded **33-37** evidence passes ten personal arrivals,
+six parking walks, one forward wait, one combat wait and **1,309 matching states**
+with no deaths or revivals. The longer attempt still fails at 38.
+
+The runner now jumps from an observed higher takeoff onto the original hot
+waypoint, earns the unchanged personal arrival receipt, then jumps back to a
+recently observed dry footing before waiting or planning. A separate bounded
+**38** replay verifies two personal arrivals, both real airborne crossings and
+both dry returns, with **462 matching states** and no deaths or revivals. Blue
+and Red finish at **93.75/41.67 health**. Normal liquid damage remains active;
+the checkpoint before 39 is unchanged. That longer attempt fails at 39 when
+the ordinary planner selects another path through lava. None of these bounded
+prefixes turns its failed parent attempt into a full-route pass.
+
+Source `259d4f5` adds opt-in avoidance of damaging liquids to the automated
+navigation search. Every predicted physics tick and the remote late-takeoff
+margin must stay clear of liquid damage. The original hot waypoint uses its
+explicit crossing instead; single-player searches retain their previous policy.
+Regressions replay ordinary walks around lava and jumps over it.
+
+The first live avoidance replay stays alive but stalls short of 39. Although
+Blue's position is unchanged, collision retains a velocity above the old
+replanning threshold. The driver now detects blocked walking from actual
+position progress and grounded contact. Its regression includes that recorded
+velocity, airborne rejection and movement resetting the timeout. All **910
+active Rust tests** pass (three ignored), as do the locked release and 26 native
+paired cases plus summary. The seven single-player component records, two full
+combat-route records and known cast-free step-54 failure still match the
+unchanged baseline exactly.
+
+A separate resumed **39-42** internet replay now passes on that source, starting
+from the unchanged normal checkpoint after 38. Both personally reach all four
+original waypoints: eight arrivals, three parking walks, one forward wait, one
+combat wait and **1,335 matching player/world/native states**. Blue reaches the
+same previously blocked position, then continues to the original goal. Both
+finish at **100/56.67 health**, with no deaths or revivals in the closed 79-row
+host trace. The ordinary checkpoint before 43 is retained. This is a passing
+segment, not a fresh full-route pass or another completed campaign visit.
+
 `tools/test_coop_jlair1.py` automates approach steps 0-52, retains exact ordinary
 checkpoint receipts and freezes its source dependencies in private evidence.
 The fresh passing run covers only 0-3; later segments have separate evidence above.
-The climb from 32, remaining approach, shared sinking platform, subsequent climb,
-Caterpillar and onward transition are still open.
+Climb reliability from 32, the remaining approach, shared sinking platform,
+subsequent climb, Caterpillar and onward transition are still open.
 An explicit `--checkpoint` plus `--start-step` tests a separate resumed segment;
-it never claims a fresh full route. Four Python verifier guards reject missing
-or duplicated personal arrivals, unacknowledged movement, respawn substitutes
-and combat waits without both client acknowledgements or living players.
+it never claims a fresh full route. Eight Python guards reject missing or
+duplicated personal arrivals, unacknowledged movement, respawn substitutes,
+invalid combat waits, revisited waiting bays, stale hazard exits, unsupported
+hot takeoffs and jumps without an acknowledged airborne body.
 
 ```powershell
 python tools/test_coop_jlair1.py --exe <frozen-executable> --build <full-source-id> --data <local-base-directory> --last-step 3 --save-before 0 3

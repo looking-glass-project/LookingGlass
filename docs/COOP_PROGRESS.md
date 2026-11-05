@@ -36,10 +36,11 @@ No additional campaign visit is counted as complete. Next is Burning Curiosity's
 full route with two independent internet clients, followed by recovery and
 reconnect checks. See [Burning Curiosity evidence](JLAIR1.md).
 
-Current validation: **907 active Rust tests** pass (three ignored), along with
-the locked release, four Python evidence guards, seven package checks and
+Current validation: **910 active Rust tests** pass (three ignored), along with
+the locked release, eight Python evidence guards, seven package checks and
 the 910-file source worktree audit. Negative tests cover partial boarding,
-floating bodies and marginal ledges, alongside valid sloped landings.
+floating bodies, marginal ledges, damaging-liquid navigation and stationary
+bodies that retain collision velocity, alongside valid sloped landings.
 No images were inspected for these milestones.
 
 Burning Curiosity's first fresh internet segment now passes **steps 0-3** with
@@ -64,8 +65,21 @@ preference. A resumed **26-29** run passes eight personal arrivals, the fight an
 1,374 matching states, ending at 50/96 health without death or revival. Its normal
 checkpoint before 30 is retained. A further attempt verifies **30-31** separately
 (four arrivals, 352 matching states), then fails the forward climb from 32 toward
-33 when Red falls into lava. That full attempt stays failed. Next: diagnose this
-ascent, finish the approach and verify the shared sinking-platform crossing.
+33 when Red falls into lava. A separate retry verifies **30-32** with six
+arrivals and 783 matching states, taking a different ascent before failing
+parking at 33; climb reliability remains open. Forward waiting now uses actual
+native dry bays instead of treating the next route point as a safe stopping
+place. Bounded **33-37** evidence has ten arrivals and 1,309 matching states.
+A separate bounded **38** replay uses ordinary jumps onto the original hot
+waypoint and back onto dry ground: two arrivals and 462 matching states,
+93.75/41.67 health, no deaths or revivals. Its longer attempt fails at 39 when
+the planner walks into lava. Those full attempts stay failed. Source `259d4f5`
+adds optional liquid avoidance and corrects blocked-walk detection to use actual
+position progress instead of retained collision velocity. A resumed **39-42**
+internet replay now passes eight personal arrivals and **1,335 matching states**,
+ending at 100/56.67 health with no deaths or revivals. The normal checkpoint
+before 43 is retained. Next: finish the approach and test the shared platform
+crossing; full-route reliability, recovery and reconnect coverage remain open.
 Total remains **50.1%**; no extra completed visit is credited.
 
 Latest network milestone: a **fresh full About Face route passes** in two

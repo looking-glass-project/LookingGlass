@@ -109,6 +109,10 @@ struct Command {
     ledge_handoff: bool,
     #[serde(default)]
     landing_feedback: bool,
+    /// Keep ordinary navigation out of damaging liquids; explicit local
+    /// crossing commands can still visit an authored hot waypoint.
+    #[serde(default)]
+    avoid_liquid_damage: bool,
     attack: bool,
     /// Opt-in route tactic. Sends normal weapon/attack inputs and spends the
     /// player's actual Will; old fixtures retain their Blade-only behavior.
@@ -195,6 +199,8 @@ impl Command {
         ensure!(self.goal.is_none_or(|p| p.is_finite() && p.abs().max_element() < 1_000_000.),
             "Invalid route goal");
         ensure!(self.goal.is_none() || self.marker.is_none(), "Choose a route goal or a marker");
+        ensure!(!self.avoid_liquid_damage || self.navigate && self.goal.is_some(),
+            "Avoiding liquid damage requires a planned goal");
         ensure!(self.surface.is_none_or(|id| id < 100_000 && self.goal.is_some()
             && !self.navigate && !self.horizontal && !self.swim && !self.jump && !self.hold_goal
             && self.rope.is_none() && self.runup.is_none() && self.use_aim.is_none()
@@ -662,6 +668,11 @@ impl WalkingProgress {
     fn stalled(&mut self, feet: Vec3, now: Instant) -> bool {
         if feet.distance(self.feet)>8. { self.feet=feet; self.advanced=now; }
         now.duration_since(self.advanced)>=Duration::from_secs(1)
+    }
+    fn obstructed(&mut self, player: &Player, now: Instant) -> bool {
+        // Collision can retain tangential velocity while the body stays still
+        // at a corner. Measure actual displacement, not the requested speed.
+        self.stalled(player.feet,now) && player.grounded
     }
 }
 /// The host clamps a slow render frame to 100 ms of simulation. Match that
@@ -1722,8 +1733,7 @@ impl Driver {
             // A swinging obstacle can stop against Alice and never clear the
             // old path. Plan around its current pose after a second without
             // progress instead of pushing into it indefinitely.
-            if self.walking_progress.stalled(body.player.feet,now) && body.player.grounded
-                && body.player.velocity.truncate().length()<20. {
+            if self.walking_progress.obstructed(&body.player,now) {
                 self.plan.clear();
                 self.report.phase="replanning obstructed walk";
             } else {
@@ -1785,10 +1795,17 @@ impl Driver {
                     // physics tick of an edge; leave 100 ms of support in reserve.
                     let margin = if local == PlayerId::Red { 12 } else { 0 };
                     let ledge_handoff=command.ledge_handoff;
-                    std::thread::spawn(move || { let plan=Route::plan_grounded(&world,&player,goal,22.)
+                    let avoid_liquid_damage=command.avoid_liquid_damage;
+                    std::thread::spawn(move || {
+                        let search=|walking,tolerance| {
+                            if avoid_liquid_damage {Route::plan_without_liquid_damage(&world,&player,goal,tolerance,margin,walking)}
+                            else if walking {Route::plan_grounded(&world,&player,goal,tolerance)}
+                            else {Route::plan_with_takeoff_margin(&world,&player,goal,tolerance,margin)}
+                        };
+                        let plan=search(true,22.)
                         .map(|steps|PlannedRoute {walking:true,steps,ledge_goal:None})
-                        .or_else(|_|Route::plan_with_takeoff_margin(&world,&player,goal,22.,margin)
-                            .or_else(|_|Route::plan_with_takeoff_margin(&world,&player,goal,40.,margin))
+                        .or_else(|_|search(false,22.)
+                            .or_else(|_|search(false,40.))
                             .map(|steps| {
                                 let (steps,ledge_goal)=if ledge_handoff {stop_at_ledge(&world,&player,goal,steps)} else {(steps,None)};
                                 PlannedRoute {walking:plan_stays_grounded(&world,&player,&steps),steps,ledge_goal}
@@ -1846,6 +1863,34 @@ impl Driver {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn obstructed_walk_uses_displacement_even_when_collision_retains_velocity() {
+        let world=World::fixture(&[(vec3(-100.,-100.,-40.),vec3(100.,100.,0.))]);
+        let mut player=Player::spawn(&world,Vec3::Z*crate::movement::EYE_HEIGHT).unwrap();
+        let now=Instant::now();
+        let mut progress=WalkingProgress::new(player.feet,now);
+        // The recorded Burning Curiosity stop retained this velocity for over
+        // a minute without changing its supported, dry feet position.
+        player.velocity=vec3(-59.24968,-197.07399,-100.558105);
+        assert!(!progress.obstructed(&player,now+Duration::from_millis(999)));
+        assert!(progress.obstructed(&player,now+Duration::from_secs(1)));
+        player.grounded=false;
+        assert!(!progress.obstructed(&player,now+Duration::from_secs(2)));
+        player.grounded=true;player.feet.x+=9.;
+        assert!(!progress.obstructed(&player,now+Duration::from_secs(3)));
+        assert!(!progress.obstructed(&player,now+Duration::from_millis(3999)));
+        assert!(progress.obstructed(&player,now+Duration::from_secs(4)));
+    }
+    #[test]
+    fn liquid_avoidance_requires_a_planned_goal() {
+        let mut value=serde_json::json!({"id":1,"heartbeat":1,"epoch":1,"goal":[0,200,160],
+            "navigate":true,"avoid_liquid_damage":true,"attack":false,"capture":false,"finish":false});
+        assert!(serde_json::from_value::<Command>(value.clone()).unwrap().validate().is_ok());
+        value["goal"]=serde_json::Value::Null;
+        assert!(serde_json::from_value::<Command>(value.clone()).unwrap().validate().is_err());
+        value["goal"]=serde_json::json!([0,200,160]);value["navigate"]=false.into();
+        assert!(serde_json::from_value::<Command>(value).unwrap().validate().is_err());
+    }
     #[test]
     fn remote_landing_feedback_rejects_the_recorded_clockwork_missed_landing() {
         let mut feedback=LandingFeedback::default();
@@ -2485,8 +2530,7 @@ mod tests {
                 let view=views.pop_front().unwrap();
                 let now=epoch+Duration::from_secs_f64(tick as f64/120.);
                 let landing=landing_control(&blocked,&view,goal,2.*delay as f32/120.,8.);
-                if landing.is_none() && replan && progress.stalled(view.feet,now)
-                    && view.grounded && view.velocity.truncate().length()<20. {
+                if landing.is_none() && replan && progress.obstructed(&view,now) {
                     steps=Route::plan_with_takeoff_margin(&blocked,&view,goal,22.,12).unwrap();
                     assert!(plan_stays_grounded(&blocked,&view,&steps));
                     progress=WalkingProgress::new(view.feet,now);next=0;replans+=1;

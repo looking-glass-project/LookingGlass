@@ -314,7 +314,7 @@ impl Route {
         tolerance: f32,
         takeoff_ticks: u32,
     ) -> Result<Vec<(Controls, Vec3)>, usize> {
-        Self::search_inputs(world, start, goal, tolerance, takeoff_ticks, false)
+        Self::search_inputs(world, start, goal, tolerance, takeoff_ticks, false, false)
     }
     /// Opt-in walking search for feedback-driven remote test navigation.
     /// Keep grounded steering points with room for the arrival tolerance;
@@ -323,10 +323,19 @@ impl Route {
         world: &World, start: &Player, goal: Vec3, tolerance: f32,
     ) -> Result<Vec<(Controls, Vec3)>, usize> {
         if !start.grounded || start.swimming || start.ledge.is_some() { return Err(0); }
-        Self::search_inputs(world, start, goal, tolerance, 0, true)
+        Self::search_inputs(world, start, goal, tolerance, 0, true, false)
+    }
+    /// Live diagnostic clients cannot pause liquid damage while an asynchronous
+    /// planner runs or a partner approaches. Search for an ordinary dry passage
+    /// when requested; native single-player routes keep their existing policy.
+    pub(crate) fn plan_without_liquid_damage(world: &World, start: &Player,
+        goal: Vec3, tolerance: f32, takeoff_ticks: u32, walking: bool,
+    ) -> Result<Vec<(Controls, Vec3)>, usize> {
+        if walking && (!start.grounded || start.swimming || start.ledge.is_some()) { return Err(0); }
+        Self::search_inputs(world, start, goal, tolerance, if walking {0} else {takeoff_ticks}, walking, true)
     }
     fn search_inputs(world: &World, start: &Player, goal: Vec3, tolerance: f32,
-        takeoff_ticks: u32, walking: bool,
+        takeoff_ticks: u32, walking: bool, avoid_liquid_damage: bool,
     ) -> Result<Vec<(Controls, Vec3)>, usize> {
         use std::cmp::Reverse;
         use std::collections::{BinaryHeap, HashSet};
@@ -352,7 +361,8 @@ impl Route {
                 let mut late = p.clone();
                 (0..takeoff_ticks).all(|_| {
                     late.tick(world, Controls { jump:false, ..previous });
-                    late.grounded
+                    late.grounded && (!avoid_liquid_damage || late.immersion.level==0
+                        || late.immersion.kind.damage_per_second()==0.)
                 })
             } else { true };
             for d in 0..9 {
@@ -383,6 +393,10 @@ impl Route {
                                 ..input
                             },
                         );
+                        if avoid_liquid_damage && next.immersion.level>0
+                            && next.immersion.kind.damage_per_second()>0. {
+                            unsafe_landing=true;break;
+                        }
                         // A body can barely catch a platform with its side.
                         // That route loses support after a few ticks of remote
                         // timing variation, even if the later endpoint is safe.
@@ -1215,6 +1229,40 @@ fn supported_footing(world:&World,feet:Vec3)->bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn diagnostic_navigation_avoids_damaging_liquids_with_walks_and_jumps() {
+        for walking in [true,false] {
+            let width=if walking {200.} else {24.};
+            let mut world=World::fixture(&[(vec3(-60.,-width,-40.),vec3(360.,width,0.))]);
+            world.add_liquid(vec3(60.,-48.,-10.),vec3(190.,48.,8.),8,None);
+            let start=Player::spawn(&world,Vec3::Z*crate::movement::EYE_HEIGHT).unwrap();
+            let goal=vec3(280.,0.,0.03125);
+            let plan=Route::plan_without_liquid_damage(&world,&start,goal,22.,12,walking)
+                .expect("Ordinary route around or over shallow lava");
+            assert_eq!(plan.iter().any(|(input,_)|input.jump),!walking);
+            let mut player=start;
+            let mut previous=Controls::default();
+            for (input,_) in plan {
+                if input.jump && player.grounded {
+                    let mut late=player.clone();
+                    for _ in 0..12 {
+                        late.tick(&world,Controls{jump:false,..previous});
+                        assert!(late.grounded && (late.immersion.level==0
+                            || late.immersion.kind.damage_per_second()==0.),
+                            "Delayed takeoff enters liquid or loses support: {:?}",late.feet);
+                    }
+                }
+                for tick in 0..24 {
+                    player.tick(&world,Controls{jump:input.jump && tick==0,..input});
+                    assert!(player.immersion.level==0 || player.immersion.kind.damage_per_second()==0.,
+                        "Liquid damage along the selected route: {:?}",player.feet);
+                }
+                previous=input;
+            }
+            assert!(player.grounded && player.feet.distance(goal)<22.);
+        }
+    }
 
     #[test]
     fn remote_footing_accepts_real_slopes_without_accepting_edges_or_floating_bodies() {

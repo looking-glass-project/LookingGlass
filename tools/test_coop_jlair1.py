@@ -23,6 +23,34 @@ ROLES = ('host', 'guest')
 ARRIVAL = 'JLair1_Start'
 
 
+def waiting_target(candidates, at, incoming, goal, visited):
+    # A narrow slope may offer only the footing we just left. Every branch of
+    # parking_target needs an unvisited neighbor clear of the incoming body.
+    # When that ring is exhausted, look for a safe bay along the next approach.
+    available = [p for p in candidates if distance(p[:2], at[:2]) >= 16
+                 and distance(p[:2], incoming[:2]) >= 48
+                 and all(distance(p[:2], old[:2]) >= 16 for old in visited)]
+    return parking_target(candidates, at, incoming, goal, visited) if available else None
+
+
+def escape_target(rows, slot, before):
+    """Use a recent native safe neighbor; never plan while standing in lava."""
+    at = before['players'][slot]['feet']; other = before['players'][1-slot]['feet']
+    candidates = [(r['tick'], p) for r in rows if 0 <= before['tick'] - r['tick'] <= 480
+        for p in r['driver']['neighbors'][slot]
+        if 48 <= distance(p[:2], at[:2]) <= 160 and p[2] <= at[2] + 80
+        and distance(p[:2], other[:2]) >= 48]
+    return min(candidates, key=lambda item: (item[1][2] < at[2] + 20, distance(item[1], at), -item[0])) if candidates else None
+
+
+def hot_approach_target(row, slot, goal):
+    other = row['players'][1-slot]['feet']
+    candidates = [p for p in row['driver']['neighbors'][slot]
+        if 64 <= distance(p[:2], goal[:2]) <= 96 and p[2] >= goal[2] + 20
+        and distance(p[:2], other[:2]) >= 48]
+    return min(candidates, key=lambda p: distance(p, goal)) if candidates else None
+
+
 def verify_arrival(receipt, history):
     role = receipt['role']; slot = ROLES.index(role)
     row = next(r for r in history[role] if (r['epoch'], r['tick']) == (receipt['epoch'], receipt['tick']))
@@ -74,6 +102,14 @@ def verify_combat_wait(entry, history):
             for r in rows), 'Combat wait changed visit or lost a player'
 
 
+def verify_jump_flight(before, flight, arrival, slot, command):
+    assert before['tick'] < flight['tick'] < arrival['tick'], 'Jump flight was not between takeoff and landing'
+    assert before['players'][slot]['grounded'] and arrival['players'][slot]['grounded']
+    assert flight['driver']['command'] == arrival['driver']['command'] == command, 'Jump command was not acknowledged'
+    assert not flight['players'][slot]['grounded'], 'Jump never left the ground'
+    assert flight['players'][slot]['jumps'] == arrival['players'][slot]['jumps'] == before['players'][slot]['jumps'] + 1, 'Missing ordinary jump'
+
+
 class CuriosityPair(Pair):
     map_name, entry, next_map = 'jlair1', 'jlair1_start1', 'jlair2'
     evidence_prefix, capture_scenes = 'jlair1-route-', False
@@ -90,7 +126,7 @@ class CuriosityPair(Pair):
         (self.folder / 'course.json').write_bytes(raw)
         self.evidence.update(course_sha256=hashlib.sha256(raw).hexdigest(),
             executable_sha256=hashlib.sha256(args.exe.read_bytes()).hexdigest(),
-            arrivals=[], parking=[], approaches=[], forward_waiting=[], combat_waits=[], completed=self.completed, fresh=args.checkpoint is None,
+            arrivals=[], parking=[], approaches=[], forward_waiting=[], hazard_exits=[], hazard_jumps=[], combat_waits=[], completed=self.completed, fresh=args.checkpoint is None,
             scope='Approach segment only; shared lava crossing, ending and full visit remain unverified')
         deps = self.folder / 'fixture-dependencies'; deps.mkdir()
         for name in ('test_coop_jlair1.py', 'test_coop_hatter1.py', 'test_coop_village.py', 'test_coop_play.py',
@@ -116,6 +152,8 @@ class CuriosityPair(Pair):
         self.commands[role].update(input_lead=self.lead if role == 'guest' else 0,
             arrival_radius=radius, watch_dialogue=True, combat_tactics=True,
             prefer_cards=False, prefer_ice=True, avoid_switches=True, recovery_trace=role == 'host')
+        self.commands[role]['avoid_liquid_damage'] = bool(self.commands[role]['navigate']
+            and self.commands[role]['goal'] != self.steps[38]['pos'])
 
     def body(self, role):
         return self.reports[role]['frame']['players'][ROLES.index(role)]
@@ -145,6 +183,11 @@ class CuriosityPair(Pair):
             assert (row['epoch'], row['tick']) == (report['frame']['epoch'], report['frame']['tick'])
             row.setdefault('curiosity', report['combat']['stage']['world']['levels'][self.map_name])
             row.setdefault('presentation', report['presentation'])
+            for observed, body in zip(row['players'], report['frame']['players']):
+                observed.setdefault('ledge', body['player'].get('ledge'))
+                observed.setdefault('climb', body['player'].get('climb'))
+                observed.setdefault('climbs', body['player']['climbs'])
+                observed.setdefault('immersion', body['player']['immersion'])
         guest = self.reports.get('guest')
         if guest and guest['frame']['tick'] != self.lead_tick:
             self.lead_tick = guest['frame']['tick']
@@ -174,9 +217,83 @@ class CuriosityPair(Pair):
         return entry
 
     def move(self, role, goal, navigate=False, radius=8):
+        if navigate and goal == self.steps[38]['pos']:
+            return self.hot_crossing(role, goal)
         self.set(role, goal, navigate=navigate, run=True, radius=radius)
         self.until(lambda: self.reached(role) and self.body(role)['player']['grounded'])
         return self.receipt(role, goal)
+
+    def hot_crossing(self, role, goal):
+        slot = ROLES.index(role); choice = None
+        self.set(role, goal, navigate=True, run=True)
+        navigation = self.commands[role]['id']
+        def found():
+            nonlocal choice
+            row = self.history[role][-1]
+            if row['driver']['command'] != navigation or not row['players'][slot]['grounded']: return False
+            pad = hot_approach_target(row, slot, goal)
+            if pad is not None:
+                choice = row['tick'], pad
+                return True
+            assert row['players'][slot]['immersion']['kind'] == 'Dry', 'Hot approach reached lava before a safe takeoff'
+            return False
+        self.until(found)
+        selected_tick, pad = choice
+        approach = self.move(role, pad, radius=2)
+        before = self.history[role][-1]
+        assert before['players'][slot]['immersion']['kind'] == 'Dry'
+        count = before['players'][slot]['jumps']
+        self.set(role, goal, run=True, jump=True)
+        command = self.commands[role]['id']
+        self.until(lambda: self.body(role)['player']['jumps'] == count + 1 and not self.body(role)['player']['grounded'], 15)
+        flight = self.history[role][-1]['tick']
+        self.until(lambda: self.reached(role) and self.body(role)['player']['grounded'], 20)
+        receipt = self.receipt(role, goal)
+        self.evidence['hazard_jumps'].append(dict(step=self.step, role=role, selected_tick=selected_tick,
+            navigation_command=navigation, approach=approach, command=command, flight_tick=flight, arrival=receipt))
+        return receipt
+
+    def escape_hazard(self, role):
+        slot = ROLES.index(role); before = self.history[role][-1]
+        if before['players'][slot]['immersion']['kind'] not in ('Lava', 'Slime'): return
+        selected = escape_target(self.history[role], slot, before)
+        assert selected is not None, 'No recently observed safe footing beside the hot waypoint'
+        tick, goal = selected
+        count = before['players'][slot]['jumps']
+        self.set(role, goal, run=True, jump=True, radius=2)
+        self.until(lambda: self.body(role)['player']['jumps'] == count + 1 and not self.body(role)['player']['grounded'], 15)
+        flight = self.history[role][-1]['tick']
+        self.until(lambda: self.reached(role) and self.body(role)['player']['grounded'], 20)
+        entry = self.receipt(role, goal)
+        entry['flight_tick'] = flight
+        entry.update(before_tick=before['tick'], selected_tick=tick)
+        assert self.body(role)['player']['immersion']['kind'] == 'Dry', 'Hazard exit did not reach dry ground'
+        self.evidence['hazard_exits'].append(entry)
+        print('PASS ordinary hazard exit', self.step, role, flush=True)
+
+    def forward_bay(self, role, goal):
+        assert self.step < 52, 'No tested forward waiting footing before the shared platform'
+        next_goal = self.steps[self.step + 1]['pos']
+        start = self.history[role][-1]['tick']
+        self.set(role, next_goal, navigate=True, run=True)
+        command = self.commands[role]['id']; choice = None
+        def found():
+            nonlocal choice
+            row = self.history[role][-1]; slot = ROLES.index(role)
+            if row['driver']['command'] != command or not row['players'][slot]['grounded']: return False
+            selected = waiting_target(row['driver']['neighbors'][slot], row['players'][slot]['feet'],
+                row['players'][1-slot]['feet'], goal, [])
+            if selected is not None and selected[1]:
+                choice = row['tick'], selected[0]
+                return True
+            assert not self.reached(role), 'Next route point has no observed safe waiting bay'
+            return False
+        self.until(found)
+        tick, park = choice
+        entry = self.move(role, park, radius=2)
+        entry.update(selected_tick=tick, navigation_start=start, navigation_command=command, navigation_goal=next_goal)
+        self.evidence['forward_waiting'].append(entry)
+        return park
 
     def clear(self):
         if not any(combat_pending(self.reports[r], r) for r in ROLES): return False
@@ -220,8 +337,10 @@ class CuriosityPair(Pair):
             if approach is not None:
                 self.evidence['approaches'].append(self.move(role, approach, navigate=True))
             entry = self.move(role, goal, navigate=True)
+            self.escape_hazard(role)
             if self.clear():
                 entry = self.move(role, goal, navigate=True)
+                self.escape_hazard(role)
             self.evidence['arrivals'].append(entry)
             if role == first:
                 visited = []
@@ -229,21 +348,14 @@ class CuriosityPair(Pair):
                     report = self.reports[role]; slot = ROLES.index(role)
                     at = list(self.body(role)['player']['feet'])
                     candidates = report['route_driver']['neighbors'][slot]
-                    if not candidates:
-                        # Steep narrow slopes need not have same-height bays.
-                        # Continue by ordinary navigation to the next authored
-                        # footing, then let the partner reach this one. Record
-                        # that real walk separately; it does not award the
-                        # partner an arrival at either point.
-                        assert self.step < 52, 'No tested forward waiting footing before the shared platform'
-                        next_goal = self.steps[self.step + 1]['pos']
-                        selected_tick = report['frame']['tick']
-                        entry = self.move(role, next_goal, navigate=True)
-                        entry['selected_tick'] = selected_tick
-                        self.evidence['forward_waiting'].append(entry)
-                        park = next_goal
+                    selection = waiting_target(candidates, at, self.body(other)['player']['feet'], goal, visited)
+                    if selection is None:
+                        # The next original point may itself be in shallow lava.
+                        # Follow its approach only until a native safe bay is
+                        # observed, then leave room for the incoming player.
+                        park = self.forward_bay(role, goal)
                         break
-                    park, ready = parking_target(candidates, at, self.body(other)['player']['feet'], goal, visited)
+                    park, ready = selection
                     visited.append(at)
                     entry = dict(selected_tick=report['frame']['tick'], candidates=candidates, ready=ready)
                     entry.update(self.move(role, park, radius=2))
@@ -278,10 +390,43 @@ class CuriosityPair(Pair):
             assert entry['goal'] == self.approach_goals[entry['step']]
             verify_arrival(entry, self.history)
         for entry in self.evidence['forward_waiting']:
-            assert entry['goal'] == self.steps[entry['step'] + 1]['pos']
+            assert entry['navigation_goal'] == self.steps[entry['step'] + 1]['pos']
             selected = next(r for r in self.history[entry['role']] if r['epoch'] == 1 and r['tick'] == entry['selected_tick'])
-            assert selected['driver']['neighbors'][ROLES.index(entry['role'])] == [], 'Forward wait bypassed an available bay'
+            slot = ROLES.index(entry['role'])
+            start = next(r for r in self.history[entry['role']] if r['epoch'] == 1 and r['tick'] == entry['navigation_start'])
+            visited = [next(r for r in self.history[entry['role']] if r['tick'] == p['selected_tick'])['players'][slot]['feet']
+                       for p in self.evidence['parking'] if p['step'] == entry['step'] and p['role'] == entry['role']
+                       and p['selected_tick'] < entry['navigation_start']]
+            assert waiting_target(start['driver']['neighbors'][slot], start['players'][slot]['feet'],
+                start['players'][1-slot]['feet'], self.steps[entry['step']]['pos'], visited) is None, 'Forward wait bypassed an available bay'
+            assert selected['driver']['command'] == entry['navigation_command'] and start['tick'] < selected['tick'], 'Forward approach unobserved'
+            assert waiting_target(selected['driver']['neighbors'][slot], selected['players'][slot]['feet'],
+                selected['players'][1-slot]['feet'], self.steps[entry['step']]['pos'], []) == (entry['goal'], True), 'Unobserved forward bay'
             verify_arrival(entry, self.history)
+        for entry in self.evidence['hazard_exits']:
+            role = entry['role']; slot = ROLES.index(role)
+            before = next(r for r in self.history[role] if r['tick'] == entry['before_tick'])
+            assert before['players'][slot]['immersion']['kind'] in ('Lava', 'Slime')
+            assert escape_target(self.history[role], slot, before) == (entry['selected_tick'], entry['goal']), 'Unobserved hazard exit'
+            verify_arrival(entry, self.history)
+            after = next(r for r in self.history[role] if r['tick'] == entry['tick'])
+            assert after['players'][slot]['immersion']['kind'] == 'Dry'
+            flight = next(r for r in self.history[role] if r['tick'] == entry['flight_tick'])
+            verify_jump_flight(before, flight, after, slot, entry['command'])
+        for entry in self.evidence['hazard_jumps']:
+            role = entry['role']; slot = ROLES.index(role); goal = self.steps[38]['pos']
+            assert entry['arrival']['goal'] == goal
+            assert all(entry[k]['role'] == role and entry[k]['step'] == 38 for k in ('approach', 'arrival'))
+            selected = next(r for r in self.history[role] if r['tick'] == entry['selected_tick'])
+            assert entry['step'] == 38 and selected['driver']['command'] == entry['navigation_command']
+            assert hot_approach_target(selected, slot, goal) == entry['approach']['goal']
+            verify_arrival(entry['approach'], self.history)
+            verify_arrival(entry['arrival'], self.history)
+            before = next(r for r in self.history[role] if r['tick'] == entry['approach']['tick'])
+            flight = next(r for r in self.history[role] if r['tick'] == entry['flight_tick'])
+            assert before['players'][slot]['immersion']['kind'] == 'Dry'
+            after = next(r for r in self.history[role] if r['tick'] == entry['arrival']['tick'])
+            verify_jump_flight(before, flight, after, slot, entry['command'])
         for entry in self.evidence['parking']:
             selected = next(r for r in self.history[entry['role']] if r['epoch'] == 1 and r['tick'] == entry['selected_tick'])
             assert entry['candidates'] == selected['driver']['neighbors'][ROLES.index(entry['role'])]

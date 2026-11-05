@@ -39,8 +39,17 @@ previously stalled climb passes with 2,224 matching states and both players at
 and the native/single-player baseline comparisons pass. Later bounded 24-25 and
 30-31 evidence accompanies a passing resumed 26-29 run (1,374 matching states,
 50/96 health, no revival). The runner now allows ordinary combat dodging and
-uses homing Cards before parking. The next attempt fails the climb from 32
-toward 33; that attempt and the full route remain open.
+uses homing Cards before parking. A later retry verifies 30-32 by a different
+ascent, without establishing a fix for the earlier missed climb. Bounded 33-37
+and 38 evidence adds 1,309 and 462 matching states respectively. The runner
+uses observed dry waiting bays and ordinary jumps into and out of the original
+shallow-lava waypoint. Both survive step 38 at 93.75/41.67 health; that longer
+attempt fails at 39 while navigating through lava. Source `259d4f5` adds optional
+liquid avoidance and fixes blocked-walk detection based on actual displacement.
+A resumed 39-42 internet run now passes eight arrivals and 1,335 matching states,
+ending at 100/56.67 health without deaths or revivals. All 910 active Rust tests
+and unchanged native/single-player baseline comparisons pass. A normal checkpoint
+before 43 is retained; the full route remains open.
 See [Burning Curiosity](JLAIR1.md).
 
 About Face now has a native paired adapter for combat, personal rewards,

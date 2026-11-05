@@ -552,3 +552,54 @@ audit. The paired 26 native cases plus summary and the single-player component
 and combat-route outputs match their prior baselines; the separate cast-free
 point-54 failure is unchanged. No screenshots were inspected. Overall remains
 **50.1%**, with six of 39 visits retaining combined evidence.
+
+
+## Current-build campaign restart, 5 November 2026
+
+The focused core save/rejoin milestone is complete. Campaign testing resumes
+on frozen source `0b5bca3` without changing gameplay or the route fixture.
+All native Curiosity comparison outputs are byte-identical to `33885b1`:
+26 paired cases plus summary, seven single-player components and the complete
+combat-route check. The cast-free traversal still fails at point 54. The first
+long combat-route comparison ended at point 68 with Windows `AppHangB1` and
+exit `3489660927`; its Anode repeat completes in 92.101 seconds and matches the
+baseline. Both results are retained in `private/jlair1-core-0b5bca3/`.
+
+The earlier supported-goal-walk change is present: an actual grounded body may
+replace a queued pull-up with a clear, continuously supported walk to its goal.
+Airborne bodies, gaps and different floors retain their pending jump. Its
+paired point-65 verification was deferred during core work and remains open.
+
+The unchanged ordinary checkpoint before 65 has SHA-256
+`bbcfeed3258fc6268d5503968e0c08939ab6058300bc63cf40b9b0863167cfff`.
+The new public attempt `jlair1-route-17cbc45b06234222a0cfc85c26a24151`
+fails after 128.884 seconds. Blue reaches all four guides, the original shelf
+and a waiting position. Red reaches guide zero, then the seven-segment timed
+plan misses the next platform sideways and falls into lava. This is earlier
+than the deferred obsolete-pull case; no paired point-65 pass is claimed.
+
+A private prototype replaces only guide-zero-to-one's timed turns with a
+200 ms ordinary run-up, one actual jump and feedback air steering to an
+observed Blue landing. Both original guide and final waypoint requirements
+remain. In public attempt `jlair1-route-33268d012b5e4f6285a6124be4467ac1`,
+Blue's takeoff/airborne/grounded-arrival ticks are 154317/154366/154530, followed
+by all four guide receipts. The guest then exits with the generic transport
+read error while the host remains running. No log establishes whether the
+connection or packet processing caused it. Red never attempts this crossing;
+the whole attempt is failed, not a network or paired-movement pass.
+
+The same private prototype on delayed loopback,
+`jlair1-route-ec368b2b25594cee853148bad77c14a8`, fails after 91.107 seconds
+on an earlier approach, before Red reaches guide zero. At host tick 162525,
+the recorded jump input is true, but Red is already ungrounded at height
+1927.96, below the 1984.03 ledge. Her native jump count stays 44 across the
+input. This proves the action arrived too late to jump; it does not establish
+which timing stage caused the delay. The plan, native input event, movement
+history and timing summaries remain available for diagnosis. The next work is
+to make this takeoff reliable before retrying the later ascent. Neither private
+prototype has been promoted to the checked-in fixture.
+
+These runs use separate processes/profiles, 40 ms added delay and 20 ms jitter.
+No state, health, inventory or checkpoint bytes were edited to progress. No
+screenshots were inspected. Overall remains 56.6%; no additional campaign visit
+or completed paired point is credited.

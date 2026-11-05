@@ -212,6 +212,30 @@ remains six combined, twenty-one partial and twelve not run. The known Red-led
 Temple route gap, broader effects/audio and per-visit acceptance cases remain.
 The weighted estimate rises one Internet Host/Join point to **56.6%**.
 
+## Campaign work resumed, 5 November 2026
+
+With the focused core gate complete, Burning Curiosity testing resumes on
+unchanged build `0b5bca3`. Its 26 paired native cases plus summary, seven solo
+components and full native combat-route output match the earlier baselines
+byte for byte. The separate cast-free route retains its known step-54 failure.
+A first long native comparison ended with Windows `AppHangB1`; the isolated
+Anode repeat completed and matched. The failed attempt remains recorded.
+
+The resumed internet climb still fails at point 65. Blue reaches all four
+guidance points and the upper shelf; Red reaches the first guide, then misses
+the next landing and falls. A private crossing prototype verifies Blue's real
+run-up, jump and landing, but the guest disconnects before attempting it. The
+transport log does not establish the disconnection's cause. A delayed local
+attempt then fails on Red's earlier approach: the host records the jump input
+only after she is already airborne below the ledge, so no actual jump occurs.
+Neither prototype is promoted to the checked-in route fixture or counted as a
+paired climb pass. See `JLAIR1.md` for evidence and the next controller issue.
+
+No game code, player physics or save behavior changed in this investigation.
+The previously deferred supported-landing fix remains in the current build,
+but these failures happen before its target ascent can be verified for Red.
+Campaign counts and the **56.6%** overall estimate remain unchanged.
+
 ## Archived solo save import, 5 November 2026
 
 The original Village solo autosave from the 9 October movement-fix work now

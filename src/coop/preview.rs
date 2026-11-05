@@ -213,6 +213,7 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
         let mut last_sent = 0;
         let mut rendered = 0;
         let mut started_playing = None;
+        let mut death_approach = None;
         let mut report_at = Instant::now();
         let mut guest_send_at = Instant::now();
         let mut weapon_buttons = crate::weapon_rules::Buttons::default();
@@ -428,8 +429,21 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                     // Let the real guard inflict damage. No health writes or
                     // synthetic kill commands are used by this scenario.
                     keys.wish = Vec2::ZERO;
-                    if victim == PlayerId::Blue && local == PlayerId::Blue && (2. ..3.).contains(&age) {
-                        keys.wish = Vec2::Y;
+                    if victim == PlayerId::Blue && local == PlayerId::Blue && age >= 2. {
+                        if let Some(frame) = &display {
+                            // The contact radius prevents walking through Red.
+                            // Walk around her using measured arrivals, so Blue
+                            // becomes the nearest target without moving either
+                            // body directly or changing enemy/damage rules.
+                            let (anchor, step) = death_approach.get_or_insert((
+                                frame.players[PlayerId::Red.index()].player.feet.truncate(), 0));
+                            let offsets = [vec2(64., -48.), vec2(64., 64.), vec2(0., 64.)];
+                            if let Some(offset) = offsets.get(*step) {
+                                let delta = *anchor + *offset - frame.players[local.index()].player.feet.truncate();
+                                if delta.length() < 4. { *step += 1; }
+                                else { keys.wish = delta.normalize(); }
+                            }
+                        }
                     }
                     // The survivor walks during the first part of the countdown
                     // so the spectator check exercises a moving camera subject.
@@ -453,13 +467,23 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                         let delta = target.center - frame.players[local.index()].player.eye();
                         keys.yaw = delta.y.atan2(delta.x);
                         keys.pitch = (delta.z / delta.length().max(1.)).asin().clamp(-1.56, 1.56);
+                        // Prepare a clear approach around Red's contact radius
+                        // while she remains the nearer guard target.
+                        if local == PlayerId::Blue && (2. ..8.).contains(&age) {
+                            let approach = frame.players[PlayerId::Red.index()].player.feet.truncate()
+                                + vec2(96., -48.) - frame.players[local.index()].player.feet.truncate();
+                            if approach.length() > 4. { keys.wish = approach.normalize(); }
+                        }
                         // Give the guard time to strike the nearer Red player
                         // before both blades can interrupt its attack animation.
                         if (8. ..13.).contains(&age) {
                             keys.wish = if delta.truncate().length() > 60. {
                                 delta.truncate().normalize_or_zero()
                             } else { Vec2::ZERO };
-                            keys.primary = delta.length() < 95.;
+                            // Coordinate the first attacks so one blade cannot
+                            // finish the encounter before its partner arrives.
+                            keys.primary = delta.length() < 95.
+                                && frame.players.iter().all(|body| target.center.distance(body.player.eye()) < 95.);
                         }
                     }
                 }

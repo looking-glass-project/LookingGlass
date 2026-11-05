@@ -1,6 +1,6 @@
 # Co-op progress
 
-Updated 5 November 2026. Branch: `coop`. **Estimated overall completion: 51.3%.**
+Updated 5 November 2026. Branch: `coop`. **Estimated overall completion: 51.6%.**
 The older 42% reports are historical. This percentage measures delivered and
 verified behavior against the full co-op scope; it is not a running test's progress.
 
@@ -27,12 +27,12 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | Area | Credited points | Maximum |
 | --- | ---: | ---: |
 | Foundation and independent client diagnostics | 9 | 10 |
-| Internet Host/Join | 7.25 | 15 |
+| Internet Host/Join | 7.5 | 15 |
 | Two players, movement and presentation | 11 | 15 |
 | Combat, individual resources and death | 9.75 | 20 |
 | Scenes, transport and progression | 11.25 | 20 |
 | Full campaign verification | 3.08 | 20 |
-| **Total** | **51.33, rounded to 51.3** | **100** |
+| **Total** | **51.58, rounded to 51.6** | **100** |
 
 ## Implemented features and remaining work
 
@@ -50,9 +50,9 @@ yet verified across every level and failure condition.
 | Host / Join | Main/ESC controls, public internet invite links, authenticated transport, cancellation and reconnect cases | Complete normal-play integration and remaining disconnect/rejoin cases during combat, rides, scenes and transitions |
 | Players and presentation | Blue/red Alice, separate input/cameras, body separation, replicated weapon effects | Broader contact/effect checks and reliable traversal through all swimming, leaves, ropes and moving supports |
 | Combat and resources | Nearest-visible targeting, individual damage, inventory and consumables in integrated levels | Remaining enemies/bosses and level-specific rewards, with both players as the target/collector |
-| Death and saves | Exact ten-second countdown, moving spectator camera, safe 25-health revival; shared checkpoint wipes and save/rejoin cases | Finish save/leave menu acceptance and connection failures; then each visit's recovery matrix |
+| Death and saves | Exact ten-second countdown, moving spectator camera, safe 25-health revival; shared checkpoint wipes, save/rejoin cases and guest restart during either player's countdown | Complete public menu acceptance and remaining connection failures; then each visit's recovery matrix |
 | Scenes and machinery | First-arrival ownership, original single-Alice scenes, hidden partner and safe reunion; all-living boarding on integrated rides | Remaining level adapters, both scene owners, watched/skipped cases, transports and exits |
-| Regression checks | 925 active Rust tests; 376 Python guards; current Curiosity native/single-player baseline comparisons | Full campaign verification and required earlier contact-system repeats on the final build |
+| Regression checks | 925 active Rust tests; 380 Python guards; current Curiosity native/single-player baseline comparisons | Full campaign verification and required earlier contact-system repeats on the final build |
 
 Campaign status from `COOP_CAMPAIGN.md`:
 
@@ -96,12 +96,73 @@ remain separate from the 39-visit campaign acceptance matrix.
   Save checkpoint, Leave, exact suspended-solo return, ordinary solo movement,
   expired-link feedback and Continue co-op with a fresh invite. Two solo returns
   preserve the full state hash. Invalid/batched input and Cancel also pass.
+- Verified on build `0b32c79`, with delayed loopback clients: a fresh guest
+  reconnects during either player's death countdown. The waiting host holds its
+  world/life clocks; personal resources, body identity and remaining time survive.
+  Both cases continue through exact ten-second revival and a shared checkpoint wipe.
 - Next: repeat that full menu flow over the public connection after provisioning
   recovers; resolve transient DNS reliability and the temporary-provider limit.
   Core gameplay acceptance remains ahead of further campaign traversal.
 - Then: consolidate the core movement, separation/effects, combat/resources,
   spectator/revival, scene ownership and shared-boarding acceptance checks before
   restarting level-by-level campaign testing.
+
+## Countdown reconnect evidence, 5 November 2026
+
+Build `0b32c79` passes both `tools/test_coop_play.py --local --death --rejoin`
+roles with 40 ms delay and 20 ms jitter per sender. The runner terminates only
+its guest process during a real guard-inflicted death, waits for the host to
+observe the loss, checks the full paused frame and combat state, then starts a
+new guest with the same profile and invite. The fresh process must inherit both
+players' inventories, health, body identities and the correct camera. No health,
+position or clock is written to create the result.
+
+| First victim | Death tick | Revival tick | Health / separation | Shared wipe tick |
+| --- | ---: | ---: | --- | ---: |
+| Blue | 2008 | 3208 | 25 / 48 units | 4203 |
+| Red | 2077 | 3277 | 25 / 48 units | 4261 |
+
+Both clients agree on these events. Blue's reconnect retains 847 then 839 ticks
+with eight active ticks elapsed; Red's retains 891 then 877 with 14 active ticks
+elapsed. Evidence: `private/coop/play-test-8a35b8e7f545481e9ad50f19dcf5c04f/`
+and `private/coop/play-test-f9c88e2556c4491baa9d0ee5836f6b9c/` respectively.
+Four guard tests reject stale processes, rewound/reset clocks, replaced bodies,
+wrong cameras, changed resources and unexpected healing. The lifecycle verifier
+also rejects a countdown reset between samples.
+
+The first Blue attempt on `8c02fd0` failed because the old straight-line test
+approach stopped at Red's contact radius, leaving Red as the nearer victim.
+That failure remains in `private/coop/play-test-3f9923da110c4425836934a832e65d2f/`.
+The development driver now walks around Red through observed waypoint arrivals;
+normal movement, collision, AI and damage rules are unchanged. The earlier Red
+baseline and reconnect pass on `8c02fd0` remain separate historical evidence.
+
+Build `c57d7df` also passes all 82 native `--coop-world-check` records, including
+shared boarding/transport, personal pickups, both theatre owners, safe reunion
+and checkpoint restoration. These are focused core checks, not campaign routes.
+
+The staged combat repeat initially failed on `c57d7df`: Blue was again blocked
+behind Red, so only Red attacked. Evidence is retained in
+`private/coop/play-test-909f0165682245ba8917924ba1e28364/`. The combat driver now
+uses a clear side approach and waits for both players to reach Blade range.
+Build `0b32c79` passes the unchanged combat assertions with two real attacks from
+each player, a shared guard defeat and minimum health 100/64 on both clients.
+Evidence: `private/coop/play-test-2beed43adfdc4c0ea3866f76cc95f35b/`.
+Both driver corrections are restricted to explicit development scenarios.
+
+The final `0b32c79` contact/ambient-effects run passes 612 matching sent/restored
+states, both directions of approach, stationary-partner preservation and a
+36-unit contact distance. Both models remain visible and both clients render
+ambient effects without dropped batches. Evidence:
+`private/coop/presence-test-a55f8bfb1d2b4523b2b14fb5bb18528d/`.
+All new paired checks use loopback with 40/20 ms delay/jitter; no screenshots
+were inspected. The locked release, 925 active Rust tests, 380 Python guards
+and seven source-package tests pass. The unchanged native world checks above
+were run on `c57d7df`, before the combat-only driver correction.
+
+The added 0.25 Host/Join points credit the newly verified countdown reconnect
+cases. They do not resolve public invite provisioning/DNS, finish core acceptance
+or complete another campaign visit. Overall: 51.6%.
 
 ## Menu acceptance evidence, 5 November 2026
 

@@ -4,6 +4,7 @@ This is a development gameplay slice, not a campaign completion check. Run in
 Anode to leave the user's desktop free. Public internet hosting is the default.
 """
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -55,7 +56,9 @@ def recovery_report(history, role, initial, first_victim):
                 assert isinstance(life, dict) and 'Spectating' in life, 'Dead player did not enter the countdown'
                 remaining = life['Spectating']['ticks_left']
                 assert 0 < remaining <= 1200
-                last_death[i] = tick - (1200 - remaining)
+                death_tick = tick - (1200 - remaining)
+                assert last_death[i] in (None, death_tick), 'Death countdown restarted or skipped time'
+                last_death[i] = death_tick
                 if i == local:
                     partner = 1 - i
                     assert report['camera_player'] == ('Blue', 'Red')[partner], 'Dead player did not spectate the survivor'
@@ -76,6 +79,7 @@ def recovery_report(history, role, initial, first_victim):
                     assert distance(report['camera_target'][:2], body['feet'][:2]) < 1, 'Respawn camera blended from old body'
                 respawns[(i, body['spawned_at'])] = {'player': i, 'death_tick': last_death[i],
                     'spawn_tick': body['spawned_at'], 'health': body['health'], 'separation': separation}
+                last_death[i] = None
     assert respawns, 'No ten-second respawn was observed before the wipe'
     assert next(iter(respawns))[0] == first_victim, 'Encounter killed the wrong first victim'
     if local == first_victim:
@@ -84,22 +88,57 @@ def recovery_report(history, role, initial, first_victim):
     return {'respawns': list(respawns.values()), 'checkpoint_tick': wipe}
 
 
-def run(exe, data, local, combat=False, death=False, delay=0, jitter=0, death_first='red'):
+def verify_countdown_rejoin(before, after, victim, old_pid):
+    """A fresh guest must inherit the running life cycle, not create a new body."""
+    from test_coop_village import verify_rejoin_stats
+    assert after['pid'] != old_pid, 'Guest process did not restart'
+    assert before['build'] == after['build'] and before['visit'] == after['visit'], 'Rejoin changed build or visit'
+    old, new = before['frame'], after['frame']
+    elapsed = new['tick'] - old['tick']
+    assert elapsed >= 0, 'Rejoin moved the clock backwards'
+    assert new['checkpoint_generation'] == old['checkpoint_generation'] == 0, 'Rejoin silently wiped'
+    life = lambda frame: frame['lives']['states'][victim]
+    assert isinstance(life(old), dict) and 'Spectating' in life(old)
+    assert isinstance(life(new), dict) and 'Spectating' in life(new), 'Guest did not rejoin during countdown'
+    before_left, after_left = (life(f)['Spectating']['ticks_left'] for f in (old, new))
+    assert 0 < after_left <= before_left <= 1200
+    assert before_left - after_left == elapsed, 'Rejoin reset or skipped the death countdown'
+    for previous, current in zip(old['players'], new['players']):
+        # The living partner can take ordinary enemy damage after play resumes.
+        # Inventory/Will and body identity must still survive the guest restart.
+        stats = dict(current['stats'], sanity=previous['stats']['sanity'])
+        verify_rejoin_stats(previous['stats'], stats, elapsed)
+        assert current['spawned_at'] == previous['spawned_at'] and current['warped_at'] == previous['warped_at'], 'Rejoin replaced a body'
+    assert new['players'][victim]['stats']['sanity'] == 0
+    assert 0 < new['players'][1-victim]['stats']['sanity'] <= old['players'][1-victim]['stats']['sanity'], 'Rejoin healed or killed the survivor'
+    assert after['camera_player'] == ('Blue' if victim == 1 else 'Red'), 'Rejoined guest watched the wrong player'
+    return dict(death_tick=old['tick']-(1200-before_left), before_tick=old['tick'], after_tick=new['tick'],
+        remaining_before=before_left, remaining_after=after_left, old_guest_pid=old_pid, new_guest_pid=after['pid'])
+
+
+def run(exe, data, local, combat=False, death=False, delay=0, jitter=0, death_first='red', rejoin=False):
+    assert not rejoin or death, 'Countdown rejoin needs the death fixture'
     folder = ROOT / 'private' / 'coop' / ('play-test-' + uuid.uuid4().hex)
     folder.mkdir(parents=True)
+    source = Path(__file__).read_bytes()
+    (folder / 'fixture-source.py').write_bytes(source)
     invite = folder / 'invite.txt'
     flags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
     processes = []
+    active = {}
     logs = []
+    log_paths = {}
     initial = {}
     latest = {}
     history = {role: [] for role in ('host', 'guest')}
     minimum_health = {role: [100., 100.] for role in ('host', 'guest')}
+    reconnect = None
     try:
-        def start(role):
+        def start(role, reconnecting=False):
             profile = folder / role
-            profile.mkdir()
-            log = (folder / (role + '.log')).open('w')
+            profile.mkdir(exist_ok=reconnecting)
+            log_paths[role] = folder / (role + ('-rejoin' if reconnecting else '') + '.log')
+            log = log_paths[role].open('w')
             logs.append(log)
             args = [str(exe), '--data', str(data), '--map', 'skool1', '--no-audio',
                     '--profile', str(profile), '--coop-host' if role == 'host' else '--coop-join',
@@ -113,6 +152,7 @@ def run(exe, data, local, combat=False, death=False, delay=0, jitter=0, death_fi
             args += ['--coop-delay-ms', str(delay), '--coop-jitter-ms', str(jitter)]
             process = subprocess.Popen(args, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, creationflags=flags)
             processes.append(process)
+            active[role] = process
             return process
         host = start('host')
         deadline = time.monotonic() + 150
@@ -122,13 +162,13 @@ def run(exe, data, local, combat=False, death=False, delay=0, jitter=0, death_fi
             time.sleep(.05)
         guest = start('guest')
         deadline = time.monotonic() + 120
-        while any(p.poll() is None for p in processes):
+        while any(p.poll() is None for p in active.values()):
             assert time.monotonic() < deadline, 'Gameplay test timeout'
-            for role, process in zip(('host', 'guest'), processes):
-                assert process.poll() in (None, 0), (folder / (role + '.log')).read_text()
+            for role, process in active.items():
+                assert process.poll() in (None, 0), log_paths[role].read_text()
             for role in ('host', 'guest'):
                 report = read(folder / role / 'coop-live.json')
-                if report and report['playing']:
+                if report and report['pid'] == active[role].pid and report['playing']:
                     initial.setdefault(role, report)
                     latest[role] = report
                     minimum_health[role] = [min(old, body['stats']['sanity']) for old, body in
@@ -141,9 +181,44 @@ def run(exe, data, local, combat=False, death=False, delay=0, jitter=0, death_fi
                             'guard': report['combat']['npcs']['actors'][0]['guard'],
                             'players': [{'health': b['stats']['sanity'], 'feet': b['player']['feet'], 'spawned_at': b['spawned_at']}
                                 for b in frame['players']]})
+            if rejoin and reconnect is None and 'host' in latest:
+                victim = 0 if death_first == 'blue' else 1
+                state = latest['host']['frame']['lives']['states'][victim]
+                if isinstance(state, dict) and 600 <= state.get('Spectating', {}).get('ticks_left', 0) <= 1000:
+                    old_pid = guest.pid
+                    subprocess.run(['taskkill', '/PID', str(old_pid), '/T', '/F'], capture_output=True, check=True)
+                    guest.wait(timeout=10)
+                    disconnect_deadline = time.monotonic() + 15
+                    while True:
+                        before = read(folder / 'host' / 'coop-live.json')
+                        assert host.poll() is None, 'Host ended when the guest disconnected'
+                        if before and before['pid'] == host.pid and not before['playing']:
+                            break
+                        assert time.monotonic() < disconnect_deadline, 'Host did not observe guest loss'
+                        time.sleep(.05)
+                    # An observed inactive host must hold its full world and
+                    # life clocks while waiting, including the dead body.
+                    time.sleep(.4)
+                    held = read(folder / 'host' / 'coop-live.json')
+                    assert held and not held['playing'] and held['frame'] == before['frame']
+                    assert held['combat'] == before['combat'], 'Disconnected host advanced the world'
+                    guest = start('guest', reconnecting=True)
+                    join_deadline = time.monotonic() + 60
+                    while True:
+                        after = read(folder / 'guest' / 'coop-live.json')
+                        assert guest.poll() is None, 'Replacement guest failed: ' + log_paths['guest'].read_text()
+                        if after and after['pid'] == guest.pid and after['playing']:
+                            reconnect = verify_countdown_rejoin(before, after, victim, old_pid)
+                            break
+                        assert time.monotonic() < join_deadline, 'Guest rejoin timeout'
+                        time.sleep(.05)
+                    (folder / 'rejoin.json').write_text(json.dumps(dict(passed=True,
+                        evidence=reconnect, before=before, after=after), indent=2))
+                    print('PASS fresh guest rejoined during countdown; paused world, inventory and timer preserved', flush=True)
             time.sleep(.05)
         assert host.returncode == 0, (folder / 'host.log').read_text()
-        assert guest.returncode == 0, (folder / 'guest.log').read_text()
+        assert guest.returncode == 0, log_paths['guest'].read_text()
+        assert not rejoin or reconnect is not None, 'Countdown reconnect was not exercised'
         assert set(latest) == {'host', 'guest'}, 'Both clients must receive a playing state'
         assert latest['host']['pid'] != latest['guest']['pid']
         assert latest['host']['camera_player'] == 'Blue'
@@ -183,7 +258,8 @@ def run(exe, data, local, combat=False, death=False, delay=0, jitter=0, death_fi
             if death:
                 for stage in ('spectating', 'respawn', 'checkpoint'):
                     assert (folder / role / ('coop-' + stage + '.png')).exists(), 'Missing recovery capture: ' + stage
-        result = {'passed': True, 'internet': not local, 'combat': combat, 'death': death, 'recovery': recovery,
+        result = {'passed': True, 'internet': not local, 'combat': combat, 'death': death, 'recovery': recovery, 'rejoin': reconnect,
+                  'fixture_sha256': hashlib.sha256(source).hexdigest(),
                   'delay_ms': delay, 'jitter_ms': jitter, 'death_first': death_first if death else None, 'moved': moved,
                   'initial': initial, 'final': latest, 'minimum_health': minimum_health,
                   'scope': 'native enemy death, timed spectating/respawn and entrance checkpoint; campaign not validated' if death else
@@ -192,6 +268,7 @@ def run(exe, data, local, combat=False, death=False, delay=0, jitter=0, death_fi
         print('PASS two rendered processes:', 'ten-second respawn, spectator cameras and shared entrance checkpoint.' if death else
             'shared combat and personal damage.' if combat else 'independent movement/cameras and matching host/guest state.')
         print('Evidence:', folder)
+        return folder
     finally:
         (folder / 'diagnostic.json').write_text(json.dumps({'initial': initial, 'latest': latest, 'minimum_health': minimum_health,
             'exit_codes': [p.poll() for p in processes]}, indent=2))
@@ -218,9 +295,12 @@ if __name__ == '__main__':
     scenario.add_argument('--combat', action='store_true', help='Staged school guard, using real Blade attacks')
     scenario.add_argument('--death', action='store_true', help='School guard encounter: real deaths, moving spectator, respawn and wipe')
     parser.add_argument('--death-first', choices=('red', 'blue'), default='red')
+    parser.add_argument('--rejoin', action='store_true', help='Restart the guest during the real death countdown')
     parser.add_argument('--delay-ms', type=int, default=0)
     parser.add_argument('--jitter-ms', type=int, default=0)
     args = parser.parse_args()
     if not (0 <= args.delay_ms <= 500 and 0 <= args.jitter_ms <= 500):
         parser.error('Network test delays must be between 0 and 500 milliseconds')
-    run(args.exe.resolve(), args.data.resolve(), args.local, args.combat, args.death, args.delay_ms, args.jitter_ms, args.death_first)
+    if args.rejoin and not args.death:
+        parser.error('--rejoin requires --death')
+    run(args.exe.resolve(), args.data.resolve(), args.local, args.combat, args.death, args.delay_ms, args.jitter_ms, args.death_first, args.rejoin)

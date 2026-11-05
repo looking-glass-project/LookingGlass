@@ -1600,6 +1600,21 @@ delay, 25-health nearby respawn, moving spectator camera and shared entrance res
 Use `--delay-ms 40 --jitter-ms 20` to add outbound network delay per sender.
 Both rendered recovery scenarios still cover only the school encounter.
 
+Add `--rejoin` to either death scenario to terminate the guest process during
+that player's real countdown, then reconnect with a fresh process and the same
+profile/invite. The host must hold its world and life clocks while disconnected.
+The fresh guest must inherit the remaining countdown, both personal inventories,
+health and body identities, and the correct spectator camera. The ordinary
+encounter then continues through the exact 1,200-active-tick revival at 25 health
+and a shared checkpoint wipe. Both roles are required: Red dead, and Blue dead
+with the surviving Red reconnecting. This check does not credit public joining
+when `--local` is supplied. All receipts and the exact Python fixture stay private.
+
+The Blue-first development driver walks around the stationary Red using observed
+waypoint arrivals. Its old straight approach stopped at the player contact radius
+and could leave Red as the first victim. The route uses ordinary movement inputs;
+player collision, enemy targeting, health and damage rules remain unchanged.
+
 Snapshots identify each new body by its host spawn tick. Guest smoothing and
 camera collision history reset when the watched player changes or respawns,
 including short-distance respawns and checkpoint resets. Successful placement,
@@ -1679,6 +1694,10 @@ both players' actual Blade attacks. Only the host receives `--combat-preview`; t
 visit handshake tells the guest to load the matching encounter. The harness checks
 personal damage during the fight (essence can heal it afterward), attacks by both
 players, shared defeat, matching positions, separate initial cameras and clean exits.
+The driver first walks Blue to a clear side approach, then waits until both
+players are in Blade range before attacking. This keeps the fixture compatible
+with player collision and prevents Red from finishing the fight before Blue
+arrives. Real guard damage, both attacks and personal health remain required.
 For an interactive staged fight, add `-Combat` to `tools/run_coop_pair.ps1` with
 the default school map and without `-Menu`.
 

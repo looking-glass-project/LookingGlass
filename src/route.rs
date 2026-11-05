@@ -303,8 +303,8 @@ impl Route {
     ) -> Result<Vec<(Controls, Vec3)>, usize> {
         Self::plan_with_takeoff_margin(world, start, goal, tolerance, 0)
     }
-    /// Optional remote-input margin for diagnostic routes. A planned jump must
-    /// remain possible if the preceding input lasts a little longer in transit,
+    /// Optional remote-input margin for diagnostic routes. A planned jump or
+    /// grounded turn must retain support if the preceding input lasts longer,
     /// and its first landing must have support around the center of the body.
     /// Native routes retain their exact zero-margin search and gameplay physics.
     pub(crate) fn plan_with_takeoff_margin(
@@ -357,7 +357,7 @@ impl Route {
             if nodes.len() > if walking { 30000 } else { 100000 } {
                 break;
             }
-            let takeoff_safe = if p.grounded && takeoff_ticks > 0 {
+            let transition_safe = if p.grounded && takeoff_ticks > 0 {
                 let mut late = p.clone();
                 (0..takeoff_ticks).all(|_| {
                     late.tick(world, Controls { jump:false, ..previous });
@@ -372,8 +372,13 @@ impl Route {
                 } else {
                     vec2(angle.cos(), angle.sin())
                 };
+                // A late grounded turn can run off a narrow approach before
+                // the later jump is even sampled. Reserve the same support
+                // interval for direction changes as for takeoff; checking
+                // only the jump node cannot protect its preceding approach.
+                if !transition_safe && wish != previous.wish { continue; }
                 for jump in [false, true] {
-                    if jump && (walking || !takeoff_safe || !p.grounded && p.ledge.is_none()) {
+                    if jump && (walking || !transition_safe || !p.grounded && p.ledge.is_none()) {
                         continue;
                     }
                     let input = Controls {
@@ -1324,6 +1329,35 @@ mod tests {
             }
         }
         assert!(landings>0 && p.grounded && p.feet.distance(goal)<22.);
+    }
+
+    #[test]
+    fn remote_grounded_turn_keeps_support_during_a_late_direction_change() {
+        // The old jump-only margin accepts a diagonal run ending at
+        // (71.33,19.33), then an eastward turn. Nine late ticks leave this
+        // narrow corner before the turn is applied, despite a valid jump
+        // margin at any later takeoff. The ceiling keeps this a walking case.
+        let world=World::fixture(&[
+            (vec3(-40.,-200.,-100.),vec3(40.,20.,0.)),
+            (vec3(0.,-20.,-100.),vec3(400.,20.,0.)),
+            (vec3(-40.,-200.,64.),vec3(400.,20.,100.)),
+        ]);
+        let start=Player::spawn(&world,vec3(0.,-180.,crate::movement::EYE_HEIGHT)).unwrap();
+        let goal=vec3(200.,0.,0.03125);
+        let plan=Route::plan_with_takeoff_margin(&world,&start,goal,22.,12).unwrap();
+        let mut player=start;let mut previous=Controls::default();
+        for (input,_) in plan {
+            if player.grounded && input.wish!=previous.wish {
+                let mut late=player.clone();
+                for tick in 0..12 {
+                    late.tick(&world,Controls{jump:false,..previous});
+                    assert!(late.grounded,"Turn loses support after {} late ticks: {:?}, previous {:?}, next {:?}",tick+1,player.feet,previous.wish,input.wish);
+                }
+            }
+            for tick in 0..24 {player.tick(&world,Controls{jump:input.jump&&tick==0,..input});}
+            previous=input;
+        }
+        assert!(player.grounded && player.feet.distance(goal)<22.);
     }
 
     #[test]

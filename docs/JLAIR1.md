@@ -508,3 +508,47 @@ cases plus summary, seven single-player components and full native combat-route
 records match their previous baselines. The separate cast-free route retains
 its known point-54 failure. No screenshots were inspected. Overall completion
 remains **50.1%**, with six of 39 campaign visits carrying combined evidence.
+
+
+## Delayed approach turns and retained run-ups
+
+The failed guest approach on `93a9dc3` leaves the ground before its jump input
+is applied. Its native jump count remains unchanged. The nearly identical
+successful approach turns sooner. The route search reserved twelve ticks of
+ground support for a delayed jump but did not reserve support for the preceding
+direction change. Source `ac2c02a` applies that same optional reserve to grounded
+turns. A narrow-corner physics regression fails under the old rule within the
+100 ms reserve and passes with the new rule. Zero-margin native routes retain
+their existing search behavior; gameplay physics and network rules are unchanged.
+
+The next internet attempt crosses that approach, with Red actually jumping and
+reaching the first shelf. Its following ascent repeatedly discards a backward
+run-up at a supported stopping point. After 95 such planning segments, Red falls
+and dies. Source `33885b1` retains a run-up through its first landing unless its
+grounded prefix makes more than 24 units of progress toward the planned endpoint.
+It still settles useful approaches and intermediate landings, and never reports
+a run-up stop as arrival at the final goal. A physics regression checks that an
+initial move away from the destination preserves the takeoff and real landing.
+
+Both attempts start from the unchanged ordinary checkpoint before 65 and use
+the same four-guide fixture, independent internet clients, 40 ms delay and
+20 ms jitter. Bounded audits verify both lower approaches, four Blue guides,
+two Red guides and Blue's original upper-shelf arrival:
+
+| Source | Evidence folder under `private/coop/` | Matching player/world/native states | Complete recovery rows |
+| --- | --- | ---: | ---: |
+| `ac2c02a` | `jlair1-route-59cb57cb436b433eb993c6d2bf78d2f8` | 1,430 | 88 |
+| `33885b1` | `jlair1-route-61f1328282064125bf782657a0619c59` | 1,285 | 79 |
+
+Each bounded proof ends before the subsequent failure, with both alive and no
+revival. The latest complete attempt also fails: Red now takes jumps toward
+the next shelf but falls and dies, while Blue remains safely parked at 87 health.
+The earlier endless run-up loop is absent in this attempt; the next ascent is
+still unreliable. Neither attempt passes paired point 65 or a full visit.
+
+Current validation: **919 active Rust tests** (three ignored), locked release,
+the existing **376 Python guards**, seven package checks and the 912-file source
+audit. The paired 26 native cases plus summary and the single-player component
+and combat-route outputs match their prior baselines; the separate cast-free
+point-54 failure is unchanged. No screenshots were inspected. Overall remains
+**50.1%**, with six of 39 visits retaining combined evidence.

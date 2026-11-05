@@ -623,14 +623,21 @@ fn through_first_landing(world: &World, start: &Player,
     mut steps: Vec<(Controls, Vec3)>) -> Vec<(Controls, Vec3)> {
     // A timed turn before takeoff can run past an edge before a guest's jump
     // arrives. Walk a supported grounded prefix with positional feedback,
-    // then plan the jump again from the actual settled body. A plan starting
-    // with a jump, or already airborne, still keeps its whole first landing.
+    // then plan the jump again from the actual settled body. Only stop after
+    // progress toward the route's endpoint: a backward run-up may exist to
+    // build takeoff velocity, and stopping it can replan the same loop forever.
+    // A plan starting with a jump, or airborne, keeps its whole first landing.
+    let destination=steps.last().map(|s|s.1);
     let mut approach=start.clone();
-    let mut supported_prefix=None;
+    let mut supported_prefix:Option<usize>=None;
     if start.grounded && !start.swimming && start.ledge.is_none() {
         'prefix: for (index,(input,_)) in steps.iter().enumerate() {
             if input.jump {
-                if let Some(count)=supported_prefix { steps.truncate(count); return steps; }
+                if let Some(count)=supported_prefix {
+                    if destination.is_some_and(|goal|steps[count-1].1.distance(goal)+24.<start.feet.distance(goal)) {
+                        steps.truncate(count); return steps;
+                    }
+                }
                 break;
             }
             for _ in 0..24 {
@@ -2025,6 +2032,31 @@ mod tests {
         }
         assert!(takeoff.grounded && takeoff.jumps==start.jumps+1);
     }
+    #[test]
+    fn remote_route_preserves_a_runup_that_temporarily_moves_away_from_its_goal() {
+        let world=World::fixture(&[(vec3(-400.,-100.,-40.),vec3(1000.,100.,0.))]);
+        let start=Player::spawn(&world,Vec3::Z*crate::movement::EYE_HEIGHT).unwrap();
+        let mut player=start.clone();let mut steps=Vec::new();
+        for index in 0..9 {
+            let input=Controls{wish:if index==0 {-Vec2::X} else {Vec2::X},
+                run:true,jump:index==2,..Default::default()};
+            for tick in 0..24 {player.tick(&world,Controls{jump:input.jump&&tick==0,..input});}
+            steps.push((input,player.feet));
+        }
+        let destination=steps.last().unwrap().1;
+        assert!(steps[1].1.distance(destination)>=start.feet.distance(destination),
+            "Fixture must build velocity while temporarily moving away from its destination");
+        assert!(crate::route::supported_footing(&world,steps[1].1));
+        let shortened=through_first_landing(&world,&start,steps);
+        assert!(shortened.len()>2 && shortened[2].0.jump,"Run-up was stopped before its takeoff");
+        let mut actual=start.clone();
+        for (input,_) in shortened {
+            for tick in 0..24 {actual.tick(&world,Controls{jump:input.jump&&tick==0,..input});}
+        }
+        assert!(actual.grounded && actual.jumps==start.jumps+1
+            && actual.feet.distance(destination)<start.feet.distance(destination));
+    }
+
     #[test]
     fn remote_takeoff_can_settle_on_an_ordinary_narrow_walkway() {
         let world=World::fixture(&[(vec3(-100.,-12.,-40.),vec3(600.,12.,0.))]);

@@ -11,8 +11,8 @@ lava death, the exact ten-second revival at 25 health, and a spectator camera
 following the survivor's actual walk. These automated internet tests do not
 complete another campaign visit. The automated driver now retains supported
 landing control on intermediate ledges. Both players have separately verified
-lower-shelf arrivals, but Red still intermittently misses the next jump and
-has not completed the final ascent to point 65. Reliable traversal from 65
+lower-shelf arrivals. Two later attempts pass Red's first shelf crossing,
+but fail on the next ascent; paired point 65 remains incomplete. Reliable traversal from 65
 onward, the remaining scenes and exit, team-wipe and reconnect coverage remain
 open. See the [recovery evidence](JLAIR1.md#ordinary-lava-revival-and-moving-spectator)
 and [current landing checks](JLAIR1.md#supported-landings-and-shelf-guidance).
@@ -31,6 +31,45 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | Scenes, transport and progression | 11.25 | 20 |
 | Full campaign verification | 3.08 | 20 |
 | **Total** | **50.08, rounded to 50.1** | **100** |
+
+## Implemented features and remaining work
+
+The percentage is a conservative, manually weighted readiness estimate, not
+the fraction of code written or the current position in the story. Burning
+Curiosity is visit 26 of 39, but the work consists of separate level and
+checkpoint tests. Earlier visits still have outstanding acceptance cases.
+
+The working features below have evidence in covered scenarios; they are not
+yet verified across every level and failure condition.
+
+| Area | Implemented and demonstrated | Remaining work |
+| --- | --- | --- |
+| One-PC setup | `coop` branch; independent game processes, profiles/saves and automated state/log checks | Finish reproducible campaign coverage and repeat it on the final build |
+| Host / Join | Main/ESC controls, public internet invite links, authenticated transport, cancellation and reconnect cases | Complete normal-play integration and remaining disconnect/rejoin cases during combat, rides, scenes and transitions |
+| Players and presentation | Blue/red Alice, separate input/cameras, body separation, replicated weapon effects | Broader contact/effect checks and reliable traversal through all swimming, leaves, ropes and moving supports |
+| Combat and resources | Nearest-visible targeting, individual damage, inventory and consumables in integrated levels | Remaining enemies/bosses and level-specific rewards, with both players as the target/collector |
+| Death and saves | Exact ten-second countdown, moving spectator camera, safe 25-health revival; shared checkpoint wipes and save/rejoin cases | Complete each visit's recovery, wipe, restore and reconnect matrix, including difficult geometry |
+| Scenes and machinery | First-arrival ownership, original single-Alice scenes, hidden partner and safe reunion; all-living boarding on integrated rides | Remaining level adapters, both scene owners, watched/skipped cases, transports and exits |
+| Regression checks | 919 active Rust tests; 376 Python guards; current Curiosity native/single-player baseline comparisons | Full campaign verification and required earlier contact-system repeats on the final build |
+
+Campaign status from `COOP_CAMPAIGN.md`:
+
+- **6 visits have combined verification evidence:** Dementia/opening village,
+  Pandemonium, Fortress of Doors (first visit), Beyond the Wall, Fortress of
+  Doors (return visit), and Skool Daze (return visit). The first five retain
+  historical build-specific passes and still require contact-system repeats.
+- **21 visits have partial evidence.** Some already have complete internet
+  traversals, including Wholly Morel Ground, Castling and About Face, but still
+  have outstanding reliability, recovery, reconnect or scene cases. Others
+  currently have components or checkpoint segments only.
+- **12 visits are marked Not run for level-specific co-op verification:**
+  Jabberwock's Lair, Majestic Maze, Airborne Terror, Mystifying Madness,
+  Water Logged, Labyrinthine Revenge, Machinations, Royal Rage, Battle Royale,
+  Ascension, Castle Keep and Heart of Darkness. Broad entrance checks cover
+  all 39 visits; they do not complete these twelve level checks.
+
+See the [full campaign matrix](COOP_CAMPAIGN.md). Future updates should separate
+working features, partial route milestones and completed verification visits.
 
 ## Evidence history
 
@@ -54,7 +93,7 @@ No additional campaign visit is counted as complete. Next is Burning Curiosity's
 full route with two independent internet clients, followed by recovery and
 reconnect checks. See [Burning Curiosity evidence](JLAIR1.md).
 
-Current validation: **917 active Rust tests** pass (three ignored), along with
+Current validation: **919 active Rust tests** pass (three ignored), along with
 the locked release, twenty traversal and five recovery guards for Curiosity
 (376 guards across the Python suite), seven package checks and
 the 912-file source worktree audit. Negative tests cover partial boarding,

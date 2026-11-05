@@ -36,8 +36,9 @@ No additional campaign visit is counted as complete. Next is Burning Curiosity's
 full route with two independent internet clients, followed by recovery and
 reconnect checks. See [Burning Curiosity evidence](JLAIR1.md).
 
-Current validation: **913 active Rust tests** pass (three ignored), along with
-the locked release, fifteen Python evidence guards, seven package checks and
+Current validation: **915 active Rust tests** pass (three ignored), along with
+the locked release, nineteen Curiosity evidence guards (370 guards across the
+Python suite), seven package checks and
 the 910-file source worktree audit. Negative tests cover partial boarding,
 floating bodies, marginal ledges, damaging-liquid navigation and stationary
 bodies that retain collision velocity, alongside valid sloped landings.
@@ -114,8 +115,29 @@ instead of the single-player fixture's sloping point 54. That point is not a
 game trigger. The original course file is retained and the changed crossing
 goal is recorded; this is no claim of landing at the old coordinate. Only
 normal controls are used, with native collision, resources and level behavior
-unchanged. Remaining route steps 55 onward, a fresh complete visit, recovery
-and reconnect coverage are still open. No screenshots were used.
+unchanged. The subsequent route evidence is recorded below. No screenshots
+were used.
+
+Post-platform evidence now covers **55-64 in separate segments**. A closed
+55-57 internet run passes six personal arrivals and 572 matching states with
+100/46.67 health and no new damage, death or revival. A later run has a verified
+58-63 prefix (12 arrivals, 1,326 matching states), then fails at 64. On source
+`0871d86`, a verified 64 prefix passes both arrivals and 255 matching states,
+then times out at 65. These bounded audits retain the parent failures.
+
+The diagnostic driver can finish a supported grounded approach before planning
+its jump; this is exercised by Blue at 64. Forward waiting now rejects fleeting
+fast landings. A grounded lava-planning failure can trigger a recorded ordinary
+jump or automatic climb back to recent safe footing. Other driver failures
+remain fatal, and a recovered planning error requires a verified escape receipt.
+
+Blue reaches 65 through an additional ordinary approach, but paired 65 remains
+failed: after a verified lava escape, the next jump falls into deep lava. A
+combined 55-64 repeat also fails at 60 while Red is swimming in lava; the
+current grounded escape action cannot recover that state. Continuous route
+reliability, 65 onward, a fresh full visit, recovery and reconnect remain open.
+The latest native components and single-player outputs still match baseline;
+no gameplay physics, resources or level progress were changed by these controls.
 Total remains **50.1%**; no extra completed visit is credited.
 
 Latest network milestone: a **fresh full About Face route passes** in two

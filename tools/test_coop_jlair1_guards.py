@@ -2,6 +2,7 @@
 import copy
 import unittest
 from types import SimpleNamespace
+from test_coop_jlair1 import forward_waiting_target, verify_recovered_planning_errors
 
 from test_coop_jlair1 import verify_arrival, verify_course, verify_combat_wait, waiting_target, escape_target, hot_approach_target, verify_jump_flight, verify_forward_approaches, verify_platform_wait, verify_platform_carry, verify_platform_climb, verify_bank_wait, PLATFORM_BANK, PLATFORM_PARK, CuriosityPair
 
@@ -197,6 +198,48 @@ class CuriosityEvidenceTests(unittest.TestCase):
         bad = copy.deepcopy(history); bad['host'][2]['players'][0]['climbs'] = 2
         with self.assertRaisesRegex(AssertionError, 'ordinary climb'):
             verify_platform_climb(entry, bad)
+
+
+    def test_forward_bay_rejects_a_fleeting_fast_landing(self):
+        row = dict(players=[dict(feet=[0,0,0], velocity=[0,0,0], grounded=True,
+                                immersion=dict(kind='Dry')), dict(feet=[-100,0,0])],
+                   driver=dict(clear=[True,True], neighbors=[[[48,0,0]],[]]))
+        self.assertEqual(forward_waiting_target(row,0,[0,0,0]), ([48,0,0],True))
+        for change in (dict(velocity=[266,41,0]), dict(grounded=False), dict(immersion=dict(kind='Lava'))):
+            bad = copy.deepcopy(row); bad['players'][0].update(change)
+            self.assertIsNone(forward_waiting_target(bad,0,[0,0,0]))
+
+    def test_only_grounded_liquid_planning_failure_can_attempt_escape(self):
+        pair = CuriosityPair.__new__(CuriosityPair)
+        report = dict(route_driver=dict(error='No route after 1 physics states'),
+            frame=dict(players=[dict(stats=dict(sanity=50),
+                player=dict(grounded=True,immersion=dict(kind='Lava')))]))
+        self.assertTrue(pair.recoverable_driver_error('host',report))
+        bad = copy.deepcopy(report); bad['route_driver']['error'] = 'Invalid command'
+        self.assertFalse(pair.recoverable_driver_error('host',bad))
+        for change in (dict(grounded=False), dict(immersion=dict(kind='Dry'))):
+            bad = copy.deepcopy(report); bad['frame']['players'][0]['player'].update(change)
+            self.assertFalse(pair.recoverable_driver_error('host',bad))
+        bad = copy.deepcopy(report); bad['frame']['players'][0]['stats']['sanity'] = 0
+        self.assertFalse(pair.recoverable_driver_error('host',bad))
+
+    def test_planning_error_cannot_pass_without_its_own_completed_escape(self):
+        history = dict(host=[dict(tick=10, driver=dict(error='No route after 1 physics states'))])
+        exits = [dict(role='host', before_tick=10, tick=80)]
+        verify_recovered_planning_errors(history, exits)
+        for invalid in ([], [dict(exits[0], role='guest')], [dict(exits[0], before_tick=500, tick=600)]):
+            with self.assertRaisesRegex(AssertionError, 'no verified escape'):
+                verify_recovered_planning_errors(history, invalid)
+
+    def test_forward_waiting_after_platform_cannot_cross_section_boundaries(self):
+        steps = [dict(pos=self.goal) for _ in range(78)]
+        entry = dict(step=55, role='host', navigation_start=1, selected_tick=20,
+                     navigation_command=5, navigation_goal=self.goal,
+                     passed_goals=[dict(self.receipt, step=55)])
+        verify_forward_approaches(entry, steps, self.history)
+        for step in (52, 53, 54, 76):
+            with self.assertRaisesRegex(AssertionError, 'navigation section'):
+                verify_forward_approaches(dict(entry, step=step, passed_goals=[]), steps, self.history)
 
 
 if __name__ == '__main__': unittest.main()

@@ -621,6 +621,28 @@ fn plan_stays_grounded(world: &World, start: &Player, steps: &[(Controls, Vec3)]
 }
 fn through_first_landing(world: &World, start: &Player,
     mut steps: Vec<(Controls, Vec3)>) -> Vec<(Controls, Vec3)> {
+    // A timed turn before takeoff can run past an edge before a guest's jump
+    // arrives. Walk a supported grounded prefix with positional feedback,
+    // then plan the jump again from the actual settled body. A plan starting
+    // with a jump, or already airborne, still keeps its whole first landing.
+    let mut approach=start.clone();
+    let mut supported_prefix=None;
+    if start.grounded && !start.swimming && start.ledge.is_none() {
+        'prefix: for (index,(input,_)) in steps.iter().enumerate() {
+            if input.jump {
+                if let Some(count)=supported_prefix { steps.truncate(count); return steps; }
+                break;
+            }
+            for _ in 0..24 {
+                approach.tick(world,*input);
+                if !approach.grounded || approach.swimming || approach.ledge.is_some() { break 'prefix; }
+            }
+            if approach.feet.distance(start.feet)>24. && crate::route::supported_footing(world,approach.feet)
+                && (approach.immersion.level==0 || approach.immersion.kind.damage_per_second()==0.) {
+                supported_prefix=Some(index+1);
+            }
+        }
+    }
     let mut player=start.clone();
     let mut airborne=false;
     for (index,(input,_)) in steps.iter().enumerate() {
@@ -1945,6 +1967,53 @@ mod tests {
         assert_eq!(landed.feet,shortened.last().unwrap().1);
         let walking=vec![(Controls{wish:Vec2::X,..Default::default()},Vec3::ZERO);8];
         assert_eq!(through_first_landing(&world,&start,walking).len(),8);
+    }
+    #[test]
+    fn remote_route_walks_its_grounded_turn_before_planning_takeoff() {
+        let world=World::fixture(&[(vec3(-300.,-300.,-40.),vec3(600.,600.,0.))]);
+        let start=Player::spawn(&world,Vec3::Z*crate::movement::EYE_HEIGHT).unwrap();
+        let mut player=start.clone();let mut steps=Vec::new();
+        for index in 0..9 {
+            let input=Controls{wish:if index==0 {Vec2::Y} else {Vec2::X},
+                run:true,jump:index==2,..Default::default()};
+            for tick in 0..24 {player.tick(&world,Controls{jump:input.jump && tick==0,..input});}
+            steps.push((input,player.feet));
+        }
+        assert_eq!(player.jumps,start.jumps+1);
+        let approach=through_first_landing(&world,&start,steps.clone());
+        assert_eq!(approach.len(),2);
+        assert!(plan_stays_grounded(&world,&start,&approach));
+        assert!(super::super::placement::supported(&world,approach.last().unwrap().1));
+        assert_eq!(approach.last().unwrap().1,steps[1].1);
+        assert!(approach.iter().all(|s|!s.0.jump));
+        // Starting the remaining sequence at its actual takeoff must retain
+        // the jump and an ordinary landing, rather than return an empty plan.
+        let mut takeoff=start.clone();
+        for (input,_) in &approach {for _ in 0..24 {takeoff.tick(&world,*input);}}
+        let flight=through_first_landing(&world,&takeoff,steps[2..].to_vec());
+        assert!(flight[0].0.jump && flight.len()>1);
+        for (input,_) in &flight {
+            for tick in 0..24 {takeoff.tick(&world,Controls{jump:input.jump && tick==0,..*input});}
+        }
+        assert!(takeoff.grounded && takeoff.jumps==start.jumps+1);
+    }
+    #[test]
+    fn remote_takeoff_can_settle_on_an_ordinary_narrow_walkway() {
+        let world=World::fixture(&[(vec3(-100.,-12.,-40.),vec3(600.,12.,0.))]);
+        let start=Player::spawn(&world,Vec3::Z*crate::movement::EYE_HEIGHT).unwrap();
+        let mut player=start.clone();let mut steps=Vec::new();
+        for index in 0..9 {
+            let input=Controls{wish:Vec2::X,run:true,jump:index==2,..Default::default()};
+            for tick in 0..24 {player.tick(&world,Controls{jump:input.jump && tick==0,..input});}
+            steps.push((input,player.feet));
+        }
+        // Respawning needs a full body footprint, but ordinary movement can
+        // use this authored narrow floor with the route's eight-unit margin.
+        assert!(!super::super::placement::supported(&world,steps[1].1));
+        assert!(crate::route::supported_footing(&world,steps[1].1));
+        let approach=through_first_landing(&world,&start,steps);
+        assert_eq!(approach.len(),2);
+        assert!(plan_stays_grounded(&world,&start,&approach));
     }
     #[test]
     fn landing_settling_requires_a_planned_goal() {

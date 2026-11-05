@@ -1203,7 +1203,7 @@ impl Route {
     }
 }
 
-fn supported_footing(world:&World,feet:Vec3)->bool {
+pub(crate) fn supported_footing(world:&World,feet:Vec3)->bool {
     // Box contact stands above the centre of an inclined floor. Flat rays from
     // that contact height can miss the downhill side of a perfectly supported
     // landing. Keep the existing eight-unit margin, measured on the floor plane.

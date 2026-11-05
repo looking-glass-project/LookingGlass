@@ -114,7 +114,7 @@ class Pair:
             self.reports[role] = report
             frame, stage = report['frame'], report['combat']['stage']
             driver = report['route_driver']
-            if not driver or driver['error']:
+            if not driver or driver['error'] and not self.recoverable_driver_error(role, report):
                 # Keep terminal failures small. Full reports (including enemy
                 # pools and network hashes) remain in the private evidence.
                 details = {k: driver.get(k) for k in ('command', 'phase', 'error',
@@ -167,6 +167,9 @@ class Pair:
                        for role in self.commands):
                     self.captures.add(scene)
         time.sleep(.05)
+
+    def recoverable_driver_error(self, role, report):
+        return False
 
     def validate_report(self, role, report):
         assert all(b['stats']['sanity'] > 0 for b in report['frame']['players']), f'{role}: player died'

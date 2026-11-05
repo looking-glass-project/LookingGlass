@@ -344,7 +344,67 @@ point substituted for the bank destination. A navigation regression guard
 also verifies that ordinary steps still move both players and park the first;
 the combined 50-54 run exercises that flow in the real clients.
 
-These are resumed segments, not a fresh full visit. Steps 55 onward, Caterpillar,
-the final climb and exit, recovery/reconnect coverage and a complete repeat
-remain open. No additional campaign visit or percentage is credited; overall
+These platform checks are resumed segments, not a fresh full visit. The
+post-platform continuation and its remaining failures are recorded below. No additional campaign visit or percentage is credited; overall
 progress remains 50.1%. No images were inspected.
+
+
+## Post-platform traversal and remaining failures
+
+The runner accepts navigation through 76, with separate forward-waiting sections
+0-52 and 55-76. A waiting search cannot silently cross the shared platform or
+continue into the unverified Caterpillar section. Every completed point still
+requires an acknowledged grounded arrival for each player.
+
+A closed **55-57** segment on `9f1acd0` passes six personal arrivals, ordinary
+parking and combat, and **572 matching player/world/native states**. Both retain
+100/46.67 health without new damage, death or revival. Its normal checkpoint
+before 58 is preserved unchanged.
+
+A later `a18e044` run completes **58-63**, then fails at 64. A bounded audit using
+its frozen fixture, history and complete recovery-trace boundary verifies only
+those six points: **12 personal arrivals, eight parking walks, one forward wait,
+one combat wait and 1,326 matching states**. The pair ends that prefix at
+100/76.67 health after ordinary damage and healing, with no deaths or revivals.
+The complete attempt remains failed. A separate exact-checkpoint repeat of 58
+on `0871d86` passes two arrivals and 270 matching states; it does not establish
+that the earlier intermittent jump failure is eliminated.
+
+Source `0871d86` lets the opt-in test driver finish an ordinary supported walking
+approach before replanning a jump from the settled body. It uses the existing
+route footing check, including its eight-unit margin; narrow walking surfaces
+need not satisfy a full respawn footprint. Jump-first and airborne plans retain
+their first landing. Native gameplay and the network protocol are unchanged.
+A **64** prefix on this source passes both arrivals, ordinary parking and
+**255 matching states**, retaining 100/76.67 health. Blue actually uses the new
+grounded approach before jumping. The next point, 65, times out while planning;
+the ordinary checkpoint before 65 is retained. This is bounded evidence, not a
+successful complete run.
+
+The 65 fixture now approaches the upper shelf via the original lower point 66,
+as the single-player route does on its way around the eastern side. This extra
+approach does not earn paired 65 or 66 credit. Blue reaches the shelf, but has
+not yet waited safely for Red. A forward-waiting handoff previously selected a
+brief grounded observation at about 270 units/second; it now requires a dry,
+clear and settled body before interrupting navigation.
+
+Grounded falls into damaging liquid can now request an ordinary jump to a
+recently observed safe pad. The verifier distinguishes an actual jump from an
+automatic bank climb and requires its native counters, action observations and
+clear dry arrival. Only a grounded liquid-related no-route error is recoverable;
+all other driver errors retain the shared runner's default failure. Each accepted
+error must have a matching verified escape. One actual climb escape is verified
+at 65, followed by another failed jump into deep lava. There is no paired 65
+pass. A subsequent combined 55-64 repeat fails at 60 with Red swimming in lava,
+where the grounded escape action does not apply. Its completed 55-57 prefix has
+606 matching states, but the longer run is explicitly failed.
+
+Final checks: **915 active Rust tests** (three ignored), locked release,
+**19 Curiosity guards / 370 Python guards**, seven package checks and the
+910-file source worktree audit pass. The 26 paired native cases plus summary,
+seven single-player components and both full native route records match the
+previous baseline. The known cast-free single-player 54 failure is unchanged.
+No screenshots were inspected. Separate evidence now extends through 64;
+continuous reliability, 65 onward, both scene owners, final exit, recovery and
+reconnect coverage remain open. Overall completion remains **50.1%**, with no
+additional completed campaign visit.

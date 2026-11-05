@@ -25,6 +25,14 @@ PLATFORM_LEFT = [-7048, 698, 1632]
 PLATFORM_RIGHT = [-7000, 698, 1632]
 PLATFORM_BANK = [-7208, 768, 1632.03125]
 PLATFORM_PARK = [-7256, 768, 1632.03125]
+NAV_SECTIONS = ((0, 52), (55, 76))
+
+
+def forward_limit(step):
+    for first, last in NAV_SECTIONS:
+        if first <= step < last:
+            return last
+    raise AssertionError('No forward waiting beyond this navigation section')
 
 
 def waiting_target(candidates, at, incoming, goal, visited):
@@ -45,6 +53,15 @@ def escape_target(rows, slot, before):
         if 48 <= distance(p[:2], at[:2]) <= 160 and p[2] <= at[2] + 80
         and distance(p[:2], other[:2]) >= 48]
     return min(candidates, key=lambda item: (item[1][2] < at[2] + 20, distance(item[1], at), -item[0])) if candidates else None
+
+
+def forward_waiting_target(row, slot, goal):
+    body = row['players'][slot]
+    if (not body['grounded'] or body['immersion']['kind'] != 'Dry'
+            or distance(body['velocity'], [0,0,0]) >= 20 or not row['driver']['clear'][slot]):
+        return None
+    return waiting_target(row['driver']['neighbors'][slot], body['feet'],
+                          row['players'][1-slot]['feet'], goal, [])
 
 
 def hot_approach_target(row, slot, goal):
@@ -120,7 +137,7 @@ def verify_jump_flight(before, flight, arrival, slot, command):
 def verify_forward_approaches(entry, steps, history):
     passed = entry.get('passed_goals', [])
     final = entry['step'] + len(passed) + 1
-    assert final <= 52 and entry['navigation_goal'] == steps[final]['pos'], 'Forward waiting skipped an original approach'
+    assert final <= forward_limit(entry['step']) and entry['navigation_goal'] == steps[final]['pos'], 'Forward waiting skipped an original approach'
     tick, command = entry['navigation_start'], -1
     for offset, receipt in enumerate(passed, 1):
         assert receipt['role'] == entry['role'] and receipt['step'] == entry['step'], 'Wrong forward approach owner'
@@ -179,6 +196,16 @@ def verify_bank_wait(entry, history):
             assert distance(body['feet'], PLATFORM_PARK) < 8, 'Waiting player left the bank'
 
 
+def verify_recovered_planning_errors(history, exits):
+    for role, rows in history.items():
+        for row in rows:
+            error = row['driver'].get('error')
+            if error is None: continue
+            assert error.startswith('No route after '), 'Unrecoverable driver failure'
+            assert any(e['role'] == role and abs(e['before_tick'] - row['tick']) <= 240
+                       and row['tick'] < e['tick'] for e in exits), 'Planning error has no verified escape'
+
+
 class CuriosityPair(Pair):
     map_name, entry, next_map = 'jlair1', 'jlair1_start1', 'jlair2'
     evidence_prefix, capture_scenes = 'jlair1-route-', False
@@ -191,7 +218,11 @@ class CuriosityPair(Pair):
         raw = (ROOT / 'src/levels/jlair1/route_steps.json').read_bytes()
         self.steps = json.loads(raw)
         assert len(self.steps) == 108 and all(s['mode'] == 'nav' for s in self.steps[:53]), 'Review changed original course'
-        self.approach_goals = {3: self.steps[2]['pos']}
+        assert all(s['mode'] == 'nav' for s in self.steps[55:77]), 'Review changed post-platform course'
+        # The upper shelf is approached around its eastern side. The original
+        # single-player path passes this lower point on the way up; both
+        # players still earn separate ordered arrivals at 65 and then 66.
+        self.approach_goals = {3: self.steps[2]['pos'], 65: self.steps[66]['pos']}
         (self.folder / 'course.json').write_bytes(raw)
         self.evidence.update(course_sha256=hashlib.sha256(raw).hexdigest(),
             executable_sha256=hashlib.sha256(args.exe.read_bytes()).hexdigest(),
@@ -230,6 +261,13 @@ class CuriosityPair(Pair):
 
     def body(self, role):
         return self.reports[role]['frame']['players'][ROLES.index(role)]
+
+    def recoverable_driver_error(self, role, report):
+        driver = report['route_driver']
+        body = report['frame']['players'][ROLES.index(role)]
+        return (isinstance(driver['error'], str) and driver['error'].startswith('No route after ')
+            and body['stats']['sanity'] > 0 and body['player']['grounded']
+            and body['player']['immersion']['kind'] in ('Lava', 'Slime'))
 
     def validate_report(self, role, report):
         previous = self.last_valid.get(role)
@@ -292,9 +330,16 @@ class CuriosityPair(Pair):
     def move(self, role, goal, navigate=False, radius=8):
         if navigate and goal == self.steps[38]['pos']:
             return self.hot_crossing(role, goal)
-        self.set(role, goal, navigate=navigate, run=True, radius=radius)
-        self.until(lambda: self.reached(role) and self.body(role)['player']['grounded'])
-        return self.receipt(role, goal)
+        for _ in range(4):
+            self.set(role, goal, navigate=navigate, run=True, radius=radius)
+            self.until(lambda: self.body(role)['player']['grounded'] and (self.reached(role)
+                or self.body(role)['player']['immersion']['kind'] in ('Lava', 'Slime')))
+            if self.reached(role):
+                return self.receipt(role, goal)
+            # A live jump can miss a ledge. Use a recently observed safe pad
+            # and an ordinary jump before planning again in damaging liquid.
+            self.escape_hazard(role)
+        raise AssertionError('Movement repeatedly fell into damaging liquid')
 
     def hot_crossing(self, role, goal):
         slot = ROLES.index(role); choice = None
@@ -334,42 +379,60 @@ class CuriosityPair(Pair):
         tick, goal = selected
         count = before['players'][slot]['jumps']
         self.set(role, goal, run=True, jump=True, radius=2)
-        self.until(lambda: self.body(role)['player']['jumps'] == count + 1 and not self.body(role)['player']['grounded'], 15)
-        flight = self.history[role][-1]['tick']
-        self.until(lambda: self.reached(role) and self.body(role)['player']['grounded'], 20)
-        entry = self.receipt(role, goal)
-        entry['flight_tick'] = flight
+        command = self.commands[role]['id']
+        self.until(lambda: (self.body(role)['player']['jumps'] == count + 1 and not self.body(role)['player']['grounded'])
+                   or self.body(role)['player'].get('climb') is not None, 15)
+        if self.body(role)['player'].get('climb') is not None:
+            climb = dict(role=role, before=before['tick'], active=self.history[role][-1]['tick'], command=command)
+            self.set(role, attack=False)
+            self.until(lambda: self.body(role)['player'].get('climb') is None and self.body(role)['player']['grounded'], 15)
+            climb['after'] = self.history[role][-1]['tick']
+            verify_platform_climb(climb, self.history)
+            assert self.body(role)['player']['immersion']['kind'] == 'Dry', 'Hazard climb did not reach dry ground'
+            entry = self.move(role, goal, radius=2)
+            entry['climb'] = climb
+        else:
+            flight = self.history[role][-1]['tick']
+            self.until(lambda: self.reached(role) and self.body(role)['player']['grounded'], 20)
+            entry = self.receipt(role, goal)
+            entry['flight_tick'] = flight
         entry.update(before_tick=before['tick'], selected_tick=tick)
         assert self.body(role)['player']['immersion']['kind'] == 'Dry', 'Hazard exit did not reach dry ground'
         self.evidence['hazard_exits'].append(entry)
         print('PASS ordinary hazard exit', self.step, role, flush=True)
 
     def forward_bay(self, role, goal):
-        assert self.step < 52, 'No tested forward waiting footing before the shared platform'
+        last = forward_limit(self.step)
         start = self.history[role][-1]['tick']
         passed = []
-        for next_step in range(self.step + 1, 53):
+        for next_step in range(self.step + 1, last + 1):
             next_goal = self.steps[next_step]['pos']
-            self.set(role, next_goal, navigate=True, run=True)
-            command = self.commands[role]['id']; choice = None
-            def found():
-                nonlocal choice
-                row = self.history[role][-1]; slot = ROLES.index(role)
-                if row['driver']['command'] != command or not row['players'][slot]['grounded']: return False
-                selected = waiting_target(row['driver']['neighbors'][slot], row['players'][slot]['feet'],
-                    row['players'][1-slot]['feet'], goal, [])
-                if selected is not None and selected[1]:
-                    choice = row['tick'], selected[0]
-                    return True
-                return self.reached(role)
-            self.until(found)
+            for _ in range(4):
+                self.set(role, next_goal, navigate=True, run=True)
+                command = self.commands[role]['id']; choice = None
+                def found():
+                    nonlocal choice
+                    row = self.history[role][-1]; slot = ROLES.index(role)
+                    if row['driver']['command'] != command or not row['players'][slot]['grounded']: return False
+                    if row['players'][slot]['immersion']['kind'] in ('Lava', 'Slime'): return True
+                    selected = forward_waiting_target(row, slot, goal)
+                    if selected is not None and selected[1]:
+                        choice = row['tick'], selected[0]
+                        return True
+                    return self.reached(role)
+                self.until(found)
+                if self.body(role)['player']['immersion']['kind'] in ('Lava', 'Slime'):
+                    self.escape_hazard(role)
+                    continue
+                break
+            else: raise AssertionError('Forward waiting repeatedly entered damaging liquid')
             if choice is not None: break
             # A narrow slope can end at another narrow slope. Walk every
             # original intermediate point before searching farther ahead.
             # These are separate approaches, not completed paired waypoints.
             passed.append(self.receipt(role, next_goal))
             assert self.body(role)['player']['immersion']['kind'] == 'Dry', 'Forward approach cannot wait in damaging liquid'
-        else: raise AssertionError('No observed waiting bay before the shared platform')
+        else: raise AssertionError('No observed waiting bay within this navigation section')
         tick, park = choice
         entry = self.move(role, park, radius=2)
         entry.update(selected_tick=tick, navigation_start=start, navigation_command=command,
@@ -590,8 +653,7 @@ class CuriosityPair(Pair):
             assert waiting_target(start['driver']['neighbors'][slot], start['players'][slot]['feet'],
                 start['players'][1-slot]['feet'], self.steps[entry['step']]['pos'], visited) is None, 'Forward wait bypassed an available bay'
             assert selected['driver']['command'] == entry['navigation_command'] and start['tick'] < selected['tick'], 'Forward approach unobserved'
-            assert waiting_target(selected['driver']['neighbors'][slot], selected['players'][slot]['feet'],
-                selected['players'][1-slot]['feet'], self.steps[entry['step']]['pos'], []) == (entry['goal'], True), 'Unobserved forward bay'
+            assert forward_waiting_target(selected, slot, self.steps[entry['step']]['pos']) == (entry['goal'], True), 'Unobserved or unsettled forward bay'
             verify_arrival(entry, self.history)
         for entry in self.evidence['hazard_exits']:
             role = entry['role']; slot = ROLES.index(role)
@@ -601,8 +663,14 @@ class CuriosityPair(Pair):
             verify_arrival(entry, self.history)
             after = next(r for r in self.history[role] if r['tick'] == entry['tick'])
             assert after['players'][slot]['immersion']['kind'] == 'Dry'
-            flight = next(r for r in self.history[role] if r['tick'] == entry['flight_tick'])
-            verify_jump_flight(before, flight, after, slot, entry['command'])
+            if 'climb' in entry:
+                climb = entry['climb']
+                assert climb['role'] == role and climb['before'] == entry['before_tick'] and climb['after'] <= entry['tick']
+                verify_platform_climb(climb, self.history)
+            else:
+                flight = next(r for r in self.history[role] if r['tick'] == entry['flight_tick'])
+                verify_jump_flight(before, flight, after, slot, entry['command'])
+        verify_recovered_planning_errors(self.history, self.evidence['hazard_exits'])
         for entry in self.evidence['hazard_jumps']:
             role = entry['role']; slot = ROLES.index(role); goal = self.steps[38]['pos']
             assert entry['arrival']['goal'] == goal
@@ -675,7 +743,7 @@ def main():
     parser.add_argument('--delay-ms', type=int, default=40)
     parser.add_argument('--jitter-ms', type=int, default=20)
     args = parser.parse_args()
-    if not 0 <= args.start_step <= args.last_step <= 54: parser.error('This approach/platform segment supports steps 0..54')
+    if not 0 <= args.start_step <= args.last_step <= 76: parser.error('This approach/platform segment supports steps 0..76')
     if (args.start_step > 0) != (args.checkpoint is not None): parser.error('A resumed segment requires its unchanged checkpoint and positive start step')
     if not all(0 <= v <= 500 for v in (args.delay_ms, args.jitter_ms)): parser.error('Delay/jitter must be 0..500 ms')
     pair = CuriosityPair(args)

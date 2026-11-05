@@ -146,8 +146,9 @@ remain separate from the 39-visit campaign acceptance matrix.
   supported and are carried with it. First-frame player/world/enemy hashes agree.
 - Consolidation on `c5cb7fc` now passes both save families, fresh-process
   resume/rejoin, host loss, backup and team-wipe restoration, plus the normal
-  public menu and failure/cancel/retry flows. The remaining group is the network,
-  scene, lift and presentation repeat. See the fixed-build checkpoint below.
+  public menu and failure/cancel/retry flows, plus player contact/ambient effects.
+  The next network case fails invite DNS before gameplay; the remaining network,
+  scene and lift repeats are still open. See the fixed-build checkpoint below.
   External DNS/provisioning availability remains a limitation despite verified
   error/cancel/retry handling. Finish with a consolidated core run on one frozen
   build before returning to campaign traversal.
@@ -165,7 +166,7 @@ in the evidence below.
 | Host/Join lifecycle | Public main/ESC flow, fresh invites, invalid/expired links, DNS/HTTP failure, Cancel, retry, exact solo return | Public service availability remains an external limitation |
 | Rejoining | Idle gameplay, either player's ground/underwater/rope/moving-platform countdown, either theatre owner in introduction/dialogue, rotating lift, outbound/return loading barriers | Consolidated repeat; underwater proof uses the Blue-led route and does not close the known trap-repeatability gap |
 | Combat/death | Shared targets, individual resources, exact countdown, moving spectator camera, 25-health reunion and shared wipe, representative moving-platform revival/carry | Consolidated repeat, then level-specific enemies and recovery matrices |
-| Presentation | Both Alice models, contact separation and replicated ambient/weapon effects in focused tests | Repeat the focused baseline with the final core build; no new audio verification in this pass |
+| Presentation | Both Alice models, contact separation and replicated ambient/weapon effects in focused tests; contact/ambient baseline repeats on `c5cb7fc` | Broader campaign effects and audio; no new audio verification in this pass |
 | Consolidation | Automated native, menu and network fixtures retain build identities and private evidence | Run the core set on one frozen build after the remaining checks/fixes |
 
 ## Fixed-build core checkpoint, 5 November 2026
@@ -205,9 +206,24 @@ Existing `c5cb7fc` storage-error, menu save-eligibility, underwater, rope and
 fulcrum passes retain their own fixture identities; they need no duplicate run
 just to share a report. Their build/source identities were audited at consolidation
 start. The later menu input checks refine automation without changing save or
-recovery assertions. Network/cutscene/lift/presentation repeats are still pending;
-external invite-service availability remains a limitation. This checkpoint adds
-no campaign visit or percentage point: overall completion stays **55.3%**.
+recovery assertions.
+
+The network group `regression-suite-a0a95a8d4a564e028bbabd17f3ae1959` is **failed**,
+not a completed core pass. Its first case, `presence-test-4233e0afbace44678f2fb6482c989e1a`,
+passes contact separation, stationary-partner stability, both visible Alice
+models and ambient particle/effect rendering on both clients (55.91 s). The next
+case, `host-stall-test-e61fa43063ac4a15a80af365fcbd6187`, fails after 45.39 s because
+the guest cannot resolve the new public invite address. It never reaches gameplay
+or suspends the host. The remaining eight selected cases were not run, and both
+lift orders remain separate work. The provider failure has not been rerun away.
+
+Hosting currently waits for tunnel registration plus a 12-second grace period;
+Join has bounded DNS retries. Host setup does not yet positively verify its
+public address resolves before publishing the invite. That is the next concrete
+readiness investigation; extending a fixed delay alone would not establish
+service availability. All owned clients are closed and Anode is released.
+This checkpoint adds no campaign visit or percentage point: overall completion
+stays **55.3%**, with core consolidation incomplete.
 
 ## Moving-platform countdown recovery, 5 November 2026
 

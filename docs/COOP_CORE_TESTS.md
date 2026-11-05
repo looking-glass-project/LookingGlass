@@ -39,6 +39,13 @@ delay; their effective values are recorded separately.
 | `rope` | Both countdown reconnects and rope-adjacent revivals |
 | `fulcrum` | Both countdown reconnects, moving-platform revivals and passive carry |
 
+The swimming fixture performs its shared wipe and entrance rejoin before the
+individual deaths. It waits for both swimmers to have fresh air from normal
+gameplay before stopping their inputs; different air reserves after individual
+revivals can otherwise cause alternating deaths without a team wipe. Later
+countdown checks require the known restored checkpoint generation and still
+reject any unexpected wipe. No game state is edited to arrange these cases.
+
 Without `--only`, all thirteen cases are selected. The full selection requires
 `--rope-checkpoint` and `--fulcrum-checkpoint` pointing to unchanged ordinary
 gameplay checkpoints captured by the corresponding route fixtures. The saves

@@ -88,7 +88,7 @@ def recovery_report(history, role, initial, first_victim):
     return {'respawns': list(respawns.values()), 'checkpoint_tick': wipe}
 
 
-def verify_countdown_rejoin(before, after, victim, old_pid):
+def verify_countdown_rejoin(before, after, victim, old_pid, *, expected_generation=0):
     """A fresh guest must inherit the running life cycle, not create a new body."""
     from test_coop_village import verify_rejoin_stats
     assert after['pid'] != old_pid, 'Guest process did not restart'
@@ -96,7 +96,7 @@ def verify_countdown_rejoin(before, after, victim, old_pid):
     old, new = before['frame'], after['frame']
     elapsed = new['tick'] - old['tick']
     assert elapsed >= 0, 'Rejoin moved the clock backwards'
-    assert new['checkpoint_generation'] == old['checkpoint_generation'] == 0, 'Rejoin silently wiped'
+    assert new['checkpoint_generation'] == old['checkpoint_generation'] == expected_generation, 'Rejoin silently wiped'
     life = lambda frame: frame['lives']['states'][victim]
     assert isinstance(life(old), dict) and 'Spectating' in life(old)
     assert isinstance(life(new), dict) and 'Spectating' in life(new), 'Guest did not rejoin during countdown'

@@ -2,13 +2,14 @@
 from test_coop_play import verify_countdown_rejoin
 
 
-def verify_swim_rejoin(before, held, after, victim, old_pid):
+def verify_swim_rejoin(before, held, after, victim, old_pid, *, expected_generation=0):
     assert not before['playing'] and not held['playing'], 'Host never waited for its missing partner'
     assert held['pid'] == before['pid'] and held['build'] == before['build']
     assert held['visit'] == before['visit']
     assert held['frame'] == before['frame'] and held['combat'] == before['combat'], 'Disconnected host advanced underwater state'
     assert after['playing'], 'Replacement guest never entered gameplay'
-    result = verify_countdown_rejoin(before, after, victim, old_pid)
+    result = verify_countdown_rejoin(before, after, victim, old_pid,
+                                    expected_generation=expected_generation)
     elapsed = after['frame']['tick'] - before['frame']['tick']
     assert elapsed <= 120, 'First rejoined observation is too late to verify swimming state'
     for old, new in zip(before['frame']['players'], after['frame']['players']):

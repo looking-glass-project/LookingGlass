@@ -14,6 +14,22 @@ from test_coop_play import ROOT, distance, read
 from test_coop_utemple import TemplePair
 
 
+def wipe_air_ready(report):
+    """Both swimmers must refill naturally before attempting a simultaneous wipe.
+
+    A just-revived player has fresh air while their partner may be almost out.
+    Stopping both at that point can produce alternating deaths forever: each
+    revives before the other drowns. No body or breath state is changed here.
+    """
+    return report['playing'] and all(
+        body['stats']['sanity'] > 0 and body['player']['swimming']
+        and body['player']['immersion']['level'] == 3
+        and body['player']['breath']['shell']
+        and body['player']['breath']['hits'] == 0
+        and 0 <= body['player']['breath']['submerged'] <= 1
+        for body in report['frame']['players'])
+
+
 class TempleRecovery(TemplePair):
     evidence_prefix = 'temple-recovery-'
 
@@ -116,6 +132,16 @@ class TempleRecovery(TemplePair):
             assert body['stats']['turtle_air'] == prior['stats']['turtle_air']
 
     def wipe(self, saved):
+        # Both existing follow commands remain active until the authored bubble
+        # trail gives them comparable air. Do not reset path searches or edit
+        # health/breath to manufacture a team wipe.
+        self.until(lambda: all(wipe_air_ready(r) for r in self.reports.values()), 60)
+        prepared = copy.deepcopy(self.reports)
+        (self.folder / 'wipe-prepared.json').write_text(json.dumps(prepared))
+        self.evidence['wipe_preparation'] = {role: dict(tick=r['frame']['tick'],
+            air_used=[b['player']['breath']['submerged'] for b in r['frame']['players']],
+            health=[b['stats']['sanity'] for b in r['frame']['players']])
+            for role, r in prepared.items()}
         self.allowed_deaths = {0, 1}
         self.wiping = True
         for role in self.commands:
@@ -163,10 +189,16 @@ class TempleRecovery(TemplePair):
         for role in self.commands:
             self.set(role, follow=True)
         self.until(lambda: self.reports['host']['combat']['stage']['world']['levels']['utemple']['node'] >= 3)
-        for victim in ('guest', 'host') if self.args.first == 'blue' else ('host', 'guest'):
-            self.drown_and_respawn(victim)
+        # Exercise the shared wipe before individual revivals introduce very
+        # different air reserves. The restored checkpoint then supplies both
+        # ordinary players for the separate spectator/rejoin/respawn cases.
         self.wipe(saved)
         self.rejoin_guest()
+        for role in self.commands:
+            self.set(role, follow=True)
+        self.until(lambda: self.reports['host']['combat']['stage']['world']['levels']['utemple']['node'] >= 3)
+        for victim in ('guest', 'host') if self.args.first == 'blue' else ('host', 'guest'):
+            self.drown_and_respawn(victim)
         self.verify_network_states()
         self.verify_network_states('world_sha256', 'matching_world_states')
         self.verify_network_states('native_sha256', 'matching_native_residents')

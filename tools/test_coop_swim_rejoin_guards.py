@@ -6,7 +6,7 @@ from unittest.mock import patch
 from coop_swim_rejoin import verify_swim_rejoin, verify_first_frame
 from test_coop_countdown_guards import reports
 from test_coop_utemple import TemplePair
-from test_coop_utemple_recovery import TempleRecovery
+from test_coop_utemple_recovery import TempleRecovery, wipe_air_ready
 
 
 def swimming(victim=1):
@@ -25,6 +25,46 @@ def swimming(victim=1):
 
 
 class SwimRejoinGuards(unittest.TestCase):
+    def test_rejoin_after_known_wipe_still_rejects_an_unexpected_generation(self):
+        before, held, after = swimming()
+        for report in (before, held, after):
+            report['frame']['checkpoint_generation'] = 1
+        verify_swim_rejoin(before, held, after, 1, 2, expected_generation=1)
+        with self.assertRaisesRegex(AssertionError, 'silently wiped'):
+            verify_swim_rejoin(before, held, after, 1, 2)
+        after['frame']['checkpoint_generation'] = 2
+        with self.assertRaisesRegex(AssertionError, 'silently wiped'):
+            verify_swim_rejoin(before, held, after, 1, 2, expected_generation=1)
+
+    def test_wipe_waits_for_both_air_supplies_instead_of_alternating_revivals(self):
+        _, _, report = swimming()
+        for body in report['frame']['players']:
+            body['stats']['sanity'] = 25
+            body['player']['breath'].update(submerged=.1, hits=0, next_hurt=0)
+        self.assertTrue(wipe_air_ready(report))
+        for index in (0, 1):
+            stale = copy.deepcopy(report)
+            # Captured failure: one fresh revival and a partner with over
+            # fourteen seconds already spent underwater never died together.
+            stale['frame']['players'][index]['player']['breath']['submerged'] = 14.15
+            self.assertFalse(wipe_air_ready(stale))
+
+    def test_wipe_preparation_rejects_dead_dry_or_stale_clients(self):
+        for fault in ('dead', 'dry', 'surface', 'shell', 'damage', 'waiting'):
+            with self.subTest(fault=fault):
+                _, _, report = swimming()
+                for body in report['frame']['players']:
+                    body['stats']['sanity'] = 25
+                    body['player']['breath'].update(submerged=.1, hits=0)
+                body = report['frame']['players'][0]
+                if fault == 'dead': body['stats']['sanity'] = 0
+                elif fault == 'dry': body['player']['swimming'] = False
+                elif fault == 'surface': body['player']['immersion']['level'] = 2
+                elif fault == 'shell': body['player']['breath']['shell'] = False
+                elif fault == 'damage': body['player']['breath']['hits'] = 1
+                elif fault == 'waiting': report['playing'] = False
+                self.assertFalse(wipe_air_ready(report))
+
     def test_repeated_tick_keeps_matching_camera_interpolation_inputs(self):
         pair = TempleRecovery.__new__(TempleRecovery)
         first = dict(player_feet=[[0, 0, 0], [64, 0, 0]])

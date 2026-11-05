@@ -1,7 +1,7 @@
-"""Restart the guest during both underwater death countdowns, then verify revival/wipe.
+"""Verify a shared wipe, then guest restarts during both underwater death countdowns.
 
 Run in Anode. The existing temple recovery fixture supplies ordinary swimming,
-real drowning, camera/countdown assertions and a final saved-checkpoint wipe.
+real drowning, camera/countdown assertions and an initial saved-checkpoint wipe.
 Only the owned guest process is terminated; no live state or resources are edited.
 """
 import argparse
@@ -63,7 +63,8 @@ class CountdownTemple(TempleRecovery):
         after = self.live('guest', lambda r: r['playing'], 60, 'fresh underwater guest')
         record['after'] = after
         path.write_text(json.dumps(record))
-        proof = verify_swim_rejoin(before, held, after, index, old_pid)
+        proof = verify_swim_rejoin(before, held, after, index, old_pid,
+                                  expected_generation=self.generation)
         key = after['frame']['epoch'], after['frame']['tick']
         matching_host = self.live('host', lambda r: any((s['epoch'], s['tick']) == key
             for s in r['route_driver']['network_states']), 5, 'exact first-frame host evidence')

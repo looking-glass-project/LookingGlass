@@ -49,7 +49,18 @@ liquid avoidance and fixes blocked-walk detection based on actual displacement.
 A resumed 39-42 internet run now passes eight arrivals and 1,335 matching states,
 ending at 100/56.67 health without deaths or revivals. All 910 active Rust tests
 and unchanged native/single-player baseline comparisons pass. A normal checkpoint
-before 43 is retained; the full route remains open.
+before 43 is retained. Source `5c4a693` then separates successive timed jumps
+with actual settled landings. Ordered forward approaches find waiting bays
+beyond narrow slopes. Bounded 43-45 evidence adds six arrivals and 869 matching
+states at 100/71.67 health without revival. The longer run fails at 46 after
+planning during an active ledge pull; the normal checkpoint before 46 is retained.
+Source `c7576ca` waits for that pull to finish. A separate 46-49 internet run then
+passes eight arrivals and 1,017 matching states at 100/46.67 health without revival.
+The normal checkpoint before 50 is retained. All 913 active Rust tests and the
+unchanged native/single-player baseline comparisons pass. A separate 50-52 run
+also passes six arrivals and 699 matching states with unchanged health, retaining
+the normal checkpoint before the platform at 53. Separate evidence covers
+approach points 0-52; a fresh uninterrupted repeat and the full route remain open.
 See [Burning Curiosity](JLAIR1.md).
 
 About Face now has a native paired adapter for combat, personal rewards,

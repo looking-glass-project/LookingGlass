@@ -36,8 +36,8 @@ No additional campaign visit is counted as complete. Next is Burning Curiosity's
 full route with two independent internet clients, followed by recovery and
 reconnect checks. See [Burning Curiosity evidence](JLAIR1.md).
 
-Current validation: **910 active Rust tests** pass (three ignored), along with
-the locked release, eight Python evidence guards, seven package checks and
+Current validation: **913 active Rust tests** pass (three ignored), along with
+the locked release, nine Python evidence guards, seven package checks and
 the 910-file source worktree audit. Negative tests cover partial boarding,
 floating bodies, marginal ledges, damaging-liquid navigation and stationary
 bodies that retain collision velocity, alongside valid sloped landings.
@@ -78,8 +78,23 @@ adds optional liquid avoidance and corrects blocked-walk detection to use actual
 position progress instead of retained collision velocity. A resumed **39-42**
 internet replay now passes eight personal arrivals and **1,335 matching states**,
 ending at 100/56.67 health with no deaths or revivals. The normal checkpoint
-before 43 is retained. Next: finish the approach and test the shared platform
-crossing; full-route reliability, recovery and reconnect coverage remain open.
+before 43 is retained. A subsequent remote three-jump sequence fails at 43.
+Source `5c4a693` stops timed sequences after the first planned landing and settles
+the actual body before planning onward. The runner also follows successive
+original approach points when a narrow slope has no nearby waiting bay, with
+separate personal receipts for every intermediate point. Bounded **43-45**
+evidence then passes six arrivals and **869 matching states**, ending at
+100/71.67 health without deaths or revivals. That longer attempt fails at 46
+when a new plan starts during an unfinished ledge pull. Its normal checkpoint
+before 46 is retained. Source `c7576ca` then waits for active ledge pulls to
+finish before starting another route search. A separate **46-49** internet run
+passes eight personal arrivals and **1,017 matching states** at 100/46.67 health,
+with no deaths or revivals. A separate resumed **50-52** segment passes six
+arrivals and **699 matching states** with no further damage, death or revival.
+The normal checkpoint before 53 retains both players beside the raised platform.
+Separate evidence covers approach points 0-52; a fresh continuous repeat is
+still required. Next: actual paired platform boarding and crossing, then the
+remaining route; recovery and reconnect coverage remain open.
 Total remains **50.1%**; no extra completed visit is credited.
 
 Latest network milestone: a **fresh full About Face route passes** in two

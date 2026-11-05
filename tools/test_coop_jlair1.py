@@ -110,6 +110,20 @@ def verify_jump_flight(before, flight, arrival, slot, command):
     assert flight['players'][slot]['jumps'] == arrival['players'][slot]['jumps'] == before['players'][slot]['jumps'] + 1, 'Missing ordinary jump'
 
 
+def verify_forward_approaches(entry, steps, history):
+    passed = entry.get('passed_goals', [])
+    final = entry['step'] + len(passed) + 1
+    assert final <= 52 and entry['navigation_goal'] == steps[final]['pos'], 'Forward waiting skipped an original approach'
+    tick, command = entry['navigation_start'], -1
+    for offset, receipt in enumerate(passed, 1):
+        assert receipt['role'] == entry['role'] and receipt['step'] == entry['step'], 'Wrong forward approach owner'
+        assert receipt['goal'] == steps[entry['step'] + offset]['pos'], 'Forward waiting skipped an original approach'
+        assert tick < receipt['tick'] < entry['selected_tick'], 'Forward approaches were not walked in order'
+        assert command < receipt['command'] < entry['navigation_command'], 'Forward approach command was not observed in order'
+        verify_arrival(receipt, history)
+        tick, command = receipt['tick'], receipt['command']
+
+
 class CuriosityPair(Pair):
     map_name, entry, next_map = 'jlair1', 'jlair1_start1', 'jlair2'
     evidence_prefix, capture_scenes = 'jlair1-route-', False
@@ -154,6 +168,7 @@ class CuriosityPair(Pair):
             prefer_cards=False, prefer_ice=True, avoid_switches=True, recovery_trace=role == 'host')
         self.commands[role]['avoid_liquid_damage'] = bool(self.commands[role]['navigate']
             and self.commands[role]['goal'] != self.steps[38]['pos'])
+        self.commands[role]['settle_landings'] = self.commands[role]['navigate']
 
     def body(self, role):
         return self.reports[role]['frame']['players'][ROLES.index(role)]
@@ -273,25 +288,34 @@ class CuriosityPair(Pair):
 
     def forward_bay(self, role, goal):
         assert self.step < 52, 'No tested forward waiting footing before the shared platform'
-        next_goal = self.steps[self.step + 1]['pos']
         start = self.history[role][-1]['tick']
-        self.set(role, next_goal, navigate=True, run=True)
-        command = self.commands[role]['id']; choice = None
-        def found():
-            nonlocal choice
-            row = self.history[role][-1]; slot = ROLES.index(role)
-            if row['driver']['command'] != command or not row['players'][slot]['grounded']: return False
-            selected = waiting_target(row['driver']['neighbors'][slot], row['players'][slot]['feet'],
-                row['players'][1-slot]['feet'], goal, [])
-            if selected is not None and selected[1]:
-                choice = row['tick'], selected[0]
-                return True
-            assert not self.reached(role), 'Next route point has no observed safe waiting bay'
-            return False
-        self.until(found)
+        passed = []
+        for next_step in range(self.step + 1, 53):
+            next_goal = self.steps[next_step]['pos']
+            self.set(role, next_goal, navigate=True, run=True)
+            command = self.commands[role]['id']; choice = None
+            def found():
+                nonlocal choice
+                row = self.history[role][-1]; slot = ROLES.index(role)
+                if row['driver']['command'] != command or not row['players'][slot]['grounded']: return False
+                selected = waiting_target(row['driver']['neighbors'][slot], row['players'][slot]['feet'],
+                    row['players'][1-slot]['feet'], goal, [])
+                if selected is not None and selected[1]:
+                    choice = row['tick'], selected[0]
+                    return True
+                return self.reached(role)
+            self.until(found)
+            if choice is not None: break
+            # A narrow slope can end at another narrow slope. Walk every
+            # original intermediate point before searching farther ahead.
+            # These are separate approaches, not completed paired waypoints.
+            passed.append(self.receipt(role, next_goal))
+            assert self.body(role)['player']['immersion']['kind'] == 'Dry', 'Forward approach cannot wait in damaging liquid'
+        else: raise AssertionError('No observed waiting bay before the shared platform')
         tick, park = choice
         entry = self.move(role, park, radius=2)
-        entry.update(selected_tick=tick, navigation_start=start, navigation_command=command, navigation_goal=next_goal)
+        entry.update(selected_tick=tick, navigation_start=start, navigation_command=command,
+                     navigation_goal=next_goal, passed_goals=passed)
         self.evidence['forward_waiting'].append(entry)
         return park
 
@@ -390,7 +414,7 @@ class CuriosityPair(Pair):
             assert entry['goal'] == self.approach_goals[entry['step']]
             verify_arrival(entry, self.history)
         for entry in self.evidence['forward_waiting']:
-            assert entry['navigation_goal'] == self.steps[entry['step'] + 1]['pos']
+            verify_forward_approaches(entry, self.steps, self.history)
             selected = next(r for r in self.history[entry['role']] if r['epoch'] == 1 and r['tick'] == entry['selected_tick'])
             slot = ROLES.index(entry['role'])
             start = next(r for r in self.history[entry['role']] if r['epoch'] == 1 and r['tick'] == entry['navigation_start'])

@@ -231,16 +231,66 @@ finish at **100/56.67 health**, with no deaths or revivals in the closed 79-row
 host trace. The ordinary checkpoint before 43 is retained. This is a passing
 segment, not a fresh full-route pass or another completed campaign visit.
 
+The next attempt fails at 43: the remote timed plan strings three jumps
+together, and the actual intermediate landings drift enough to start a later
+jump from the wrong ledge. Source `5c4a693` adds opt-in landing stops to the
+diagnostic route driver. It retains the original inputs through the first
+planned landing, then settles the actual body and searches again before the
+next jump. Walking-only paths and the original single-player policy are unchanged.
+All 912 active Rust tests pass (three ignored), the locked release passes, and
+the native paired and single-player baseline outputs remain identical.
+
+Red then personally reaches 43 at unchanged health, but the run stops when the
+next narrow slope has no waiting bay. The runner now follows successive original
+approach points until it observes a supported bay with room. Each intermediate
+point needs its own acknowledged, ordered personal arrival; none earns paired
+waypoint credit early. Nine Python guards include skipped-intermediate-point,
+wrong-owner and unacknowledged-approach rejection.
+
+The next run has independently verified **43-45** evidence: six personal
+arrivals, three parking walks, two forward waits and **869 matching
+player/world/native states**, with no deaths or revivals in the closed 52-row
+trace. Both finish that bounded prefix at **100/71.67 health**. The unchanged
+normal checkpoint before 46 is retained. The parent attempt fails at 46 when
+the planner snapshots Red during a still-active ledge pull; zero reported
+velocity does not mean that the animation has stopped moving the body. This
+prefix does not pass its failed parent attempt or complete the campaign visit.
+
+Source `c7576ca` waits for an active ledge pull to finish before starting a
+new search. It sends neutral input while the original animation completes;
+a stationary hang can still plan the input that begins its pull. The regression
+uses the recorded zero-velocity pull and rejects a stale grounded flag too.
+All **913 active Rust tests** pass (three ignored), the locked release passes,
+and the 26 native paired cases plus summary and single-player baseline outputs
+remain identical, including the known cast-free step-54 failure.
+
+A separate resumed **46-49** internet run passes on that source: eight personal
+arrivals, seven parking walks, one combat wait and **1,017 matching
+player/world/native states**. Both finish at **100/46.67 health**, with no deaths
+or revivals in the closed 62-row trace. Ordinary combat damage at 49 is retained.
+The unchanged normal checkpoint before 50 is saved. This segment does not
+establish a fresh full route or add a completed campaign visit.
+
+The following resumed **50-52** segment also passes on `c7576ca`: six personal
+arrivals, two parking walks, one forward wait and **699 matching
+player/world/native states**. Both retain **100/46.67 health** without new damage,
+deaths or revivals; the closed host trace has 43 rows. A normal checkpoint before
+53 retains both players on the approach, with the shared platform still raised
+and stationary. The separate segment evidence now covers approach points 0-52,
+but it is not one fresh continuous run on the latest build.
+
 `tools/test_coop_jlair1.py` automates approach steps 0-52, retains exact ordinary
 checkpoint receipts and freezes its source dependencies in private evidence.
 The fresh passing run covers only 0-3; later segments have separate evidence above.
-Climb reliability from 32, the remaining approach, shared sinking platform,
-subsequent climb, Caterpillar and onward transition are still open.
+The approach still needs a fresh continuous repeat, including climb reliability
+from 32. The shared sinking platform, subsequent climb, Caterpillar and onward
+transition are still open.
 An explicit `--checkpoint` plus `--start-step` tests a separate resumed segment;
-it never claims a fresh full route. Eight Python guards reject missing or
+it never claims a fresh full route. Nine Python guards reject missing or
 duplicated personal arrivals, unacknowledged movement, respawn substitutes,
 invalid combat waits, revisited waiting bays, stale hazard exits, unsupported
-hot takeoffs and jumps without an acknowledged airborne body.
+hot takeoffs, jumps without an acknowledged airborne body and skipped forward
+approach points.
 
 ```powershell
 python tools/test_coop_jlair1.py --exe <frozen-executable> --build <full-source-id> --data <local-base-directory> --last-step 3 --save-before 0 3

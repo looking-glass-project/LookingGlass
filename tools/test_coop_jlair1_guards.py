@@ -2,7 +2,7 @@
 import copy
 import unittest
 
-from test_coop_jlair1 import verify_arrival, verify_course, verify_combat_wait, waiting_target, escape_target, hot_approach_target, verify_jump_flight
+from test_coop_jlair1 import verify_arrival, verify_course, verify_combat_wait, waiting_target, escape_target, hot_approach_target, verify_jump_flight, verify_forward_approaches
 
 
 class CuriosityEvidenceTests(unittest.TestCase):
@@ -93,6 +93,20 @@ class CuriosityEvidenceTests(unittest.TestCase):
             verify_jump_flight(before,row(20,2,False),after,0,3)
         with self.assertRaisesRegex(AssertionError,'acknowledged'):
             verify_jump_flight(before,flight,after,0,4)
+
+    def test_forward_waiting_requires_each_intermediate_personal_arrival(self):
+        steps = [dict(pos=[0,0,0]), dict(pos=self.goal), dict(pos=[90,100,30])]
+        entry = dict(step=0, role='host', navigation_start=1, selected_tick=20,
+                     navigation_command=5, navigation_goal=steps[2]['pos'], passed_goals=[self.receipt])
+        verify_forward_approaches(entry, steps, self.history)
+        with self.assertRaisesRegex(AssertionError, 'skipped an original'):
+            verify_forward_approaches(dict(entry, passed_goals=[]), steps, self.history)
+        bad = dict(entry, passed_goals=[dict(self.receipt, role='guest')])
+        with self.assertRaisesRegex(AssertionError, 'owner'):
+            verify_forward_approaches(bad, steps, self.history)
+        self.row['driver']['command'] = 3
+        with self.assertRaisesRegex(AssertionError, 'Unacknowledged'):
+            verify_forward_approaches(entry, steps, self.history)
 
 
 if __name__ == '__main__': unittest.main()

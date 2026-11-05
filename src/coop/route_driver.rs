@@ -113,6 +113,10 @@ struct Command {
     /// crossing commands can still visit an authored hot waypoint.
     #[serde(default)]
     avoid_liquid_damage: bool,
+    /// End a timed route after its first landing, then settle and plan again
+    /// from the actual body before attempting another jump.
+    #[serde(default)]
+    settle_landings: bool,
     attack: bool,
     /// Opt-in route tactic. Sends normal weapon/attack inputs and spends the
     /// player's actual Will; old fixtures retain their Blade-only behavior.
@@ -201,6 +205,8 @@ impl Command {
         ensure!(self.goal.is_none() || self.marker.is_none(), "Choose a route goal or a marker");
         ensure!(!self.avoid_liquid_damage || self.navigate && self.goal.is_some(),
             "Avoiding liquid damage requires a planned goal");
+        ensure!(!self.settle_landings || self.navigate && self.goal.is_some(),
+            "Settling landings requires a planned goal");
         ensure!(self.surface.is_none_or(|id| id < 100_000 && self.goal.is_some()
             && !self.navigate && !self.horizontal && !self.swim && !self.jump && !self.hold_goal
             && self.rope.is_none() && self.runup.is_none() && self.use_aim.is_none()
@@ -612,6 +618,26 @@ fn plan_stays_grounded(world: &World, start: &Player, steps: &[(Controls, Vec3)]
     }
     true
 }
+fn through_first_landing(world: &World, start: &Player,
+    mut steps: Vec<(Controls, Vec3)>) -> Vec<(Controls, Vec3)> {
+    let mut player=start.clone();
+    let mut airborne=false;
+    for (index,(input,_)) in steps.iter().enumerate() {
+        for tick in 0..24 {
+            player.tick(world,Controls{jump:input.jump && tick==0,..*input});
+            airborne |= !player.grounded;
+        }
+        if airborne && player.grounded && !player.swimming && player.ledge.is_none() {
+            // Remote input delay can shift one landing enough that a later
+            // takeoff starts from the wrong ledge. Retain this full input
+            // segment, then let the normal settled-body gate choose a fresh
+            // route. No intermediate arrival or body position is invented.
+            steps.truncate(index+1);
+            break;
+        }
+    }
+    steps
+}
 fn straight_grounded_sections(start: Vec3, steps: Vec<(Controls, Vec3)>) -> Vec<(Controls, Vec3)> {
     let mut result = Vec::new();
     let mut anchor = start;
@@ -708,6 +734,13 @@ pub(crate) fn carried_goal_control(player: &Player, goal: Vec3, carry: Vec3, lea
     (wish,settled)
 }
 fn planning_hold_control(anchor: &mut Option<Vec3>, player: &Player, carry: Option<Vec3>, lead: f32) -> (Vec2,bool) {
+    // A pull-up advances the body through its animation even with zero
+    // velocity. Starting a worker before it finishes snapshots an unstable
+    // ledge pose and can reject every route just before the real landing.
+    if player.ledge.as_ref().is_some_and(|hang|hang.pulling) {
+        *anchor=None;
+        return (Vec2::ZERO,false);
+    }
     if let Some(carry)=carry {
         // A route worker snapshots the current world and starting body. Hold
         // that world position while it runs so passive carry cannot invalidate
@@ -1796,6 +1829,7 @@ impl Driver {
                     let margin = if local == PlayerId::Red { 12 } else { 0 };
                     let ledge_handoff=command.ledge_handoff;
                     let avoid_liquid_damage=command.avoid_liquid_damage;
+                    let settle_landings=command.settle_landings;
                     std::thread::spawn(move || {
                         let search=|walking,tolerance| {
                             if avoid_liquid_damage {Route::plan_without_liquid_damage(&world,&player,goal,tolerance,margin,walking)}
@@ -1807,6 +1841,7 @@ impl Driver {
                         .or_else(|_|search(false,22.)
                             .or_else(|_|search(false,40.))
                             .map(|steps| {
+                                let steps=if settle_landings {through_first_landing(&world,&player,steps)} else {steps};
                                 let (steps,ledge_goal)=if ledge_handoff {stop_at_ledge(&world,&player,goal,steps)} else {(steps,None)};
                                 PlannedRoute {walking:plan_stays_grounded(&world,&player,&steps),steps,ledge_goal}
                             }));
@@ -1863,6 +1898,61 @@ impl Driver {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn planning_waits_for_an_active_ledge_pull_even_at_zero_velocity() {
+        let mut player=Player::new(vec3(-6182.801,-785.8058,1552.1563));
+        player.grounded=false;player.velocity=Vec3::ZERO;
+        player.ledge=Some(serde_json::from_value(serde_json::json!({
+            "start":[-6161.5894,-798.5328,1491.1563],"top":1552.03125,
+            "forward":[-0.8574929,0.51449573],"elapsed":2.1,"pulling":true,
+            "side":0.,"forward_held":false
+        })).unwrap());
+        let mut anchor=Some(player.feet);
+        assert_eq!(planning_hold_control(&mut anchor,&player,None,0.),(Vec2::ZERO,false));
+        assert!(anchor.is_none());
+        player.grounded=true; // A stale contact flag cannot finish the pull.
+        assert!(!planning_hold_control(&mut anchor,&player,None,0.).1);
+        player.grounded=false;player.ledge.as_mut().unwrap().pulling=false;
+        assert!(planning_hold_control(&mut anchor,&player,None,0.).1,"A stationary hang can still plan its pull input");
+        player.ledge=None;player.grounded=true;
+        assert!(planning_hold_control(&mut anchor,&player,None,0.).1,"A completed pull can plan onward");
+    }
+    #[test]
+    fn remote_route_finishes_its_first_landing_before_planning_later_jumps() {
+        let world=World::fixture(&[(vec3(-100.,-100.,-40.),vec3(1600.,100.,0.))]);
+        let start=Player::spawn(&world,Vec3::Z*crate::movement::EYE_HEIGHT).unwrap();
+        let mut player=start.clone();let mut steps=Vec::new();
+        for index in 0..13 {
+            let input=Controls{wish:Vec2::X,run:true,jump:index==0 || index==6,..Default::default()};
+            for tick in 0..24 {player.tick(&world,Controls{jump:input.jump && tick==0,..input});}
+            steps.push((input,player.feet));
+        }
+        assert_eq!(player.jumps,start.jumps+2);
+        let original_len=steps.len();
+        let shortened=through_first_landing(&world,&start,steps.clone());
+        assert!(shortened.len()<7 && shortened.len()<original_len);
+        let mut landed=start.clone();
+        for (index,(input,expected)) in shortened.iter().enumerate() {
+            assert_eq!(*expected,steps[index].1);
+            assert_eq!(input.wish,steps[index].0.wish);
+            assert_eq!(input.jump,steps[index].0.jump);
+            for tick in 0..24 {landed.tick(&world,Controls{jump:input.jump && tick==0,..*input});}
+        }
+        assert!(landed.grounded && landed.jumps==start.jumps+1);
+        assert_eq!(landed.feet,shortened.last().unwrap().1);
+        let walking=vec![(Controls{wish:Vec2::X,..Default::default()},Vec3::ZERO);8];
+        assert_eq!(through_first_landing(&world,&start,walking).len(),8);
+    }
+    #[test]
+    fn landing_settling_requires_a_planned_goal() {
+        let mut value=serde_json::json!({"id":1,"heartbeat":1,"epoch":1,"goal":[0,200,160],
+            "navigate":true,"settle_landings":true,"attack":false,"capture":false,"finish":false});
+        assert!(serde_json::from_value::<Command>(value.clone()).unwrap().validate().is_ok());
+        value["goal"]=serde_json::Value::Null;
+        assert!(serde_json::from_value::<Command>(value.clone()).unwrap().validate().is_err());
+        value["goal"]=serde_json::json!([0,200,160]);value["navigate"]=false.into();
+        assert!(serde_json::from_value::<Command>(value).unwrap().validate().is_err());
+    }
     #[test]
     fn obstructed_walk_uses_displacement_even_when_collision_retains_velocity() {
         let world=World::fixture(&[(vec3(-100.,-100.,-40.),vec3(100.,100.,0.))]);

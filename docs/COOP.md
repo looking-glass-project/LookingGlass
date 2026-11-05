@@ -1437,6 +1437,28 @@ a successful save updates the wipe point, and saving after a damaged primary
 preserves the last good backup. These are deterministic storage fault cases;
 they do not simulate loss of electrical power or exhaust the disk.
 
+## Native menu acceptance
+
+Run `tools/test_coop_menu.py` inside Anode with `--exe`, `--data`, and
+`--seat-session <session ID from seat_status>`. It creates isolated profiles,
+loads a solo slot through the original menu, and uses native mouse/keyboard
+input for Host this game, Join, Save checkpoint, Leave, and Continue co-op.
+It also checks batched typing, malformed links, cancelled joins, expired links,
+independent inventories, a fresh second invite, and resuming the suspended solo
+game. Exact before/after hashes verify that co-op leaves solo state intact.
+
+The opt-in `LOOKING_GLASS_UI_PROBE=1` records the actual button rectangles and
+state receipts in the selected profile. It accepts no UI commands. Invite input
+is represented by its length and hash, never the token text. The runner reads
+clipboard text only after its own Copy invite action changes the clipboard.
+Window ownership and the requested Anode session are checked before input.
+
+Internet is the default and a provider failure fails the run. `--local` sets the
+explicit `LOOKING_GLASS_UI_PROBE_LOCAL=1` isolation mode; its receipts say
+`internet: false`, and it cannot count as public internet acceptance. Ordinary
+menu hosting remains online. This test verifies input and state routing without
+image inspection; it does not replace visual layout or campaign verification.
+
 ## Shared co-op checkpoints
 
 The host owns a separate `coop-checkpoint.json` in its settings/profile folder.

@@ -162,21 +162,15 @@ impl Tunnel {
     }
 
     pub fn poll(&mut self) -> Result<Option<&str>> {
-        ensure!(
-            self.child.try_wait()?.is_none(),
-            "Internet hosting stopped. Create a new invite and try again."
-        );
+        if self.child.try_wait()?.is_some() {
+            anyhow::bail!("{}", stopped_message(&read_log(&self.log).unwrap_or_default()));
+        }
         if self.origin.is_none() || self.registered_at.is_none() {
             ensure!(
                 self.started.elapsed() < Duration::from_secs(45),
                 "Internet hosting timed out. Check your connection and try again."
             );
-            let mut log = File::open(&self.log)?;
-            let len = log.metadata()?.len();
-            log.seek(SeekFrom::Start(len.saturating_sub(128 * 1024)))?;
-            let mut bytes = Vec::new();
-            log.take(128 * 1024).read_to_end(&mut bytes)?;
-            let text = String::from_utf8_lossy(&bytes);
+            let text = read_log(&self.log)?;
             self.origin = parse_origin(&text);
             if text.contains("Registered tunnel connection") {
                 self.registered_at.get_or_insert_with(Instant::now);
@@ -189,6 +183,23 @@ impl Tunnel {
             .registered_at
             .is_some_and(|at| at.elapsed() >= Duration::from_secs(12));
         Ok(if ready { self.origin.as_deref() } else { None })
+    }
+}
+
+fn read_log(path: &Path) -> Result<String> {
+    let mut log = File::open(path)?;
+    let len = log.metadata()?.len();
+    log.seek(SeekFrom::Start(len.saturating_sub(128 * 1024)))?;
+    let mut bytes = Vec::new();
+    log.take(128 * 1024).read_to_end(&mut bytes)?;
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
+}
+
+fn stopped_message(log: &str) -> &'static str {
+    if log.lines().any(|line| line.trim() == "quick tunnel provisioning failed with status 429") {
+        "The invite service is limiting new sessions. Please try hosting again later."
+    } else {
+        "Internet hosting stopped. Create a new invite and try again."
     }
 }
 impl Drop for Tunnel {
@@ -215,6 +226,14 @@ fn parse_origin(log: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn rate_limited_provisioning_reports_retry_later_without_exposing_helper_logs() {
+        let rate_limited = stopped_message("setup\nquick tunnel provisioning failed with status 429\n");
+        assert!(rate_limited.contains("try hosting again later"));
+        for log in ["", "quick tunnel provisioning failed with status 500", "port 429 registered"] {
+            assert_ne!(stopped_message(log), rate_limited);
+        }
+    }
     #[test]
     fn helper_log_only_accepts_a_complete_expected_https_hostname() {
         assert_eq!(

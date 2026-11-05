@@ -70,7 +70,7 @@ pub enum Action {
     NewGame(Difficulty),
     Quit,
 }
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 enum Click {
     Page(Page),
     Back,
@@ -1506,6 +1506,10 @@ impl Menu {
             let buttons = self.buttons(page);
             self.selected = self.selected.min(buttons.len().saturating_sub(1));
             self.draw(page, &buttons);
+            if crate::ui_probe::enabled() {
+                crate::ui_probe::screen(&format!("menu-{page:?}"), &buttons.iter()
+                    .map(|b| (format!("{:?}", b.click), b.rect)).collect::<Vec<_>>(), &self.message);
+            }
             if focused {
                 self.ui.cursor();
             }

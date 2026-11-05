@@ -47,6 +47,11 @@ impl LinkInput {
         }
         self.selected = false;
     }
+    fn queued(&mut self, newest_first: Vec<char>) {
+        // Macroquad 0.4.14 pops its character queue from the end. Preserve
+        // input order when Windows delivers several characters in one frame.
+        for c in newest_first.into_iter().rev() { self.character(c); }
+    }
 }
 
 /// Hosts or resumes co-op while retaining the caller's suspended single-player
@@ -97,15 +102,18 @@ pub async fn open(assets: &mut Assets, options: &Options, backdrop: &mut Menu, v
             {
                 link.backspace();
             }
-            while let Some(c) = get_char_pressed() {
-                if !control {
-                    link.character(c);
-                }
-            }
+            let queued = std::iter::from_fn(get_char_pressed).collect();
+            if !control { link.queued(queued); }
         } else {
             while get_char_pressed().is_some() {}
         }
         backdrop.backdrop();
+        if crate::ui_probe::enabled() { crate::ui_probe::note("coop-message", serde_json::json!(message)); }
+        if joining && crate::ui_probe::enabled() {
+            use sha2::{Digest, Sha256};
+            crate::ui_probe::note("invite-input", serde_json::json!({"length":link.text.len(),
+                "sha256":format!("{:x}",Sha256::digest(link.text.as_bytes()))}));
+        }
         panel(&ui, if joining { "Join co-op" } else if hosting { "Host co-op" } else { "Co-op" });
         let mut launch = None;
         if joining {
@@ -253,7 +261,10 @@ pub async fn open(assets: &mut Assets, options: &Options, backdrop: &mut Menu, v
         if let Some(launch) = launch {
             input.suppress();
             next_frame().await;
-            message = match super::preview::run(assets, options, &launch).await {
+            let result = super::preview::run(assets, options, &launch).await;
+            if crate::ui_probe::enabled() { crate::ui_probe::note("coop-result", serde_json::json!({
+                "time":get_time(),"host":launch.host,"error":result.as_ref().err().map(|e|e.to_string())})); }
+            message = match result {
                 Ok(()) => "Co-op closed. You can host or join again.".into(),
                 Err(error) => {
                     eprintln!("Co-op session ended: {error}");
@@ -293,8 +304,11 @@ fn host_choices(current: bool, saved: bool) -> Vec<HostChoice> {
 }
 
 fn host_launch(visit: &Visit, resume: bool) -> Launch {
+    // Explicit isolated UI fixture only; ordinary menu hosting stays online.
+    let local_probe = crate::ui_probe::enabled()
+        && std::env::var("LOOKING_GLASS_UI_PROBE_LOCAL").as_deref() == Ok("1");
     Launch {
-        host: true, internet: true, invite_file: None, invite: None, start: Some(visit.clone()),
+        host: true, internet: !local_probe, invite_file: None, invite: None, start: Some(visit.clone()),
         drive: false, death_check: None, scene_check: None, travel_check: false, resume,
         single_player: None, checkpoint_check: false, route_driver: None, conditions: Default::default(),
     }
@@ -340,6 +354,11 @@ pub fn buttons(
     labels: &[&str],
     y: f32,
 ) -> Option<usize> {
+    if crate::ui_probe::enabled() {
+        crate::ui_probe::screen("coop-menu", &labels.iter().enumerate().map(|(i,label)|
+            ((*label).to_owned(), Rect::new(220., y + i as f32 * 46., 200., 36.)))
+            .collect::<Vec<_>>(), "");
+    }
     let focused = crate::look::window_focused();
     let canvas = Canvas::new(screen_width(), screen_height());
     let pointer = canvas.pointer(Vec2::from(mouse_position()));
@@ -375,6 +394,16 @@ pub fn capture() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn batched_characters_keep_event_order_and_replace_selected_invite_once() {
+        let mut field = LinkInput::default();
+        field.replace("old invite");
+        field.selected = true;
+        field.queued("https://host.test/#token".chars().rev().collect());
+        assert_eq!(field.text, "https://host.test/#token");
+        field.queued(vec!['x']);
+        assert_eq!(field.text, "https://host.test/#tokenx");
+    }
     #[test]
     fn host_choices_keep_current_game_and_saved_coop_distinct() {
         assert_eq!(host_choices(true, true), vec![HostChoice::Current, HostChoice::Saved, HostChoice::Chapter, HostChoice::Back]);

@@ -798,6 +798,8 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                         },
                         "Save checkpoint" => {
                             let result = checkpoint_store.save(&visit, roster.as_mut().unwrap(), &mut arena, &scene.world, &campaign);
+                            if crate::ui_probe::enabled() { crate::ui_probe::note("checkpoint-save", serde_json::json!({
+                                "tick":roster.as_ref().unwrap().tick,"error":result.as_ref().err().map(|e|e.to_string())})); }
                             if result.is_ok() { checkpoint_pending = false; }
                             checkpoint_message = Some((now, match result {
                                 Ok(()) => "Co-op checkpoint saved for both players.".into(),
@@ -809,6 +811,8 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                 }
                 if focused { ui.cursor(); }
                 super::menu::capture();
+            } else {
+                crate::ui_probe::screen("coop-play", &[], "");
             }
             if focused && is_key_pressed(KeyCode::F12) {
                 crate::viewer::save_capture(&crate::preferences::path("coop-screenshot.png"))?;

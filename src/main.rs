@@ -109,6 +109,7 @@ mod targeting;
 mod texture;
 mod traversal;
 mod ui;
+mod ui_probe;
 mod viewer;
 mod frame_profile;
 mod viewmodel;

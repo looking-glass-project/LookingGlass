@@ -879,7 +879,9 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
         hud.announce("A saved game could not be read. F9 retries quick load.");
     }
     retry.remember(game_snapshot!());
+    if crate::ui_probe::enabled() { crate::ui_probe::solo("solo-initial", &game_snapshot!()); }
     loop {
+        crate::ui_probe::screen(if paused { "solo-paused" } else { "solo-play" }, &[], "");
         let mut frame_profile = crate::frame_profile::span("frame_cpu");
         input.update(&preferences, window_focused());
         let overlay_before = menu || inventory_menu || console.open || paused;
@@ -925,7 +927,9 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
                         combat_preview: false,
                     };
                     let single_player = (saves_enabled && !post_game).then(|| game_snapshot!());
+                    if let Some(game) = &single_player { crate::ui_probe::solo("solo-before-coop", game); }
                     crate::coop::menu::open(&mut assets, &options, &mut escape_menu, visit, single_player).await;
+                    if crate::ui_probe::enabled() { crate::ui_probe::solo("solo-after-coop", &game_snapshot!()); }
                     if is_quit_requested() { break; }
                     escape_menu.open(crate::menu::Page::Main, &preferences, audio.settings);
                 }

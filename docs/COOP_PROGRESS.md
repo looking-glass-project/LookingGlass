@@ -1,6 +1,6 @@
 # Co-op progress
 
-Updated 5 November 2026. Branch: `coop`. **Estimated overall completion: 51.1%.**
+Updated 5 November 2026. Branch: `coop`. **Estimated overall completion: 51.3%.**
 The older 42% reports are historical. This percentage measures delivered and
 verified behavior against the full co-op scope; it is not a running test's progress.
 
@@ -14,8 +14,8 @@ The fresh pre-change checkpoint run on 5 November passed staged shared travel,
 guest reconnect, complete primary-save restoration and team-wipe restoration.
 The backup attempt restored the world before simulation but its guest could
 not resolve the new public invite hostname; that attempt is a failed internet
-check, not a backup/network pass. Solo-save continuation now passes native
-conversion and all three paired internet phases on the final executable. The added foundation point credits
+check, not a backup/network pass. Solo-save continuation passes native
+conversion and all four paired internet phases on build `7994cc2`. The added foundation point credits
 that previously missing feature and its automated persistence coverage; no
 additional campaign visit is credited.
 
@@ -27,12 +27,12 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | Area | Credited points | Maximum |
 | --- | ---: | ---: |
 | Foundation and independent client diagnostics | 9 | 10 |
-| Internet Host/Join | 7 | 15 |
+| Internet Host/Join | 7.25 | 15 |
 | Two players, movement and presentation | 11 | 15 |
 | Combat, individual resources and death | 9.75 | 20 |
 | Scenes, transport and progression | 11.25 | 20 |
 | Full campaign verification | 3.08 | 20 |
-| **Total** | **51.08, rounded to 51.1** | **100** |
+| **Total** | **51.33, rounded to 51.3** | **100** |
 
 ## Implemented features and remaining work
 
@@ -52,7 +52,7 @@ yet verified across every level and failure condition.
 | Combat and resources | Nearest-visible targeting, individual damage, inventory and consumables in integrated levels | Remaining enemies/bosses and level-specific rewards, with both players as the target/collector |
 | Death and saves | Exact ten-second countdown, moving spectator camera, safe 25-health revival; shared checkpoint wipes and save/rejoin cases | Finish save/leave menu acceptance and connection failures; then each visit's recovery matrix |
 | Scenes and machinery | First-arrival ownership, original single-Alice scenes, hidden partner and safe reunion; all-living boarding on integrated rides | Remaining level adapters, both scene owners, watched/skipped cases, transports and exits |
-| Regression checks | 923 active Rust tests; 376 Python guards; current Curiosity native/single-player baseline comparisons | Full campaign verification and required earlier contact-system repeats on the final build |
+| Regression checks | 925 active Rust tests; 376 Python guards; current Curiosity native/single-player baseline comparisons | Full campaign verification and required earlier contact-system repeats on the final build |
 
 Campaign status from `COOP_CAMPAIGN.md`:
 
@@ -92,12 +92,48 @@ remain separate from the 39-visit campaign acceptance matrix.
   saving after primary corruption preserves the last good backup. Abrupt host
   loss leaves the save intact, ends the diagnostic guest connection, and permits
   fresh host/guest resume and rejoin over the internet.
-- Next: clarify and verify save/leave menu behavior; exercise expired links,
-  cancelled joins and the observed transient DNS failure; verify returning to
-  the suspended solo session and hosting again through the actual ESC menu.
+- Verified through real menu input on loopback: load solo, Host this game, Join,
+  Save checkpoint, Leave, exact suspended-solo return, ordinary solo movement,
+  expired-link feedback and Continue co-op with a fresh invite. Two solo returns
+  preserve the full state hash. Invalid/batched input and Cancel also pass.
+- Next: repeat that full menu flow over the public connection after provisioning
+  recovers; resolve transient DNS reliability and the temporary-provider limit.
+  Core gameplay acceptance remains ahead of further campaign traversal.
 - Then: consolidate the core movement, separation/effects, combat/resources,
   spectator/revival, scene ownership and shared-boarding acceptance checks before
   restarting level-by-level campaign testing.
+
+## Menu acceptance evidence, 5 November 2026
+
+Build `8c02fd0` passes `tools/test_coop_menu.py --local` with real Windows mouse
+and keyboard input in Anode. Evidence:
+`private/coop/menu-test-d6691e95748e4e9583c1d6368a779c57/`.
+The original main menu loads the solo slot; ESC hosts that current game. Both
+clients retain the expected positions, resources and opened door. The ordinary
+co-op menu saves and leaves without replacing the manual checkpoint. Returning
+to solo preserves its entire serialized state hash; ordinary movement then
+works. Continue co-op restores the shared save independently of that changed
+solo position, issues a new invite and returns to the second suspended solo
+state unchanged. The source solo slot retains its bytes throughout.
+
+The runner also verifies batched invite typing, malformed-link feedback,
+cancelling a pending handshake, an expired session link, and menu recovery after
+the host leaves. A real typing bug was fixed: Macroquad returns a character
+batch newest-first, so the invite field now restores event order. Passive,
+opt-in reports provide actual button bounds and state receipts; no screenshots
+were inspected. A harness focus failure was corrected by activating only its
+owned game windows; the passing full run supersedes those harness failures.
+
+The public attempt on the same final executable fails at provisioning with
+HTTP 429: `private/coop/menu-test-74dfab0b5f304251a516993ff98b456a/`.
+It verifies the improved retry-later error and intact solo return, but cannot
+credit the full public menu flow. The preceding public attempt on `e0fe7f6`
+failed the same way. No automatic retry loop or provider-limit workaround was
+added. Prior successful internet persistence tests remain build-specific evidence.
+
+The additional 0.25 Host/Join points credit verified menu routing, input and
+error/cancel handling. They do not credit public menu connectivity, resolve DNS
+reliability, complete core acceptance or add a campaign visit. Overall: 51.3%.
 
 ## Storage and host-loss evidence, 5 November 2026
 
@@ -130,8 +166,8 @@ checks on loopback with the same 40/20 ms conditions:
 `private/coop/storage-resume-local-32dbde14645349219084727e4fe31ceb/`.
 This isolates persistence from the provider failure; it is not an internet pass.
 
-The total remains 51.1%; this strengthens core evidence without completing the
-remaining menu/connection milestone or adding a campaign visit.
+That storage milestone left the total at 51.1%; it strengthened core evidence
+without completing the menu/connection milestone or adding a campaign visit.
 
 ## Solo continuation evidence, 5 November 2026
 

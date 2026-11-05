@@ -1,6 +1,6 @@
 # Co-op progress
 
-Updated 5 November 2026. Branch: `coop`. **Estimated overall completion: 54.6%.**
+Updated 5 November 2026. Branch: `coop`. **Estimated overall completion: 54.8%.**
 The older 42% reports are historical. This percentage measures delivered and
 verified behavior against the full co-op scope; it is not a running test's progress.
 
@@ -29,10 +29,10 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | Foundation and independent client diagnostics | 9.5 | 10 |
 | Internet Host/Join | 9.5 | 15 |
 | Two players, movement and presentation | 11 | 15 |
-| Combat, individual resources and death | 10 | 20 |
+| Combat, individual resources and death | 10.25 | 20 |
 | Scenes, transport and progression | 11.5 | 20 |
 | Full campaign verification | 3.08 | 20 |
-| **Total** | **54.58, rounded to 54.6** | **100** |
+| **Total** | **54.83, rounded to 54.8** | **100** |
 
 ## Implemented features and remaining work
 
@@ -52,7 +52,7 @@ yet verified across every level and failure condition.
 | Combat and resources | Nearest-visible targeting, individual damage, inventory and consumables in integrated levels | Remaining enemies/bosses and level-specific rewards, with both players as the target/collector |
 | Death and saves | Exact ten-second countdown, moving spectator camera, safe 25-health revival; shared checkpoint wipes, public save/leave/continue and storage-error/backup menu flow, public save refusal/retry during deaths/scenes, public guest restart during either player's countdown | Each visit's recovery matrix and remaining transport/death combinations |
 | Scenes and machinery | First-arrival ownership, original single-Alice scenes, hidden partner and safe reunion; public intro/dialogue reconnects with either theatre owner; all-living boarding on integrated rides | Remaining level adapters, both scene owners, watched/skipped cases, transports and exits |
-| Regression checks | 928 active Rust tests; 402 Python guards; current Curiosity native/single-player baseline comparisons | Full campaign verification and required earlier contact-system repeats on the final build |
+| Regression checks | 928 active Rust tests; 406 Python guards; current Curiosity native/single-player baseline comparisons | Full campaign verification and required earlier contact-system repeats on the final build |
 
 Campaign status from `COOP_CAMPAIGN.md`:
 
@@ -136,7 +136,11 @@ remain separate from the 39-visit campaign acceptance matrix.
   Exact first-frame body/air/world/enemy agreement, both revivals and shared wipe
   pass. The Red-led attempt wipes near the first column before reconnecting;
   it remains failed route evidence, not a second passing order.
-- Next: focused recovery while attached to ropes or moving supports.
+- Verified on `c5cb7fc`: public guest restart during either death countdown
+  beside a rope survivor, followed by both exact ten-second, 25-health rope
+  revivals. The survivor uses ordinary climbing and attacks against live enemies;
+  no health, bodies or enemy state are edited.
+- Next: focused recovery on moving supports.
   External DNS/provisioning availability remains a limitation despite verified
   error/cancel/retry handling. Finish with a consolidated core run on one frozen
   build before returning to campaign traversal.
@@ -152,10 +156,66 @@ in the evidence below.
 | Existing saves | Solo import and co-op resume, individual resources, cached visits, fresh processes, unchanged solo files, normal-menu refusal/retry while dead or in a scene | Consolidated repeat on the final core build |
 | Storage failures | Real locked-file failures, retry, corrupt-primary backup recovery/repair, both-corrupt feedback; public menu tests | Covered for these cases; electrical power loss and disk exhaustion are not simulated |
 | Host/Join lifecycle | Public main/ESC flow, fresh invites, invalid/expired links, DNS/HTTP failure, Cancel, retry, exact solo return | Public service availability remains an external limitation |
-| Rejoining | Idle gameplay, either player's ground and underwater countdown, either theatre owner in introduction/dialogue, rotating lift, outbound/return loading barriers | Rope/support state; underwater proof uses the Blue-led route and does not close the known trap-repeatability gap |
+| Rejoining | Idle gameplay, either player's ground/underwater/rope-survivor countdown, either theatre owner in introduction/dialogue, rotating lift, outbound/return loading barriers | Moving-support recovery; underwater proof uses the Blue-led route and does not close the known trap-repeatability gap |
 | Combat/death | Shared targets, individual resources, exact countdown, moving spectator camera, 25-health reunion and shared wipe | Representative recovery on moving support, then level-specific enemies and recovery matrices |
 | Presentation | Both Alice models, contact separation and replicated ambient/weapon effects in focused tests | Repeat the focused baseline with the final core build; no new audio verification in this pass |
 | Consolidation | Automated native, menu and network fixtures retain build identities and private evidence | Run the core set on one frozen build after the remaining checks/fixes |
+
+## Rope countdown reconnect and revival, 5 November 2026
+
+`tools/test_coop_rope_countdown.py` passes on unchanged build `c5cb7fc`, locally
+and through a public invite with 40 ms delay and 20 ms jitter. It resumes the
+unchanged Garden capture with Red falling and Blue attached to rope 353. After
+Red returns, it exercises Blue's death while Red remains on the rope. The
+survivor uses ordinary climb/weapon controls against the still-active rifle ant.
+Only the owned guest process is terminated and restarted; bodies, health,
+resources and enemies remain under normal simulation.
+
+Both countdown reconnects preserve the held world, dead body, survivor's rope
+ID/grip, personal resources and remaining time. The guest's first playing frame
+matches the exact host tick in all three hash domains. A closed host trace then
+proves both exact spawn boundaries: 1,200 ticks after death, 25 health, clear and
+hazard-safe valid rope placement, approximately 72 units from the living partner,
+with carried resources intact. Both rendered views independently verify the
+spectator camera, its return and current non-overlap while the partner climbs.
+
+| Public victim | Death tick | Revival tick | Rejoin ticks | Remaining countdown |
+| --- | ---: | ---: | --- | --- |
+| Red | 16926 | 18126 | 17471 to 17473 | 655 to 653 |
+| Blue | 18174 | 19374 | 18400 to 18401 | 974 to 973 |
+
+Public suite: `private/coop/regression-suite-fa1a0eba9c264a1ba59381572a7cc2cf/summary.json`
+(48.00 seconds). Its passing case is
+`private/coop/rope-countdown-0cc60c5a60034bed9857e1031b1fdded/`, with 2,403 exact
+host trace rows and 290 matching player/world/native-enemy states. All seven
+retained fixture source hashes match the current files. The checkpoint hash is
+`1782b54ba1795b9f66119aa301d5299a84f86e1621c4db9b6299bf503540f52d`.
+The local pass is `private/coop/rope-countdown-42c6a20ba71f4cf3899526ac96d621a0/`
+(28.64 seconds, 363 matching states, both exact revivals). The final public
+fixture reads its trace after closing the host rather than while it is writing.
+
+Failed local attempts remain retained. `3c0acb83546947d6ac322dc59611f700` and
+`beafec60ec3646d9a8b6ca51a5a72bb9` lose the low-health survivor to rifle fire;
+`2bdb622727ac4be9927a962f44bf03aa` reaches a spawn wait after the survivor loses
+her grip. Ordinary return fire alone did not solve those exposed waits. The
+fixture now alternates ordinary climbing during Blue's remaining countdown.
+`530f6fa043ae4584b6c244024261b028` observes both revivals but fails an old fixed
+64-unit distance rule after the survivor has climbed closer. That rule remains
+for the original neutral fixture; this moving case instead requires exact host
+spawn geometry, current body separation and speed-bounded later observations.
+No native game rule or enemy strength was changed to produce the pass.
+
+The old Blue-victim internet attempt retained the same Red-falling checkpoint
+as the old Red case and failed before gameplay; it supplies no Blue-role proof.
+The new sequence supplies actual Blue death/revival evidence. No screenshots
+were inspected. All owned clients close and Anode is released.
+
+Four new guard tests reject changed grips/bodies, advancing held worlds and
+stale or late guest evidence. All 406 Python guards and seven package tests pass.
+The native executable is byte-identical to the previous 928-active-test/locked-
+release build. This adds 0.25 combat/recovery point, giving 54.8% overall. It is a
+captured recovery component, not a new completed campaign visit; the matrix
+remains 6 combined, 21 partial and 12 not run.
 
 ## Underwater countdown reconnect, 5 November 2026
 

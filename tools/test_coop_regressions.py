@@ -61,7 +61,8 @@ def result_from_log(log):
               'both_models_and_particles_visible', 'checkpoint_sha256', 'resume_point', 'lifts',
               'minimum_will', 'final_health', 'staged_initial_spawn', 'host_stalls',
               'host_recovery', 'guest_recovery', 'wipe', 'loading_rejoin', 'recovery',
-              'countdown_rejoin', 'countdown_rejoins', 'minimum_health', 'scene_rejoin', 'scene_reunion')
+              'countdown_rejoin', 'countdown_rejoins', 'revivals', 'exact_recovery',
+              'minimum_health', 'scene_rejoin', 'scene_reunion')
     metrics = {key: result['evidence'][key] for key in fields if key in result['evidence']}
     rejoin = result['evidence'].get('rejoin')
     if rejoin:
@@ -147,6 +148,7 @@ def main():
                                                    'travel-rejoin-outbound', 'travel-rejoin-return',
                                                    'death-rejoin-blue', 'death-rejoin-red',
                                                    'swim-countdown-blue', 'swim-countdown-red',
+                                                   'rope-countdown',
                                                    'scene-rejoin-blue-intro', 'scene-rejoin-blue-dialogue',
                                                    'scene-rejoin-red-intro', 'scene-rejoin-red-dialogue',
                                                    'stairs-blue', 'stairs-red', 'school2-blue', 'school2-red',
@@ -159,6 +161,8 @@ def main():
     parser.add_argument('--delay-ms', type=int, default=40)
     parser.add_argument('--jitter-ms', type=int, default=20)
     parser.add_argument('--school-checkpoint', type=Path)
+    parser.add_argument('--rope-checkpoint', type=Path,
+                        help='Unchanged captured Blue-on-rope/Red-falling checkpoint for rope-countdown')
     parser.add_argument('--school2-checkpoint', type=Path)
     parser.add_argument('--return-checkpoint', type=Path)
     parser.add_argument('--return-resume-point', choices=('entrance', 'theatre', 'spiral', 'observatory-approach', 'observatory'))
@@ -193,6 +197,10 @@ def main():
                                  (['school'] if args.school_checkpoint else [])))
     if 'school' in selected and not args.school_checkpoint:
         parser.error('The school regression needs --school-checkpoint and --school-resume-point')
+    if 'rope-countdown' in selected:
+        if not args.rope_checkpoint or not args.rope_checkpoint.is_file():
+            parser.error('The rope countdown check needs an existing --rope-checkpoint')
+        args.rope_checkpoint = args.rope_checkpoint.resolve()
     if 'school2-resume' in selected and not args.school2_checkpoint:
         parser.error('The school2-resume regression needs --school2-checkpoint')
     if 'return-resume' in selected and not args.return_checkpoint:
@@ -210,6 +218,9 @@ def main():
         'presence': ([sys.executable, str(ROOT / 'tools/test_coop_presence.py'), *common], 300, True),
         'host-stalls': ([sys.executable, str(ROOT / 'tools/test_coop_host_stalls.py'), *common], 300, True),
     }
+    if args.rope_checkpoint:
+        cases['rope-countdown'] = ([sys.executable, str(ROOT / 'tools/test_coop_rope_countdown.py'),
+            *common, '--checkpoint', str(args.rope_checkpoint)], 300, True)
     for direction in ('outbound', 'return'):
         cases['travel-rejoin-' + direction] = ([sys.executable, str(ROOT / 'tools/test_coop_travel.py'), *common,
                                                '--reconnect-at', direction], 300, True)
@@ -265,7 +276,8 @@ def main():
                   internet=not args.local, delay_ms=args.delay_ms, jitter_ms=args.jitter_ms,
                   selected=selected, fixtures={p.name: digest(p) for p in sorted([
                       *(ROOT / 'tools').glob('test_coop_*.py'), ROOT / 'tools/coop_diagnostics.py',
-                      ROOT / 'tools/coop_travel_rejoin.py', ROOT / 'tools/coop_swim_rejoin.py'])},
+                      ROOT / 'tools/coop_travel_rejoin.py', ROOT / 'tools/coop_swim_rejoin.py',
+                      ROOT / 'tools/coop_rope_rejoin.py', ROOT / 'tools/coop_recovery.py'])},
                   cases=[])
 
     def save():

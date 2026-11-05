@@ -179,3 +179,28 @@ to run and verify the full original entrance-to-Garden2 route.
 See the Garden segment evidence and the separate unresolved same-rope overlap
 case in `COOP.md`; traversal success alone does not prove collision or complete
 campaign support.
+
+
+## Both rope countdown reconnects
+
+`tools/test_coop_rope_countdown.py` resumes the unchanged Blue-on-rope/Red-falling
+checkpoint and exercises both deaths sequentially through ordinary gameplay.
+The survivor climbs and attacks while the other player is dead. A fresh guest
+must inherit the remaining countdown and rope attachment. Exact host recovery
+traces are mandatory in this moving case: a later client sample can legitimately
+have a smaller gap because the survivor has continued climbing after revival.
+The original neutral fixture retains its fixed-distance assertion.
+
+Run the automated public case in Anode:
+
+```powershell
+python tools/test_coop_regressions.py --exe target/release/looking-glass.exe --data <local-base> --rope-checkpoint <unchanged-exported-checkpoint> --only rope-countdown --delay-ms 40 --jitter-ms 20
+```
+
+Use `--local` only for a loopback baseline. The input checkpoint must contain
+living Blue on a native rope and living Red without a grip; this test does not
+swap players or alter the save. On build `c5cb7fc`, the public case passes both
+exact 1,200-tick, 25-health revivals, safe separate grips, both rendered cameras,
+full first-frame agreement and 290 matching body/world/native states. See
+`COOP_PROGRESS.md` for the retained passes and failed preparation attempts.
+This recovery segment does not establish full Garden traversal.

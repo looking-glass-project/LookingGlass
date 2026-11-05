@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 import shutil
 
+from coop_recovery import verify_presence
 from test_coop_play import ROOT, distance
 from test_coop_village import Pair
 
@@ -39,6 +40,15 @@ class RopeRevivalPair(Pair):
         assert frame['checkpoint_generation'] == self.seed['frame']['checkpoint_generation'], 'Unexpected team wipe'
         assert report['visit']['map'] == self.map_name
         assert all(not b['stats']['god'] for b in frame['players'])
+        # Spectating follows the rendered rope body, including ordinary network
+        # smoothing. Check the exact render inputs, not a fixed network gap.
+        verify_presence([dict(checkpoint_generation=frame['checkpoint_generation'],
+            owner=report['combat']['stage']['owner'],
+            camera_player=report['camera_player'], camera_target=report['camera_target'],
+            camera_subject_feet=report['camera_subject_feet'], presentation=report['presentation'],
+            players=[dict(feet=b['player']['feet'], health=b['stats']['sanity'],
+                spawned_at=b['spawned_at'], warped_at=b['warped_at']) for b in frame['players']])],
+            role, generation=self.seed['frame']['checkpoint_generation'])
         local = 0 if role == 'host' else 1
         body = frame['players'][self.victim]
         partner = frame['players'][1 - self.victim]
@@ -53,7 +63,6 @@ class RopeRevivalPair(Pair):
                 assert report['camera_player'] == ('Blue', 'Red')[1 - self.victim]
                 subject = report['camera_subject_feet']
                 assert distance(report['camera_target'][:2], subject[:2]) < 1
-                assert distance(subject, partner['player']['feet']) < 24
                 self.followed.append(report['camera_target'])
         elif body['spawned_at'] > self.seed['frame']['players'][self.victim]['spawned_at']:
             if role in self.revivals:
@@ -65,7 +74,15 @@ class RopeRevivalPair(Pair):
             assert rope is not None and partner['player']['rope'] is not None
             assert rope['id'] == partner['player']['rope']['id']
             gap = distance(body['player']['feet'], partner['player']['feet'])
-            assert 64 <= gap <= 120, f'Overlapping or distant rope revival: {gap}'
+            if getattr(self, 'exact_recovery_trace', False):
+                # The survivor may keep climbing after the exact spawn tick.
+                # Presence above verifies current non-overlap; the host trace
+                # must separately prove geometry at the actual spawn boundary.
+                elapsed = frame['tick'] - body['spawned_at']
+                assert 0 <= elapsed <= 120
+                assert gap <= 120 + 1000 * elapsed / 120, 'Rope bodies moved beyond normal speed'
+            else:
+                assert 64 <= gap <= 120, f'Overlapping or distant rope revival: {gap}'
             saved = self.seed['frame']['players'][self.victim]['stats']
             for key in ('owned', 'collected', 'selected', 'turtle_air', 'difficulty'):
                 assert body['stats'][key] == saved[key], f'Revival changed personal {key}'

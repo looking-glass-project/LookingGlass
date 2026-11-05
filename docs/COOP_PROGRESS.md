@@ -144,7 +144,10 @@ remain separate from the 39-visit campaign acceptance matrix.
   beside a survivor on Funhouse's tilting platform. Both exact ten-second,
   25-health revivals occur while the brush moves; neutral revived bodies remain
   supported and are carried with it. First-frame player/world/enemy hashes agree.
-- Next: consolidated core run, starting with solo import and existing co-op saves.
+- Consolidation on `c5cb7fc` now passes both save families, fresh-process
+  resume/rejoin, host loss, backup and team-wipe restoration, plus the normal
+  public menu and failure/cancel/retry flows. The remaining group is the network,
+  scene, lift and presentation repeat. See the fixed-build checkpoint below.
   External DNS/provisioning availability remains a limitation despite verified
   error/cancel/retry handling. Finish with a consolidated core run on one frozen
   build before returning to campaign traversal.
@@ -157,13 +160,54 @@ in the evidence below.
 
 | Core area | Current evidence | Next required check |
 | --- | --- | --- |
-| Existing saves | Solo import and co-op resume, individual resources, cached visits, fresh processes, unchanged solo files, normal-menu refusal/retry while dead or in a scene | Consolidated repeat on the final core build |
+| Existing saves | Solo import and co-op resume, individual resources, cached visits, fresh processes, unchanged solo files, normal-menu refusal/retry while dead or in a scene; fixed-build import/resume/backup/host-loss/wipe repeat passes | Core save cases covered; each campaign visit still needs its recovery matrix |
 | Storage failures | Real locked-file failures, retry, corrupt-primary backup recovery/repair, both-corrupt feedback; public menu tests | Covered for these cases; electrical power loss and disk exhaustion are not simulated |
 | Host/Join lifecycle | Public main/ESC flow, fresh invites, invalid/expired links, DNS/HTTP failure, Cancel, retry, exact solo return | Public service availability remains an external limitation |
 | Rejoining | Idle gameplay, either player's ground/underwater/rope/moving-platform countdown, either theatre owner in introduction/dialogue, rotating lift, outbound/return loading barriers | Consolidated repeat; underwater proof uses the Blue-led route and does not close the known trap-repeatability gap |
 | Combat/death | Shared targets, individual resources, exact countdown, moving spectator camera, 25-health reunion and shared wipe, representative moving-platform revival/carry | Consolidated repeat, then level-specific enemies and recovery matrices |
 | Presentation | Both Alice models, contact separation and replicated ambient/weapon effects in focused tests | Repeat the focused baseline with the final core build; no new audio verification in this pass |
 | Consolidation | Automated native, menu and network fixtures retain build identities and private evidence | Run the core set on one frozen build after the remaining checks/fixes |
+
+## Fixed-build core checkpoint, 5 November 2026
+
+The consolidated save repeat passes on the byte-identical `c5cb7fc` executable,
+through public invites with 40/20 ms delay/jitter. This explicitly covers both
+user-requested starting points: a loaded solo save converted to co-op, and an
+earlier co-op session resumed later.
+
+- `import-test-25f44f88ee764fac9c4716bd7e652a3f`: import, resume, abrupt host loss,
+  fresh resume after loss and corrupt-primary backup recovery. Every one of the
+  four connected phases includes a fresh guest rejoin. Native pre-simulation
+  restoration, individual inventory/health/Will, cached visit state and unchanged
+  solo files pass. The host-loss guest detects disconnection in 6.08 seconds.
+- `travel-test-8a21edb2af184e1d879ed389766f6fc9`: shared travel/cache/rejoin, primary
+  save restoration after both processes exit, and backup restoration. Both
+  resumed cases also pass exact shared team-wipe recovery, individual resources
+  and solo-save isolation. The combined save job exits zero in 233.89 seconds.
+- `menu-test-0adb79d7780c41d2a1fb87bf4c1a426c`: real public main/ESC Host/Join,
+  manual checkpoint, leave, expired-link feedback, Continue co-op with a new
+  invite, normal solo movement and both exact suspended-solo returns (70.77 s).
+- `menu-test-2924520df8824e9299d1dc5dcf8273b1`: real DNS/HTTP failures, Join and
+  Host cancellation, failed hosting and subsequent public success in the same
+  running processes, followed by save/leave and exact solo return (64.11 s).
+
+All folders above are under `private/coop/`. The consolidated manifest is
+`private/coop/core-consolidation-c5cb7fc-20261105/manifest.json`. It retains hashes,
+receipts and failed attempts. The first menu repeat, `menu-test-91b25e76465a429b866877a4973919cf`,
+passed its first co-op save/leave but opened Co-op when the test intended Resume.
+It remains failed evidence. The harness now focuses before reading button
+coordinates, checks the actual pointer and owned window before clicking, and
+records every click. The subsequent two public menu cases pass with these checks.
+The isolated window probe reproduced a successful Resume; it does not establish
+the exact cause of the earlier mistargeted input. No game behavior changed.
+
+Existing `c5cb7fc` storage-error, menu save-eligibility, underwater, rope and
+fulcrum passes retain their own fixture identities; they need no duplicate run
+just to share a report. Their build/source identities were audited at consolidation
+start. The later menu input checks refine automation without changing save or
+recovery assertions. Network/cutscene/lift/presentation repeats are still pending;
+external invite-service availability remains a limitation. This checkpoint adds
+no campaign visit or percentage point: overall completion stays **55.3%**.
 
 ## Moving-platform countdown recovery, 5 November 2026
 

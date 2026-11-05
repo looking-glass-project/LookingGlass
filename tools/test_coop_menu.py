@@ -61,6 +61,7 @@ class Desktop:
             'GetForegroundWindow': ([], w.HWND),
             'ClientToScreen': ([w.HWND, c.POINTER(w.POINT)], w.BOOL),
             'SetCursorPos': ([c.c_int, c.c_int], w.BOOL),
+            'GetCursorPos': ([c.POINTER(w.POINT)], w.BOOL),
             'GetWindowRect': ([w.HWND, c.POINTER(w.RECT)], w.BOOL),
             'SetWindowPos': ([w.HWND, w.HWND, c.c_int, c.c_int, c.c_int, c.c_int, w.UINT], w.BOOL),
             'WindowFromPoint': ([w.POINT], w.HWND),
@@ -141,10 +142,17 @@ class Desktop:
         assert self.user.ClientToScreen(hwnd, c.byref(point))
         assert self.user.SetCursorPos(point.x, point.y)
         time.sleep(.1)
+        actual = w.POINT()
+        assert self.user.GetCursorPos(c.byref(actual)), 'Could not verify the test pointer'
+        assert (actual.x, actual.y) == (point.x, point.y), (
+            f'Test pointer moved or was clipped: requested {(point.x, point.y)}, actual {(actual.x, actual.y)}')
+        assert self.user.GetForegroundWindow() == hwnd and self.user.WindowFromPoint(point) == hwnd, 'Test button is outside the focused owned window'
         self.send([Input(0, Payload(mouse=Mouse(0, 0, 0, 2, 0, 0)))])
         time.sleep(.08)
         self.send([Input(0, Payload(mouse=Mouse(0, 0, 0, 4, 0, 0)))])
         time.sleep(.15)
+        return dict(pid=process.pid, rect=rect, screen_point=[point.x, point.y],
+                    actual_pointer=[actual.x, actual.y])
 
     def copied_text(self, sequence):
         # Read only after our Copy invite action changes this session's clipboard.
@@ -202,7 +210,12 @@ class Run:
         return wait(find, timeout, role + ' button ' + label)
 
     def click(self, role, label, timeout=30):
-        self.desktop.click(self.processes[role], self.button(role, label, timeout)['rect'])
+        # Focus can change the window's native geometry. Read the passive
+        # button receipt afterwards, and verify the actual target before input.
+        self.desktop.focus(self.processes[role])
+        receipt = self.desktop.click(self.processes[role], self.button(role, label, timeout)['rect'])
+        with (self.folder / 'ui-input.jsonl').open('a') as output:
+            output.write(json.dumps(dict(role=role, label=label, **receipt)) + '\n')
 
     def key(self, role, vk, **kwargs):
         self.desktop.key(self.processes[role], vk, **kwargs)

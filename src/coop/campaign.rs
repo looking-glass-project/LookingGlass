@@ -44,6 +44,12 @@ pub struct Campaign {
     completed: BTreeSet<String>,
 }
 impl Campaign {
+    pub(super) fn imported(states: Vec<VisitState>, completed: BTreeSet<String>,
+        difficulty: crate::powerups::Difficulty) -> Result<Self> {
+        let campaign = Self { levels: states.into_iter().map(|s| (s.key(), s)).collect(), completed };
+        campaign.validate(difficulty)?;
+        Ok(campaign)
+    }
     pub fn cached(&self, visit: &Visit) -> Option<&VisitState> {
         self.levels
             .get(&crate::save::visit_key(&visit.map, visit.entry.as_deref()))
@@ -70,11 +76,11 @@ impl Campaign {
     }
     pub fn validate(&self, difficulty: crate::powerups::Difficulty) -> Result<()> {
         let known = crate::campaign::visits();
-        ensure!(self.levels.len() <= known.len() && self.completed.len() == self.levels.len(),
+        ensure!(self.levels.len() <= known.len() && self.completed.iter().all(|key| self.levels.contains_key(key)),
             "Invalid co-op visit history");
         for (key, state) in &self.levels {
             state.visit.validate()?;
-            ensure!(known.contains(key) && self.completed.contains(key) && state.key() == *key
+            ensure!(known.contains(key) && state.key() == *key
                 && state.visit.difficulty == difficulty && !state.visit.combat_preview,
                 "Co-op visit history contains a different campaign or difficulty");
         }

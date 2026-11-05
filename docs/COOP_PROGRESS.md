@@ -1,21 +1,23 @@
 # Co-op progress
 
-Updated 5 November 2026. Branch: `coop`. **Estimated overall completion: 50.1%.**
+Updated 5 November 2026. Branch: `coop`. **Estimated overall completion: 51.1%.**
 The older 42% reports are historical. This percentage measures delivered and
 verified behavior against the full co-op scope; it is not a running test's progress.
 
-Current bottleneck: Burning Curiosity's longer paired lava traversal still fails
-intermittently. Separate verified segments extend through point 64, but there
-is no continuous full-level pass. Both players now independently pass a real
-lava death, the exact ten-second revival at 25 health, and a spectator camera
-following the survivor's actual walk. These automated internet tests do not
-complete another campaign visit. The automated driver now retains supported
-landing control on intermediate ledges. Both players have separately verified
-lower-shelf arrivals. Two later attempts pass Red's first shelf crossing,
-but fail on the next ascent; paired point 65 remains incomplete. Reliable traversal from 65
-onward, the remaining scenes and exit, team-wipe and reconnect coverage remain
-open. See the [recovery evidence](JLAIR1.md#ordinary-lava-revival-and-moving-spectator)
-and [current landing checks](JLAIR1.md#supported-landings-and-shelf-guidance).
+Current priority: core co-op readiness before further campaign traversal. Verify
+both resuming an earlier co-op save and adding player 2 to an existing solo
+save, including independent resources, fresh process restarts, guest rejoining,
+backup recovery and unchanged solo saves. The overall all-level goal remains
+active; the unfinished Burning Curiosity route is deferred.
+
+The fresh pre-change checkpoint run on 5 November passed staged shared travel,
+guest reconnect, complete primary-save restoration and team-wipe restoration.
+The backup attempt restored the world before simulation but its guest could
+not resolve the new public invite hostname; that attempt is a failed internet
+check, not a backup/network pass. Solo-save continuation now passes native
+conversion and all three paired internet phases on the final executable. The added foundation point credits
+that previously missing feature and its automated persistence coverage; no
+additional campaign visit is credited.
 
 Six of the 39 campaign visits have combined verification evidence; 33 remain open.
 Earlier contact-system repeats are still required. Remaining work includes full
@@ -24,13 +26,13 @@ shared transports, swimming/leaves and single-player regressions across the camp
 
 | Area | Credited points | Maximum |
 | --- | ---: | ---: |
-| Foundation and independent client diagnostics | 8 | 10 |
+| Foundation and independent client diagnostics | 9 | 10 |
 | Internet Host/Join | 7 | 15 |
 | Two players, movement and presentation | 11 | 15 |
 | Combat, individual resources and death | 9.75 | 20 |
 | Scenes, transport and progression | 11.25 | 20 |
 | Full campaign verification | 3.08 | 20 |
-| **Total** | **50.08, rounded to 50.1** | **100** |
+| **Total** | **51.08, rounded to 51.1** | **100** |
 
 ## Implemented features and remaining work
 
@@ -48,9 +50,9 @@ yet verified across every level and failure condition.
 | Host / Join | Main/ESC controls, public internet invite links, authenticated transport, cancellation and reconnect cases | Complete normal-play integration and remaining disconnect/rejoin cases during combat, rides, scenes and transitions |
 | Players and presentation | Blue/red Alice, separate input/cameras, body separation, replicated weapon effects | Broader contact/effect checks and reliable traversal through all swimming, leaves, ropes and moving supports |
 | Combat and resources | Nearest-visible targeting, individual damage, inventory and consumables in integrated levels | Remaining enemies/bosses and level-specific rewards, with both players as the target/collector |
-| Death and saves | Exact ten-second countdown, moving spectator camera, safe 25-health revival; shared checkpoint wipes and save/rejoin cases | Complete each visit's recovery, wipe, restore and reconnect matrix, including difficult geometry |
+| Death and saves | Exact ten-second countdown, moving spectator camera, safe 25-health revival; shared checkpoint wipes and save/rejoin cases | Prioritise solo-save conversion, resumed-session rejoining, backup and failure handling; then each visit's recovery matrix |
 | Scenes and machinery | First-arrival ownership, original single-Alice scenes, hidden partner and safe reunion; all-living boarding on integrated rides | Remaining level adapters, both scene owners, watched/skipped cases, transports and exits |
-| Regression checks | 919 active Rust tests; 376 Python guards; current Curiosity native/single-player baseline comparisons | Full campaign verification and required earlier contact-system repeats on the final build |
+| Regression checks | 923 active Rust tests; 376 Python guards; current Curiosity native/single-player baseline comparisons | Full campaign verification and required earlier contact-system repeats on the final build |
 
 Campaign status from `COOP_CAMPAIGN.md`:
 
@@ -70,6 +72,55 @@ Campaign status from `COOP_CAMPAIGN.md`:
 
 See the [full campaign matrix](COOP_CAMPAIGN.md). Future updates should separate
 working features, partial route milestones and completed verification visits.
+
+## Core readiness priority
+
+Campaign traversal is deferred while this checklist is completed. The tests
+remain separate from the 39-visit campaign acceptance matrix.
+
+- Verified on the initial import build: existing co-op primary resume and team
+  wipe; loaded solo progress converted into two players; manual co-op saves;
+  fresh host/guest restarts; guest rejoining imported, resumed and backup sessions;
+  unchanged solo saves; cached first/return visits; host-owned guest resources.
+- Also verified on the final executable: swimming import and the complete
+  import/rejoin/resume/backup internet suite. The separate team-wipe persistence
+  suite passed travel/reconnect and primary resume/wipe on the same build; its
+  backup guest hit the DNS failure again, so that whole internet run did not pass.
+- Next: prove write/interruption failures preserve the previous disk and memory
+  checkpoint; clarify save/leave and host-exit behavior; exercise expired links,
+  cancelled joins and the observed transient DNS failure; verify returning to
+  the suspended solo session and hosting again through the actual ESC menu.
+- Then: consolidate the core movement, separation/effects, combat/resources,
+  spectator/revival, scene ownership and shared-boarding acceptance checks before
+  restarting level-by-level campaign testing.
+
+## Solo continuation evidence, 5 November 2026
+
+Build `a9b55a5` passes `tools/test_coop_import.py` over public internet invites
+with 40 ms delay and 20 ms jitter per sender. Evidence:
+`private/coop/import-test-9e0363c7644545c8a8313b8c27a48b5a/`.
+The native fixture verifies Blue's full body, view, resources, actions and world,
+the distinct cached return visit, and safe Red placement. A separate native
+swimming case retains Blue's body/air supply and places Red at the same depth.
+Each network phase includes a guest process restart using the current invite;
+both host and guest restart between primary and backup sessions. The solo slot
+and guest sentinel remain unchanged. No image inspection was needed.
+
+The initial build `08033a5` also passed the same three network phases. A later
+fixture attempt started in Garden's opening cinematic and correctly refused
+import; the swimming fixture now uses freely controlled Temple gameplay. The
+observed DNS failure remains an open reliability item despite successful import
+runs. The separate final checkpoint run
+`private/coop/travel-test-c2fb379c358d42c4b059f91bea7b1ea3/` passes staged travel,
+guest reconnect and primary resume/team wipe; its backup guest failed DNS
+resolution. The runner now reports that failure immediately. A separate loopback
+backup/team-wipe test passes with 40/20 ms conditions and unchanged files:
+`private/coop/backup-local-a747d7b0866a4aaf840cc3174b2c852a/`. This isolates save
+correctness from internet setup; it is not an internet backup/wipe pass.
+
+Validation: 923 active Rust tests (three existing ignored), locked release,
+376 Python guards, seven source-package tests and source audits. This change
+does not finish all core acceptance work.
 
 ## Evidence history
 

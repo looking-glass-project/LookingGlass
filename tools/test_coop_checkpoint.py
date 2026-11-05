@@ -61,6 +61,7 @@ def resume(args, folder, backup):
         while any(p.poll() is None for p in processes.values()):
             assert time.monotonic() < deadline, 'Resume clients did not finish'
             for role, process in processes.items():
+                assert process.poll() in (None, 0), f'{role} failed: inspect {folder / (role + "-" + suffix + ".log")}'
                 report = read(folder / role / 'coop-live.json')
                 if report and report['pid'] == process.pid and report['playing']:
                     frame = report['frame']

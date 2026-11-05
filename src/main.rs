@@ -201,7 +201,7 @@ fn run() -> Result<()> {
             "--coop-host" | "--coop-join" => {
                 o.coop = Some(coop::preview::Launch { host: arg == "--coop-host", internet: true,
                     invite_file: Some(args.next().context("Co-op requires an invite file")?.into()),
-                    invite: None, start: None, drive: false, death_check: None, scene_check: None, travel_check: false, resume: false, checkpoint_check: false, route_driver: None, conditions: Default::default() });
+                    invite: None, start: None, drive: false, death_check: None, scene_check: None, travel_check: false, resume: false, single_player: None, checkpoint_check: false, route_driver: None, conditions: Default::default() });
             }
             "--coop-local" => o.coop.as_mut().context("Use --coop-host before --coop-local")?.internet = false,
             "--coop-drive" => o.coop.as_mut().context("Choose a co-op role before --coop-drive")?.drive = true,
@@ -430,6 +430,7 @@ fn run() -> Result<()> {
             "--coop-duchess-check" => mode = "coop-duchess",
             "--coop-duchess-arena-check" => mode = "coop-duchess-arena",
             "--coop-encounter-check" => mode = "coop-encounter",
+            "--coop-import-check" => mode = "coop-import",
             "--coop-campaign-check" => mode = "coop-campaign",
             "--coop-village-check" => mode = "coop-village",
             "--coop-pandemonium-check" => mode = "coop-pandemonium",
@@ -1285,6 +1286,15 @@ fn run() -> Result<()> {
         macroquad::Window::from_config(viewer::config(), async move {
             if let Err(e) = coop::encounter_check::check(&mut assets).await {
                 eprintln!("Co-op encounter replay failed: {e:#}");
+                std::process::exit(1);
+            }
+        });
+        return Ok(());
+    }
+    if mode == "coop-import" {
+        macroquad::Window::from_config(viewer::config(), async move {
+            if let Err(e) = coop::solo_check::check(&mut assets, &o).await {
+                eprintln!("Co-op solo import failed: {e:#}");
                 std::process::exit(1);
             }
         });

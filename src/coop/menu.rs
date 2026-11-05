@@ -51,7 +51,7 @@ impl LinkInput {
 
 /// Hosts or resumes co-op while retaining the caller's suspended single-player
 /// game. Co-op checkpoints have their own files and never replace its saves.
-pub async fn open(assets: &mut Assets, options: &Options, backdrop: &mut Menu, visit: Visit) {
+pub async fn open(assets: &mut Assets, options: &Options, backdrop: &mut Menu, visit: Visit, single_player: Option<crate::save::Game>) {
     let ui = match Ui::load(assets) {
         Ok(ui) => ui,
         Err(error) => {
@@ -170,6 +170,7 @@ pub async fn open(assets: &mut Assets, options: &Options, backdrop: &mut Menu, v
                                 scene_check: None,
                                 travel_check: false,
                                 resume: false,
+                                single_player: None,
                                 checkpoint_check: false,
                                 route_driver: None,
                                 conditions: Default::default(),
@@ -189,17 +190,22 @@ pub async fn open(assets: &mut Assets, options: &Options, backdrop: &mut Menu, v
                 }
             }
         } else if hosting {
-            text(&ui, "Continue together from your saved checkpoint,", 120., 17.);
-            text(&ui, "or start again at this chapter's entrance.", 148., 17.);
-            text(&ui, "Continuing creates a new invite for your friend.", 182., 14.);
-            if let Some(choice) = buttons(&ui, &input, &mut selected,
-                &["Continue co-op", "Start chapter", "Back"], 224.) {
-                if choice == 2 {
-                    hosting = false;
-                    selected = 0;
-                    message.clear();
-                } else {
-                    launch = Some(host_launch(&visit, choice == 0));
+            text(&ui, "Choose where to continue together.", 120., 17.);
+            text(&ui, if single_player.is_some() {
+                "Host this game keeps your current progress."
+            } else { "To host a solo save, load it first, then open Co-op from ESC." }, 148., 14.);
+            text(&ui, "Each new session creates a fresh invite link.", 192., 14.);
+            let choices = host_choices(single_player.is_some(), super::checkpoint::Store::available());
+            let labels = choices.iter().map(|c| c.label()).collect::<Vec<_>>();
+            if let Some(choice) = buttons(&ui, &input, &mut selected, &labels, 224.) {
+                match choices[choice] {
+                    HostChoice::Back => { hosting = false; selected = 0; message.clear(); }
+                    HostChoice::Current => {
+                        let mut current = host_launch(&visit, false);
+                        current.single_player = single_player.clone();
+                        launch = Some(current);
+                    }
+                    choice => launch = Some(host_launch(&visit, choice == HostChoice::Saved)),
                 }
             }
         } else {
@@ -216,13 +222,9 @@ pub async fn open(assets: &mut Assets, options: &Options, backdrop: &mut Menu, v
             {
                 match choice {
                     0 => {
-                        if super::checkpoint::Store::available() {
-                            hosting = true;
-                            selected = 0;
-                            message.clear();
-                        } else {
-                            launch = Some(host_launch(&visit, false));
-                        }
+                        hosting = true;
+                        selected = 0;
+                        message.clear();
                     }
                     1 => {
                         joining = true;
@@ -272,11 +274,29 @@ pub async fn open(assets: &mut Assets, options: &Options, backdrop: &mut Menu, v
     show_mouse(true);
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum HostChoice { Current, Saved, Chapter, Back }
+impl HostChoice {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Current => "Host this game", Self::Saved => "Continue co-op",
+            Self::Chapter => "Start chapter", Self::Back => "Back",
+        }
+    }
+}
+fn host_choices(current: bool, saved: bool) -> Vec<HostChoice> {
+    let mut choices = Vec::new();
+    if current { choices.push(HostChoice::Current); }
+    if saved { choices.push(HostChoice::Saved); }
+    choices.extend([HostChoice::Chapter, HostChoice::Back]);
+    choices
+}
+
 fn host_launch(visit: &Visit, resume: bool) -> Launch {
     Launch {
         host: true, internet: true, invite_file: None, invite: None, start: Some(visit.clone()),
         drive: false, death_check: None, scene_check: None, travel_check: false, resume,
-        checkpoint_check: false, route_driver: None, conditions: Default::default(),
+        single_player: None, checkpoint_check: false, route_driver: None, conditions: Default::default(),
     }
 }
 
@@ -355,6 +375,13 @@ pub fn capture() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn host_choices_keep_current_game_and_saved_coop_distinct() {
+        assert_eq!(host_choices(true, true), vec![HostChoice::Current, HostChoice::Saved, HostChoice::Chapter, HostChoice::Back]);
+        assert_eq!(host_choices(false, true), vec![HostChoice::Saved, HostChoice::Chapter, HostChoice::Back]);
+        assert_eq!(host_choices(true, false), vec![HostChoice::Current, HostChoice::Chapter, HostChoice::Back]);
+        assert_eq!(host_choices(false, false), vec![HostChoice::Chapter, HostChoice::Back]);
+    }
     #[test]
     fn paste_replace_and_edit_keep_the_full_invite_and_bound_clipboard_input() {
         let invite = Invite::new("https://example.trycloudflare.com")

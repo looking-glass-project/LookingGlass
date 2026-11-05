@@ -33,7 +33,7 @@ pub async fn choose(
                     epoch: 1, map: "gvillage".into(), entry: None,
                     difficulty: options.difficulty,
                 };
-                crate::coop::menu::open(assets, options, menu, visit).await;
+                crate::coop::menu::open(assets, options, menu, visit, None).await;
                 if is_quit_requested() { return Start::Quit; }
                 menu.open(Page::Main, preferences, audio.settings);
             }

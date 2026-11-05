@@ -96,6 +96,24 @@ impl Roster {
             tick: frame.tick, checkpoint_generation: frame.checkpoint_generation,
         })
     }
+    /// Blue retains the complete live body; only the new partner is placed.
+    pub(super) fn from_single_player(world: &World, player: &Player, stats: &Stats,
+        yaw: f32, pitch: f32, safe: impl Fn(Vec3) -> bool) -> Result<Self> {
+        ensure!(stats.alive(), "Retry or load a living Alice before hosting this game");
+        player.validate_world(world)?;
+        ensure!(world.body_clear(player.feet) && safe(player.feet),
+            "Move Alice to a safe position before hosting this game");
+        let partner = super::placement::revival(world, player, &safe)
+            .or_else(|| super::placement::reunion(world, player, &safe))
+            .context("There is no safe space beside Alice; move to a wider area before hosting")?;
+        let players = [player.clone(), partner].map(|player| Body {
+            player, stats: stats.clone(), yaw, pitch, running: false,
+            spawned_at: 0, warped_at: 0,
+        });
+        let frame = Frame { epoch: 1, tick: 0, acknowledged_input: 0,
+            checkpoint_generation: 0, players, lives: Lives::default(), combat: None, sounds: None };
+        Self::from_checkpoint(&frame, world, safe)
+    }
     pub fn remember_checkpoint(&mut self) {
         self.checkpoint = self.players.clone();
     }
@@ -351,6 +369,27 @@ mod tests {
         invalid = saved.clone();
         invalid.lives.tick([true, false], false);
         assert!(Roster::from_checkpoint(&invalid, &world, |_| true).is_err());
+    }
+    #[test]
+    fn solo_import_preserves_body_and_independent_inventory_without_moving_blue() {
+        let world = floor();
+        let mut player = Player::spawn(&world, Vec3::Z * (EYE_HEIGHT + 0.04)).unwrap();
+        player.velocity = Vec3::X * 21.;
+        player.jumps = 9;
+        let mut stats = Stats::default();
+        stats.set_health(63.).unwrap();
+        stats.spend_will(12.);
+        let mut roster = Roster::from_single_player(&world, &player, &stats, 1.1, 0.3, |_| true).unwrap();
+        assert_eq!(serde_json::to_value(&roster.players[0].player).unwrap(), serde_json::to_value(&player).unwrap());
+        assert_eq!(roster.players[0].yaw, 1.1);
+        assert_eq!(roster.players[0].pitch, 0.3);
+        assert!(roster.players[0].player.feet.distance(roster.players[1].player.feet) >= 40.);
+        roster.players[1].stats.damage(20.);
+        roster.players[1].stats.spend_will(5.);
+        assert_eq!(serde_json::to_value(&roster.players[0].stats).unwrap(), serde_json::to_value(&stats).unwrap());
+        assert!(Roster::from_single_player(&world, &player, &stats, 0., 0., |_| false).is_err());
+        stats.damage(10000.);
+        assert!(Roster::from_single_player(&world, &player, &stats, 0., 0., |_| true).is_err());
     }
     #[test]
     fn shared_combat_damage_resolves_before_the_single_death_decision() {

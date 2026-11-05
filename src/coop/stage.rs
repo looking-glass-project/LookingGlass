@@ -136,6 +136,23 @@ impl Stage {
         self.interactions.sync_coop(world);
         Ok(())
     }
+    pub(super) fn import_single_player(&mut self, level: &crate::save::Level,
+        map: &Bsp, world: &mut World, current: bool) -> Result<()> {
+        self.interactions.restore(&level.interactions, map)?;
+        self.hints.restore(&level.hints)?;
+        self.story.restore(&level.story, &self.hints)?;
+        self.contacts = if current { Contacts::from_single_player(&self.interactions) }
+            else { Contacts::new(&self.interactions) };
+        self.owner = controls_scene(&self.interactions).then_some(PlayerId::Blue);
+        self.last_owner = PlayerId::Blue;
+        self.transition = None;
+        self.notices = [None, None];
+        self.voice_running = false;
+        self.skip = Default::default();
+        self.interactions.sync_coop(world);
+        self.remember_checkpoint();
+        Ok(())
+    }
     pub fn reset(&mut self, map: &Bsp, world: &mut World) -> Result<()> {
         self.restore(&self.initial.as_ref().unwrap().clone(), map, world)
     }

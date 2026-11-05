@@ -1395,6 +1395,39 @@ input. The full Rust suite at the travel milestone passed 730 tests, with one pr
 ignored test (`private/coop-progression-tests3.log`), including the new slow-load
 barrier regression. No co-op release or full campaign playthrough is claimed.
 
+## Continuing a single-player game as co-op
+
+Load the solo save normally, then choose **ESC > Co-op > Host > Host this game**.
+Blue keeps her current position, movement state, health, earned inventory and
+weapon actions. Doors, quests, NPCs, story progress and cached first/return visits
+carry over. Red appears in a collision-checked nearby position with her own copy
+of the earned resources; Blue's active projectiles and summons are not duplicated.
+Pickup history is copied so previously collected items do not refill on import.
+From then on, both players collect and spend resources independently.
+
+The original solo session remains suspended and its save files are unchanged.
+Co-op uses its separate checkpoint. **Continue co-op** restores that checkpoint;
+**Start chapter** deliberately starts at the chapter entrance. Finish active
+scenes/conversations and leave fly mode before importing; a dead or obstructed
+Alice, or a location with no safe partner placement, produces an error instead
+of discarding progress. Load a living save or move somewhere wider and retry.
+
+The reproducible native fixture and internet process test are:
+
+```powershell
+python tools/test_coop_import.py --exe target/release/looking-glass.exe --data <local-base>
+```
+
+Run it in Anode. It generates a solo save in a fresh isolated profile, proves
+exact conversion of Blue/world/NPC/character and cached return state, then hosts
+that save through the production loader (`--coop-host <invite-file> --load slot1`).
+The guest reconnects in each phase: initial import, both-process restart from the
+co-op save, and damaged-primary backup recovery. Native receipts verify the full
+restored state before simulation; both network views and unchanged solo files
+are checked without image inspection. The native fixture also checks a swimming
+import and refuses to overwrite an existing fixture slot. This is persistence
+coverage, not a campaign completion claim.
+
 ## Shared co-op checkpoints
 
 The host owns a separate `coop-checkpoint.json` in its settings/profile folder.

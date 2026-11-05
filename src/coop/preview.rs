@@ -29,6 +29,7 @@ pub struct Launch {
     pub scene_check: Option<PlayerId>,
     pub travel_check: bool,
     pub resume: bool,
+    pub single_player: Option<crate::save::Game>,
     pub checkpoint_check: bool,
     pub route_driver: Option<PathBuf>,
     pub conditions: Conditions,
@@ -75,7 +76,20 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
         let identity = Identity::current(assets.fingerprint()?);
         anyhow::ensure!(!launch.resume || launch.host, "Only the host loads the shared co-op checkpoint");
         let checkpoint_store = super::checkpoint::Store::current(identity.game_data.clone());
-        let resumed = if launch.resume { Some(checkpoint_store.load()?) } else { None };
+        let from_slot = options.load.filter(|_| launch.invite_file.is_some());
+        let importing = launch.single_player.is_some() || from_slot.is_some();
+        anyhow::ensure!(!importing || launch.host && !launch.resume && !launch.travel_check
+            && launch.death_check.is_none() && launch.scene_check.is_none() && !options.combat_preview,
+            "Host an existing single-player game separately from Continue co-op or staged checks");
+        let imported = if let Some(game) = &launch.single_player {
+            Some(super::solo::convert(assets, game.clone())?)
+        } else if let Some(slot) = from_slot {
+            let store = crate::save::Store::new(options.save_dir.clone(), identity.game_data.clone());
+            Some(super::solo::convert(assets, store.read(slot)?.game)?)
+        } else { None };
+        let resumed = if let Some(checkpoint) = imported {
+            Some(super::checkpoint::Loaded { checkpoint, recovered_backup: false })
+        } else if launch.resume { Some(checkpoint_store.load()?) } else { None };
         let (mut host, mut guest, invite) = if launch.host {
             hosting = Some(Hosting::start(crate::preferences::path("coop"),
                 PathBuf::from("private/coop/helpers"), launch.internet, launch.conditions)?);
@@ -135,7 +149,7 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
         anyhow::ensure!(!launch.travel_check || visit.map == "skool1" && !visit.combat_preview
             && launch.death_check.is_none() && launch.scene_check.is_none(), "The travel fixture requires the school.");
         anyhow::ensure!(!launch.checkpoint_check || !visit.combat_preview && launch.death_check.is_none()
-            && launch.scene_check.is_none() && (launch.travel_check || !launch.host || launch.resume),
+            && launch.scene_check.is_none() && (launch.travel_check || !launch.host || resumed.is_some()),
             "The checkpoint fixture requires staged travel or a resumed host");
         clear_background(BLACK);
         ui.toast("Opening Wonderland for two...", screen_height() * 0.5);
@@ -211,8 +225,10 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
         // Route tests use isolated profiles and exercise production checkpoint
         // behavior. The older staged movement/combat fixtures still opt out.
         let automatic_checkpoints = !launch.drive || launch.route_driver.is_some();
-        let mut checkpoint_pending = resumed.is_none() && launch.host && automatic_checkpoints && !visit.combat_preview;
-        let mut checkpoint_message = resumed.as_ref().map(|s| (Instant::now(), if s.recovered_backup {
+        let mut checkpoint_pending = (resumed.is_none() || importing) && launch.host && automatic_checkpoints && !visit.combat_preview;
+        let mut checkpoint_message = resumed.as_ref().map(|s| (Instant::now(), if importing {
+            "Your single-player progress is ready for two. Co-op saves separately.".to_owned()
+        } else if s.recovered_backup {
             "Recovered the previous co-op checkpoint from its backup.".to_owned()
         } else { "Co-op checkpoint restored for both players.".to_owned() }));
         let mut leaving_visit = None;

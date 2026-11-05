@@ -47,6 +47,17 @@ impl Contacts {
                 .collect(),
         }
     }
+    /// Keep Blue's existing contact/cooldown when a solo game becomes co-op.
+    /// Red has no previous contacts and must arrive through the normal rules.
+    pub fn from_single_player(world: &Interactions) -> Self {
+        let mut contacts = Self::new(world);
+        for (saved, trigger) in contacts.triggers.iter_mut().zip(&world.triggers) {
+            saved.players[PlayerId::Blue.index()] = Contact {
+                inside: trigger.inside, cooldown: trigger.cooldown,
+            };
+        }
+        contacts
+    }
     pub fn reset_player(&mut self, id: PlayerId) {
         for trigger in &mut self.triggers {
             trigger.players[id.index()] = Contact::default();
@@ -653,6 +664,19 @@ mod tests {
             .filter(|e| e.player == id)
             .map(|e| e.events.damage)
             .sum()
+    }
+
+    #[test]
+    fn solo_import_keeps_blues_hurt_cooldown_and_reds_first_contact() {
+        let (_, mut world, _) = trigger("trigger_hurt");
+        world.triggers[0].inside = true;
+        world.triggers[0].cooldown = 0.8;
+        let mut contacts = Contacts::from_single_player(&world);
+        contacts.validate(&world).unwrap();
+        let events = world.triggers_pair(0.1, &mut contacts, [motion(100., 100.); 2]).unwrap();
+        assert_eq!(damage(&events, PlayerId::Blue), 0.);
+        assert!(damage(&events, PlayerId::Red) > 0.);
+        assert!(contacts.triggers[0].players[0].inside);
     }
 
     fn gated_trigger() -> (Interactions, Contacts) {

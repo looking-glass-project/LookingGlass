@@ -924,7 +924,8 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
                         difficulty: stats.difficulty,
                         combat_preview: false,
                     };
-                    crate::coop::menu::open(&mut assets, &options, &mut escape_menu, visit).await;
+                    let single_player = (saves_enabled && !post_game).then(|| game_snapshot!());
+                    crate::coop::menu::open(&mut assets, &options, &mut escape_menu, visit, single_player).await;
                     if is_quit_requested() { break; }
                     escape_menu.open(crate::menu::Page::Main, &preferences, audio.settings);
                 }

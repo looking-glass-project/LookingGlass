@@ -7,6 +7,8 @@ pub mod arena;
 pub mod audio;
 pub mod campaign;
 pub mod checkpoint;
+pub mod solo;
+pub mod solo_check;
 mod clock;
 mod placement;
 pub(crate) mod separation;

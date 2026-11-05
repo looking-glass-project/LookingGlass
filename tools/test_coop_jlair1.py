@@ -269,19 +269,23 @@ class CuriosityPair(Pair):
             and body['stats']['sanity'] > 0 and body['player']['grounded']
             and body['player']['immersion']['kind'] in ('Lava', 'Slime'))
 
+    def validate_lives(self, role, report):
+        super().validate_report(role, report)
+        assert all(p['spawned_at'] == 0 for p in report['frame']['players']), 'Route silently respawned'
+
     def validate_report(self, role, report):
         previous = self.last_valid.get(role)
         if previous and any(b['stats']['sanity'] < old['stats']['sanity']
                             for b, old in zip(report['frame']['players'], previous['frame']['players'])):
             path = self.folder / f'damage-{role}-{report["frame"]["tick"]}.json'
             if not path.exists(): path.write_text(json.dumps(dict(before=previous, after=report)))
-        super().validate_report(role, report)
+        self.validate_lives(role, report)
         assert report['build'] == self.args.build, 'Executable differs from frozen build'
         assert (report['visit']['map'], report['visit']['epoch']) == (self.map_name, 1), 'Unexpected visit during segment'
-        assert all(not p['stats']['god'] and not p['stats']['notarget'] and p['spawned_at'] == 0
-                   for p in report['frame']['players']), 'Cheated or silently respawned route'
+        assert all(not p['stats']['god'] and not p['stats']['notarget']
+                   for p in report['frame']['players']), 'Cheated route'
         assert report['route_driver'].get('recovery_trace_error') is None
-        if report['combat']['stage']['owner'] is None:
+        if report['combat']['stage']['owner'] is None and all(p['stats']['sanity'] > 0 for p in report['frame']['players']):
             a, b = [p['player']['feet'] for p in report['frame']['players']]
             assert distance(a[:2], b[:2]) >= 35.95 or abs(a[2] - b[2]) >= 55.95, 'Living players overlap'
         self.last_valid[role] = report

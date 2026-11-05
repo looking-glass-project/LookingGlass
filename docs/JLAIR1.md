@@ -408,3 +408,54 @@ No screenshots were inspected. Separate evidence now extends through 64;
 continuous reliability, 65 onward, both scene owners, final exit, recovery and
 reconnect coverage remain open. Overall completion remains **50.1%**, with no
 additional completed campaign visit.
+
+
+## Ordinary lava revival and moving spectator
+
+The targeted `tools/test_coop_jlair1_recovery.py` fixture now passes for both
+victims on frozen source `0871d86`. Each run starts from the same unchanged
+ordinary checkpoint before 65, with two independent internet clients and
+40 ms delay / 20 ms jitter. One Alice walks into actual lava using ordinary
+inputs; the survivor walks to a native-observed safe neighboring pad during
+the countdown. No damage, positions, carried resources or clocks are injected.
+
+| Victim | Exact death tick | Exact revival tick | Matching player/world/native states |
+| --- | ---: | ---: | ---: |
+| Blue | 153821 | 155021 | 246 |
+| Red | 153812 | 155012 | 241 |
+
+Both full host traces prove exactly 1,200 active ticks (ten simulation seconds),
+25 health on revival, unchanged carried resources, safe supported placement
+within 128 units of the survivor, and no overlap. Neither trace pauses the timer
+or waits for safe placement. Both client histories verify the correct living
+camera subject and its rendered interpolation. Each dead player's camera must
+also move with the survivor's acknowledged walk before revival; a static-camera
+observation cannot pass this case. Control returns to the revived player.
+
+The Blue run has 1,207 host trace rows; Red has 1,206. Both clients exit normally
+after an ordinary saved checkpoint. Evidence folders under `private/coop/` are
+`jlair1-recovery-12e77b7c7a184db583ca68b6e47bc46f` (Blue) and
+`jlair1-recovery-e06a54f259844f71a8a97360368576c9` (Red). Each retains the frozen
+fixture dependencies, source and executable identities, observations, complete
+trace, and result. Earlier static-survivor cases also pass, while an initial
+Blue probe that stopped on a dry ledge remains failed.
+
+To reproduce, supply the frozen executable, its full source identity, local
+game data and that unchanged checkpoint. Run once with each victim:
+
+```powershell
+python tools/test_coop_jlair1_recovery.py --exe <executable> --build <source-identity> --data <local-base> --checkpoint <checkpoint-before-065.json> --victim blue
+python tools/test_coop_jlair1_recovery.py --exe <executable> --build <source-identity> --data <local-base> --checkpoint <checkpoint-before-065.json> --victim red
+```
+
+Five recovery guards reject wrong or repeated deaths, substituted controls,
+survivor death/wipe, and unacknowledged, late or absent spectator motion. Clean
+traversal still rejects all deaths and revivals. All **375 Python guards**, seven
+package checks and the **912-file** source audit pass. Native source is unchanged
+from the 915-test locked build and its recorded native/single-player baselines.
+No screenshots were inspected.
+
+These are targeted personal-revival cases. They do not prove paired point 65,
+a full route, a team wipe, restoration from the new saved checkpoints, or
+disconnect/rejoin. Those checks remain open. Overall stays **50.1%**, with six
+campaign visits having combined evidence and no additional visit credited here.

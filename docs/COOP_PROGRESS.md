@@ -4,6 +4,15 @@ Updated 5 November 2026. Branch: `coop`. **Estimated overall completion: 50.1%.*
 The older 42% reports are historical. This percentage measures delivered and
 verified behavior against the full co-op scope; it is not a running test's progress.
 
+Current bottleneck: Burning Curiosity's longer paired lava traversal still fails
+intermittently. Separate verified segments extend through point 64, but there
+is no continuous full-level pass. Both players now independently pass a real
+lava death, the exact ten-second revival at 25 health, and a spectator camera
+following the survivor's actual walk. These automated internet tests do not
+complete another campaign visit. Next are reliable traversal from 65 onward,
+the remaining scenes and exit, team-wipe and reconnect coverage.
+See the [current recovery evidence](JLAIR1.md#ordinary-lava-revival-and-moving-spectator).
+
 Six of the 39 campaign visits have combined verification evidence; 33 remain open.
 Earlier contact-system repeats are still required. Remaining work includes full
 paired traversal, both scene owners, deaths and checkpoint recovery, reconnects,
@@ -18,6 +27,11 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | Scenes, transport and progression | 11.25 | 20 |
 | Full campaign verification | 3.08 | 20 |
 | **Total** | **50.08, rounded to 50.1** | **100** |
+
+## Evidence history
+
+The dated and build-specific results below retain historical percentages;
+the current overall estimate is the one at the top of this document.
 
 Latest native milestone: Burning Curiosity source `56160ff` passes **26 staged
 cases plus one summary**. Each living player receives the original arrival
@@ -37,9 +51,9 @@ full route with two independent internet clients, followed by recovery and
 reconnect checks. See [Burning Curiosity evidence](JLAIR1.md).
 
 Current validation: **915 active Rust tests** pass (three ignored), along with
-the locked release, nineteen Curiosity evidence guards (370 guards across the
-Python suite), seven package checks and
-the 910-file source worktree audit. Negative tests cover partial boarding,
+the locked release, nineteen traversal and five recovery guards for Curiosity
+(375 guards across the Python suite), seven package checks and
+the 912-file source worktree audit. Negative tests cover partial boarding,
 floating bodies, marginal ledges, damaging-liquid navigation and stationary
 bodies that retain collision velocity, alongside valid sloped landings.
 No images were inspected for these milestones.

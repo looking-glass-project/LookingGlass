@@ -818,6 +818,7 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                 else if started_playing.is_some() { "Your partner left. They can rejoin with the same invite." }
                 else if launch.host { "Copy your invite and send it to your friend. They choose Join and paste the link." }
                 else { "Waiting for both players to finish loading..." };
+                if crate::ui_probe::enabled() { crate::ui_probe::note("coop-panel-message", serde_json::json!(message)); }
                 super::menu::text(&ui, message, 128., 16.);
                 let labels: &[&str] = if playing {
                     if launch.host { &["Resume", "Save checkpoint", "Copy invite", "Leave co-op"] } else { &["Resume", "Leave co-op"] }

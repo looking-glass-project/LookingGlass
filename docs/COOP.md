@@ -1413,6 +1413,19 @@ then requests the first entrance again. It checks exact world/NPC restoration,
 separate visit histories, personal resources, paired relocations and clean exits.
 The destination requests are staged; this does not exercise the quest-gated exits.
 
+Save-file failure and recovery has a separate real-menu fixture:
+`python tools/test_coop_menu_storage.py --exe target/release/looking-glass.exe --data <original-base-folder> --seat-session <Anode-session-id>`.
+It uses real Windows file locks in isolated profiles, checks visible Save errors
+and live clients, releases the locks and retries. Fresh game processes then use
+Continue co-op with a damaged primary, join through a new public invite, display
+the backup recovery notice and repair the primary without losing the backup.
+With both files damaged, the menu reports failure and returns to the exact
+suspended solo game, whose controls still work. Three solo returns and the original
+solo slot are checked. Add `--local` for loopback isolation; it is not internet proof.
+No live gameplay state is injected. An opt-in passive panel-message receipt avoids
+image lookups. Primary replacement failure can advance the backup to the previous
+valid primary; the fixture checks recoverability, not two-file transaction atomicity.
+
 Host/Join error recovery has a separate real-menu fixture:
 `python tools/test_coop_menu_recovery.py --exe target/release/looking-glass.exe --data <original-base-folder> --seat-session <Anode-session-id>`.
 It exercises a real failed DNS lookup, an owned HTTP 503 responder, cancellation

@@ -52,7 +52,7 @@ yet verified across every level and failure condition.
 | Combat and resources | Nearest-visible targeting, individual damage, inventory and consumables in integrated levels | Remaining enemies/bosses and level-specific rewards, with both players as the target/collector |
 | Death and saves | Exact ten-second countdown, moving spectator camera, safe 25-health revival; shared checkpoint wipes, public save/leave/continue and storage-error/backup menu flow, public save refusal/retry during deaths/scenes, public guest restart during either player's countdown | Each visit's recovery matrix and remaining transport/death combinations |
 | Scenes and machinery | First-arrival ownership, original single-Alice scenes, hidden partner and safe reunion; public intro/dialogue reconnects with either theatre owner; all-living boarding on integrated rides | Remaining level adapters, both scene owners, watched/skipped cases, transports and exits |
-| Regression checks | 934 active Rust tests; 410 Python guards; current Curiosity native/single-player baseline comparisons | Full campaign verification and required earlier contact-system repeats on the final build |
+| Regression checks | 934 active Rust tests; 419 Python guards; current Curiosity native/single-player baseline comparisons | Full campaign verification and required earlier contact-system repeats on the final build |
 
 Campaign status from `COOP_CAMPAIGN.md`:
 
@@ -225,6 +225,36 @@ This adds 0.25 Internet Host/Join points for verified positive route readiness:
 guarantee another computer's DNS cache or continued provider availability.
 [Cloudflare Quick Tunnels](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/)
 remain a development service without an uptime guarantee.
+
+## Reproducible core runner, 5 November 2026
+
+The twelve save/recovery groups are now available through the checked-in
+`tools/test_coop_core.py`; see [core test instructions](COOP_CORE_TESTS.md).
+It preflights the desktop and required focus lease before starting games,
+validates every expected phase receipt, rejects mismatched network scope,
+reused evidence and mixed builds, and detects changed source/input/executable
+files. It stops on the first failure without automatically retrying a provider
+error. Optional saved SchoolPair modules preserve unrelated worktree edits.
+
+Nine focused runner guards pass, bringing the Python guard total to **419**;
+seven package checks pass. The final collector also validates all twelve
+retained local cases plus one fresh local import case. That audit is receipt
+validation, not twelve additional gameplay passes. The fresh end-to-end run is
+`private/coop/core-suite-b159c71b2d3044ac859ef30c51ef1611/summary.json`, with
+`import-test-f6eb3d468ec945f083115f1ac85fe962`: all four connected save phases,
+guest rejoins, abrupt host loss and unchanged solo files pass in 34.53 seconds.
+The later malformed-metadata checks were validated against its retained results;
+the report keeps the runner hash actually used during execution.
+
+One bounded public return-barrier retry after approximately twenty minutes
+without new provisioning requests still fails before gameplay in 1.38 seconds:
+`ready-core-suite-83fa108fb74d41cf8aaac3f9500a3c86/summary.json`, evidence
+`travel-test-c3b2192d4e144945a2869077d0791ec5`. The service again reports session
+rate limiting; the retained helper log gives no retry time. No further public
+request was made in this turn. Earlier public passes remain valid, and the
+remaining twelve public groups stay open. All native code and frozen executable
+bytes remain `0b5bca3`; no game rebuild was needed. Anode is released and overall
+completion stays **55.6%**.
 
 ## Frozen-build local core completion, 5 November 2026
 

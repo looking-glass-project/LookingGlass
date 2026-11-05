@@ -339,7 +339,11 @@ pub static RESERVATIONS: [Reservation; 39] = [
         route:&["--hatter1-route-check", "--hatter1-route-native-check"], skip:&["--hatter1-skip-route-check"],
         render:&["--hatter1-render-check"],
     }), ..visit(23, "hatter1")},
-    visit(24, "hatter2"),
+    Reservation { flags: Some(VisitFlags {
+        contract: &["--hatter2-check", "--hatter2-coop-combat-check"],
+        route: &["--hatter2-route-check"], skip: &["--hatter2-skip-route-check"],
+        render: &["--hatter2-render-check"],
+    }), ..visit(24, "hatter2") },
     Reservation { flags: Some(VisitFlags {
         contract: &["--jlair1-check", "--jlair1-traversal-check"],
         route: &["--jlair1-route-check"], skip: &["--jlair1-skip-route-check"],

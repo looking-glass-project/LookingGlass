@@ -2,7 +2,35 @@
 
 The `hatter2` controller owns the Mad Hatter battle and its onward route. It uses the user's local models, animations, effects, voices and camera paths. No original script or AI program executes.
 
-## Implemented
+## Co-op combat components
+
+Native source `ad408f8` adds a shared combat clock and stable personal targets.
+The Hatter and his Clockworks select a visible living Alice; committed attacks
+retain their eligible target. Cane impacts, cups, syringes and tea apply damage
+to the affected player. A syringe retains its saved target while that player is
+alive, keeps its direction after their death, and can hit the other body in its
+path. The original clock, attack timings, Watch rules and three-stage breakdown
+remain in use. Legacy single-player saves omit the optional co-op fields.
+
+On 5 November 2026, `--hatter2-coop-combat-check` passes **29 staged component
+cases plus one final summary**: 30/60/144 Hz full-cycle parity with single-player,
+pause/invalid time, nearest/hidden/dead targets for both roles, sight obstruction,
+directional cane dodges, personal projectile interception, saved syringe steering,
+Watch behavior, tea damage, reinforcement targets, victory and bounded compressed
+restoration. These are native game-data checks without image captures. Projectile
+state restoration does not establish rendered-effects or network delivery parity.
+
+All **905 active Rust tests** pass (three ignored), as does the locked release.
+The existing `--hatter2-check` and `--hatter2-route-check` logs match the unchanged
+`84c8eee` baseline exactly, including the full single-player input route.
+Evidence: `private/hatter2-coop-ad408f8/manifest.json`; paired log SHA-256
+`434e139acdf2c804e0d0c850da1aea9feb081d7867e672434f125b8b35e60bd7`.
+
+Paired world motion, personal pickups/rewards, scene ownership, lift boarding,
+full traversal and recovery/network coverage remain open. This combat milestone
+does not complete the campaign visit or add overall percentage credit yet.
+
+## Single-player implementation
 
 - The arrival bridge is solid immediately and closes after Alice crosses it. Arrival restores resources once and disables the Cheshire summon and Demon Dice allies.
 - The centre blade is a distinct quest component, recorded in persistent pickup history. It does not grant the completed Eye Staff.

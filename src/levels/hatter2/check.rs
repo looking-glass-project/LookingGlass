@@ -59,6 +59,7 @@ pub(super) fn check(a: &mut Assets) -> Result<()> {
     let mut b = o.saved.boss.clone();
     for syringe in [false, true] {
         b.shots.push(battle::Shot {
+            player: None,
             at: vec3(5664., 160., 300.),
             velocity: Vec3::X * 500.,
             age: 0.,

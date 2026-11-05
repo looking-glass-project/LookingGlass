@@ -2062,6 +2062,11 @@ Gryphon and Stop scene handoffs with both owners, watched/held-skipped play,
 living/dead waiting partners and paused/compressed restores, plus ordinary
 Mirror/Hint speech during exploration.
 
+`--hatter2-coop-combat-check` reserves staged paired About Face combat
+components: the shared clock cycle, nearest visible living targets, individual
+melee/projectile/tea impacts, reinforcement targets and compressed restoration.
+These checks do not establish paired machinery, rewards, scenes or traversal.
+
 `tools/test_coop_hatter1.py` separately reserves fresh two-client Clockwork
 prefix tests, using the internet session by default, individual waypoint
 receipts, supported waiting moves, ordinary lever inputs and normal checkpoints.

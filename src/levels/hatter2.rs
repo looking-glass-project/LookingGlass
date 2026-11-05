@@ -2,6 +2,8 @@
 mod art;
 mod battle;
 mod check;
+mod coop;
+mod coop_check;
 mod data;
 mod saves;
 mod scene;
@@ -75,6 +77,11 @@ pub static REGISTRATION: super::Registration = super::Registration {
     ],
     checks: &[
         super::Check {
+            flag: "--hatter2-coop-combat-check",
+            help: "Verify paired Hatter targeting, personal impacts and shared combat clocks.",
+            run: super::Run::Headless(coop_check::check),
+        },
+        super::Check {
             flag: "--hatter2-check",
             help: "Verify Hatter attacks, clock phases, lifts, rewards and restoration.",
             run: super::Run::Headless(check::check),
@@ -114,6 +121,8 @@ struct Wave {
 }
 #[derive(Clone, Serialize, Deserialize)]
 struct Saved {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    coop: Option<coop::State>,
     version: u8,
     phase: Phase,
     time: f32,
@@ -146,6 +155,9 @@ impl state::State for Saved {
         self.version
     }
     fn validate(&self, _: state::Visit) -> Result<()> {
+        if let Some(coop) = &self.coop {
+            coop.validate(self)?;
+        }
         for (n, t, max) in [
             ("scene", self.time, 3600.),
             ("world", self.clock, 86400.),
@@ -228,6 +240,7 @@ impl Encounter {
         let mut o = Self {
             data,
             saved: Saved {
+                coop: None,
                 version: 1,
                 phase: Phase::Arrival,
                 time: 0.,
@@ -372,6 +385,14 @@ impl Encounter {
 impl LevelController for Encounter {
     fn id(&self) -> &'static str {
         "hatter2"
+    }
+    fn coop_combat_roster(
+        &mut self,
+        dt: f32,
+        world: &World,
+        players: &mut [crate::level::CoopPlayer<'_>; 2],
+    ) -> Feedback {
+        self.pair_fight(dt, world, players)
     }
     fn facts(&self) -> crate::event::Facts {
         let mut f = crate::event::Facts::default();

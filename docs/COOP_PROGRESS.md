@@ -19,6 +19,19 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | Full campaign verification | 3.08 | 20 |
 | **Total** | **48.58, rounded to 48.6** | **100** |
 
+Latest combat milestone: About Face source `ad408f8` passes **29 staged native
+combat cases plus one final summary**, covering both players' target selection,
+individual hits, saved syringe behavior, the Watch, reinforcements and the original
+boss death. **905 active Rust tests** (three ignored) and the locked release pass.
+Both existing single-player checks, including the full input route, match the
+unchanged baseline exactly. No images were inspected for these checks.
+
+About Face's paired world motion, personal pickups/rewards, scenes, lifts and
+full route remain open. This is component evidence only; the estimate stays
+**48.6%**, with six complete combined-evidence rows. Next implementation work is
+that remaining About Face adapter; Clockwork's full-route/recovery gaps also remain.
+See [About Face evidence](HATTER2.md).
+
 Latest completed traversal sections: resumed **144-145** and **146-149** pass.
 Both players enter the lowered clock portal through ordinary jump/climb input,
 then personally reach the final lever approach. The first arrival leaves the
@@ -35,11 +48,11 @@ resource, camera and body-clearance checks passing. No new deaths occur.
 
 Earlier resumed 141 verifies Red's exact 10-second revival and a new personal
 chair approach; 142-143 verifies onward waiting. All **210 Clockwork Python
-guards**, **15 generic recovery guards** and seven package checks pass. Native
-source remains `84c8eee`; its previous 905 active Rust tests, 72 paired/driver
-checks and exact single-player 11+1 baseline were not rerun for Python-only changes.
+guards**, **15 generic recovery guards** and seven package checks pass. Those Clockwork runs used native
+source `84c8eee`; its previous 905 active Rust tests, 72 paired/driver checks and
+exact single-player 11+1 baseline were not rerun for those Python-only changes.
 
-Next: fresh full-route, remaining scene-owner, recovery and reconnect verification.
+Remaining Clockwork work: fresh full-route, remaining scene-owner, recovery and reconnect verification.
 These checkpoint segments through the exit do not complete the full visit's
 verification matrix; overall stays **48.6%**.
 See [Clockwork evidence](HATTER1.md).

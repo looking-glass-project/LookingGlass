@@ -6,7 +6,7 @@ For the concise current status, see [Co-op progress](COOP_PROGRESS.md).
 This is work in progress. A policy test or a connected pair of windows does not
 establish campaign support. Single-player behavior and saves must remain supported.
 
-Current milestone: **48.3% estimated overall; six campaign visits have combined
+Current milestone: **48.6% estimated overall; six campaign visits have combined
 verification evidence, 33 remain open.** Earlier contact-system repeats are still
 required as detailed in the campaign matrix. Pool of Tears has 38 passing native
 component cases plus public two-client opening and bank checkpoint segments.
@@ -15,12 +15,25 @@ personal fish deaths, guards and moving pickups. Full two-client traversal and
 recovery remain open for both visits. Report these smaller milestones alongside
 the total; a successful component or segment is not a completed campaign visit.
 
-Status checked on **4 November 2026**: the older approximately 42% figure is
-historical; the current weighted estimate is **48.3% (about 48%)**. Six of 39
+Status checked on **5 November 2026**: the older approximately 42% figure is
+historical; the current weighted estimate is **48.6%**. Six of 39
 campaign visits have combined evidence, with earlier contact-system repeats
 still required. Repeated component tests do not increase this total.
 
-Clockwork now has an explicit paired machinery/lever adapter. Native source
+About Face now has a paired combat adapter. Native source `ad408f8` passes 29
+staged combat cases plus the final summary, with 905 active Rust tests and a locked
+release. Existing single-player component/route output matches its baseline
+exactly. Personal rewards, paired world motion/lifts, scenes and full traversal
+remain open; this component milestone adds no overall credit yet. See
+[About Face evidence](HATTER2.md).
+
+Latest Clockwork evidence covers resumed route sections 144-145 and 146-149:
+both portal arrivals, the Red-owned watched final scene, safe reunion and the
+shared exit to About Face. These are checkpoint segments; full fresh traversal,
+the other final-scene owner, recovery and reconnects remain open. See
+[Clockwork coverage](HATTER1.md).
+
+Earlier Clockwork machinery milestone: native source
 `9ce4f98` passes 38 staged checks for shared clocks, two-rider lifts/floater,
 obstruction rollback, actual boarding contacts, both lever users, personal
 blocked approaches and owner-specific recovery. Single-player component output

@@ -161,14 +161,37 @@ walk and **2,224 matching player/world/native states**. Both players finish at
 retained. This replay uses the original step-21 goal and the corrected planner;
 the unsuccessful extra approach point was removed.
 
+Later closed evidence verifies steps **24-25** separately: four personal arrivals,
+one forward waiting walk and **1,563 matching states** without death or revival.
+That longer attempt fails at 26. The route driver held a fixed waiting point while
+fire-spitters attacked; enabling ordinary dodging kept Blue on the ledge, but the
+Ice preference exhausted Will before winning the fight. Both failed attempts
+remain recorded as failures.
+
+The runner now resolves visible threats before parking, using the original
+route's homing Cards preference and normal Blade fallback. It then returns to
+the actual waypoint before recording arrival. A resumed **26-29** run passes:
+eight personal arrivals, four parking walks, one forward waiting walk and
+**1,374 matching player/world/native states**. Both nearby fire-spitters die;
+Blue and Red finish at **50/96 health**, with no deaths or revivals in the closed
+85-row host trace. The ordinary checkpoint before 30 is retained.
+
+A further run has independently verified **30-31** evidence: four personal
+arrivals, three parking walks, **352 matching states** and 22 closed host trace
+rows without death or revival. Its longer attempt fails during the forward
+waiting climb from 32 toward 33 when Red misses the ascent and falls into lava.
+This bounded prefix is not a passing full attempt. No added campaign visit or
+percentage credit is claimed for these separate segments.
+
 `tools/test_coop_jlair1.py` automates approach steps 0-52, retains exact ordinary
 checkpoint receipts and freezes its source dependencies in private evidence.
-The fresh passing run covers only 0-3; 4-20 and 21-23 have separate evidence above.
-The remaining approach from 24, shared sinking
-platform, subsequent climb, Caterpillar and onward transition are still open.
+The fresh passing run covers only 0-3; later segments have separate evidence above.
+The climb from 32, remaining approach, shared sinking platform, subsequent climb,
+Caterpillar and onward transition are still open.
 An explicit `--checkpoint` plus `--start-step` tests a separate resumed segment;
-it never claims a fresh full route. Three Python verifier guards reject missing
-or duplicated personal arrivals, unacknowledged movement and respawn substitutes.
+it never claims a fresh full route. Four Python verifier guards reject missing
+or duplicated personal arrivals, unacknowledged movement, respawn substitutes
+and combat waits without both client acknowledgements or living players.
 
 ```powershell
 python tools/test_coop_jlair1.py --exe <frozen-executable> --build <full-source-id> --data <local-base-directory> --last-step 3 --save-before 0 3

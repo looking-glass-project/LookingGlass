@@ -36,7 +36,11 @@ Separately audited steps 4-20 and a resumed 21-23 run extend the approach eviden
 Source `ca4cc26` corrects sloped-footing checks in the automated planner; the
 previously stalled climb passes with 2,224 matching states and both players at
 100 health. A normal checkpoint before 24 is retained. All 907 active Rust tests
-and the native/single-player baseline comparisons pass. The full route stays open.
+and the native/single-player baseline comparisons pass. Later bounded 24-25 and
+30-31 evidence accompanies a passing resumed 26-29 run (1,374 matching states,
+50/96 health, no revival). The runner now allows ordinary combat dodging and
+uses homing Cards before parking. The next attempt fails the climb from 32
+toward 33; that attempt and the full route remain open.
 See [Burning Curiosity](JLAIR1.md).
 
 About Face now has a native paired adapter for combat, personal rewards,

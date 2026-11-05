@@ -37,7 +37,7 @@ full route with two independent internet clients, followed by recovery and
 reconnect checks. See [Burning Curiosity evidence](JLAIR1.md).
 
 Current validation: **907 active Rust tests** pass (three ignored), along with
-the locked release, three new Python evidence guards, seven package checks and
+the locked release, four Python evidence guards, seven package checks and
 the 910-file source worktree audit. Negative tests cover partial boarding,
 floating bodies and marginal ledges, alongside valid sloped landings.
 No images were inspected for these milestones.
@@ -56,8 +56,17 @@ its eight-unit support margin and requiring actual body contact. The previously
 stalled climb now passes in a separate resumed **21-23** internet run: six personal
 arrivals, one forward waiting walk and 2,224 matching states. Both finish at
 100 health without revival; a normal checkpoint before 24 is retained. Native
-component and single-player baseline outputs remain identical. Next: approach
-24-52 and the shared sinking-platform crossing. Total remains **50.1%**.
+component and single-player baseline outputs remain identical.
+Later bounded **24-25** evidence adds four personal arrivals and 1,563 matching
+states. Two attempts fail at 26 under fire-spitter attacks. The runner now allows
+ordinary combat dodging before parking and uses the original route's Cards
+preference. A resumed **26-29** run passes eight personal arrivals, the fight and
+1,374 matching states, ending at 50/96 health without death or revival. Its normal
+checkpoint before 30 is retained. A further attempt verifies **30-31** separately
+(four arrivals, 352 matching states), then fails the forward climb from 32 toward
+33 when Red falls into lava. That full attempt stays failed. Next: diagnose this
+ascent, finish the approach and verify the shared sinking-platform crossing.
+Total remains **50.1%**; no extra completed visit is credited.
 
 Latest network milestone: a **fresh full About Face route passes** in two
 independent internet clients on source `3298768`, using ordinary controls with

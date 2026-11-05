@@ -14,6 +14,7 @@ from pathlib import Path
 from test_coop_play import ROOT, distance
 from test_coop_village import Pair
 from test_coop_hatter1 import parking_target, recorded_arrival
+from test_coop_funhouse import combat_pending
 from test_coop_chess_resume import verify_resume_body, verify_resume_receipt
 from coop_recovery import read_trace, verify_presence
 
@@ -57,6 +58,22 @@ def verify_entry(history):
         assert distance(after['players'][0]['feet'], after['players'][1]['feet']) <= 128, 'Arrival did not reunite the pair'
 
 
+def verify_combat_wait(entry, history):
+    assert set(entry['start']) == set(entry['end']) == set(entry['commands']) == set(ROLES)
+    for role in ROLES:
+        start, end, command = entry['start'][role], entry['end'][role], entry['commands'][role]
+        assert end - start >= 60, 'Combat wait has no settled observation interval'
+        assert command['epoch'] == 1 and command['goal'] is None and not command['navigate']
+        assert command['attack'] and command['combat_tactics'] and command['prefer_cards'] and not command['prefer_ice']
+        rows = [r for r in history[role] if start <= r['tick'] <= end]
+        assert rows and rows[0]['tick'] == start and rows[-1]['tick'] == end, 'Missing combat wait boundary'
+        observed = [r for r in rows if r['driver']['command'] == command['id']]
+        assert len(observed) >= 2 and observed[-1] is rows[-1], 'Unacknowledged combat wait'
+        assert all(r['epoch'] == 1 and r['map'] == 'jlair1' and r['owner'] is None
+            and all(r['driver']['clear']) and all(p['health'] > 0 and p['spawned_at'] == 0 for p in r['players'])
+            for r in rows), 'Combat wait changed visit or lost a player'
+
+
 class CuriosityPair(Pair):
     map_name, entry, next_map = 'jlair1', 'jlair1_start1', 'jlair2'
     evidence_prefix, capture_scenes = 'jlair1-route-', False
@@ -73,7 +90,7 @@ class CuriosityPair(Pair):
         (self.folder / 'course.json').write_bytes(raw)
         self.evidence.update(course_sha256=hashlib.sha256(raw).hexdigest(),
             executable_sha256=hashlib.sha256(args.exe.read_bytes()).hexdigest(),
-            arrivals=[], parking=[], approaches=[], forward_waiting=[], completed=self.completed, fresh=args.checkpoint is None,
+            arrivals=[], parking=[], approaches=[], forward_waiting=[], combat_waits=[], completed=self.completed, fresh=args.checkpoint is None,
             scope='Approach segment only; shared lava crossing, ending and full visit remain unverified')
         deps = self.folder / 'fixture-dependencies'; deps.mkdir()
         for name in ('test_coop_jlair1.py', 'test_coop_hatter1.py', 'test_coop_village.py', 'test_coop_play.py',
@@ -161,7 +178,34 @@ class CuriosityPair(Pair):
         self.until(lambda: self.reached(role) and self.body(role)['player']['grounded'])
         return self.receipt(role, goal)
 
+    def clear(self):
+        if not any(combat_pending(self.reports[r], r) for r in ROLES): return False
+        entry = dict(step=self.step, start={r:self.reports[r]['frame']['tick'] for r in ROLES})
+        # A fixed waiting goal prevents the ordinary combat driver from dodging.
+        # Resolve currently visible threats before parking on a narrow slope;
+        # both clients still spend their own resources and use normal weapons.
+        for role in ROLES:
+            self.set(role, attack=True)
+            # Moving fire-spitters can evade the short Ice stream. Use the
+            # original route's homing Cards preference during a stationary
+            # fight, with the normal Blade fallback when Will runs out.
+            self.commands[role].update(prefer_cards=True, prefer_ice=False)
+        entry['commands'] = {r:dict(self.commands[r]) for r in ROLES}
+        self.evidence['combat_waits'].append(entry)
+        quiet = None
+        def done():
+            nonlocal quiet
+            tick = self.reports['host']['frame']['tick']
+            if any(combat_pending(self.reports[r], r) for r in ROLES): quiet = None
+            elif quiet is None: quiet = tick
+            return quiet is not None and tick - quiet >= 60
+        self.until(done, 120)
+        entry['end'] = {r:self.reports[r]['frame']['tick'] for r in ROLES}
+        print('PASS ordinary combat wait', self.step, 'health', [self.body(r)['stats']['sanity'] for r in ROLES], flush=True)
+        return True
+
     def go(self, goal):
+        self.clear()
         # The early crossing starts on a narrow ledge. Return from the waiting
         # bay to the original approach before asking either client to plan the
         # jumps; an offset starting line produced a different lava-side landing.
@@ -175,7 +219,10 @@ class CuriosityPair(Pair):
         for role in (first, other):
             if approach is not None:
                 self.evidence['approaches'].append(self.move(role, approach, navigate=True))
-            self.evidence['arrivals'].append(self.move(role, goal, navigate=True))
+            entry = self.move(role, goal, navigate=True)
+            if self.clear():
+                entry = self.move(role, goal, navigate=True)
+            self.evidence['arrivals'].append(entry)
             if role == first:
                 visited = []
                 for _ in range(8):
@@ -223,6 +270,7 @@ class CuriosityPair(Pair):
 
     def verify(self):
         verify_course(self.steps, self.completed, self.evidence['arrivals'], self.history, self.args.start_step, self.args.last_step)
+        for entry in self.evidence['combat_waits']: verify_combat_wait(entry, self.history)
         expected = {(step, role) for step in self.completed if step in self.approach_goals for role in ROLES}
         assert {(r['step'], r['role']) for r in self.evidence['approaches']} == expected
         assert len(self.evidence['approaches']) == len(expected), 'Duplicated approach receipt'

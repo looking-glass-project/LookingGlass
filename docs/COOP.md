@@ -1407,6 +1407,16 @@ then requests the first entrance again. It checks exact world/NPC restoration,
 separate visit histories, personal resources, paired relocations and clean exits.
 The destination requests are staged; this does not exercise the quest-gated exits.
 
+Host/Join error recovery has a separate real-menu fixture:
+`python tools/test_coop_menu_recovery.py --exe target/release/looking-glass.exe --data <original-base-folder> --seat-session <Anode-session-id>`.
+It exercises a real failed DNS lookup, an owned HTTP 503 responder, cancellation
+of a stalled connection, and failed/cancelled Host setup in an isolated profile.
+The final retry must connect both existing game processes through a public invite,
+save the shared checkpoint, leave, and restore the suspended solo state exactly.
+Only the temporary profile is used for the filesystem fault. The test does not
+change network settings or fabricate gameplay state. Internet provider failures
+still fail the run; no automatic provisioning retry bypasses their limits.
+
 Loading-barrier reconnects can be tested separately with
 `python tools/test_coop_regressions.py --exe target/release/looking-glass.exe --data <original-base-folder> --only travel-rejoin-outbound travel-rejoin-return`.
 Public invites and 40/20 ms delay/jitter are the defaults; add `--local` for

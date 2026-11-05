@@ -1,6 +1,6 @@
 # Co-op progress
 
-Updated 5 November 2026. Branch: `coop`. **Estimated overall completion: 52.8%.**
+Updated 5 November 2026. Branch: `coop`. **Estimated overall completion: 53.3%.**
 The older 42% reports are historical. This percentage measures delivered and
 verified behavior against the full co-op scope; it is not a running test's progress.
 
@@ -27,12 +27,12 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | Area | Credited points | Maximum |
 | --- | ---: | ---: |
 | Foundation and independent client diagnostics | 9 | 10 |
-| Internet Host/Join | 8.75 | 15 |
+| Internet Host/Join | 9.25 | 15 |
 | Two players, movement and presentation | 11 | 15 |
 | Combat, individual resources and death | 9.75 | 20 |
 | Scenes, transport and progression | 11.25 | 20 |
 | Full campaign verification | 3.08 | 20 |
-| **Total** | **52.83, rounded to 52.8** | **100** |
+| **Total** | **53.33, rounded to 53.3** | **100** |
 
 ## Implemented features and remaining work
 
@@ -47,12 +47,12 @@ yet verified across every level and failure condition.
 | Area | Implemented and demonstrated | Remaining work |
 | --- | --- | --- |
 | One-PC setup | `coop` branch; independent game processes, profiles/saves and automated state/log checks | Finish reproducible campaign coverage and repeat it on the final build |
-| Host / Join | Main/ESC controls, public internet menu flow, authenticated transport, cancellation and countdown/cutscene/moving-lift/loading-barrier reconnect cases | Other transport/recovery cases and public provisioning/DNS reliability |
+| Host / Join | Main/ESC controls, public internet menu flow, authenticated transport, prompt handshake cancellation, failure/retry recovery and countdown/cutscene/moving-lift/loading-barrier reconnect cases | Other transport/recovery cases and public provisioning/DNS availability |
 | Players and presentation | Blue/red Alice, separate input/cameras, body separation, replicated weapon effects | Broader contact/effect checks and reliable traversal through all swimming, leaves, ropes and moving supports |
 | Combat and resources | Nearest-visible targeting, individual damage, inventory and consumables in integrated levels | Remaining enemies/bosses and level-specific rewards, with both players as the target/collector |
 | Death and saves | Exact ten-second countdown, moving spectator camera, safe 25-health revival; shared checkpoint wipes, public save/leave/continue menu flow and guest restart during either player's countdown | Broader connection-failure coverage and each visit's recovery matrix |
 | Scenes and machinery | First-arrival ownership, original single-Alice scenes, hidden partner and safe reunion; all-living boarding on integrated rides | Remaining level adapters, both scene owners, watched/skipped cases, transports and exits |
-| Regression checks | 926 active Rust tests; 396 Python guards; current Curiosity native/single-player baseline comparisons | Full campaign verification and required earlier contact-system repeats on the final build |
+| Regression checks | 928 active Rust tests; 396 Python guards; current Curiosity native/single-player baseline comparisons | Full campaign verification and required earlier contact-system repeats on the final build |
 
 Campaign status from `COOP_CAMPAIGN.md`:
 
@@ -116,9 +116,53 @@ remain separate from the 39-visit campaign acceptance matrix.
   over loopback and public invites with 40/20 ms delay/jitter, retaining personal
   resources, visit history and cached world state. Native socket tests cover four
   interrupted loading stages, including either client's readiness boundary.
-- Next: other transport/recovery cases and investigation of transient
-  DNS/provisioning reliability. Core gameplay acceptance remains
+- Verified on `0c5e717`: real-menu recovery from DNS failure, HTTP rejection,
+  cancelled Join and failed/cancelled Host setup, followed by a successful public
+  join, checkpoint save, leave and exact solo return in the same game processes.
+  Cancel now closes an established but stalled TLS/WebSocket handshake socket.
+- Next: remaining transport/recovery cases and consolidated internet gameplay
+  acceptance. External DNS/provisioning availability remains a limitation even
+  though error/cancel/retry handling is verified. Core gameplay acceptance remains
   ahead of further campaign traversal; staged component passes do not finish it.
+
+## Connection failure and cancellation recovery, 5 November 2026
+
+The real-socket regression reproduced a Join cancellation bug: the UI returned
+while the connection worker retained an unanswered handshake until its network
+timeout. Build `0c5e717` registers the connected socket for cancellation and
+shuts it down when the peer is stopped or dropped. The temporary duplicate is
+released on both successful and failed handshakes. Cancellation tests cover
+plain WebSocket and TLS setup; a separate HTTP rejection test retains its peer
+object and still observes the failed socket close. DNS lookups and TCP connect
+calls remain on background workers; cancellation cannot interrupt an OS lookup
+already in progress, but a cancelled worker cannot enter gameplay afterward.
+
+The automated real-menu run passed in
+`private/coop/menu-test-d2faef5612b645839af27401e5876f24/`:
+
+- An invalid hostname exhausts DNS retries and returns to Join with its link
+  retained (23.39 seconds in this run).
+- An owned HTTP 503 responder returns a useful error without exposing its body.
+- Cancel closes the actual stalled handshake connection; the complete measured
+  click/return check took 0.328 seconds.
+- A temporary filesystem obstruction in the isolated host profile produces a
+  genuine setup failure, returns to Host and leaves the solo save untouched.
+- Cancelling another Host attempt stops its helper. Before/after process records
+  show only the same pre-existing game console child, with no new helper left.
+- The same host and guest processes then connect through a public invite, retain
+  the loaded resources/world, save a checkpoint and leave. The manual co-op save
+  and original solo slot remain unchanged; suspended solo state hashes match.
+
+The first menu attempt passed the Join checks but stopped at an overly broad
+cleanup assertion that rejected any child process, including the game's own
+console. The revised check records the baseline and rejects new remaining
+children; that complete rerun passes. Original evidence remains private.
+
+All 928 active Rust tests, 396 Python guards, seven source-package tests and the
+locked release build pass. The added 0.5 point credits the cancellation fix and
+the verified failure-to-public-retry flow. This does not claim that the external
+invite provider or every DNS resolver will always be available. No campaign
+visit is newly completed and no screenshots were inspected.
 
 ## Loading-barrier reconnect evidence, 5 November 2026
 

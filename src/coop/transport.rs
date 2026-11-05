@@ -4,7 +4,7 @@ use anyhow::{bail, Context, Result};
 use std::{
     collections::VecDeque,
     io::{Read, Write},
-    net::{SocketAddr, TcpListener, TcpStream, ToSocketAddrs},
+    net::{Shutdown, SocketAddr, TcpListener, TcpStream, ToSocketAddrs},
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
         mpsc::{self, Receiver, SyncSender, TryRecvError, TrySendError},
@@ -53,6 +53,7 @@ struct Shared {
     generation: AtomicU64,
     disconnect_generation: AtomicU64,
     incoming: Mutex<Receiver<(u64, Vec<u8>)>>,
+    connecting: Mutex<Option<TcpStream>>,
 }
 impl Shared {
     fn set(&self, state: State) {
@@ -104,6 +105,10 @@ impl Peer {
 
     pub fn stop(&self) {
         self.shared.stop.store(true, Ordering::Relaxed);
+        // TLS and WebSocket setup use bounded blocking reads on their worker.
+        // Closing the owned socket wakes those reads immediately on Cancel.
+        let connecting = self.shared.connecting.lock().unwrap().take();
+        if let Some(socket) = connecting { let _ = socket.shutdown(Shutdown::Both); }
     }
 
     /// Reject only the current guest, keeping a host's invite/listener usable.
@@ -137,6 +142,7 @@ fn channels(
         generation: AtomicU64::new(0),
         disconnect_generation: AtomicU64::new(0),
         incoming: Mutex::new(incoming),
+        connecting: Mutex::new(None),
     });
     (
         Peer {
@@ -341,6 +347,23 @@ fn resolve_with_retry(
     }
 }
 
+struct ConnectingSocket<'a>(&'a Shared);
+impl<'a> ConnectingSocket<'a> {
+    fn new(shared: &'a Shared, stream: &TcpStream) -> Result<Self> {
+        let mut connecting = shared.connecting.lock().unwrap();
+        anyhow::ensure!(!shared.stopped(), "Connection cancelled");
+        *connecting = Some(stream.try_clone()?);
+        Ok(Self(shared))
+    }
+}
+impl Drop for ConnectingSocket<'_> {
+    fn drop(&mut self) {
+        // Release the duplicate on success AND failure. Otherwise a failed
+        // upgrade would keep its connection alive while the error menu is open.
+        self.0.connecting.lock().unwrap().take();
+    }
+}
+
 fn connect(invite: &Invite, shared: &Shared) -> Result<WebSocket<MaybeTlsStream<TcpStream>>> {
     let url = invite.websocket_url();
     let uri: tungstenite::http::Uri = url.parse()?;
@@ -368,6 +391,7 @@ fn connect(invite: &Invite, shared: &Shared) -> Result<WebSocket<MaybeTlsStream<
         }
     }
     let stream = stream.context("Cannot reach the host. Check that the host is still open.")?;
+    let _connecting = ConnectingSocket::new(shared, &stream)?;
     stream.set_nodelay(true)?;
     stream.set_read_timeout(Some(Duration::from_secs(8)))?;
     stream.set_write_timeout(Some(Duration::from_secs(8)))?;
@@ -655,6 +679,85 @@ mod tests {
         });
         assert_eq!(result.unwrap_err().to_string(), "Connection cancelled");
     }
+    #[test]
+    fn cancelling_a_stalled_join_closes_its_handshake_socket_promptly() {
+        for (drop_peer, secure) in [(false,false), (true,false), (false,true), (true,true)] {
+            let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+            listener.set_nonblocking(true).unwrap();
+            let invite = Invite::new(&format!("{}://{}", if secure { "https" } else { "http" }, listener.local_addr().unwrap())).unwrap();
+            let (requested, ready) = mpsc::channel();
+            let server = thread::spawn(move || {
+                let started = Instant::now();
+                let mut socket = loop {
+                    match listener.accept() {
+                        Ok((socket, _)) => break socket,
+                        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                            assert!(started.elapsed() < Duration::from_secs(3));
+                            thread::sleep(Duration::from_millis(2));
+                        }
+                        Err(error) => panic!("{error}"),
+                    }
+                };
+                socket.set_nonblocking(false).unwrap();
+                socket.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+                let mut header = Vec::new();
+                while if secure { header.is_empty() } else { !header.ends_with(b"\r\n\r\n") } {
+                    let mut byte = [0];
+                    socket.read_exact(&mut byte).unwrap();
+                    header.push(byte[0]);
+                    assert!(header.len() < MAX_INPUT);
+                }
+                // Never answer the TLS/HTTP handshake. Cancel must close
+                // this real socket, not merely hide its connecting screen.
+                socket.set_read_timeout(Some(Duration::from_millis(750))).unwrap();
+                requested.send(()).unwrap();
+                // A TLS ClientHello may still be buffered; drain only those
+                // bytes, then require EOF/reset without waiting for timeout.
+                let mut drained = 0;
+                loop {
+                    match socket.read(&mut [0; 4096]) {
+                        Ok(count) if count > 0 => { drained += count; assert!(drained < MAX_INPUT); }
+                        closed => break closed,
+                    }
+                }
+            });
+            let peer = join(invite, Conditions::default()).unwrap();
+            let shared = peer.shared.clone();
+            ready.recv_timeout(Duration::from_secs(4)).unwrap();
+            if drop_peer { drop(peer); } else { peer.stop(); }
+            let closed = server.join().unwrap();
+            assert!(matches!(&closed, Ok(0)) || matches!(&closed, Err(e)
+                if matches!(e.kind(), std::io::ErrorKind::ConnectionReset | std::io::ErrorKind::ConnectionAborted)),
+                "Cancelled handshake remained open (TLS={secure}, drop={drop_peer}): {closed:?}");
+            wait_for(|| *shared.state.lock().unwrap() == State::Stopped);
+        }
+    }
+    #[test]
+    fn failed_join_releases_its_socket_while_the_peer_is_retained() {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let invite = Invite::new(&format!("http://{}", listener.local_addr().unwrap())).unwrap();
+        let peer = join(invite, Conditions::default()).unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let started = Instant::now();
+        let mut socket = loop {
+            if let Ok((socket, _)) = listener.accept() { break socket; }
+            assert!(started.elapsed() < Duration::from_secs(3));
+            thread::sleep(Duration::from_millis(2));
+        };
+        socket.set_nonblocking(false).unwrap();
+        socket.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+        let mut header = Vec::new();
+        while !header.ends_with(b"\r\n\r\n") {
+            let mut byte = [0]; socket.read_exact(&mut byte).unwrap();
+            header.push(byte[0]); assert!(header.len() < MAX_INPUT);
+        }
+        socket.write_all(b"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\n\r\n").unwrap();
+        wait_for(|| matches!(peer.state(), State::Disconnected(_)));
+        socket.set_read_timeout(Some(Duration::from_millis(750))).unwrap();
+        assert_eq!(socket.read(&mut [0;1]).unwrap(), 0, "Failed upgrade retained its socket");
+        assert!(matches!(peer.state(), State::Disconnected(reason) if reason.contains("HTTP 503")));
+    }
+
     #[test]
     fn accepted_nonblocking_socket_waits_for_delayed_upgrade_bytes() {
         let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();

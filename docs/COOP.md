@@ -1233,6 +1233,22 @@ for network conditions. It verifies scene ownership, partner immobilization,
 camera movement, matching authoritative reunion ticks and nearby living bodies,
 and captures the scene and reunion. This is a scene fixture, not a traversal test.
 
+Add `--rejoin --rejoin-at 6` to restart the guest during the camera introduction,
+or `--rejoin --rejoin-at 30` during dialogue. Exercise each with `--first blue`
+and `--first red`. The test waits for observed host disconnection and checks
+that player, scene and world state stay frozen. A fresh guest must inherit the
+same owner, scene and dialogue clocks, pending contacts, personal resources and
+hidden waiting partner. Both clients then watch the original scene through its
+normal completion and must agree on the safe reunion. `--local` scopes the
+result to loopback, including the requested artificial delay/jitter.
+
+The staged entrance is single-file. Before simulation, its collision-checked
+front spawn slot is assigned to the requested first arrival. Ordinary walking
+and the actual contact trigger still start the scene; no live body, clock or
+progress state is moved to force a result. The harness fails early if that
+player cannot reach the trigger. Reports, fixture source and failures stay in
+ignored private evidence; screenshot inspection is not required.
+
 Rendered checks on 2026-10-23 passed with Blue first on loopback and Red first over
 the public TLS tunnel with 40 ms delay plus 0–20 ms jitter per sender. Both windows
 observed the same owner and reunion tick, and a 48-unit separation. Captures were

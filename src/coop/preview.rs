@@ -173,7 +173,16 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
         let mut roster = if let Some(saved) = &resumed {
             Some(Roster::from_checkpoint(&saved.checkpoint.frame, &scene.world, |at| !arena.stage.interactions.hazardous(at))?)
         } else if launch.host {
-            Some(Roster::new_with(&scene.world, eye, initial_yaw, stats, |at| !arena.stage.interactions.hazardous(at))?)
+            let mut initial = Roster::new_with(&scene.world, eye, initial_yaw, stats, |at| !arena.stage.interactions.hazardous(at))?;
+            if launch.scene_check == Some(PlayerId::Blue) {
+                // The staged entrance is a narrow single-file approach. Assign
+                // its collision-checked front slot to the requested first
+                // arrival before simulation, rather than driving Blue through
+                // the waiting Red. The real contact still starts the scene.
+                initial.players.swap(0, 1);
+                initial.remember_checkpoint();
+            }
+            Some(initial)
         } else { None };
         if resumed.is_none() {
             if let Some(roster) = &roster { arena.reset_characters(&roster.players); }

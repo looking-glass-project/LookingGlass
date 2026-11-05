@@ -1,6 +1,6 @@
 # Co-op progress
 
-Updated 5 November 2026. Branch: `coop`. **Estimated overall completion: 51.6%.**
+Updated 5 November 2026. Branch: `coop`. **Estimated overall completion: 52.3%.**
 The older 42% reports are historical. This percentage measures delivered and
 verified behavior against the full co-op scope; it is not a running test's progress.
 
@@ -27,12 +27,12 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | Area | Credited points | Maximum |
 | --- | ---: | ---: |
 | Foundation and independent client diagnostics | 9 | 10 |
-| Internet Host/Join | 7.5 | 15 |
+| Internet Host/Join | 8.25 | 15 |
 | Two players, movement and presentation | 11 | 15 |
 | Combat, individual resources and death | 9.75 | 20 |
 | Scenes, transport and progression | 11.25 | 20 |
 | Full campaign verification | 3.08 | 20 |
-| **Total** | **51.58, rounded to 51.6** | **100** |
+| **Total** | **52.33, rounded to 52.3** | **100** |
 
 ## Implemented features and remaining work
 
@@ -47,12 +47,12 @@ yet verified across every level and failure condition.
 | Area | Implemented and demonstrated | Remaining work |
 | --- | --- | --- |
 | One-PC setup | `coop` branch; independent game processes, profiles/saves and automated state/log checks | Finish reproducible campaign coverage and repeat it on the final build |
-| Host / Join | Main/ESC controls, public internet invite links, authenticated transport, cancellation and reconnect cases | Complete normal-play integration and remaining disconnect/rejoin cases during combat, rides, scenes and transitions |
+| Host / Join | Main/ESC controls, public internet menu flow, authenticated transport, cancellation and countdown/cutscene reconnect cases | Remaining disconnect/rejoin cases during rides and transitions; public provisioning and DNS reliability |
 | Players and presentation | Blue/red Alice, separate input/cameras, body separation, replicated weapon effects | Broader contact/effect checks and reliable traversal through all swimming, leaves, ropes and moving supports |
 | Combat and resources | Nearest-visible targeting, individual damage, inventory and consumables in integrated levels | Remaining enemies/bosses and level-specific rewards, with both players as the target/collector |
-| Death and saves | Exact ten-second countdown, moving spectator camera, safe 25-health revival; shared checkpoint wipes, save/rejoin cases and guest restart during either player's countdown | Complete public menu acceptance and remaining connection failures; then each visit's recovery matrix |
+| Death and saves | Exact ten-second countdown, moving spectator camera, safe 25-health revival; shared checkpoint wipes, public save/leave/continue menu flow and guest restart during either player's countdown | Broader connection-failure coverage and each visit's recovery matrix |
 | Scenes and machinery | First-arrival ownership, original single-Alice scenes, hidden partner and safe reunion; all-living boarding on integrated rides | Remaining level adapters, both scene owners, watched/skipped cases, transports and exits |
-| Regression checks | 925 active Rust tests; 380 Python guards; current Curiosity native/single-player baseline comparisons | Full campaign verification and required earlier contact-system repeats on the final build |
+| Regression checks | 925 active Rust tests; 384 Python guards; current Curiosity native/single-player baseline comparisons | Full campaign verification and required earlier contact-system repeats on the final build |
 
 Campaign status from `COOP_CAMPAIGN.md`:
 
@@ -100,12 +100,71 @@ remain separate from the 39-visit campaign acceptance matrix.
   reconnects during either player's death countdown. The waiting host holds its
   world/life clocks; personal resources, body identity and remaining time survive.
   Both cases continue through exact ten-second revival and a shared checkpoint wipe.
-- Next: repeat that full menu flow over the public connection after provisioning
-  recovers; resolve transient DNS reliability and the temporary-provider limit.
-  Core gameplay acceptance remains ahead of further campaign traversal.
-- Then: consolidate the core movement, separation/effects, combat/resources,
-  spectator/revival, scene ownership and shared-boarding acceptance checks before
-  restarting level-by-level campaign testing.
+- Verified on build `4b3760a`: the complete real-input menu flow over public
+  internet invites, including two exact suspended-solo returns and a fresh
+  invite for Continue co-op. The provider responded after an hour without retries.
+- Also verified on `4b3760a`: guest process restart during the theatre introduction
+  and dialogue, with either player owning the watched scene. All four loopback
+  cases preserve clocks, ownership, starting resources and the hidden partner,
+  then complete the original scene and safely reunite both clients.
+- Next: reconnects during shared rides and level transitions, plus investigation
+  of transient DNS/provisioning reliability. Core gameplay acceptance remains
+  ahead of further campaign traversal; staged component passes do not finish it.
+
+## Cutscene reconnect and public menu evidence, 5 November 2026
+
+Build `4b3760a` passes four `tools/test_coop_scene.py --local --rejoin` cases
+with 40 ms delay and 20 ms jitter per sender. Each terminates the guest during
+the original theatre, observes the host stop, verifies a held full frame and
+combat/world snapshot, and joins with a fresh process. No scene is skipped.
+
+| Owner | Restart requested at scene time | Rejoin active ticks | Shared reunion tick | Separation |
+| --- | ---: | ---: | ---: | ---: |
+| Blue | 6 seconds | 13 | 5848 | 48 units |
+| Red | 30 seconds | 13 | 5864 | 48 units |
+| Blue | 30 seconds | 14 | 5846 | 48 units |
+| Red | 6 seconds | 14 | 5862 | 48 units |
+
+The six-second cases retain queued dialogue during the camera introduction;
+the thirty-second cases retain the same active line and its elapsed time.
+The scene clock advances by exactly the active host ticks, within float
+tolerance. Ownership, pending contacts, starting personal resources and body
+identity survive; the waiting partner remains frozen and hidden in both clients.
+Both clients watch the complete scene and agree on the normal reunion.
+Four guard tests reject resets, stale PIDs, changed resources/contacts, early
+dialogue, replacement bodies, moved partners and incorrect visibility.
+
+Evidence under `private/coop/`, in table order:
+`scene-test-fe7e1caf696442ae815c15196c0adf80/`,
+`scene-test-ac93e19fe7cd45ec89f60eb3b0cd4f0f/`,
+`scene-test-6c647ad26dfc4337b13b758f287ef07f/`,
+`scene-test-0e3e8f4f435d4509b8d289c63a0362db/`.
+
+The old Blue-first fixture was blocked by the waiting Red in its single-file
+approach. Before simulation, the fixture now assigns the collision-checked
+front spawn slot to the requested owner and records that initial checkpoint.
+The actual walking/contact still starts the scene. Normal spawning, collision,
+scene rules and saves are unchanged. The stalled attempt remains in
+`scene-test-f144fa012a1c42e290e6d1b8222fd59c/`; two harness failures involving
+an omitted pre-scene field and queued dialogue remain in `scene-test-ca2da77805ba40b59ec0c0530cca57e3/`
+and `scene-test-1fd35a937eb944539efea32501163dee/`. The reader and oracle now
+match those actual serialized states. An earlier Red reconnect on `0b32c79`
+passes in `scene-test-0578514c1d51406389913f254d5a12b5/`.
+
+After more than an hour without public provisioning attempts, the final build
+passes `tools/test_coop_menu.py` with `internet: true` and real Windows input:
+`private/coop/menu-test-5194337850bb40e1bf2fbfae0f52487e/`. It loads a solo slot,
+hosts that current game through ESC, joins a guest, saves, leaves and returns
+to the exact suspended solo state. It then verifies expired-link feedback,
+Continue co-op with a new public invite and a second exact solo return. Source
+solo bytes stay unchanged. Batched typing, invalid input and Cancel also pass.
+This completes the previously open public menu case; it does not prove that
+the earlier DNS failures or provider rate limit cannot recur.
+
+The locked release, 925 active Rust tests, 384 Python guards and seven source
+package tests pass. No screenshots were inspected. The added 0.25 Host/Join
+points credit the cutscene reconnect cases, and 0.5 credits the complete public
+menu flow. No campaign visit is added. Overall: 52.3%.
 
 ## Countdown reconnect evidence, 5 November 2026
 

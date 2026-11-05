@@ -19,7 +19,25 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | Full campaign verification | 3.08 | 20 |
 | **Total** | **48.58, rounded to 48.6** | **100** |
 
-Latest diagnostic work: source `84c8eee` detects an actual off-course landing
+Latest completed traversal section: resumed **140** now passes. Both players
+reach the third chair and return to dry ground, with **3,004 matching
+player/world/native states**. Red's pull-up includes an acknowledged release of
+movement while the native animation finishes, followed by an observed jump
+from the dry rim onto the cushion. This avoids walking into the slime beside it.
+Both departure jumps and their final landings pass; ordinary damage remains.
+Final health is **42.93/6.53**, and a normal checkpoint before 141 is retained.
+
+The previous attempt exposed why a jump issued after the pull-up was too late:
+the older forward command could carry Red off the narrow rim before the new
+input arrived. New controller regressions reproduce that failure for both roles,
+and all **173 Python guards** pass. Native source is unchanged at `84c8eee`,
+with its previously verified 905 active Rust tests, 72 paired/driver checks and
+exact single-player 11+1 baseline. The fourth chair, later route and recovery
+remain open; Red's low health needs attention through ordinary gameplay.
+No additional full campaign visit is credited; overall stays **48.6%**.
+See [Clockwork evidence](HATTER1.md).
+
+Earlier diagnostic work: source `84c8eee` detects an actual off-course landing
 before sending later jumps from the old plan. It also reports nearby dry,
 fully supported return targets from native geometry, without moving either
 body. The chair fixture requires the real jump and landing on that target.

@@ -12,7 +12,7 @@ from test_coop_hatter1 import verify_scene_handoff, verify_contact_handoff
 from test_coop_hatter1 import verify_doorway_approaches
 from test_coop_hatter1 import next_door_footing, verify_door_waiting
 from test_coop_hatter1 import verify_first_portal
-from test_coop_hatter1 import chair_return,verify_chair_departures
+from test_coop_hatter1 import chair_return,verify_chair_departures,verify_chair_hops
 from test_coop_hatter1 import ClockworkPair
 
 
@@ -139,22 +139,26 @@ class LedgeHandoffCommands(unittest.TestCase):
                 self.assertFalse(pair.commands[role]['ledge_handoff'])
 
     def test_completed_pull_resumes_routing_and_combat_before_arrival(self):
-        for role,slot in (('host',0),('guest',1)):
-            with self.subTest(role=role):
+        for role,slot,step in ((r,s,n) for r,s in (('host',0),('guest',1)) for n in (138,140)):
+            with self.subTest(role=role,step=step):
                 pair=ClockworkPair.__new__(ClockworkPair)
-                pair.serial=0;pair.commands={};pair.lead=.2;pair.step=138
+                pair.serial=0;pair.commands={};pair.lead=.2;pair.step=step
                 pair.evidence=dict(ledge_pulls=[]);pair.history=dict(host=[],guest=[])
                 pair.reports={};goal=[100,0,100]
                 def observe(tick,climbs,grounded,ledge,at,reached=False):
-                    body=dict(feet=at,climbs=climbs,grounded=grounded,ledge=ledge)
+                    body=dict(feet=at,climbs=climbs,grounded=grounded,ledge=ledge,jumps=int(step==140 and tick>=500),
+                        immersion=dict(level=0),health=100,warped_at=0,spawned_at=0)
                     partner=dict(feet=[-100,0,100],climbs=1,grounded=True,ledge=None)
                     players=[partner,partner];players[slot]=body
                     driver=dict(command=pair.commands.get(role,{}).get('id',0),reached=reached,
-                        ledge_pull_clear=[True,True],input_events=[])
+                        ledge_pull_clear=[True,True],clear=[True,True],input_events=[])
                     if tick>=200:
                         driver['input_events']=[dict(kind='jump',epoch=1,tick=110,input=[slot==0,slot==1],
                             before=[[[0,0,0],False,0]]*2,after=[[[0,0,0],False,0]]*2)]
-                    row=dict(tick=tick,epoch=1,players=players,driver=driver)
+                    if step==140 and tick>=500:
+                        before=[[[36,0,100],True,0]]*2;after=copy.deepcopy(before);after[slot][1:]=[False,1]
+                        driver['input_events'].append(dict(kind='jump',epoch=1,tick=450,input=[slot==0,slot==1],before=before,after=after))
+                    row=dict(tick=tick,epoch=1,owner=None,players=players,driver=driver)
                     for peer in pair.history:pair.history[peer].append(copy.deepcopy(row))
                     pair.reports[role]=dict(frame=dict(tick=tick,epoch=1,players=[dict(player=p) for p in players]),
                         route_driver=driver,combat=dict(stage=dict(owner=None)))
@@ -165,18 +169,33 @@ class LedgeHandoffCommands(unittest.TestCase):
                     self.assertFalse(pair.commands[role]['attack'])
                     observe(200,0,False,dict(pulling=True),[0,0,70])
                     self.assertFalse(predicate())
+                    hold_command=pull_command
+                    if step==140:
+                        held=pair.commands[role];hold_command=held['id']
+                        self.assertGreater(hold_command,pull_command)
+                        self.assertIsNone(held['goal'])
+                        self.assertFalse(held['navigate'] or held['jump'] or held['attack'])
+                        observe(250,0,False,dict(pulling=True),[0,0,80])
+                        self.assertFalse(predicate())
+                        self.assertEqual(pair.evidence['ledge_pulls'][0]['hold_ack_tick'],250)
                     # Grounding or the partner's climb cannot complete this pull.
                     observe(300,0,True,None,[36,0,100])
                     self.assertFalse(predicate())
-                    self.assertEqual(pair.commands[role]['id'],pull_command)
+                    self.assertEqual(pair.commands[role]['id'],hold_command)
                     self.assertNotIn('after_tick',pair.evidence['ledge_pulls'][0])
                     observe(400,1,True,None,[36,0,100])
                     self.assertFalse(predicate())
                     resumed=pair.commands[role]
                     self.assertGreater(resumed['id'],pull_command)
                     self.assertEqual(resumed['goal'],goal)
-                    self.assertTrue(resumed['navigate'] and resumed['attack'])
-                    self.assertFalse(resumed['jump'])
+                    if step==140:
+                        self.assertTrue(resumed['jump'])
+                        self.assertFalse(resumed['navigate'] or resumed['attack'])
+                        observe(500,1,False,None,[80,0,180])
+                        self.assertFalse(predicate())
+                    else:
+                        self.assertTrue(resumed['navigate'] and resumed['attack'])
+                        self.assertFalse(resumed['jump'])
                     self.assertEqual(resumed['arrival_radius'],6)
                     self.assertEqual(pair.evidence['ledge_pulls'][0]['after_tick'],400)
                     observe(600,1,True,None,goal,reached=True)
@@ -186,6 +205,51 @@ class LedgeHandoffCommands(unittest.TestCase):
                 command=pair.move(role,goal,navigate=True,radius=6)
                 self.assertEqual(command,pair.commands[role]['id'])
                 self.assertEqual(pair.evidence['ledge_pulls'][0]['after_tick'],400)
+
+                if step==140:
+                    steps=[{} for _ in range(141)];steps[140]=dict(nav=goal)
+                    verify_chair_hops(pair.evidence['ledge_pulls'],steps,[dict(step=140,role=role,tick=600,command=command)],pair.history)
+
+
+class ChairRimHop(unittest.TestCase):
+    def setUp(self):
+        # The pulled-up rim and goal from the run that walked into slime before
+        # reaching the cushion. A new hop must prove flight above that gap.
+        self.goal=[-928,2264,212.03125]
+        self.steps=[{} for _ in range(141)];self.steps[140]=dict(nav=self.goal)
+        self.hop=dict(role='guest',before_tick=100,after_tick=150,arrival_tick=250,command=14,goal=self.goal)
+        self.pulls=[dict(step=140,role='guest',after_tick=100,chair_hop=self.hop)]
+        self.arrivals=[dict(step=140,role='guest',tick=250,command=14)]
+        self.history={}
+        for role in ('host','guest'):
+            rows=[]
+            for tick,at in ((100,[-855.11,2223,224.15625]),(150,[-887,2240,290]),(250,[-920.625,2264.687,225.365])):
+                red=dict(feet=at,grounded=tick!=150,ledge=None,jumps=12+int(tick>=150),
+                    health=20.53,immersion=dict(level=0),warped_at=184476,spawned_at=0)
+                blue=dict(red,feet=[-842,2455,64],grounded=True)
+                events=[]
+                if tick>=150:
+                    events=[dict(kind='jump',epoch=1,tick=120,input=[False,True],
+                        before=[[[0,0,0],True,12]]*2,after=[[[0,0,0],True,12],[[0,0,0],False,13]])]
+                rows.append(dict(tick=tick,owner=None,players=[blue,red],
+                    driver=dict(clear=[True,True],command=14,input_events=events)))
+            self.history[role]=rows
+
+    def check(self):verify_chair_hops(self.pulls,self.steps,self.arrivals,self.history)
+
+    def test_actual_hop_from_the_recorded_rim_to_the_cushion(self):self.check()
+
+    def test_old_walk_after_pull_cannot_replace_the_hop(self):
+        del self.pulls[0]['chair_hop']
+        with self.assertRaisesRegex(AssertionError,'own observed hop'):self.check()
+
+    def test_no_airborne_observation_rejects_the_hop(self):
+        self.history['guest'][1]['players'][1]['grounded']=True
+        with self.assertRaisesRegex(AssertionError,'flight unobserved'):self.check()
+
+    def test_a_hop_that_enters_slime_is_rejected(self):
+        self.history['guest'][1]['players'][1]['immersion']['level']=1
+        with self.assertRaisesRegex(AssertionError,'entered liquid'):self.check()
 
 
 class FirstPortal(unittest.TestCase):

@@ -568,6 +568,49 @@ def verify_ledge_pulls(pulls, history):
                    and e['input'][slot] and not e['before'][slot][1]
                    and e['before'][slot][2] == e['after'][slot][2]
                    for r in history['host'] for e in r['driver'].get('input_events', [])), 'Pull-up input unobserved'
+        if pull.get('step') in (140,141):
+            assert 'hold_command' in pull and 'hold_ack_tick' in pull, 'Chair pull needs an acknowledged neutral hold'
+            held=next(r for r in rows if r['tick']==pull['hold_ack_tick'])
+            requested=next(r for r in rows if r['tick']==pull['hold_tick'])
+            assert requested['driver']['command']==pull['command'] and requested['players'][slot]['ledge']['pulling'], 'Chair hold preceded the actual pull'
+            assert pull['before_tick']<pull['hold_tick']<held['tick']<after['tick'], 'Chair hold was not applied during the pull'
+            assert held['driver']['command']==after['driver']['command']==pull['hold_command'] \
+                and held['players'][slot]['ledge']['pulling'], 'Chair hold did not persist through the pull'
+
+
+def chair_hop_required(step, body, goal, clear):
+    # The nearby cushion is separated from this pulled-up rim by harmful liquid.
+    # Jump across that gap instead of dropping into it while asking for a route.
+    return step in (140,141) and body['grounded'] and body.get('ledge') is None and clear \
+        and body['immersion']['level']==0 and 16<=distance(body['feet'][:2],goal[:2])<=160 \
+        and abs(body['feet'][2]-goal[2])<35
+
+
+def verify_chair_hops(pulls, steps, arrivals, history):
+    for pull in pulls:
+        step=pull.get('step')
+        if step not in (140,141):continue
+        role=pull['role'];slot=0 if role=='host' else 1
+        rows=history[role];by_tick={r['tick']:r for r in rows}
+        before=by_tick[pull['after_tick']];goal=steps[step]['nav']
+        required=chair_hop_required(step,before['players'][slot],goal,before['driver']['clear'][slot])
+        hop=pull.get('chair_hop')
+        assert bool(hop)==required, 'Nearby chair cushion requires its own observed hop'
+        if not hop:continue
+        assert hop['role']==role and hop['before_tick']==pull['after_tick'] and hop['goal']==goal, 'Chair hop must start at its completed pull'
+        verify_grounded_jump(hop,history)
+        assert not by_tick[hop['after_tick']]['players'][slot]['grounded'], 'Chair hop flight unobserved'
+        arrival=next(a for a in arrivals if a['step']==step and a['role']==role)
+        assert arrival['tick']==hop['arrival_tick'] and arrival['command']==hop['command'], 'Chair hop must finish at its personal arrival'
+        end=by_tick[hop['arrival_tick']];body=end['players'][slot]
+        assert body['grounded'] and body.get('ledge') is None and end['driver']['clear'][slot], 'Chair hop did not land clearly'
+        assert body['jumps']==before['players'][slot]['jumps']+1, 'Chair hop repeated its jump'
+        assert distance(body['feet'][:2],goal[:2])<8 and abs(body['feet'][2]-goal[2])<35, 'Chair hop missed its cushion'
+        for row in rows:
+            if hop['before_tick']<=row['tick']<=hop['arrival_tick']:
+                body=row['players'][slot];old=before['players'][slot]
+                assert row['owner'] is None and body['health']>0 and body['immersion']['level']==0, 'Chair hop entered liquid or lost its living body'
+                assert body['warped_at']==old['warped_at'] and body['spawned_at']==old['spawned_at'], 'Chair hop warped or revived'
 
 
 def doorway_slots(entities, doors=(92,93)):
@@ -754,12 +797,17 @@ class ClockworkPair(Pair):
         self.commands[role]['arrival_radius'] = radius
         command = self.commands[role]['id']
         pullup = None
+        chair_hop = None
         yielded = 0
         cinematic = None
         best = (distance(self.body(role)['player']['feet'], goal), self.reports[role]['frame']['tick'])
         def done():
-            nonlocal best, navigate, pullup, yielded, command, cinematic
+            nonlocal best, navigate, pullup, chair_hop, yielded, command, cinematic
             body = self.body(role)['player']; report = self.reports[role]
+            if chair_hop and 'after_tick' not in chair_hop:
+                before=next(r for r in self.history[role] if r['tick']==chair_hop['before_tick'])
+                if body['jumps']==before['players'][0 if role=='host' else 1]['jumps']+1 and not body['grounded']:
+                    chair_hop['after_tick']=report['frame']['tick']
             if report['combat']['stage']['owner'] is not None:
                 assert self.step in CONTACT_SCENES.get(report['route_driver']['scene'],()), 'Unexpected cinematic in ordinary prefix movement'
                 assert report['combat']['stage']['owner']==('Blue' if role=='host' else 'Red'), 'Moving player did not own the contact scene'
@@ -770,20 +818,35 @@ class ClockworkPair(Pair):
             if pullup is not None:
                 slot=0 if role=='host' else 1
                 before=next(r for r in self.history[role] if r['tick']==pullup['before_tick'])
+                hang=body.get('ledge')
+                if self.step in (140,141) and hang and hang['pulling']:
+                    if 'hold_command' not in pullup and report['route_driver']['command']==pullup['command']:
+                        # The native animation completes without held movement.
+                        # Release the approach now, before network delay can walk
+                        # the finished body off the narrow rim ahead of its hop.
+                        self.set(role,attack=False)
+                        pullup.update(hold_tick=tick,hold_command=self.commands[role]['id'])
+                    elif report['route_driver']['command']==pullup.get('hold_command'):
+                        pullup.setdefault('hold_ack_tick',tick)
                 if body['climbs']==before['players'][slot]['climbs']+1 and body['grounded'] and body.get('ledge') is None:
                     pullup['after_tick']=tick
                     verify_ledge_pulls([pullup],self.history)
+                    completed_pull=pullup
                     pullup=None
-                    # The explicit Space command has finished. Resume normal
-                    # routing and combat from the actual landing, which may
-                    # still need a jump or detour before the original goal.
-                    navigate=True
-                    self.set(role,goal,navigate=True,run=True)
+                    hop=chair_hop_required(self.step,body,goal,report['route_driver']['clear'][slot]) if self.step in (140,141) else False
+                    navigate=not hop
+                    self.set(role,goal,navigate=navigate,run=True,jump=hop,attack=not hop)
                     self.commands[role]['arrival_radius']=radius
                     command=self.commands[role]['id']
+                    if hop:
+                        chair_hop=dict(role=role,before_tick=tick,goal=goal,command=command)
+                        completed_pull['chair_hop']=chair_hop
                     best=gap,tick
                     return False
             if self.reached(role) and body['grounded'] and distance(body['feet'][:2], goal[:2]) < radius and abs(body['feet'][2]-goal[2]) < 35:
+                if chair_hop:
+                    assert 'after_tick' in chair_hop, 'Chair hop reached without observed flight'
+                    chair_hop['arrival_tick']=tick
                 return True
             hang = body.get('ledge')
             needs_clear=138<=self.step<=141
@@ -793,10 +856,10 @@ class ClockworkPair(Pair):
                 self.set(role, goal, run=True, jump=True,attack=not needs_clear)
                 self.commands[role]['arrival_radius'] = radius
                 navigate=False; command=self.commands[role]['id']
-                pullup = dict(role=role, before_tick=tick, command=command,requires_clear=needs_clear)
+                pullup = dict(step=self.step,role=role, before_tick=tick, command=command,requires_clear=needs_clear)
                 self.evidence['ledge_pulls'].append(pullup)
             if gap < best[0] - 2: best = gap, tick
-            elif yield_partner is not None and not jump and pullup is None and tick-best[1] > 240:
+            elif yield_partner is not None and not jump and pullup is None and chair_hop is None and tick-best[1] > 240:
                 peer = self.body(yield_partner)['player']
                 if partner_contact(body,peer):
                     assert yielded < 3, 'Partner still obstructs the approach after three yields'
@@ -826,7 +889,7 @@ class ClockworkPair(Pair):
                     best = distance(self.body(role)['player']['feet'],goal), self.reports[role]['frame']['tick']
                     yielded += 1
                     print('PASS ordinary partner yield',self.step,yield_partner,flush=True)
-            if not navigate and not jump and pullup is None and tick - best[1] > 240 and body['grounded']:
+            if not navigate and not jump and pullup is None and chair_hop is None and tick - best[1] > 240 and body['grounded']:
                 navigate = True; self.set(role, goal, navigate=True, run=True)
                 self.commands[role]['arrival_radius'] = radius
                 command=self.commands[role]['id']
@@ -1124,6 +1187,7 @@ class ClockworkPair(Pair):
                 else: raise AssertionError('Could not walk far enough to leave the arrival lane clear')
                 self.wait_for_partner(role,park)
         if 138<=self.step<=141:
+            verify_chair_hops(self.evidence['ledge_pulls'],self.steps,self.evidence['arrivals'],self.history)
             verify_chair_departures(self.evidence['chair_departures'],self.steps,self.evidence['arrivals'],self.history,self.completed+[self.step])
         self.set(other, attack=True)
 
@@ -1182,6 +1246,7 @@ class ClockworkPair(Pair):
         if 1 in self.completed:
             verify_descent(self.evidence['descent_arrivals'], self.evidence['descent_jumps'], self.history)
         verify_ledge_pulls(self.evidence['ledge_pulls'], self.history)
+        verify_chair_hops(self.evidence['ledge_pulls'],self.steps,self.evidence['arrivals'],self.history)
         verify_chair_departures(self.evidence['chair_departures'],self.steps,self.evidence['arrivals'],self.history,self.completed)
         verify_yields(self.evidence['yields'], self.steps, self.history)
         verify_stair_waiting(self.evidence['stair_waiting'],self.steps,self.evidence['arrivals'],self.history)

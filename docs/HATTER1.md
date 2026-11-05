@@ -1142,3 +1142,41 @@ guards** and seven source-package checks pass. The previous 40 scene cases
 were not repeated for this diagnostic change. The remaining chairs, second
 portal, final scene/exit, full-route and recovery/reconnect repeats remain open.
 No additional campaign visit is credited; overall remains **48.6%**.
+
+
+## Paired third chair with a held pull-up and rim jump (5 November 2026)
+
+A first attempt to jump directly from the pulled-up rim still failed. The old
+forward command continued after the animation, so Red left the rim before the
+new jump reached the authoritative simulation. The jump count did not increase;
+she fell into the slime beside the cushion. The failure is retained at
+`private/coop/hatter1-route-0b7d76dee9cf40d4aab9fabd111cd68c`.
+
+The fixture now releases movement as soon as the actual pull animation is
+observed. A separate neutral command must be acknowledged during that animation
+and remain active at its completion. Only then does a fresh jump target the
+nearby cushion. Verification requires the native takeoff, airborne observation,
+dry living body through the hop, original personal arrival and unchanged
+warp/revival stamps. This changes ordinary automated inputs only; physics,
+damage and the route's required arrivals are unchanged. Both players' old
+controller paths fail the new regressions; all **173 Python guards** pass.
+
+The next resumed **140** run passes from the unchanged checkpoint at tick
+209317, on the same native source `84c8eee`. It records two personal arrivals,
+one Red pull-up with a neutral hold, one actual rim hop and two ordinary return
+jumps to dry floor. The peers have **3,004 matching player/world/native states**.
+Both remain alive at about **42.93/6.53 health**. Red's earlier missed landings
+still incur normal damage; neither a rescue warp nor revival replaces a required
+movement. Evidence:
+`private/coop/hatter1-route-4493a73e818948cfa5728ed66094cfb8/result-summary.json`.
+
+The original observations SHA-256 is
+`3aef303677220f4b3b65af31d9b632543d1b2e5ccd2e18ffc2502323304b78d6`.
+The ordinary checkpoint before 141, at tick 230058, has SHA-256
+`0bb79a3b908c3011327ad4ba0243052dee8882b1c73ff032d16e3c8b8b261349`.
+All frozen fixture dependencies match the tested source. No native code changed;
+the prior 905 active Rust tests (three ignored), locked release, 72 paired/driver
+checks and exact single-player 11+1 baseline remain the relevant build evidence.
+The fourth chair and later route, full-route repeats and recovery/reconnects
+remain open. Red's low health is retained, not reset for the next test. This
+resumed section adds no full-visit credit; overall remains **48.6%**.

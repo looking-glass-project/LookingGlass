@@ -34,12 +34,22 @@ matching states. A fresh guest process rejoins an unchanged normal victory save
 with personal resources, pickup ownership and shared progress preserved: 77
 matching states, including 58 after rejoining. Timed drops age normally.
 
-Thirteen About Face Python guards and seven package checks pass. Renderer
-counters from the full route show live particles/effect batches in both clients
-with zero dropped batches; no images were inspected. Native code is unchanged.
-Team-wipe recovery, combat/transport/transition reconnects and remaining ending
-cases keep this visit partial. Next is the shared-checkpoint team-wipe check.
-The estimate remains **49.3%** and the combined-visit count remains six.
+Latest wipe milestone: both players die through ordinary combat and return
+together at tick 7,060 to the normal checkpoint saved at 3,421, at 100/100 health.
+Source `116fc99` adds an opt-in exact restore receipt before another tick can
+change the world. Characters, enemies, pickups, shared progression and personal
+resources match the actual saved checkpoint. Both clients agree on 1,058 states,
+including 27 after restoration; the closed 917-row trace verifies the boundary.
+
+All 905 active Rust tests, the locked release, 83 native cases plus three
+summaries, 16 About Face Python guards and seven package checks pass. The
+single-player component and full-route outputs still match the baseline exactly.
+Renderer counters from the earlier full route show particles/effects in both
+clients with zero dropped batches; no images were inspected. Combat/transport/
+transition reconnects and remaining ending cases keep this visit partial.
+Next implementation work is Burning Curiosity's paired adapter; the remaining
+About Face checks stay open in the matrix. The estimate remains **49.3%** and
+the combined-visit count remains six.
 
 Latest native milestone: About Face source `3298768` passes **83 staged cases
 plus three summaries** for combat, personal resources, both lifts and the original

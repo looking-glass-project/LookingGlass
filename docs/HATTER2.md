@@ -166,10 +166,43 @@ python tools/test_coop_hatter2_recovery.py --exe <exe> --build <native-build-has
 python -m unittest discover -s tools -p 'test_coop_hatter2*guards.py'
 ```
 
-Remaining: team-wipe checkpoint recovery, disconnect/rejoin around combat,
-transports and transition, live skipped/dead-partner ending cases, and broader
-campaign/contact regressions. Six of 39 visits retain combined verification
-evidence; total remains 49.3%.
+### Ordinary combat team wipe
+
+`tools/test_coop_hatter2_wipe.py` passes a fresh two-client internet run on source
+`116fc99`, with 40 ms delay and 20 ms jitter. Both enter the arena normally and
+save at tick 3,421. They take ordinary damage without attacking; Red dies first,
+then Blue dies with 339 ticks left on Red's countdown. At tick 7,060 both return
+to their exact checkpoint positions and personal resources, at 100/100 health.
+The closed 917-row recovery trace verifies one common spawn boundary, valid
+supported placement and no intervening individual revival. Both client views
+return to their own cameras. There are 1,058 matching player/world/native
+states, including 27 after restoration.
+
+The opt-in route driver now checks the entire saved character/world snapshot,
+both bodies and inventories, visit and campaign progress immediately after an
+ordinary wipe, before another simulation tick. It writes `route-wipe-<tick>.json`
+to the isolated host profile. This receipt observes the normal restore and never
+sets damage, loads a checkpoint or changes gameplay. The Python check binds the
+receipt to the actual checkpoint bytes and the closed trace's spawn tick.
+
+Evidence: `private/coop/hatter2-wipe-bd9cd4af90f34b63a8238253bb5ac1de/`, including
+successful `result.json` and replayed `verified-wipe.json`. Checkpoint SHA-256:
+`ba3898cd05bebd87a80f35019736ffc7a9eb8e33947c16aa3f571f48e1d0a679`.
+Observations SHA-256:
+`b2ab954f8095d38353edd971d8380898d2bfa0471f19d659ff53de4b8607f851`.
+
+The new native identity passes 905 active Rust tests (three ignored), the locked
+release and the same 83 paired cases plus three summaries. Single-player 8+1
+outputs match the unchanged baseline exactly. Sixteen About Face Python guards
+and seven package checks pass. This targeted case does not claim a full route.
+
+```powershell
+python tools/test_coop_hatter2_wipe.py --exe <exe> --build <native-build-hash> --data <base-folder>
+```
+
+Remaining: disconnect/rejoin around combat, transports and transition, live
+skipped/dead-partner ending cases, and broader campaign/contact regressions.
+Six of 39 visits retain combined verification evidence; total remains 49.3%.
 
 ## Single-player implementation
 

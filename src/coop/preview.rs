@@ -509,9 +509,29 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                                 "before":roster.players.each_ref().map(|b|(&b.player.feet,b.player.grounded,b.player.jumps)),
                                 "attack_locked":arena.characters.each_ref().map(|c|c.attack_movement_locked()),
                                 "network":host.input_timing()}));
+                        let previous_generation = roster.checkpoint_generation;
                         let stepping=Instant::now();
                         arena.step(roster, &scene.map, &mut scene.world, inputs)?;
                         simulation_ms+=stepping.elapsed().as_secs_f32()*1000.;
+                        if route_driver.is_some() && roster.checkpoint_generation != previous_generation {
+                            // Observe an ordinary gameplay wipe before another simulation
+                            // tick can age timers or move enemies. This opt-in receipt never
+                            // kills players, loads a checkpoint or changes the restored state.
+                            let saved = checkpoint_store.load()?;
+                            super::checkpoint::verify_restored(&saved.checkpoint, roster, &arena)?;
+                            anyhow::ensure!(serde_json::to_value(&visit)? == serde_json::to_value(&saved.checkpoint.visit)?
+                                && serde_json::to_value(&campaign)? == serde_json::to_value(&saved.checkpoint.campaign)?,
+                                "Team wipe changed the saved visit or campaign progress");
+                            anyhow::ensure!(roster.checkpoint_generation == previous_generation + 1,
+                                "Team wipe skipped a checkpoint generation");
+                            let path = crate::preferences::path(&format!("route-wipe-{}.json", roster.tick));
+                            std::fs::write(path, serde_json::to_vec(&serde_json::json!({
+                                "passed": true, "build": env!("LOOKING_GLASS_BUILD"),
+                                "tick": roster.tick, "generation": roster.checkpoint_generation,
+                                "previous_generation": previous_generation,
+                                "recovered_backup": saved.recovered_backup, "checkpoint": saved.checkpoint
+                            }))?)?;
+                        }
                         if let Some(driver)=&mut route_driver {
                             if let Some(mut event)=jump_event {
                                 event["after"]=serde_json::json!(roster.players.each_ref()

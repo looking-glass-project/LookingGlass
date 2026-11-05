@@ -32,9 +32,13 @@ passes. Red's separate exact 1,200-tick revival adds 1,087 matching states. A
 fresh guest process also rejoins the unchanged victory checkpoint with personal
 resources, pickup ownership and shared progress preserved: 77 matching states,
 58 after rejoining. Renderer counters show particles/effects in both clients
-with no dropped batches. Team-wipe recovery, combat/transport/transition
-reconnects and remaining ending cases keep this campaign row partial; total
-remains 49.3%. See [About Face evidence](HATTER2.md).
+with no dropped batches. A fresh ordinary combat team wipe now also passes on
+`116fc99`: both players restore together at tick 7,060 to the normal checkpoint
+at 3,421. An opt-in native receipt verifies the exact saved bodies, resources,
+characters, enemies, pickups and shared progress before the next tick. Both
+clients agree on 1,058 states, including 27 after restoration. Combat/transport/
+transition reconnects and remaining ending cases keep this campaign row partial;
+total remains 49.3%. See [About Face evidence](HATTER2.md).
 
 Latest Clockwork evidence covers resumed route sections 144-145 and 146-149:
 both portal arrivals, the Red-owned watched final scene, safe reunion and the

@@ -126,10 +126,50 @@ history and host recovery trace; its SHA, resume receipt and prior revivals must
 verify. Resumed runs cannot claim fresh completion. `--local` is an explicit
 local-network alternative. Team wipes fail this runner pending dedicated proof.
 
-Remaining: Red's exact death/revival case, team-wipe checkpoint recovery,
-disconnect/rejoin around combat/transports/transition, live skipped/dead-partner
-ending cases, and broader campaign/contact regressions. Six of 39 visits retain
-combined verification evidence; total remains 49.3%.
+### Targeted recovery and guest restart
+
+`tools/test_coop_hatter2_recovery.py` adds two bounded internet cases on the same
+unchanged native source `3298768`, with 40 ms delay and 20 ms jitter:
+
+- Fresh entry and ordinary combat damage kill Red at tick 6,171. Blue survives;
+  Red revives at 7,371 with 25 health after exactly 1,200 active ticks. The closed
+  1,253-row trace and both views prove preserved resources, safe placement and
+  spectator/returning cameras. There are 1,087 matching player/world/native
+  states. Final health is 80/25. No full-route claim is made for this case.
+- An unchanged normal victory checkpoint resumes with its original provenance.
+  The guest exits and a different process rejoins: personal resources, pickup
+  ownership, defeated encounter and completed scenes are preserved. There are
+  77 matching player/world/native states, including 58 after the new guest
+  rejoins. Both players retain 50/33 health. This covers a graceful restart at
+  idle victory; combat, moving machinery and transition reconnects remain open.
+
+The first restart attempt exposed an overly strict test precondition requiring
+no timed loot. The corrected verifier predicts the normal native float clocks,
+cooldowns, drop aging and expiry, then compares the entire state exactly. It
+rejects reset progress, changed pickup masks and incorrect drop removal. No
+gameplay change was needed. Thirteen About Face verifier guards and seven
+source-package checks pass; retained closed evidence replays successfully.
+
+The successful cases retain `result.json`, frozen fixture dependencies and
+`verified-recovery.json` under `private/coop/`:
+
+- Red revival: `hatter2-recovery-df3e49a78b3c48ddb03f951f3573a01b/`.
+  Observations SHA-256:
+  `5ccdab0ee4bb5773c7ffe990d0608ec1a540337107157e2d971dbbc99743b91a`.
+- Guest restart: `hatter2-recovery-aa1a6a92859c4f37bf3ae1a1d18c61de/`.
+  Observations SHA-256:
+  `0d86516bce0a2ac8af230a2571f648a103a5be4c5ddb9cf3fefbd341cfd48b65`.
+
+```powershell
+python tools/test_coop_hatter2_recovery.py --exe <exe> --build <native-build-hash> --data <base-folder> --case revival --victim red
+python tools/test_coop_hatter2_recovery.py --exe <exe> --build <native-build-hash> --data <base-folder> --case rejoin --checkpoint <normal-victory-checkpoint>
+python -m unittest discover -s tools -p 'test_coop_hatter2*guards.py'
+```
+
+Remaining: team-wipe checkpoint recovery, disconnect/rejoin around combat,
+transports and transition, live skipped/dead-partner ending cases, and broader
+campaign/contact regressions. Six of 39 visits retain combined verification
+evidence; total remains 49.3%.
 
 ## Single-player implementation
 

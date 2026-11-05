@@ -28,11 +28,18 @@ states**. Blue's death at 23,061 revives at 24,261 with exactly 25 health and
 verified resources, placement and spectator/returning cameras. A separate
 resumed ending verifies Blue ownership with 2,169 matching states.
 
-Nine new Python verifier guards and seven package checks pass. Renderer
-counters show live particles/effect batches in both clients with zero dropped
-batches; no images were inspected. Native code is unchanged. Red recovery,
-team-wipe/reconnect and remaining ending cases keep this visit partial, so
-the estimate remains **49.3%** and the combined-visit count remains six.
+Latest recovery milestone: Red also revives after exactly 1,200 active ticks
+at 25 health, with resources, safe placement and cameras verified across 1,087
+matching states. A fresh guest process rejoins an unchanged normal victory save
+with personal resources, pickup ownership and shared progress preserved: 77
+matching states, including 58 after rejoining. Timed drops age normally.
+
+Thirteen About Face Python guards and seven package checks pass. Renderer
+counters from the full route show live particles/effect batches in both clients
+with zero dropped batches; no images were inspected. Native code is unchanged.
+Team-wipe recovery, combat/transport/transition reconnects and remaining ending
+cases keep this visit partial. Next is the shared-checkpoint team-wipe check.
+The estimate remains **49.3%** and the combined-visit count remains six.
 
 Latest native milestone: About Face source `3298768` passes **83 staged cases
 plus three summaries** for combat, personal resources, both lifts and the original

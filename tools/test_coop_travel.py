@@ -22,6 +22,7 @@ from coop_travel_rejoin import LoadingReconnect
 def run(args):
     folder = ROOT / 'private' / 'coop' / ('travel-test-' + uuid.uuid4().hex)
     folder.mkdir(parents=True)
+    print('Evidence:', folder, flush=True)
     invite = folder / 'invite.txt'
     processes, logs = [], []
     active, history = {}, {'host': [], 'guest': []}
@@ -59,7 +60,6 @@ def run(args):
             assert time.monotonic() < deadline, 'Invite timeout'
             time.sleep(.1)
         start('guest')
-        print('Evidence:', folder, flush=True)
         deadline = time.monotonic() + 180
         while True:
             assert time.monotonic() < deadline, 'Travel timeout'

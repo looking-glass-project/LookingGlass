@@ -163,11 +163,11 @@ in the evidence below.
 | --- | --- | --- |
 | Existing saves | Solo import and co-op resume, individual resources, cached visits, fresh processes, unchanged solo files, normal-menu refusal/retry while dead or in a scene; fixed-build import/resume/backup/host-loss/wipe repeat passes | Core save cases covered; each campaign visit still needs its recovery matrix |
 | Storage failures | Real locked-file failures, retry, corrupt-primary backup recovery/repair, both-corrupt feedback; public menu tests | Covered for these cases; electrical power loss and disk exhaustion are not simulated |
-| Host/Join lifecycle | Public main/ESC flow, fresh invites, invalid/expired links, DNS/HTTP failure, Cancel, retry, exact solo return | Public service availability remains an external limitation |
+| Host/Join lifecycle | Public main/ESC flow, authenticated invite preflight, fresh invites, invalid/expired links, DNS/HTTP failure, Cancel, retry, exact solo return on `0b5bca3` | Public provisioning can still rate-limit new sessions |
 | Rejoining | Idle gameplay, either player's ground/underwater/rope/moving-platform countdown, either theatre owner in introduction/dialogue, rotating lift, outbound/return loading barriers | Consolidated repeat; underwater proof uses the Blue-led route and does not close the known trap-repeatability gap |
 | Combat/death | Shared targets, individual resources, exact countdown, moving spectator camera, 25-health reunion and shared wipe, representative moving-platform revival/carry | Consolidated repeat, then level-specific enemies and recovery matrices |
 | Presentation | Both Alice models, contact separation and replicated ambient/weapon effects in focused tests; contact/ambient baseline repeats on `c5cb7fc` | Broader campaign effects and audio; no new audio verification in this pass |
-| Consolidation | Automated native, menu and network fixtures retain build identities and private evidence | Run the core set on one frozen build after the remaining checks/fixes |
+| Consolidation | `0b5bca3`: 934 native tests, both public menu flows, eight public network cases and all twelve selected local core cases pass | Finish the twelve local cases over public invites on this same build once provisioning is available; retain the failed public attempt |
 
 ## Authenticated invite readiness, 5 November 2026
 
@@ -209,9 +209,15 @@ Public tests on the byte-identical executable pass:
 All case folders are under `private/coop/`. The retained manifest is
 `private/coop/invite-readiness-0b5bca3-20261105/manifest.json`. The executable SHA
 is `32f9559ff0c7c3d38722eda021cfdddf81fb366298e54db43f0eb42f33b2d2df`.
-The remaining network cohort is running separately; these passes do not mark
-core consolidation complete or transfer older save/recovery evidence to a new
-native build.
+The network cohort `regression-suite-643f10bb62464b169308cecb98e2f48c` passes
+8/9 selected cases: host stalls, both ground countdown reconnects, all four
+scene-owner/introduction-or-dialogue reconnects, and outbound loading-barrier
+rejoin. The return-barrier case fails before gameplay in 1.25 s because the
+invite provider limits new sessions; no new link is published. Its retained
+folder is `travel-test-511a4bf7b477499da9779c898278a95b`. This is a failed public
+suite, not a completed core consolidation. Remaining checks completed locally
+without retrying the rate-limited provider; local results carry no internet
+credit and older save/recovery passes keep their original build identities.
 
 This adds 0.25 Internet Host/Join points for verified positive route readiness:
 **55.58 total, reported as 55.6%**. Campaign counts remain 6 combined / 21 partial /
@@ -219,6 +225,47 @@ This adds 0.25 Internet Host/Join points for verified positive route readiness:
 guarantee another computer's DNS cache or continued provider availability.
 [Cloudflare Quick Tunnels](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/)
 remain a development service without an uptime guarantee.
+
+## Frozen-build local core completion, 5 November 2026
+
+The same `0b5bca3` executable completes all **12 selected local core cases** with
+40/20 ms delay/jitter where supported. These use separate client processes and
+profiles. They supplement the public checks above; they do not count as public
+internet passes or full campaign verification.
+
+| Local group | Verified result |
+| --- | --- |
+| Return loading barrier | Guest restart while returning to a cached visit; preserved history/resources and shared transition |
+| Solo import and co-op resume | Four fresh connected phases: import, resume, resume after abrupt host loss and backup; guest rejoin in each; exact native restore and unchanged solo files |
+| Persistent shared checkpoint | Cached travel/rejoin, fresh-process primary and backup restoration, exact team-wipe recovery and personal resources |
+| Storage errors | Locked primary/backup save failures, successful retry, fresh-process backup continuation and repair, both-corrupt feedback and normal solo return |
+| Save eligibility (three cases) | Real-menu refusal during either death countdown and both theatre owners' introduction/dialogue, with successful safe retries |
+| Rotating lift (two cases) | Both boarding orders, guest restart during motion, exact held state, preserved rider attachments and completed ride |
+| Swimming recovery | Both underwater countdown reconnects and exact revivals, moving spectator and saved team wipe in the Blue-led route |
+| Rope and moving-platform recovery (two cases) | Both countdown reconnects and exact safe revivals; moving-platform passive carry after revival |
+
+Private batch reports:
+`ready-core-suite-bfd11efc07d54ebd810277b719b6df65/summary.json` retains the first
+four passes and a failed menu-test launch: the caller omitted its active Anode
+focus lease, so the fixture stopped before its first Save action. The caller
+now checks and forwards that lease. `ready-core-suite-da1d0126c45d4404b8fe3904e879b9f9/summary.json`
+completes only the eight remaining cases. Both retain their actual wrapper and
+fixture hashes. The aggregate readiness manifest records all twelve case
+folders and result hashes; no successful case was repeated to hide a failure.
+
+The swim case covers both victims in the Blue-led recovery route. It does not
+close the separately recorded Red-led trap-navigation repeatability gap.
+Rope and fulcrum fixtures resume unchanged ordinary gameplay checkpoints;
+these are representative recovery checks, not entrance-to-exit traversals.
+The travel fixture now prints its evidence folder before launching Host so
+future provisioning failures are discoverable automatically. This logging-only
+change follows these runs; their original fixture identities are retained.
+
+The next public work is exactly these twelve local cases on this frozen build.
+The eight public network passes and both public menu passes need no duplicate
+run absent another relevant change. Public rate limiting remains unresolved;
+all owned windows are closed and Anode is released. Overall completion stays
+**55.6%** and the full campaign goal remains active.
 
 ## Fixed-build core checkpoint, 5 November 2026
 

@@ -5945,3 +5945,36 @@ This adds 0.25 scenes/progression points, now 10.75/20. The total is 48.58,
 reported as **48.6%**. Six campaign visits retain combined evidence; 33 remain
 open, plus earlier contact-system repeats. Closing doors, the final transport,
 continuous two-client Clockwork traversal and recovery/rejoin remain unverified.
+
+
+## Underwater countdown reconnect fixture
+
+`tools/test_coop_utemple_countdown.py` extends the normal temple recovery test.
+It restarts only the owned guest process during each player's actual drowning
+countdown, leaving the survivor's ordinary swim command running. While the host
+waits, its complete player/life frame and shared world must remain unchanged.
+The replacement guest must preserve the remaining countdown, drowned body and
+breath state, both personal inventories and swimming equipment. Its first
+playing frame is compared with the host's exact matching tick using full-body,
+world and native-enemy hashes; normal air-bubble refills remain real simulation.
+
+The test then requires the original ten-second spectator/revival checks, safe
+25-health swimming placement with fresh air, a shared saved-checkpoint wipe and
+an entrance rejoin. Camera assertions compare the actual rendered body and its
+recorded interpolation inputs, including the cut back to the revived player.
+No health, player, air or progression state is injected. These are recovery
+components, not completion of the temple route or the all-level campaign goal.
+
+Repeat the passing core case in Anode (it covers BOTH dead-player roles):
+
+```powershell
+python tools/test_coop_regressions.py --exe target/release/looking-glass.exe --data <original-base-folder> --only swim-countdown-blue --delay-ms 40 --jitter-ms 20
+```
+
+Public invites are the default; use `--local` only for a loopback baseline.
+Add `swim-countdown-red` to test the reversed route order. That case currently
+wipes near the first column before reconnecting and remains a failed route
+check; the two-order suite is not a complete pass. See `COOP_PROGRESS.md`.
+The suite writes private machine-readable results and retains failed attempts.
+It does not inspect screenshots. Each case records its fixture source hashes,
+client/build identities and the full before/held/after reconnect snapshots.

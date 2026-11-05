@@ -1,6 +1,6 @@
 # Co-op progress
 
-Updated 5 November 2026. Branch: `coop`. **Estimated overall completion: 54.3%.**
+Updated 5 November 2026. Branch: `coop`. **Estimated overall completion: 54.6%.**
 The older 42% reports are historical. This percentage measures delivered and
 verified behavior against the full co-op scope; it is not a running test's progress.
 
@@ -27,12 +27,12 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | Area | Credited points | Maximum |
 | --- | ---: | ---: |
 | Foundation and independent client diagnostics | 9.5 | 10 |
-| Internet Host/Join | 9.25 | 15 |
+| Internet Host/Join | 9.5 | 15 |
 | Two players, movement and presentation | 11 | 15 |
 | Combat, individual resources and death | 10 | 20 |
 | Scenes, transport and progression | 11.5 | 20 |
 | Full campaign verification | 3.08 | 20 |
-| **Total** | **54.33, rounded to 54.3** | **100** |
+| **Total** | **54.58, rounded to 54.6** | **100** |
 
 ## Implemented features and remaining work
 
@@ -52,7 +52,7 @@ yet verified across every level and failure condition.
 | Combat and resources | Nearest-visible targeting, individual damage, inventory and consumables in integrated levels | Remaining enemies/bosses and level-specific rewards, with both players as the target/collector |
 | Death and saves | Exact ten-second countdown, moving spectator camera, safe 25-health revival; shared checkpoint wipes, public save/leave/continue and storage-error/backup menu flow, public save refusal/retry during deaths/scenes, public guest restart during either player's countdown | Each visit's recovery matrix and remaining transport/death combinations |
 | Scenes and machinery | First-arrival ownership, original single-Alice scenes, hidden partner and safe reunion; public intro/dialogue reconnects with either theatre owner; all-living boarding on integrated rides | Remaining level adapters, both scene owners, watched/skipped cases, transports and exits |
-| Regression checks | 928 active Rust tests; 396 Python guards; current Curiosity native/single-player baseline comparisons | Full campaign verification and required earlier contact-system repeats on the final build |
+| Regression checks | 928 active Rust tests; 402 Python guards; current Curiosity native/single-player baseline comparisons | Full campaign verification and required earlier contact-system repeats on the final build |
 
 Campaign status from `COOP_CAMPAIGN.md`:
 
@@ -131,9 +131,12 @@ remain separate from the 39-visit campaign acceptance matrix.
   countdown and both theatre owners' introduction/dialogue, followed by successful
   safe retries. All three public cases use the same final fixture and 40/20 ms
   delay/jitter; timers, cameras, original scenes and saved files remain correct.
-- Next: reconnection during an underwater death countdown, then focused recovery
-  while attached to ropes or moving supports.
-  Existing temple entrance/exit reconnects do not cover that countdown interruption.
+- Verified on `c5cb7fc`: public guest restart during either player's underwater
+  death countdown in the Blue-led recovery route, with 40/20 ms delay/jitter.
+  Exact first-frame body/air/world/enemy agreement, both revivals and shared wipe
+  pass. The Red-led attempt wipes near the first column before reconnecting;
+  it remains failed route evidence, not a second passing order.
+- Next: focused recovery while attached to ropes or moving supports.
   External DNS/provisioning availability remains a limitation despite verified
   error/cancel/retry handling. Finish with a consolidated core run on one frozen
   build before returning to campaign traversal.
@@ -149,10 +152,59 @@ in the evidence below.
 | Existing saves | Solo import and co-op resume, individual resources, cached visits, fresh processes, unchanged solo files, normal-menu refusal/retry while dead or in a scene | Consolidated repeat on the final core build |
 | Storage failures | Real locked-file failures, retry, corrupt-primary backup recovery/repair, both-corrupt feedback; public menu tests | Covered for these cases; electrical power loss and disk exhaustion are not simulated |
 | Host/Join lifecycle | Public main/ESC flow, fresh invites, invalid/expired links, DNS/HTTP failure, Cancel, retry, exact solo return | Public service availability remains an external limitation |
-| Rejoining | Idle gameplay, either player's countdown, either theatre owner in introduction/dialogue, rotating lift, outbound/return loading barriers | Rope/support state and underwater-countdown interruption |
+| Rejoining | Idle gameplay, either player's ground and underwater countdown, either theatre owner in introduction/dialogue, rotating lift, outbound/return loading barriers | Rope/support state; underwater proof uses the Blue-led route and does not close the known trap-repeatability gap |
 | Combat/death | Shared targets, individual resources, exact countdown, moving spectator camera, 25-health reunion and shared wipe | Representative recovery on moving support, then level-specific enemies and recovery matrices |
 | Presentation | Both Alice models, contact separation and replicated ambient/weapon effects in focused tests | Repeat the focused baseline with the final core build; no new audio verification in this pass |
 | Consolidation | Automated native, menu and network fixtures retain build identities and private evidence | Run the core set on one frozen build after the remaining checks/fixes |
+
+## Underwater countdown reconnect, 5 November 2026
+
+The new `tools/test_coop_utemple_countdown.py` uses ordinary swimming and actual
+drowning, restarting only its owned guest process during each victim's countdown.
+It adds both player-order cases to the regression runner and six rejection guards.
+Native build `c5cb7fc` is unchanged; all evidence uses the same frozen executable.
+
+The Blue-led route passes locally and through a public invite with 40 ms delay
+and 20 ms jitter. Both Blue and Red are tested as the dead player. The waiting
+host holds its entire player/life frame and world; the fresh guest inherits the
+remaining timer, body identity, air, shells and personal resources. All three
+first-frame hash domains match the host at the exact guest tick. Both players
+revive after exactly 1,200 ticks with 25 health and fresh air in clear water near
+the survivor. A subsequent team wipe restores the saved entrance for both, and
+a further guest restart preserves that restored state.
+
+| Public victim | Death tick | Revival tick | Rejoin ticks | Remaining countdown |
+| --- | ---: | ---: | --- | --- |
+| Red | 3474 | 4674 | 3712 to 3713 | 962 to 961 |
+| Blue | 8039 | 9239 | 8571 to 8572 | 668 to 667 |
+
+Public evidence: `private/coop/temple-countdown-9af51a1dd65f428da12c197dec1892c5/`
+(150.25 seconds, 1,563 matching full-body/world/native-enemy states, shared wipe
+at tick 13,320). Local evidence:
+`private/coop/temple-countdown-63951454af72477bb751d1d0ea3f84ea/`
+(107.38 seconds, 1,743 matches, shared wipe at tick 11,227). Both results retain
+matching fixture sources and full before/held/after reconnect snapshots.
+
+The two-order public suite is **failed**, not a complete pass:
+`private/coop/regression-suite-9bab4afd60af4923ac35506c1e8e5e55/summary.json`.
+Its Red-led attempt (`temple-countdown-c6aa18e081054012997d2b0d362a0634`) wipes at
+tick 4,011 before the first reconnect. The surviving Red is near the first
+column with full health/air just before the wipe. This remains part of the
+already-open temple trap-repeatability work; no damage or collision rule was
+weakened, and the attempt is not counted as reconnect evidence.
+
+An earlier local attempt (`temple-countdown-e5a6d5ba396948f9a4798dc36f78665f`)
+passed its first reconnect, then failed a fixed 32-unit camera/network-distance
+assertion. The recovery fixture now retains coherent presentation samples and
+uses the existing verifier for exact interpolation inputs and the actual drawn
+camera subject. It also checks fresh air at revival. The failed attempt is
+retained; no native camera behavior changed. No screenshots were inspected.
+
+The 0.25 internet point credits the new underwater reconnect coverage for both
+victims, not another campaign visit or a reliable Red-led temple route. Current
+checks: 402 Python guards, seven package tests and source audits pass; the locked
+928-active-test native suite and release build pass. Campaign status remains
+6 combined, 21 partial and 12 not run. Overall completion is 54.6%.
 
 ## Saving during deaths and scenes, 5 November 2026
 

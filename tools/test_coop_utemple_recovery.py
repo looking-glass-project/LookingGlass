@@ -9,6 +9,7 @@ import copy
 import json
 from pathlib import Path
 
+from coop_recovery import verify_presence
 from test_coop_play import ROOT, distance, read
 from test_coop_utemple import TemplePair
 
@@ -23,12 +24,23 @@ class TempleRecovery(TemplePair):
         self.wiping = False
         (self.folder / 'recovery-fixture-source.py').write_bytes(Path(__file__).read_bytes())
 
+    def pump(self):
+        super().pump()
+        for role, report in self.reports.items():
+            # A repeated simulation tick can have a newer rendered position.
+            # Keep the inputs belonging to the camera sample already recorded.
+            self.history[role][-1].setdefault('presentation', report['presentation'])
+
     def validate_report(self, role, report):
         frame = report['frame']
         assert report['visit']['map'] == 'utemple' and frame['epoch'] == 1
         assert frame['checkpoint_generation'] in ({0, 1} if self.wiping else {self.generation})
         for index, body in enumerate(frame['players']):
             assert body['stats']['sanity'] > 0 or index in self.allowed_deaths, f'Unexpected death: {index}'
+
+    def on_drowned(self, victim):
+        """Optional network interruption after both clients observe the death."""
+        pass
 
     def drown_and_respawn(self, victim):
         index = 0 if victim == 'host' else 1
@@ -42,6 +54,7 @@ class TempleRecovery(TemplePair):
                                for r in self.reports.values()), 90)
         assert all(r['frame']['players'][index]['player']['breath']['hits'] > 0
                    for r in self.reports.values()), 'Victim did not actually drown'
+        self.on_drowned(victim)
         self.until(lambda: all(r['frame']['players'][index]['spawned_at'] > before['players'][index]['spawned_at']
                                and r['frame']['players'][index]['stats']['sanity'] > 0
                                for r in self.reports.values()), 35)
@@ -61,9 +74,8 @@ class TempleRecovery(TemplePair):
                 assert 0 < remaining <= 1200
                 death_ticks.add(row['tick'] - (1200 - remaining))
                 if role == victim:
-                    assert row['camera_player'] == ('Red' if index == 0 else 'Blue')
-                    assert distance(row['camera_target'][:2], row['camera_subject_feet'][:2]) < 1
-                    assert distance(row['camera_subject_feet'], row['players'][1-index]['feet']) < 32
+                    assert 'player_feet' in row['presentation'], 'Missing rendered spectator evidence'
+                    verify_presence([row], role, generation=self.generation)
                     followed.append(row['camera_target'])
             assert len(death_ticks) == 1, 'Spectator countdown drifted'
             death_tick = death_ticks.pop()
@@ -77,12 +89,14 @@ class TempleRecovery(TemplePair):
             separation = distance(body['feet'], spawned['players'][1-index]['feet'])
             assert 36 - .01 <= separation <= 110 + 440 * elapsed / 120, 'Unsafe or distant swim respawn'
             assert all(spawned['driver']['clear']) and body['swimming']
+            breath = spawned['breath'][index]
+            assert breath['hits'] == 0 and breath['next_hurt'] == 0, 'Revived swimmer retained drowning damage'
+            assert 0 <= breath['submerged'] <= elapsed / 120 + .001, 'Revived swimmer did not get fresh air'
             for actual, old in zip(spawned['players'], dead[0]['players']):
                 for field in ('owned', 'collected', 'turtle_air'):
                     assert actual['stats'][field] == old['stats'][field], f'Respawn changed personal {field}'
             if role == victim:
-                assert spawned['camera_player'] == ('Blue' if index == 0 else 'Red')
-                assert distance(spawned['camera_target'][:2], body['feet'][:2]) < 1
+                verify_presence([spawned], role, generation=self.generation)
                 assert max(distance(p, followed[0]) for p in followed) > 10
             results[role] = dict(death_tick=death_tick, spawn_tick=body['spawned_at'],
                                  health=body['health'], separation=separation, elapsed_ticks=elapsed)

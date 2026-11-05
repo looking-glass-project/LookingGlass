@@ -786,6 +786,17 @@ pub(crate) fn pending_jump(steps:impl IntoIterator<Item=bool>,current_issued:boo
     steps.into_iter().enumerate().any(|(index,jump)|jump && (index>0 || !current_issued))
 }
 
+fn supported_goal_walk(world: &World, player: &Player, goal: Vec3) -> bool {
+    let delta=goal-player.feet;
+    if !player.grounded || player.swimming || player.ledge.is_some()
+        || delta.truncate().length()>=42. || delta.z.abs()>=35. { return false; }
+    let end=vec3(goal.x,goal.y,player.feet.z);
+    let trace=world.body_trace(player.feet,end);
+    if trace.start_solid || trace.fraction<1. { return false; }
+    let samples=(delta.truncate().length()/8.).ceil().max(1.) as u32;
+    (0..=samples).all(|i|crate::route::supported_footing(world,player.feet.lerp(end,i as f32/samples as f32)))
+}
+
 pub(crate) fn landing_control(world: &World, player: &Player, goal: Vec3, lead: f32, radius: f32) -> Option<(Vec2, bool)> {
     let delta = goal-player.feet;
     // Waiting for a delayed grounded snapshot is too late on a small pad.
@@ -1773,7 +1784,13 @@ impl Driver {
         }
         // A nearby supported intermediate island can still require another
         // jump. Settling toward the final goal would erase that queued takeoff.
-        let can_land=command.navigate && !pending_jump(self.plan.iter().map(|(input,_)|input.jump),self.jumped);
+        // A delayed run can land directly on the destination shelf instead of
+        // catching the planned ledge. Its queued pull-up would then become an
+        // ordinary jump off that shelf. Cancel it only after actual grounding
+        // with a clear, continuously supported walk to the final goal. A gap
+        // or a different floor still requires the pending takeoff.
+        let can_land=command.navigate && (!pending_jump(self.plan.iter().map(|(input,_)|input.jump),self.jumped)
+            || command.settle_landings && supported_goal_walk(world,&body.player,goal));
         let landing = if can_land {
             landing_control(world,&body.player,goal,command.input_lead,command.arrival_radius)
         } else { None };
@@ -2958,6 +2975,34 @@ mod tests {
         let improved=arrivals[1].expect("Delayed runner did not leave the knockback area");
         assert!(arrivals[0].is_none_or(|old|improved<old),"Corner advancement did not improve arrival: {arrivals:?}");
     }
+    #[test]
+    fn a_supported_goal_walk_can_replace_an_obsolete_pull_but_not_a_gap_jump() {
+        let pad=World::fixture(&[(vec3(-80.,-80.,-100.),vec3(80.,80.,0.))]);
+        let goal=Vec3::Z*0.03125;
+        let mut player=Player::new(vec3(10.,28.,0.03125));player.grounded=true;
+        player.velocity=vec3(-212.,-216.,0.);
+        assert!(pending_jump([false,true],false));
+        assert!(supported_goal_walk(&pad,&player,goal));
+        // Once a live landing is observed, ordinary landing steering brakes
+        // here instead of executing the queued ledge-pull as a new jump.
+        for _ in 0..240 {
+            let (wish,_)=landing_control(&pad,&player,goal,0.,2.).unwrap();
+            player.tick(&pad,Controls{wish,..Default::default()});
+        }
+        assert!(player.grounded && player.jumps==0 && player.feet.distance(goal)<2.);
+        let gap=World::fixture(&[
+            (vec3(-100.,-80.,-100.),vec3(-8.,80.,0.)),
+            (vec3(8.,-80.,-100.),vec3(100.,80.,0.)),
+        ]);
+        player.feet=vec3(-20.,0.,0.03125);player.velocity=Vec3::ZERO;
+        assert!(!supported_goal_walk(&gap,&player,vec3(20.,0.,0.03125)),
+            "A nearby island must retain its pending jump");
+        assert!(!supported_goal_walk(&pad,&player,vec3(0.,0.,80.)),
+            "A different floor cannot cancel a pending climb");
+        player.grounded=false;
+        assert!(!supported_goal_walk(&pad,&player,goal),"Airborne proximity is not a completed landing");
+    }
+
     #[test]
     fn landing_handoff_requires_supported_footing_beneath_the_descending_body() {
         let world=World::fixture(&[(vec3(0.,-100.,-100.),vec3(120.,100.,0.))]);

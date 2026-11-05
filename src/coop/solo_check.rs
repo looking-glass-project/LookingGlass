@@ -101,6 +101,7 @@ pub async fn check(assets: &mut Assets, options: &Options) -> Result<()> {
     ensure!(std::fs::read(&path)? == original, "Import modified its solo save");
     std::fs::write(crate::preferences::path("coop-import-expected.json"), serde_json::to_vec(&converted)?)?;
     println!("PASS solo import: moved body, camera, earned inventory, opened door, story, NPCs, character and cached return visit; safe separated Red; rejected dead/flying imports; solo file unchanged");
+    super::checkpoint::verify_writes(assets, &converted)?;
     check_swimmer(assets)?;
     Ok(())
 }

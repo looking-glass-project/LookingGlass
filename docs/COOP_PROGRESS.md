@@ -50,7 +50,7 @@ yet verified across every level and failure condition.
 | Host / Join | Main/ESC controls, public internet invite links, authenticated transport, cancellation and reconnect cases | Complete normal-play integration and remaining disconnect/rejoin cases during combat, rides, scenes and transitions |
 | Players and presentation | Blue/red Alice, separate input/cameras, body separation, replicated weapon effects | Broader contact/effect checks and reliable traversal through all swimming, leaves, ropes and moving supports |
 | Combat and resources | Nearest-visible targeting, individual damage, inventory and consumables in integrated levels | Remaining enemies/bosses and level-specific rewards, with both players as the target/collector |
-| Death and saves | Exact ten-second countdown, moving spectator camera, safe 25-health revival; shared checkpoint wipes and save/rejoin cases | Prioritise solo-save conversion, resumed-session rejoining, backup and failure handling; then each visit's recovery matrix |
+| Death and saves | Exact ten-second countdown, moving spectator camera, safe 25-health revival; shared checkpoint wipes and save/rejoin cases | Finish save/leave menu acceptance and connection failures; then each visit's recovery matrix |
 | Scenes and machinery | First-arrival ownership, original single-Alice scenes, hidden partner and safe reunion; all-living boarding on integrated rides | Remaining level adapters, both scene owners, watched/skipped cases, transports and exits |
 | Regression checks | 923 active Rust tests; 376 Python guards; current Curiosity native/single-player baseline comparisons | Full campaign verification and required earlier contact-system repeats on the final build |
 
@@ -82,17 +82,56 @@ remain separate from the 39-visit campaign acceptance matrix.
   wipe; loaded solo progress converted into two players; manual co-op saves;
   fresh host/guest restarts; guest rejoining imported, resumed and backup sessions;
   unchanged solo saves; cached first/return visits; host-owned guest resources.
-- Also verified on the final executable: swimming import and the complete
+- Also verified on prior build `a9b55a5`: swimming import and the complete
   import/rejoin/resume/backup internet suite. The separate team-wipe persistence
   suite passed travel/reconnect and primary resume/wipe on the same build; its
   backup guest hit the DNS failure again, so that whole internet run did not pass.
-- Next: prove write/interruption failures preserve the previous disk and memory
-  checkpoint; clarify save/leave and host-exit behavior; exercise expired links,
+- Verified on build `7994cc2`: real Windows primary/backup replacement failures
+  preserve both committed files and the previous in-memory team-wipe state;
+  stale temporary files are ignored; a successful save updates the wipe point;
+  saving after primary corruption preserves the last good backup. Abrupt host
+  loss leaves the save intact, ends the diagnostic guest connection, and permits
+  fresh host/guest resume and rejoin over the internet.
+- Next: clarify and verify save/leave menu behavior; exercise expired links,
   cancelled joins and the observed transient DNS failure; verify returning to
   the suspended solo session and hosting again through the actual ESC menu.
 - Then: consolidate the core movement, separation/effects, combat/resources,
   spectator/revival, scene ownership and shared-boarding acceptance checks before
   restarting level-by-level campaign testing.
+
+## Storage and host-loss evidence, 5 November 2026
+
+Build `7994cc2` passes the extended `tools/test_coop_import.py` suite over public
+internet invites with 40 ms delay and 20 ms jitter per sender. Evidence:
+`private/coop/import-test-6d6f290f6632436784c49ab6e67a5e9d/`.
+The native storage receipt records two real sharing-violation failures and two
+exact team-wipe restores of the old checkpoint. It also verifies stale temporary
+files, successful checkpoint replacement and backup preservation after corruption.
+These cases do not simulate electrical power loss or disk exhaustion.
+
+The harness terminates the resumed host and its helper without a graceful exit.
+The guest reports the disconnect in 6.33 seconds; both committed files retain
+their bytes. Fresh processes then resume the save, rejoin, and recover the backup.
+All four network phases retain the two inventories, shared world and solo files.
+This CLI diagnostic evidence does not yet verify the normal menu's error panel,
+return to the suspended solo game, or subsequent hosting through ESC.
+
+The earlier invite DNS failure did not recur in six fresh native game sessions
+or six headless transport sessions. Its cause remains unproven and no resolver
+fix is claimed. These successful retries do not close intermittent reliability.
+A separate full multi-visit checkpoint rerun on `7994cc2` passes travel/rejoin,
+then fails before the resumed host can publish an invite: the temporary tunnel
+provider returns HTTP 429 during provisioning. Evidence:
+`private/coop/travel-test-1bbdc0c80f44484fbaf8edd1441b4542/`.
+That run remains failed; repeated new-session setup hit a real provider limit.
+No immediate internet retry or rate-limit workaround is used.
+The same multi-visit checkpoint passes separate primary and backup resume/wipe
+checks on loopback with the same 40/20 ms conditions:
+`private/coop/storage-resume-local-32dbde14645349219084727e4fe31ceb/`.
+This isolates persistence from the provider failure; it is not an internet pass.
+
+The total remains 51.1%; this strengthens core evidence without completing the
+remaining menu/connection milestone or adding a campaign visit.
 
 ## Solo continuation evidence, 5 November 2026
 

@@ -1422,11 +1422,20 @@ Run it in Anode. It generates a solo save in a fresh isolated profile, proves
 exact conversion of Blue/world/NPC/character and cached return state, then hosts
 that save through the production loader (`--coop-host <invite-file> --load slot1`).
 The guest reconnects in each phase: initial import, both-process restart from the
-co-op save, and damaged-primary backup recovery. Native receipts verify the full
+co-op save, restart after abruptly terminating the host, and damaged-primary
+backup recovery. The terminated host must leave both committed files unchanged;
+the guest must detect the loss within 25 seconds. Native receipts verify the full
 restored state before simulation; both network views and unchanged solo files
 are checked without image inspection. The native fixture also checks a swimming
 import and refuses to overwrite an existing fixture slot. This is persistence
 coverage, not a campaign completion claim.
+
+The native fixture also checks real Windows sharing violations during primary
+and backup replacement. Failed saves must preserve both disk files and the
+previous in-memory team-wipe point. It verifies stale temporary files are ignored,
+a successful save updates the wipe point, and saving after a damaged primary
+preserves the last good backup. These are deterministic storage fault cases;
+they do not simulate loss of electrical power or exhaust the disk.
 
 ## Shared co-op checkpoints
 

@@ -136,6 +136,30 @@ class Pair:
             self.commands[role]['finish'] = True
         self.until(lambda: all(p.poll() is not None for p in self.processes.values()), 30, allow_exit=True)
 
+    def crash_host(self):
+        """Abrupt process loss after a committed save; no graceful shutdown hook."""
+        saved = self.folder / 'host' / 'coop-checkpoint.json'
+        backup = saved.with_suffix('.json.bak')
+        before = {path: path.read_bytes() for path in (saved, backup)}
+        started = time.monotonic()
+        host = self.processes['host']
+        subprocess.run(['taskkill', '/PID', str(host.pid), '/T', '/F'],
+            capture_output=True, check=True)
+        host.wait(timeout=10)
+        # CLI diagnostic launches surface the normal session error as exit 1.
+        # The menu's error panel and return path need a separate UI acceptance test.
+        code = self.processes['guest'].wait(timeout=25)
+        log = (self.folder / f'guest-{self.phase}-rejoin.log').read_text()
+        expected = ('disconnected', 'stopped responding', 'connection cannot keep up',
+            'Connection lost', 'session has ended', 'Player left')
+        assert code == 1 and 'Viewer failed:' in log and any(s in log for s in expected), (
+            f'Guest did not report host loss: {log[-500:]}')
+        assert all(path.read_bytes() == raw for path, raw in before.items()), 'Host loss changed saved files'
+        (self.folder / 'host-loss-result.json').write_text(json.dumps(dict(passed=True,
+            seconds=round(time.monotonic()-started, 3), guest_exit=code,
+            saved_sha256=hashlib.sha256(before[saved]).hexdigest()), indent=2))
+        print('PASS abrupt host loss: guest detected disconnect; committed save and backup unchanged', flush=True)
+
     def close(self):
         for process in self.processes.values():
             if process.poll() is None:
@@ -158,11 +182,15 @@ def run(args):
         subprocess.run([str(args.exe.resolve()), '--data', str(args.data.resolve()), '--no-audio',
             '--profile', str(folder / 'host'), '--coop-import-check'], cwd=ROOT,
             stdout=log, stderr=subprocess.STDOUT, timeout=120, check=True)
+    storage = read(folder / 'host' / 'coop-write-check' / 'verified.json')
+    assert storage and storage['passed'], 'Missing native storage-failure proof'
+    if os.name == 'nt':
+        assert storage['failed_replacements'] == storage['failed_write_wipes'] == 2
     source = folder / 'host' / 'saves' / 'slot1.json'
     unchanged = {source: source.read_bytes(), sentinel: sentinel.read_bytes()}
     expected = read(folder / 'host' / 'coop-import-expected.json')
     checkpoint = folder / 'host' / 'coop-checkpoint.json'
-    for phase in ('import', 'resume', 'backup'):
+    for phase in ('import', 'resume', 'resume-after-loss', 'backup'):
         previous = checkpoint.read_bytes() if checkpoint.exists() else None
         if phase != 'import':
             expected = json.loads(previous)['payload']
@@ -180,7 +208,10 @@ def run(args):
                 pair.checkpoint()
             else:
                 assert checkpoint.read_bytes() == before, 'Resume overwrote checkpoint'
-            pair.finish()
+            if phase == 'resume':
+                pair.crash_host()
+            else:
+                pair.finish()
             assert all(path.read_bytes() == raw for path, raw in unchanged.items()), 'Solo save changed'
             print('PASS', phase, ': exact native restore, two network views, guest rejoin, personal inventory and solo-save isolation', flush=True)
             (folder / f'{phase}-result.json').write_text(json.dumps(dict(passed=True,

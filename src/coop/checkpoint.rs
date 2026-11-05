@@ -11,6 +11,10 @@ const VERSION: u32 = 1;
 // Includes up to 39 cached visits, in addition to the current shared world.
 const LIMIT: u64 = 32 * 1024 * 1024;
 
+#[path = "checkpoint_check.rs"]
+mod check;
+pub use check::verify_writes;
+
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Checkpoint {

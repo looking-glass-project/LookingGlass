@@ -423,7 +423,7 @@ def verify_grounded_jump(jump, history):
                and e['before'][slot][2] == count and e['after'][slot][2] == count + 1 for e in events), 'Actual takeoff unobserved'
 
 
-def chair_return(rows, slot, start_tick, before_tick, goal):
+def chair_return(rows, slot, start_tick, before_tick, goal, projected=False):
     """Return to the first nearby dry footing crossed during this approach."""
     before=next(r for r in rows if r['tick']==before_tick)
     partner=before['players'][1-slot]['feet']
@@ -431,12 +431,15 @@ def chair_return(rows, slot, start_tick, before_tick, goal):
     # earlier approach floor rather than targeting an overhang from above.
     for row in rows:
         if not start_tick<=row['tick']<before_tick:continue
-        body=row['players'][slot];at=body['feet']
-        if body['grounded'] and body.get('ledge') is None and body['health']>0 and row['driver']['clear'][slot] \
-                and body['immersion']['level']==0 and 56<=goal[2]-at[2]<=256 \
-                and 64<=distance(at[:2],goal[:2])<=384 \
-                and (distance(at[:2],partner[:2])>=48 or abs(at[2]-partner[2])>=64):
-            return row
+        body=row['players'][slot]
+        if not (body['grounded'] and body.get('ledge') is None and body['health']>0
+                and row['driver']['clear'][slot] and body['immersion']['level']==0):continue
+        candidates=row['driver'].get('return_landings',[[],[]])[slot] if projected else [body['feet']]
+        for at in candidates:
+            if distance(at[:2],body['feet'][:2])<=48.1 and 56<=goal[2]-at[2]<=256 \
+                    and 64<=distance(at[:2],goal[:2])<=384 \
+                    and (distance(at[:2],partner[:2])>=48 or abs(at[2]-partner[2])>=64):
+                return row,at
     raise AssertionError('Chair approach has no observed dry return footing clear of the partner')
 
 
@@ -450,8 +453,8 @@ def verify_chair_departures(receipts, steps, arrivals, history, completed):
         before=by_tick[receipt['before_tick']];end=by_tick[receipt['arrival_tick']]
         arrival=next(r for r in arrivals if r['step']==step and r['role']==role)
         assert arrival['tick']==receipt['before_tick'], 'Chair departure did not follow its personal arrival'
-        selected=chair_return(rows,slot,receipt['approach_tick'],receipt['before_tick'],steps[step]['nav'])
-        assert selected['tick']==receipt['selected_tick'] and receipt['goal']==selected['players'][slot]['feet'], 'Chair return was not the observed safe footing'
+        selected,at=chair_return(rows,slot,receipt['approach_tick'],receipt['before_tick'],steps[step]['nav'],step in (140,141))
+        assert selected['tick']==receipt['selected_tick'] and receipt['goal']==at, 'Chair return was not the observed safe footing'
         verify_grounded_jump(receipt,history)
         flight=by_tick[receipt['after_tick']]
         assert not flight['players'][slot]['grounded'], 'Chair departure flight unobserved'
@@ -666,6 +669,7 @@ class ClockworkPair(Pair):
             use_aim=use_aim, watch_dialogue=True, combat_tactics=True,
             prefer_cards=False, prefer_ice=True, avoid_switches=True)
         self.commands[role]['ledge_handoff']=138<=self.step<=141 and self.commands[role]['navigate']
+        self.commands[role]['landing_feedback']=self.step in (140,141) and self.commands[role]['navigate']
 
     def body(self, role):
         return self.reports[role]['frame']['players'][0 if role == 'host' else 1]
@@ -827,7 +831,10 @@ class ClockworkPair(Pair):
                 self.commands[role]['arrival_radius'] = radius
                 command=self.commands[role]['id']
             return False
-        self.until(done)
+        # These longer approaches may need another asynchronous physics search
+        # after a corrected landing. Bound that computation separately from
+        # the short departure/landing checks; all movement proof stays required.
+        self.until(done,seconds=180 if self.step in (140,141) and navigate else 90)
         if cinematic:
             entry=self.watch_scene(cinematic,role,command)
             entry['interrupted_goal']=goal
@@ -926,8 +933,8 @@ class ClockworkPair(Pair):
 
     def leave_chair(self, role, goal, approach_tick):
         before=self.reports[role];slot=0 if role=='host' else 1
-        selected=chair_return(self.history[role],slot,approach_tick,before['frame']['tick'],goal)
-        park=list(selected['players'][slot]['feet'])
+        selected,at=chair_return(self.history[role],slot,approach_tick,before['frame']['tick'],goal,self.step in (140,141))
+        park=list(at)
         receipt=dict(step=self.step,role=role,approach_tick=approach_tick,
             selected_tick=selected['tick'],before_tick=before['frame']['tick'],goal=park)
         count=self.body(role)['player']['jumps']

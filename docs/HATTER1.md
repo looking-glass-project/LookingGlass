@@ -1097,3 +1097,48 @@ timeout. Both remain alive at about **43/43.53 health**. The successful 139 audi
 does not hide either later failure. The return target and remote jump approach
 need further work; all **166 Python guards** pass, including the additional
 landing-height rejection. Native source is unchanged and no full visit is credited.
+
+
+## Landing feedback and third-chair arrival evidence (5 November 2026)
+
+Source `84c8eee79cbf9d06ddff8d2207fdbd549b844b8c7bc62312e56e9a0c5bc74651`
+adds opt-in feedback to the automated planned approach. After observing flight,
+an off-course grounded landing clears the remaining timed inputs and requests
+a route from the actual body. Recent spatial segments preserve correct delayed
+landings. This changes the diagnostic controller, not player physics or damage.
+A separate read-only geometry query finds nearby fully supported, dry return
+footings reachable from above. The fixture still requires actual jump input,
+flight and a clear dry landing within the existing XY/height tolerances.
+
+The first replay restores the unchanged checkpoint before 140. Blue reaches
+the chair and returns to the projected floor at about (-844, 2455, 64). Red's
+incorrect landing is detected, and the stale plan stops before any rescue warp.
+The next asynchronous search exceeds the old 90-second limit. Both remain
+alive at 43/43.53 health, but no paired step is completed. Original evidence:
+`private/coop/hatter1-route-f09ce06a269045bb918825453e6629b1`.
+
+The following replay allows at most 180 seconds for the planned 140/141
+approach, retaining the separate 30-second departure bound and all movement
+requirements. Both players now reach the original 140 waypoint. The scoped
+audit validates two personal arrivals, one Red pull, Blue's projected dry
+return and both actual departure jumps, with **2,312 matching player/world/native
+states**. Each client records one landing-feedback replan. Neither body uses
+a rescue warp or revival before the arrivals. Evidence:
+`private/coop/hatter1-route-e43ccf84de0b4b99b198cbc20ef89c80/chair-component-audit.json`.
+
+This second replay still fails. Red has about **8.53 health** when she reaches
+the chair, following ordinary damage on the approach, including slime beside
+the cushion. Her return jump lands dry at roughly (-878, 2489, 64), but its
+643-unit landing speed invokes the original fall damage and kills her. Blue
+retains 43 health. The final paired departure is absent, and the audit explicitly
+records `paired_step_passed: false` with no completed steps. The failure remains
+intact; a safer approach/departure or normal resource collection needs work.
+
+The frozen executable SHA-256 is
+`7e6f98c6041ec83e6d6b376634dcfaec6a2a44876c0a25519db978a118d9969c`.
+All **905 active Rust tests** (three ignored), the locked release, **72 native
+paired/driver checks**, exact single-player **11+1** baseline, **169 Python
+guards** and seven source-package checks pass. The previous 40 scene cases
+were not repeated for this diagnostic change. The remaining chairs, second
+portal, final scene/exit, full-route and recovery/reconnect repeats remain open.
+No additional campaign visit is credited; overall remains **48.6%**.

@@ -1,6 +1,6 @@
 # Co-op progress
 
-Updated 4 November 2026. Branch: `coop`. **Estimated overall completion: 48.6%.**
+Updated 5 November 2026. Branch: `coop`. **Estimated overall completion: 48.6%.**
 The older 42% reports are historical. This percentage measures delivered and
 verified behavior against the full co-op scope; it is not a running test's progress.
 
@@ -19,7 +19,28 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | Full campaign verification | 3.08 | 20 |
 | **Total** | **48.58, rounded to 48.6** | **100** |
 
-Latest completed traversal section: resumed **138** now passes for both players.
+Latest diagnostic work: source `84c8eee` detects an actual off-course landing
+before sending later jumps from the old plan. It also reports nearby dry,
+fully supported return targets from native geometry, without moving either
+body. The chair fixture requires the real jump and landing on that target.
+
+The new resumed **140** replay records both personal chair arrivals, one Red
+pull-up and Blue's safe return, with **2,312 matching player/world/native
+states**. It still **fails**: Red reaches the chair with about **8.53 health**
+and dies landing after the return jump. Her approach already incurred normal
+damage, including slime. No rescue warp or revival occurs before either arrival.
+The earlier replay timed out during a corrected route search; the bounded
+approach allowance is now 180 seconds, while departure remains 30 seconds.
+Neither failed replay earns a completed paired step or campaign visit.
+
+Validation passes **905 active Rust tests** (three ignored), the locked release,
+**72 native paired/driver checks**, the exact single-player **11+1** baseline,
+**169 Python guards** and seven source-package checks. The 40 scene cases still
+belong to earlier source `04d3b0c`. A survivable third-chair approach/departure,
+the fourth chair and later route remain open. Overall stays **48.6%**.
+See [Clockwork evidence](HATTER1.md).
+
+Previously completed traversal section: resumed **138** now passes for both players.
 Each reaches the original chair waypoint, then uses an observed native jump to
 return to dry ground before the partner approaches. The run verifies the puzzle
 contact, two personal arrivals, two departures, one observed Red pull-up and

@@ -42,7 +42,7 @@ class ChairDeparture(unittest.TestCase):
                     driver=dict(command=command,reached=tick in (100,200,300,400),clear=[True,True],input_events=events)))
             self.history[role]=rows
 
-    def check(self):verify_chair_departures(self.receipts,self.steps,self.arrivals,self.history,[138])
+    def check(self):verify_chair_departures(self.receipts,self.steps,self.arrivals,self.history,[self.receipts[0]['step']])
 
     def test_both_players_jump_back_to_observed_dry_ground(self):self.check()
 
@@ -94,6 +94,33 @@ class ChairDeparture(unittest.TestCase):
         for row in self.history['guest']:row['clockwork']['cubes'][2]=False
         with self.assertRaisesRegex(AssertionError,'contact not replicated'):self.check()
 
+    def projected(self):
+        self.steps += [{},dict(nav=[0,0,100])]
+        for r in self.receipts:
+            r['step']=140;r['goal'][2]=33.31
+        for r in self.arrivals:r['step']=140
+        for rows in self.history.values():
+            for row in rows:
+                row['clockwork']['cubes']=[row['tick']>=100,False,False,False]
+                row['driver']['return_landings']=[[[-200,0,33.31]],[[200,0,33.31]]]
+                for slot,end in ((0,200),(1,400)):
+                    if row['tick']>=end:row['players'][slot]['feet'][2]=33.31
+
+    def test_projected_upper_floor_requires_its_own_actual_landing(self):
+        self.projected();self.check()
+        self.history['host'][3]['players'][0]['feet'][2]=0
+        with self.assertRaisesRegex(AssertionError,'return missed'):self.check()
+
+    def test_projected_return_requires_the_native_observation(self):
+        self.projected()
+        for row in self.history['host']:row['driver']['return_landings']=[[],[]]
+        with self.assertRaisesRegex(AssertionError,'no observed dry'):self.check()
+
+    def test_a_projected_point_far_from_the_actual_approach_is_rejected(self):
+        self.projected()
+        for row in self.history['host']:row['driver']['return_landings'][0]=[[-300,0,33.31]]
+        with self.assertRaisesRegex(AssertionError,'no observed dry'):self.check()
+
 
 class LedgeHandoffCommands(unittest.TestCase):
     def test_only_planned_chair_approaches_wait_for_an_explicit_pullup(self):
@@ -104,8 +131,10 @@ class LedgeHandoffCommands(unittest.TestCase):
                 pair.step=step
                 pair.set(role,[0,0,64],navigate=True)
                 self.assertEqual(pair.commands[role]['ledge_handoff'],step in (138,139,140,141))
+                self.assertEqual(pair.commands[role]['landing_feedback'],step in (140,141))
                 pair.set(role,[0,0,64],jump=True)
                 self.assertFalse(pair.commands[role]['ledge_handoff'])
+                self.assertFalse(pair.commands[role]['landing_feedback'])
                 pair.set(role,attack=False)
                 self.assertFalse(pair.commands[role]['ledge_handoff'])
 
@@ -129,7 +158,7 @@ class LedgeHandoffCommands(unittest.TestCase):
                     for peer in pair.history:pair.history[peer].append(copy.deepcopy(row))
                     pair.reports[role]=dict(frame=dict(tick=tick,epoch=1,players=[dict(player=p) for p in players]),
                         route_driver=driver,combat=dict(stage=dict(owner=None)))
-                def until(predicate):
+                def until(predicate,seconds=90):
                     self.assertFalse(predicate())
                     pull_command=pair.commands[role]['id']
                     self.assertTrue(pair.commands[role]['jump'])

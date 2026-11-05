@@ -1,5 +1,5 @@
 //! Shared Hatter combat clock and stable personal attack targets.
-//! World motion, scene ownership and personal reward adapters are separate work.
+//! Personal pickup state is owned by `coop_items`.
 use super::*;
 use crate::{
     combat::{DamageKind, PlayerTarget},
@@ -10,11 +10,19 @@ use crate::{
 pub(super) struct State {
     pub(super) boss_player: Option<usize>,
     pub(super) wave_players: [Option<usize>; 2],
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) items: Option<coop_items::Items>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) actor: Option<usize>,
 }
 impl State {
     pub(super) fn validate(&self, saved: &Saved) -> Result<()> {
+        if let Some(items) = &self.items {
+            items.validate(saved)?;
+        }
         ensure!(
-            self.boss_player.is_none_or(|i| i < 2)
+            self.actor.is_none_or(|i| i < 2)
+                && self.boss_player.is_none_or(|i| i < 2)
                 && self.wave_players.iter().all(|p| p.is_none_or(|i| i < 2))
                 && self
                     .wave_players
@@ -46,6 +54,7 @@ impl Encounter {
             alive: p.stats.alive(),
             hidden: p.stats.ignores_alice(),
         });
+        self.pair_items();
         let stopped = players
             .iter()
             .any(|p| p.stats.alive() && p.stats.powers.stopped > 0.);
@@ -88,6 +97,10 @@ impl Encounter {
                     self.saved.essence = 0;
                     self.saved.essence_live = true;
                     self.saved.essence_wait = 0.;
+                    let items = self.pair_items();
+                    items.ready = [true; 2];
+                    items.index = [0; 2];
+                    items.wait = [0.; 2];
                 }
                 if tick == 5760 {
                     self.saved.boss.set(battle::Action::Stand);
@@ -126,10 +139,7 @@ impl Encounter {
                 }
                 self.saved.cycle = (tick + 1) % 11520;
             }
-            for (_, age) in &mut self.saved.drops {
-                *age += battle::STEP;
-            }
-            self.saved.drops.retain(|(_, t)| *t < 70.);
+            self.pair_drop_age(battle::STEP);
             let mobile =
                 self.saved.phase == Phase::Fight && (300..5760).contains(&self.saved.cycle);
             let early = self.saved.phase == Phase::Arrival
@@ -165,6 +175,15 @@ impl Encounter {
                     wave.rewarded = true;
                     if self.saved.drops.len() < 4 {
                         self.saved.drops.push((wave.actor.feet + Vec3::Z * 20., 0.));
+                        self.saved
+                            .coop
+                            .as_mut()
+                            .unwrap()
+                            .items
+                            .as_mut()
+                            .unwrap()
+                            .drop_taken
+                            .push([false; 2]);
                     }
                 }
             }
@@ -172,6 +191,8 @@ impl Encounter {
                 self.saved.waves.clear();
                 self.saved.coop.as_mut().unwrap().wave_players = [None; 2];
                 self.saved.essence_live = false;
+                let items = self.pair_items();
+                items.ready = [false; 2];
                 self.phase(Phase::Victory);
             }
         }

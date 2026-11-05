@@ -2,33 +2,60 @@
 
 The `hatter2` controller owns the Mad Hatter battle and its onward route. It uses the user's local models, animations, effects, voices and camera paths. No original script or AI program executes.
 
-## Co-op combat components
+## Co-op native adapter
 
-Native source `ad408f8` adds a shared combat clock and stable personal targets.
-The Hatter and his Clockworks select a visible living Alice; committed attacks
-retain their eligible target. Cane impacts, cups, syringes and tea apply damage
-to the affected player. A syringe retains its saved target while that player is
-alive, keeps its direction after their death, and can hit the other body in its
-path. The original clock, attack timings, Watch rules and three-stage breakdown
-remain in use. Legacy single-player saves omit the optional co-op fields.
+Native source `3298768` implements shared combat/world clocks, personal rewards,
+paired machinery and the original scenes. Each Alice receives the original
+arrival refill once. Loading older co-op state preserves current health, and
+preparation never resurrects a dead player or overwrites a low-health revival.
 
-On 5 November 2026, `--hatter2-coop-combat-check` passes **29 staged component
-cases plus one final summary**: 30/60/144 Hz full-cycle parity with single-player,
-pause/invalid time, nearest/hidden/dead targets for both roles, sight obstruction,
-directional cane dodges, personal projectile interception, saved syringe steering,
-Watch behavior, tea damage, reinforcement targets, victory and bounded compressed
-restoration. These are native game-data checks without image captures. Projectile
-state restoration does not establish rendered-effects or network delivery parity.
+The blade, healing and Clockwork drops have personal consumption and view state.
+Taking a reward does not consume or hide the partner's copy. Difficulty controls
+each healing cooldown; an active cooldown can finish after victory, as in
+single-player. Shared blade/Watch progress opens the encounter's existing gates.
+
+The closing bridge waits until all living bodies clear its edge. The lower lift
+waits for boarding; departures require full footprints on the deck, with an
+exception for a partner already on the nearby supported destination landing.
+Both living riders move in one transaction, and an obstruction rolls machinery
+and riders back together. Empty upper decks return to the lower boarding stop.
+
+Both Cat conversations keep players free to explore. The first Gryphon entrant
+owns the original single-Alice scene. Its initial pose is bound on the trigger
+frame, before rendering, and the partner stays frozen through the watched or
+owner-skipped scene. Both paths request the original shared `jlair1` departure.
+A scene exit request alone does not verify the next map's two-client arrival.
+
+On 5 November 2026 the native checks pass **83 staged cases plus three summaries**:
+
+- `--hatter2-coop-combat-check`: 29 cases for shared clocks, nearest visible
+  living targets, personal melee/projectiles/tea, saved syringe steering, Watch
+  behavior, reinforcement targets and the original boss breakdown.
+- `--hatter2-coop-check`: 38 cases for clock parity, personal arrival/resources,
+  legacy save migration, death/low-health handling, cooldown and drop persistence,
+  shared reward gates, both lifts, boarding, obstruction rollback and catch-up.
+- `--hatter2-coop-scene-check`: 16 cases using actual Stage contacts with staged
+  prerequisites: both Gryphon owners, watched/skipped scenes, living/dead waiting
+  partners, trigger-frame actor poses, pause/compressed restore and exit requests,
+  plus both ordinary Cat conversations with free exploration.
 
 All **905 active Rust tests** pass (three ignored), as does the locked release.
 The existing `--hatter2-check` and `--hatter2-route-check` logs match the unchanged
-`84c8eee` baseline exactly, including the full single-player input route.
-Evidence: `private/hatter2-coop-ad408f8/manifest.json`; paired log SHA-256
-`434e139acdf2c804e0d0c850da1aea9feb081d7867e672434f125b8b35e60bd7`.
+`84c8eee` baseline exactly, including the full single-player input route. Seven
+package checks and the source worktree audit also pass. No images were inspected.
+Evidence: `private/hatter2-coop-3298768/manifest.json`; world/reward log SHA-256
+`25381f26b7cc72c03480f7e2a17dc3c0fb68a6e1b909484c5ea1bdafd2d9250c`.
 
-Paired world motion, personal pickups/rewards, scene ownership, lift boarding,
-full traversal and recovery/network coverage remain open. This combat milestone
-does not complete the campaign visit or add overall percentage credit yet.
+Earlier failed runs are retained: the migration/landing checks were expanded,
+and the empty-return fixture originally lacked verified player footing. The final
+run asserts clear supported entrance positions, full deck footprints and actual
+landing support; these requirements were not relaxed to pass the tests.
+
+Full two-client traversal, the actual shared onward arrival, rendered/network
+delivery, deaths, checkpoint recovery and reconnects remain unverified. These
+component checks add 0.25 points each to combat/resources, movement and progression
+under the existing weighting, bringing total estimated co-op completion to 49.3%.
+They do not complete another campaign visit.
 
 ## Single-player implementation
 

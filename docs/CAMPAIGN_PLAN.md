@@ -2065,7 +2065,12 @@ Mirror/Hint speech during exploration.
 `--hatter2-coop-combat-check` reserves staged paired About Face combat
 components: the shared clock cycle, nearest visible living targets, individual
 melee/projectile/tea impacts, reinforcement targets and compressed restoration.
-These checks do not establish paired machinery, rewards, scenes or traversal.
+These combat checks do not establish the whole visit. `--hatter2-coop-check`
+separately reserves personal reward/arrival/cooldown contracts and shared
+machinery boarding/carry/obstruction checks. `--hatter2-coop-scene-check` reserves
+native first-entrant Gryphon scenes (watched/skipped, both owners, living/dead
+partners, pause/restore and the shared exit request), plus ordinary Cat speech.
+Full two-client traversal, rendered delivery and recovery remain separate checks.
 
 `tools/test_coop_hatter1.py` separately reserves fresh two-client Clockwork
 prefix tests, using the internet session by default, individual waypoint

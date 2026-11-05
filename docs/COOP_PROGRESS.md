@@ -1,6 +1,6 @@
 # Co-op progress
 
-Updated 5 November 2026. Branch: `coop`. **Estimated overall completion: 48.6%.**
+Updated 5 November 2026. Branch: `coop`. **Estimated overall completion: 49.3%.**
 The older 42% reports are historical. This percentage measures delivered and
 verified behavior against the full co-op scope; it is not a running test's progress.
 
@@ -13,24 +13,30 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | --- | ---: | ---: |
 | Foundation and independent client diagnostics | 8 | 10 |
 | Internet Host/Join | 7 | 15 |
-| Two players, movement and presentation | 10.5 | 15 |
-| Combat, individual resources and death | 9.25 | 20 |
-| Scenes, transport and progression | 10.75 | 20 |
+| Two players, movement and presentation | 10.75 | 15 |
+| Combat, individual resources and death | 9.5 | 20 |
+| Scenes, transport and progression | 11 | 20 |
 | Full campaign verification | 3.08 | 20 |
-| **Total** | **48.58, rounded to 48.6** | **100** |
+| **Total** | **49.33, rounded to 49.3** | **100** |
 
-Latest combat milestone: About Face source `ad408f8` passes **29 staged native
-combat cases plus one final summary**, covering both players' target selection,
-individual hits, saved syringe behavior, the Watch, reinforcements and the original
-boss death. **905 active Rust tests** (three ignored) and the locked release pass.
-Both existing single-player checks, including the full input route, match the
-unchanged baseline exactly. No images were inspected for these checks.
+Latest native milestone: About Face source `3298768` passes **83 staged cases
+plus three summaries** for combat, personal resources, both lifts and the original
+scenes. The bridge waits for both players to clear it; lifts enforce boarding and
+carry living riders together, including obstruction rollback and catch-up from a
+supported destination. Each player retains their own rewards. Legacy saves and
+low-health revivals keep their health. Gryphon scenes bind the first entrant's
+pose on the trigger frame and preserve the partner through watched/skipped play.
 
-About Face's paired world motion, personal pickups/rewards, scenes, lifts and
-full route remain open. This is component evidence only; the estimate stays
-**48.6%**, with six complete combined-evidence rows. Next implementation work is
-that remaining About Face adapter; Clockwork's full-route/recovery gaps also remain.
-See [About Face evidence](HATTER2.md).
+**905 active Rust tests** (three ignored), the locked release, seven package
+checks and the 900-file source worktree audit pass. Both single-player checks,
+including the full input route, match the unchanged baseline exactly. No images
+were inspected. Under the existing component weighting this adds **0.75 points**:
+0.25 combat/resources, 0.25 movement and 0.25 progression. Total is now **49.3%**.
+
+No campaign row is completed by staged components. Six of 39 retain combined
+verification evidence. Next: About Face's full route in two independent clients,
+actual onward arrival, recovery/reconnects and rendered delivery. Clockwork's
+full-route/recovery gaps also remain. See [About Face evidence](HATTER2.md).
 
 Latest completed traversal sections: resumed **144-145** and **146-149** pass.
 Both players enter the lowered clock portal through ordinary jump/climb input,
@@ -54,7 +60,7 @@ exact single-player 11+1 baseline were not rerun for those Python-only changes.
 
 Remaining Clockwork work: fresh full-route, remaining scene-owner, recovery and reconnect verification.
 These checkpoint segments through the exit do not complete the full visit's
-verification matrix; overall stays **48.6%**.
+verification matrix or add another campaign row.
 See [Clockwork evidence](HATTER1.md).
 
 Earlier diagnostic work: source `84c8eee` detects an actual off-course landing

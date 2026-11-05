@@ -6,7 +6,7 @@ For the concise current status, see [Co-op progress](COOP_PROGRESS.md).
 This is work in progress. A policy test or a connected pair of windows does not
 establish campaign support. Single-player behavior and saves must remain supported.
 
-Current milestone: **48.6% estimated overall; six campaign visits have combined
+Current milestone: **49.3% estimated overall; six campaign visits have combined
 verification evidence, 33 remain open.** Earlier contact-system repeats are still
 required as detailed in the campaign matrix. Pool of Tears has 38 passing native
 component cases plus public two-client opening and bank checkpoint segments.
@@ -16,15 +16,17 @@ recovery remain open for both visits. Report these smaller milestones alongside
 the total; a successful component or segment is not a completed campaign visit.
 
 Status checked on **5 November 2026**: the older approximately 42% figure is
-historical; the current weighted estimate is **48.6%**. Six of 39
+historical; the current weighted estimate is **49.3%**. Six of 39
 campaign visits have combined evidence, with earlier contact-system repeats
 still required. Repeated component tests do not increase this total.
 
-About Face now has a paired combat adapter. Native source `ad408f8` passes 29
-staged combat cases plus the final summary, with 905 active Rust tests and a locked
-release. Existing single-player component/route output matches its baseline
-exactly. Personal rewards, paired world motion/lifts, scenes and full traversal
-remain open; this component milestone adds no overall credit yet. See
+About Face now has a native paired adapter for combat, personal rewards,
+shared machinery and original scenes. Source `3298768` passes **83 staged cases
+plus three summaries**, 905 active Rust tests and a locked release. Existing
+single-player component/route output matches the baseline exactly. This adds
+0.25 points each for combat/resources, movement and progression: **49.33 total,
+reported as 49.3%**. No full campaign row is added. Full two-client traversal,
+onward arrival, recovery/reconnects and rendered delivery remain open. See
 [About Face evidence](HATTER2.md).
 
 Latest Clockwork evidence covers resumed route sections 144-145 and 146-149:

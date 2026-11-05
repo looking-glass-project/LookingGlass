@@ -182,6 +182,15 @@ impl Stage {
             self.owner = Some(id);
             self.last_owner = id;
         }
+        self.bind_registered_scene(roster);
+    }
+    fn bind_registered_scene(&mut self, roster: &Roster) {
+        if let Some(owner) = self.owner {
+            let player = &roster.players[owner.index()].player;
+            for slot in &mut self.interactions.levels {
+                if slot.ctl.scripted() { slot.ctl.coop_scene_bound(owner.index(), player); }
+            }
+        }
     }
     pub fn sync_school_return_items(&mut self, roster: &mut Roster) {
         if let Some(state) = self.interactions.school.as_mut().and_then(|s| s.return_visit.as_mut()) {
@@ -221,6 +230,7 @@ impl Stage {
         if self.owner.is_none() && controls_scene(&self.interactions) {
             self.owner = Some(self.last_owner);
         }
+        self.bind_registered_scene(roster);
     }
     pub fn conversations(&mut self, roster: &mut Roster, world: &World,
         inputs: &mut [(Controls, Input); 2], npcs: &mut crate::npc::Npcs) {
@@ -413,6 +423,7 @@ impl Stage {
                 self.owner = Some(self.last_owner);
             }
         }
+        self.bind_registered_scene(roster);
         Ok(())
     }
     pub fn contacts(
@@ -461,6 +472,7 @@ impl Stage {
         if self.owner.is_none() && controls_scene(&self.interactions) {
             self.owner = Some(last);
         }
+        self.bind_registered_scene(roster);
         self.sync_school_return_items(roster);
         Ok(())
     }

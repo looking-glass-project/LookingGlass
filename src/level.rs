@@ -318,6 +318,9 @@ pub trait LevelController: Any {
     /// Explicit personal use input; unsupported controllers remain untouched.
     fn coop_update(&mut self, _index: usize, _world: &mut World, _player: &Player,
         _aim: Vec3, _use_pressed: bool) -> Events { Events::default() }
+    /// Capture the activating body's pose before the first scene frame is exposed.
+    /// This may be repeated; it must not advance clocks or change player resources.
+    fn coop_scene_bound(&mut self, _owner: usize, _player: &Player) {}
     /// Apply a scene's personal consequences only to its bound actor.
     fn coop_scene_step(&mut self, _owner: usize, player: &mut Player, stats: &mut Stats) {
         self.prepare_player(stats, player);

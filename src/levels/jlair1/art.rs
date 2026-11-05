@@ -1,6 +1,7 @@
 use super::*;
 use crate::npc::Puppet;
 pub(super) struct Art {
+    local: Option<usize>,
     alice: Puppet,
     gryphon: Puppet,
     cat: Puppet,
@@ -60,6 +61,7 @@ impl Art {
             .duration();
         }
         Ok(Self {
+            local: None,
             gestures,
             cater_gestures: load_gestures(
                 a,
@@ -139,6 +141,9 @@ impl Art {
     }
 }
 impl LevelArt for Art {
+    fn coop_view(&mut self, local: usize) {
+        self.local = Some(local);
+    }
     fn story_pose(&mut self, s: &Story) {
         self.alice.mouth(s.mouth(&["fakeplayer", "alice"]));
         self.gryphon.mouth(s.mouth(&["gryphon_actor1"]));
@@ -155,7 +160,7 @@ impl LevelArt for Art {
         let o = l.downcast_ref::<Curiosity>().unwrap();
         if o.saved.essence_live {
             for (i, at) in o.essence.iter().enumerate() {
-                if !o.saved.essence_taken[i] {
+                if o.essence_visible(i, self.local) {
                     self.essence.draw(crate::loot::Grade::Small, *at, atm, camera, crate::render_fx::time());
                 }
             }

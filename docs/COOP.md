@@ -6,7 +6,7 @@ For the concise current status, see [Co-op progress](COOP_PROGRESS.md).
 This is work in progress. A policy test or a connected pair of windows does not
 establish campaign support. Single-player behavior and saves must remain supported.
 
-Current milestone: **49.3% estimated overall; six campaign visits have combined
+Current milestone: **50.1% estimated overall; six campaign visits have combined
 verification evidence, 33 remain open.** Earlier contact-system repeats are still
 required as detailed in the campaign matrix. Pool of Tears has 38 passing native
 component cases plus public two-client opening and bank checkpoint segments.
@@ -16,14 +16,25 @@ recovery remain open for both visits. Report these smaller milestones alongside
 the total; a successful component or segment is not a completed campaign visit.
 
 Status checked on **5 November 2026**: the older approximately 42% figure is
-historical; the current weighted estimate is **49.3%**. Six of 39
+historical; the current weighted estimate is **50.1%**. Six of 39
 campaign visits have combined evidence, with earlier contact-system repeats
 still required. Repeated component tests do not increase this total.
+
+Burning Curiosity now passes **26 staged native co-op cases plus one summary**
+on source `56160ff`: personal arrival and essence, both living riders boarding,
+shared descent and independent uneven-floor handoffs, obstructed-return rollback,
+and original arrival/Caterpillar scenes with either Caterpillar owner. Watched,
+skipped, living/dead partner and compressed-save cases pass. Single-player
+components and the full native combat route match the earlier baseline exactly;
+the separate cast-free step-54 traversal failure is unchanged. This adds 0.75
+points under the existing component weighting, bringing the total to **50.08,
+reported as 50.1%**. Full two-client traversal, recovery and reconnects remain
+open; the combined-visit count stays six. See [Burning Curiosity](JLAIR1.md).
 
 About Face now has a native paired adapter for combat, personal rewards,
 shared machinery and original scenes. Source `3298768` passes **83 staged cases
 plus three summaries**, 905 active Rust tests and a locked release. Existing
-single-player component/route output matches the baseline exactly. This adds
+single-player component/route output matches the baseline exactly. That milestone added
 0.25 points each for combat/resources, movement and progression: **49.33 total,
 reported as 49.3%**. A fresh full two-client route now passes with 6,805 matching
 states, personal rewards, shared lift, Red-owned watched ending, exact Blue
@@ -38,7 +49,7 @@ at 3,421. An opt-in native receipt verifies the exact saved bodies, resources,
 characters, enemies, pickups and shared progress before the next tick. Both
 clients agree on 1,058 states, including 27 after restoration. Combat/transport/
 transition reconnects and remaining ending cases keep this campaign row partial;
-total remains 49.3%. See [About Face evidence](HATTER2.md).
+that recovery milestone retained 49.3%. See [About Face evidence](HATTER2.md).
 
 Latest Clockwork evidence covers resumed route sections 144-145 and 146-149:
 both portal arrivals, the Red-owned watched final scene, safe reunion and the

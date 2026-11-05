@@ -2072,6 +2072,11 @@ native first-entrant Gryphon scenes (watched/skipped, both owners, living/dead
 partners, pause/restore and the shared exit request), plus ordinary Cat speech.
 Full two-client traversal, rendered delivery and recovery remain separate checks.
 
+`--jlair1-coop-check` reserves staged Burning Curiosity paired arrival and
+personal essence, sinking-platform boarding/carry/obstruction, compressed saves,
+and original arrival/Caterpillar scenes with watched/skipped and dead-partner
+cases. It does not establish full independent-client traversal or recovery.
+
 `tools/test_coop_hatter1.py` separately reserves fresh two-client Clockwork
 prefix tests, using the internet session by default, individual waypoint
 receipts, supported waiting moves, ordinary lever inputs and normal checkpoints.

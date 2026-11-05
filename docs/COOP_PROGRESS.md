@@ -1,6 +1,6 @@
 # Co-op progress
 
-Updated 5 November 2026. Branch: `coop`. **Estimated overall completion: 49.3%.**
+Updated 5 November 2026. Branch: `coop`. **Estimated overall completion: 50.1%.**
 The older 42% reports are historical. This percentage measures delivered and
 verified behavior against the full co-op scope; it is not a running test's progress.
 
@@ -13,11 +13,33 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | --- | ---: | ---: |
 | Foundation and independent client diagnostics | 8 | 10 |
 | Internet Host/Join | 7 | 15 |
-| Two players, movement and presentation | 10.75 | 15 |
-| Combat, individual resources and death | 9.5 | 20 |
-| Scenes, transport and progression | 11 | 20 |
+| Two players, movement and presentation | 11 | 15 |
+| Combat, individual resources and death | 9.75 | 20 |
+| Scenes, transport and progression | 11.25 | 20 |
 | Full campaign verification | 3.08 | 20 |
-| **Total** | **49.33, rounded to 49.3** | **100** |
+| **Total** | **50.08, rounded to 50.1** | **100** |
+
+Latest native milestone: Burning Curiosity source `56160ff` passes **26 staged
+cases plus one summary**. Each living player receives the original arrival
+grant once and retains their own two essence pickups. The sinking platform waits
+for both living riders, carries them at 30/60/144 Hz, transfers them onto the
+uneven floor independently and returns when empty. A blocked return rolls back
+the platform and both bodies. Original arrival and first-entrant Caterpillar
+scenes pass watched/skipped, living/dead partner and compressed-save cases.
+
+The locked release passes seven single-player component checks and the full
+native combat route; both outputs match the previous baseline exactly. The
+separate cast-free traversal still has its pre-existing step-54 lava-jump
+failure, also unchanged. These results add **0.75 points** under the existing
+component weighting: 0.25 resources, 0.25 movement and 0.25 progression.
+No additional campaign visit is counted as complete. Next is Burning Curiosity's
+full route with two independent internet clients, followed by recovery and
+reconnect checks. See [Burning Curiosity evidence](JLAIR1.md).
+
+Current validation: **906 active Rust tests** pass (three ignored), along with
+the locked release, seven package checks and the 908-file source worktree audit.
+The new boarding unit rejects partial support, jumping and a floating body with
+a stale grounded flag. No images were inspected for this milestone.
 
 Latest network milestone: a **fresh full About Face route passes** in two
 independent internet clients on source `3298768`, using ordinary controls with
@@ -47,11 +69,10 @@ single-player component and full-route outputs still match the baseline exactly.
 Renderer counters from the earlier full route show particles/effects in both
 clients with zero dropped batches; no images were inspected. Combat/transport/
 transition reconnects and remaining ending cases keep this visit partial.
-Next implementation work is Burning Curiosity's paired adapter; the remaining
-About Face checks stay open in the matrix. The estimate remains **49.3%** and
-the combined-visit count remains six.
+The remaining About Face checks stay open in the matrix. This recovery milestone
+retained the then-current **49.3%** estimate and six combined visits.
 
-Latest native milestone: About Face source `3298768` passes **83 staged cases
+Earlier native milestone: About Face source `3298768` passes **83 staged cases
 plus three summaries** for combat, personal resources, both lifts and the original
 scenes. The bridge waits for both players to clear it; lifts enforce boarding and
 carry living riders together, including obstruction rollback and catch-up from a
@@ -63,11 +84,11 @@ pose on the trigger frame and preserve the partner through watched/skipped play.
 checks and the 900-file source worktree audit pass. Both single-player checks,
 including the full input route, match the unchanged baseline exactly. No images
 were inspected. Under the existing component weighting this adds **0.75 points**:
-0.25 combat/resources, 0.25 movement and 0.25 progression. Total is now **49.3%**.
+0.25 combat/resources, 0.25 movement and 0.25 progression. The total then was **49.3%**.
 
 No campaign row is completed by staged components. Six of 39 retain combined
-verification evidence. Next: About Face's remaining recovery/reconnect and
-ending cases, then the next level's paired adapter. Clockwork's full-route and
+verification evidence. About Face's remaining recovery/reconnect and
+ending cases stay open. Clockwork's full-route and
 recovery gaps also remain. See [About Face evidence](HATTER2.md).
 
 Latest completed traversal sections: resumed **144-145** and **146-149** pass.

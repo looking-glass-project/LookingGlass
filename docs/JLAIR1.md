@@ -86,3 +86,46 @@ Brief lava contact (220 physics ticks) is survived; these are not damage-free ru
 All eight native captures and all six Store write/fresh-read cases pass on the
 same selected executable. See `private/jlair1-work/release.json` and its frozen
 source manifest for the build identity and detailed evidence.
+
+## Co-op adapter and evidence, 5 November 2026
+
+Source `56160ff` adds personal arrival grants and essence ownership, shared
+sinking-platform movement and the original scenes through the paired controller.
+Only living players receive the arrival grant, once; a later low-health revival
+does not refill. Existing visits retain their health and consumed pickups. Each
+client sees its own remaining essence, with ownership preserved in compressed
+saves. Single-player snapshots omit the optional co-op state.
+
+The platform starts when every living player has full footprint support. Once
+underway it keeps carrying remaining riders if a partner leaves or reaches the
+uneven floor. Empty platforms return, dead partners do not block departure, and
+an obstructed return rolls back the shared displacement and both bodies.
+
+`--jlair1-coop-check` passes **26 staged native cases plus one summary**:
+
+- Eight personal arrival, pickup, legacy-save and resource-preservation cases.
+- Six platform cases: 30/60/144 Hz boarding and carry, independently verified
+  static-floor handoffs, saved continuation, empty return, either dead partner
+  and atomic rollback when a returning platform would embed a jumper.
+- Twelve original arrival/Caterpillar cases, including both Caterpillar owners,
+  watched/skipped play, living/dead partners, owner-only skipping, compressed
+  mid-scene restores, camera continuity and preserved resources. The original
+  actor keeps the authored endpoint; the newly placed partner must have clear,
+  supported, separated ground nearby.
+
+The release's seven `--jlair1-check` records and two full
+`--jlair1-route-check` records match source `116fc99` output byte-for-byte.
+The native combat route reaches the intended downstream encounter. The separate
+cast-free `--jlair1-traversal-check` still fails the step-54 lava jump exactly as
+the baseline does; it is not reported as passing. Private build manifests retain
+the full source/executable identities and result hashes.
+
+All 906 active Rust tests pass (three ignored), including negative boarding
+cases for partial support, jumping and a floating body with a stale grounded
+flag. The locked release, seven package checks and the 908-file source worktree
+audit pass. No screenshot inspection was used for this milestone.
+
+These are native component and single-player regression results. A fresh full
+route with two independent internet clients, rendered personal pickups, deaths,
+shared checkpoint recovery and reconnects remain unverified for this visit.
+No additional completed campaign visit is credited by these staged checks.

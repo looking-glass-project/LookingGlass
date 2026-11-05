@@ -64,7 +64,11 @@ def result_from_log(log):
     metrics = {key: result['evidence'][key] for key in fields if key in result['evidence']}
     rejoin = result['evidence'].get('rejoin')
     if rejoin:
-        metrics['rejoin_preserved_resources_and_scenes'] = rejoin['resources_and_completed_scenes_preserved']
+        if 'rider_offsets' in rejoin:
+            metrics['lift_rejoin'] = {key: rejoin[key] for key in
+                ('before_tick', 'after_tick', 'motion_before', 'motion_after', 'rider_offsets')}
+        else:
+            metrics['rejoin_preserved_resources_and_scenes'] = rejoin['resources_and_completed_scenes_preserved']
     timing = folder / 'timing-summary.json'
     if timing.exists():
         metrics['timing_summary'] = json.loads(timing.read_text())
@@ -138,6 +142,7 @@ def main():
     parser.add_argument('--data', type=Path, required=True)
     parser.add_argument('--only', nargs='+', choices=('fixture-scenes', 'world', 'school2', 'presence', 'host-stalls', 'school',
                                                    'school-blue', 'school-red', 'lift-blue', 'lift-red',
+                                                   'lift-rejoin-blue', 'lift-rejoin-red',
                                                    'stairs-blue', 'stairs-red', 'school2-blue', 'school2-red',
                                                    'dice-blue', 'dice-red', 'altar-blue', 'altar-red',
                                                    'gym-jump-blue', 'gym-jump-red', 'school2-resume',
@@ -208,6 +213,8 @@ def main():
                                     '--first', first, '--rejoin'], 1500, True)
         cases['lift-' + first] = ([sys.executable, str(ROOT / 'tools/test_coop_school_lift.py'), *common,
                                   '--first', first], 300, True)
+        cases['lift-rejoin-' + first] = ([sys.executable, str(ROOT / 'tools/test_coop_school_lift.py'), *common,
+                                         '--first', first, '--rejoin'], 300, True)
         cases['stairs-' + first] = ([sys.executable, str(ROOT / 'tools/test_coop_school_stairs.py'), *common,
                                     '--first', first], 300, True)
         # Recorded entrance/gym, return and later segments total about 27

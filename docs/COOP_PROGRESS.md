@@ -1,6 +1,6 @@
 # Co-op progress
 
-Updated 5 November 2026. Branch: `coop`. **Estimated overall completion: 52.3%.**
+Updated 5 November 2026. Branch: `coop`. **Estimated overall completion: 52.6%.**
 The older 42% reports are historical. This percentage measures delivered and
 verified behavior against the full co-op scope; it is not a running test's progress.
 
@@ -27,12 +27,12 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | Area | Credited points | Maximum |
 | --- | ---: | ---: |
 | Foundation and independent client diagnostics | 9 | 10 |
-| Internet Host/Join | 8.25 | 15 |
+| Internet Host/Join | 8.5 | 15 |
 | Two players, movement and presentation | 11 | 15 |
 | Combat, individual resources and death | 9.75 | 20 |
 | Scenes, transport and progression | 11.25 | 20 |
 | Full campaign verification | 3.08 | 20 |
-| **Total** | **52.33, rounded to 52.3** | **100** |
+| **Total** | **52.58, rounded to 52.6** | **100** |
 
 ## Implemented features and remaining work
 
@@ -47,12 +47,12 @@ yet verified across every level and failure condition.
 | Area | Implemented and demonstrated | Remaining work |
 | --- | --- | --- |
 | One-PC setup | `coop` branch; independent game processes, profiles/saves and automated state/log checks | Finish reproducible campaign coverage and repeat it on the final build |
-| Host / Join | Main/ESC controls, public internet menu flow, authenticated transport, cancellation and countdown/cutscene reconnect cases | Remaining disconnect/rejoin cases during rides and transitions; public provisioning and DNS reliability |
+| Host / Join | Main/ESC controls, public internet menu flow, authenticated transport, cancellation and countdown/cutscene/moving-lift reconnect cases | Level-transition reconnects, other transports, and public provisioning/DNS reliability |
 | Players and presentation | Blue/red Alice, separate input/cameras, body separation, replicated weapon effects | Broader contact/effect checks and reliable traversal through all swimming, leaves, ropes and moving supports |
 | Combat and resources | Nearest-visible targeting, individual damage, inventory and consumables in integrated levels | Remaining enemies/bosses and level-specific rewards, with both players as the target/collector |
 | Death and saves | Exact ten-second countdown, moving spectator camera, safe 25-health revival; shared checkpoint wipes, public save/leave/continue menu flow and guest restart during either player's countdown | Broader connection-failure coverage and each visit's recovery matrix |
 | Scenes and machinery | First-arrival ownership, original single-Alice scenes, hidden partner and safe reunion; all-living boarding on integrated rides | Remaining level adapters, both scene owners, watched/skipped cases, transports and exits |
-| Regression checks | 925 active Rust tests; 384 Python guards; current Curiosity native/single-player baseline comparisons | Full campaign verification and required earlier contact-system repeats on the final build |
+| Regression checks | 925 active Rust tests; 389 Python guards; current Curiosity native/single-player baseline comparisons | Full campaign verification and required earlier contact-system repeats on the final build |
 
 Campaign status from `COOP_CAMPAIGN.md`:
 
@@ -107,9 +107,56 @@ remain separate from the 39-visit campaign acceptance matrix.
   and dialogue, with either player owning the watched scene. All four loopback
   cases preserve clocks, ownership, starting resources and the hidden partner,
   then complete the original scene and safely reunite both clients.
-- Next: reconnects during shared rides and level transitions, plus investigation
+- Verified on `4b3760a` through public invites: guest restart during the rotating
+  spiral lift, with either player boarding first. The lift waits for its second
+  rider, holds its full world/body state during disconnection and completes the
+  ride after rejoining with both attachments and starting resources preserved.
+- Next: reconnects during level transitions and other transports, plus investigation
   of transient DNS/provisioning reliability. Core gameplay acceptance remains
   ahead of further campaign traversal; staged component passes do not finish it.
+
+## Moving-lift reconnect evidence, 5 November 2026
+
+The automated `lift-rejoin-blue` and `lift-rejoin-red` regression cases pass
+over public internet invites on build `4b3760a`, with 40 ms delay and 20 ms jitter
+per sender. Both players walk from the staged lower-library start. The first
+rider waits two shared-world seconds without advancing the lift pose or motion
+clock. After the second boards, both ride the original rotating platform.
+
+The runner terminates only its guest process during the ascent, verifies the
+host has observed disconnection, and checks that the full frame and combat/world
+snapshot stay frozen. It then starts a new guest on the same profile and invite.
+The fresh client retains the authored motion keys, phase and matching platform
+pose. Each rider retains their position in the lift's rotating coordinate system,
+grounding, identity and starting resources. No live position, health, inventory
+or platform value is written. The normal ride must still finish at the upper
+landing and pass the complete sent/restored player and shared-world comparisons.
+
+| First boarder | Duration | Matching player/world states | Final health |
+| --- | ---: | ---: | --- |
+| Blue | 84.27 seconds | 857 / 857 | 100 / 100 |
+| Red | 88.20 seconds | 920 / 920 | 100 / 100 |
+
+Blue-first reconnect advances from ticks 6099 to 6101, with platform time
+2.2500017 to 2.2666686 seconds. Red-first advances from ticks 6632 to 6633,
+with platform time 2.3916702 to 2.4000037 seconds. Maximum measured rider-offset
+drift across either restart is below 0.00025 units. Both pairs reach height 64.
+The source game is unchanged; these are new automation and verification cases.
+
+Suite: `private/coop/regression-suite-f6fda7b53f104b29b1d16882a74c7cf3/summary.json`.
+Cases: `private/coop/school-lift-da48bc0032364d7d81027f1cd26a5a53/` and
+`private/coop/school-lift-5911f19b32d4434d984c9c26453fb46a/`.
+The preceding Blue-first loopback baseline and reconnect also pass in
+`school-lift-2a306facf0484287b2cfc161ffb2a112/` and
+`school-lift-93658396311b4ddf9dd5b827ac71bff5/`, under `private/coop/`.
+
+Five new guards reject stale processes, resets/skips, invalid motion poses,
+changed resources/body identity, detached riders and falsely crediting a
+stationary entrance reconnect as a ride. An unchanged world-space player
+position is explicitly rejected when the platform rotates/translates beneath it.
+The locked release, 925 active Rust tests, 389 Python guards and seven package
+tests pass. No screenshots were inspected. The added 0.25 Host/Join points credit
+the verified moving-ride reconnects; no campaign visit is added. Overall: 52.6%.
 
 ## Cutscene reconnect and public menu evidence, 5 November 2026
 

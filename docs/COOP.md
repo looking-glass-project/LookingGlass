@@ -1336,6 +1336,21 @@ capture each window with F12, then close both windows. Omit `--local` for public
 TLS; `--lift spiral` selects the rotating lift. This fixture verifies the ride;
 arrival-order and obstruction coverage comes from the native checks above.
 
+For automated boarding and guest reconnect checks, use
+`tools/test_coop_school_lift.py --data <original-base-folder> --first blue --rejoin`
+(and repeat with `--first red`). Both players walk from a staged lower-library
+start. The first rider waits for the second before departure. During rotation,
+the runner restarts the guest, verifies that the disconnected host holds the
+full world and both bodies, then checks the fresh client's platform clock,
+pose, rider offsets and personal resources. The ordinary ride must still reach
+the upper landing and match sent/restored player and world snapshots. No live
+positions, platform state or inventory are written; captures are not inspected.
+
+Both arrival orders are available in one automated report:
+`python tools/test_coop_regressions.py --exe target/release/looking-glass.exe --data <original-base-folder> --only lift-rejoin-blue lift-rejoin-red`.
+Public internet invites and 40/20 ms delay/jitter are the defaults; `--local`
+records a loopback-only result. Reports and original-data evidence stay private.
+
 The delayed loopback elevator check passed on 2026-10-23: both riders reached
 696.03125 and returned, with aligned body/mover snapshots in both clients. Both
 captures were inspected and both processes exited successfully. Evidence:

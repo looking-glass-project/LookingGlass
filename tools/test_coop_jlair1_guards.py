@@ -3,6 +3,7 @@ import copy
 import unittest
 from types import SimpleNamespace
 from test_coop_jlair1 import forward_waiting_target, verify_recovered_planning_errors
+from test_coop_jlair1 import SHELF_APPROACH, verify_shelf_approaches
 
 from test_coop_jlair1 import verify_arrival, verify_course, verify_combat_wait, waiting_target, escape_target, hot_approach_target, verify_jump_flight, verify_forward_approaches, verify_platform_wait, verify_platform_carry, verify_platform_climb, verify_bank_wait, PLATFORM_BANK, PLATFORM_PARK, CuriosityPair
 
@@ -41,6 +42,25 @@ class CuriosityEvidenceTests(unittest.TestCase):
         verify_course([dict(pos=self.goal)], [0], [self.receipt, guest], self.history, 0, 0)
         with self.assertRaisesRegex(AssertionError, 'Duplicate'):
             verify_course([dict(pos=self.goal)], [0], [self.receipt, guest, guest], self.history, 0, 0)
+
+    def test_shelf_guidance_requires_each_personal_footing_in_order(self):
+        entries=[];history={role:[] for role in ('host','guest')}
+        lower=[dict(step=65,role=r,tick=1) for r in history]
+        upper=[dict(step=65,role=r,tick=20*(len(SHELF_APPROACH)+1)) for r in history]
+        for slot,role in enumerate(history):
+            for index,goal in enumerate(SHELF_APPROACH):
+                tick=20*(index+1)
+                row=copy.deepcopy(self.row);row['tick']=tick
+                row['players'][slot]['feet']=list(goal);row['players'][slot]['spawned_at']=0
+                history[role].append(row)
+                entries.append(dict(self.receipt,step=65,role=role,index=index,goal=goal,feet=list(goal),tick=tick))
+        verify_shelf_approaches(entries,history,[65],lower,upper)
+        for changed in (entries[:-1],entries+[entries[0]]):
+            with self.assertRaisesRegex(AssertionError,'Incomplete or repeated'):
+                verify_shelf_approaches(changed,history,[65],lower,upper)
+        early=[dict(e,tick=30) for e in upper]
+        with self.assertRaisesRegex(AssertionError,'reordered or bypassed'):
+            verify_shelf_approaches(entries,history,[65],lower,early)
 
     def test_platform_crossing_requires_both_actual_bank_arrivals(self):
         steps = [dict(pos=[0,0,0]) for _ in range(55)]

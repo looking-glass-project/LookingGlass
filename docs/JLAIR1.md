@@ -459,3 +459,52 @@ These are targeted personal-revival cases. They do not prove paired point 65,
 a full route, a team wipe, restoration from the new saved checkpoints, or
 disconnect/rejoin. Those checks remain open. Overall stays **50.1%**, with six
 campaign visits having combined evidence and no additional visit credited here.
+
+
+## Supported landings and shelf guidance
+
+Source `93a9dc3` corrects two failures in the opt-in automated route driver.
+A descending body must have supported footing before handing control from
+the jump plan to landing steering; merely overlapping a ledge with the body
+box is insufficient. Delayed observations can use a clear velocity projection
+onto the same supported footprint. A shortened plan also retains its actual
+intermediate landing target, allowing Alice to brake on a lower ledge before
+planning onward. Settling there cannot report arrival at the final waypoint.
+These changes do not alter player physics, damage, collision or network rules.
+
+Regression simulations reproduce the unsupported handoff and the fall caused
+by missing intermediate steering. The latter now settles at 0, 6, 12 and 18
+ticks of delay; the existing delayed-corridor case remains unchanged and passes.
+In the real paired runs, Blue reaches the upper shelf and waits safely while
+Red attempts the ascent. Increasing the navigation deadline from 90 to 240
+seconds establishes that Red's earlier stall was an exhausted 100,001-state
+search, rather than only an impatient test timeout.
+
+The fixture now splits this ascent into ordinary navigation goals drawn from
+observed native footings. Each player must earn separate, ordered receipts for
+the lower approach, every guidance target and the original point 65. No guide
+substitutes for the original upper-shelf arrival. The optional navigation timeout
+is bounded, defaults to 90 seconds and is recorded with the evidence.
+
+A bounded audit of `jlair1-route-e390fe9a7754411ba3a486f2e86390cf` verifies
+both players' three guidance targets in that frozen fixture, plus Blue's
+original upper-shelf arrival: **six guidance arrivals, 969 matching
+player/world/native states and 58 complete recovery-trace rows**, without
+death or revival through the audited boundary. Red's subsequent final ascent
+exhausts 100,002 search states. The full attempt remains failed.
+
+The current fixture adds a fourth observed footing before that final jump.
+In `jlair1-route-fbab3f47085447ba81d4ceedbfeb5ec0`, Blue reaches all four
+guides, the original upper shelf and a safe waiting bay. Red reaches the first
+guide, then dies during the jump to the second. The final fourth-guide ascent
+for Red is therefore still unverified. These attempts use the same unchanged
+ordinary checkpoint before 65, two independent internet clients, 40 ms delay
+and 20 ms jitter. There is still no paired point-65 or full-visit pass.
+
+Validation passes **917 active Rust tests** (three ignored), the locked release,
+**376 Python guards** including twenty Curiosity traversal and five recovery
+guards, seven package checks and the 912-file source audit. The 26 paired native
+cases plus summary, seven single-player components and full native combat-route
+records match their previous baselines. The separate cast-free route retains
+its known point-54 failure. No screenshots were inspected. Overall completion
+remains **50.1%**, with six of 39 campaign visits carrying combined evidence.

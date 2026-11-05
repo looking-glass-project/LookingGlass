@@ -798,11 +798,22 @@ pub(crate) fn landing_control(world: &World, player: &Player, goal: Vec3, lead: 
         && descending_on_arrival && (-128. ..=height_tolerance).contains(&delta.z)
         && delta.truncate().length() < 128. && {
             let hit=world.body_trace(player.feet,goal+Vec3::Z*(-delta.z));
-            let down=vec3(player.feet.x,player.feet.y,goal.z-height_tolerance);
-            let support=world.body_trace(player.feet,down);
-            !hit.start_solid && hit.fraction >= 1.
-                && !support.start_solid && support.fraction < 1. && support.normal.z >= 0.65
-                && (player.feet.lerp(down,support.fraction).z-goal.z).abs() < height_tolerance
+            let supported_at=|at:Vec3| {
+                let down=vec3(at.x,at.y,goal.z-height_tolerance);
+                let support=world.body_trace(at,down);
+                let floor=at.lerp(down,support.fraction);
+                !support.start_solid && support.fraction<1. && support.normal.z>=0.65
+                    && (floor.z-goal.z).abs()<height_tolerance
+                    && crate::route::supported_footing(world,floor)
+            };
+            // A box edge over the ledge is not sufficient footing. A delayed
+            // guest can already have crossed onto the pad, however: allow its
+            // ordinary velocity prediction only with a clear approach and the
+            // same supported landing footprint. No player state is changed.
+            let anticipated=player.feet+player.velocity.truncate().extend(0.)*lead.clamp(0.,1.5);
+            let approach=world.body_trace(player.feet,anticipated);
+            !hit.start_solid && hit.fraction>=1. && (supported_at(player.feet)
+                || lead>0. && !approach.start_solid && approach.fraction>=1. && supported_at(anticipated))
         };
     // Approximate waypoint heights can put a short ordinary walk outside the
     // spherical planner handoff. A 32-unit-high marker over a flat floor can
@@ -1097,6 +1108,7 @@ pub struct Driver {
     door_context: Option<(u64, u64, u64, u64)>,
     worker: Option<Worker>,
     planning_hold: Option<Vec3>,
+    segment_landing: Option<Vec3>,
     plan: VecDeque<(Controls, Vec3)>,
     ledge_goal: Option<Vec3>,
     landing_feedback: LandingFeedback,
@@ -1130,7 +1142,7 @@ impl Driver {
             // A relocation invalidates the path, not a jump already consumed
             // by this command. A new visit, command or planned segment rearms it.
             if self.location.is_some_and(|old| old.0 != location.0) { self.jumped=false; }
-            self.plan.clear(); self.planning_hold=None; self.ledge_goal=None; self.landing_feedback=LandingFeedback::default(); self.location = Some(location);
+            self.plan.clear(); self.planning_hold=None; self.segment_landing=None; self.ledge_goal=None; self.landing_feedback=LandingFeedback::default(); self.location = Some(location);
             self.swim_goal = None;
             self.step_tick = tick; self.step_at = now;
             self.navigation_clock = NavigationClock::new(now);
@@ -1194,7 +1206,7 @@ impl Driver {
         let now = Instant::now();
         Self { path, recovery_trace:None, command: None, modified: None, polled: now, refreshed: now, used: now,
             door_requests: BTreeSet::new(), door_context: None,
-            worker: None, planning_hold:None, plan: VecDeque::new(), ledge_goal:None, landing_feedback:LandingFeedback::default(), walking_plan:false, step_tick: 0, step_at: now,
+            worker: None, planning_hold:None, segment_landing:None, plan: VecDeque::new(), ledge_goal:None, landing_feedback:LandingFeedback::default(), walking_plan:false, step_tick: 0, step_at: now,
             walking_progress:WalkingProgress::new(Vec3::ZERO,now),
             navigation_clock:NavigationClock::new(now), jumped: false, rope_used: false,
             control_used: false, switch_aim:SwitchAim::default(), combat_aim:CombatAim::default(),combat_home:None,combat_location:None,
@@ -1224,7 +1236,7 @@ impl Driver {
                 if self.command.as_ref().is_none_or(|old| old.id != command.id || old.shoot_switch!=command.shoot_switch) {
                     self.funhouse_exit=None;self.report.funhouse_exit=None;
                     self.funhouse_pendulums=None;self.report.funhouse_pendulums=None;
-                    self.plan.clear(); self.planning_hold=None; self.ledge_goal=None; self.landing_feedback=LandingFeedback::default(); self.jumped = false; self.rope_used = false; self.location = None;
+                    self.plan.clear(); self.planning_hold=None; self.segment_landing=None; self.ledge_goal=None; self.landing_feedback=LandingFeedback::default(); self.jumped = false; self.rope_used = false; self.location = None;
                     self.control_used = false;
                     self.switch_aim=SwitchAim::default();
                     self.step_height = None;
@@ -1237,7 +1249,7 @@ impl Driver {
                 self.command = Some(command); self.modified = Some(modified); self.refreshed = now;
             }
             Ok(None) => (),
-            Err(error) => { self.report.error = Some(error.to_string()); self.command = None; self.plan.clear(); self.planning_hold=None; }
+            Err(error) => { self.report.error = Some(error.to_string()); self.command = None; self.plan.clear(); self.planning_hold=None; self.segment_landing=None; }
         }
     }
     fn fresh(&self, now: Instant) -> bool { now.duration_since(self.refreshed) < Duration::from_secs(3) }
@@ -1432,6 +1444,9 @@ impl Driver {
                                 let _ = std::fs::write(crate::preferences::path(&format!("route-plan-{}-{}.json",worker.id,self.report.replans)),bytes);
                             }
                             self.walking_plan=plan.walking;
+                            self.segment_landing=if !plan.walking && self.command.as_ref().is_some_and(|c|c.settle_landings) {
+                                plan.steps.last().map(|s|s.1)
+                            } else {None};
                             self.ledge_goal=plan.ledge_goal;
                             self.landing_feedback.start(worker.start);
                             self.planning_hold=None;
@@ -1522,7 +1537,7 @@ impl Driver {
             return;
         }
         if arena.stage.busy() {
-            self.plan.clear(); self.planning_hold=None; self.ledge_goal=None; self.landing_feedback=LandingFeedback::default(); self.jumped = false; self.report.phase = "scene";
+            self.plan.clear(); self.planning_hold=None; self.segment_landing=None; self.ledge_goal=None; self.landing_feedback=LandingFeedback::default(); self.jumped = false; self.report.phase = "scene";
             self.swim_goal = None;
             return;
         }
@@ -1731,7 +1746,7 @@ impl Driver {
         let delta = goal-body.player.feet;
         if command.navigate && command.landing_feedback && !self.walking_plan
             && self.landing_feedback.misplaced(&body.player,self.plan.front().map(|s|s.1)) {
-            self.plan.clear();self.planning_hold=None;self.ledge_goal=None;
+            self.plan.clear();self.planning_hold=None;self.segment_landing=None;self.ledge_goal=None;
             self.landing_feedback=LandingFeedback::default();
             self.report.landing_replans+=1;
             self.report.last_landing_replan=Some((frame.tick,body.player.feet));
@@ -1751,9 +1766,13 @@ impl Driver {
         }
         // A nearby supported intermediate island can still require another
         // jump. Settling toward the final goal would erase that queued takeoff.
-        let landing = if command.navigate && !pending_jump(self.plan.iter().map(|(input,_)|input.jump),self.jumped) {
+        let can_land=command.navigate && !pending_jump(self.plan.iter().map(|(input,_)|input.jump),self.jumped);
+        let landing = if can_land {
             landing_control(world,&body.player,goal,command.input_lead,command.arrival_radius)
         } else { None };
+        let intermediate=if can_land && command.settle_landings && landing.is_none() {
+            self.segment_landing.and_then(|at|landing_control(world,&body.player,at,command.input_lead,command.arrival_radius))
+        } else {None};
         let carried=carry.filter(|_|!command.navigate || landing.is_some())
             .map(|v|carried_goal_control(&body.player,goal,v,command.input_lead,command.arrival_radius));
         self.report.reached = if let Some((_,settled))=carried { settled }
@@ -1763,7 +1782,7 @@ impl Driver {
         self.report.reached &= surface.as_ref().is_none_or(|s| s.supported[local.index()]);
         if self.report.reached {
             if let Some((wish,_))=carried { keys.wish=wish;keys.swim=wish.extend(0.);keys.run=true; }
-            self.report.phase="reached"; self.plan.clear(); return;
+            self.report.phase="reached"; self.plan.clear(); self.segment_landing=None; return;
         }
         if command.swim {
             if !body.player.swimming {
@@ -1784,8 +1803,17 @@ impl Driver {
             self.plan.clear();keys.wish=wish;keys.swim=wish.extend(0.);keys.run=true;
         } else if let Some((wish,_)) = landing {
             self.report.phase="settling landing";
-            self.plan.clear();
+            self.plan.clear();self.segment_landing=None;
             keys.wish=wish; keys.swim=wish.extend(0.); keys.run=false;
+        } else if let Some((wish,settled))=intermediate {
+            // A shortened plan can end on a lower ledge, far from the final
+            // waypoint. Retain that actual planned landing after clearing the
+            // timed inputs, and brake there before the next search. Settling
+            // this intermediate support never reports the final goal reached.
+            self.report.phase="settling intermediate landing";
+            self.report.expected=self.segment_landing;
+            self.plan.clear();keys.wish=wish;keys.swim=wish.extend(0.);keys.run=false;
+            if settled {self.segment_landing=None;}
         } else if command.navigate && self.walking_plan && !self.plan.is_empty() {
             self.report.phase="following walking route";
             // A swinging obstacle can stop against Alice and never clear the
@@ -2899,6 +2927,22 @@ mod tests {
         assert!(arrivals[0].is_none_or(|old|improved<old),"Corner advancement did not improve arrival: {arrivals:?}");
     }
     #[test]
+    fn landing_handoff_requires_supported_footing_beneath_the_descending_body() {
+        let world=World::fixture(&[(vec3(0.,-100.,-100.),vec3(120.,100.,0.))]);
+        let goal=vec3(48.,0.,0.03125);
+        for x in [-10.,4.,12.] {
+            let mut player=Player::new(vec3(x,0.,40.));
+            player.grounded=false;
+            player.velocity=vec3(120.,0.,-40.);
+            let support=world.body_trace(player.feet,vec3(x,0.,-35.));
+            assert!(support.fraction<1.,"Fixture must overlap the landing with its body box");
+            assert_eq!(landing_control(&world,&player,goal,0.,8.).is_some(),x>=8.,
+                "Lateral jump steering was replaced before the feet had a supported landing at x={x}");
+            assert!(landing_control(&world,&player,goal,0.2,8.).is_some(),
+                "Delayed landing must anticipate actual movement onto supported footing");
+        }
+    }
+    #[test]
     fn navigation_keeps_lateral_jump_input_until_above_the_landing() {
         // The altar return crosses a gap and turns left late in its jump.
         // A clear horizontal trace in mid-air does not mean the body is over
@@ -3179,6 +3223,35 @@ mod tests {
         assert!(landing_control(&world,&airborne,goal,0.2,8.).is_some());
         airborne.updraft_time=1.;
         assert!(landing_control(&world,&airborne,goal,0.2,8.).is_none());
+    }
+    #[test]
+    fn shortened_route_brakes_on_its_intermediate_landing_before_replanning() {
+        let world=World::fixture(&[(vec3(-48.,-48.,-100.),vec3(48.,48.,0.))]);
+        let intermediate=vec3(0.,0.,0.03125);
+        let destination=vec3(240.,0.,96.);
+        for (delay,settle_intermediate) in [(0,false),(0,true),(6,true),(12,true),(18,true)] {
+            let mut player=Player::new(vec3(-51.58984,-63.51709,73.33676));
+            player.velocity=vec3(226.7417,173.23021,206.6663);
+            let mut views=VecDeque::from(vec![player.clone();delay+1]);
+            let mut pending=VecDeque::from(vec![Controls{wish:Vec2::Y,run:true,..Default::default()};delay]);
+            let mut handed_off=false;let mut fell=false;let mut settled=false;
+            for tick in 0..720 {
+                let view=views.pop_front().unwrap();let lead=2.*delay as f32/120.;
+                assert!(landing_control(&world,&view,destination,lead,8.).is_none(),
+                    "An intermediate landing cannot establish final waypoint arrival");
+                let landing=settle_intermediate.then(||landing_control(&world,&view,intermediate,lead,8.)).flatten();
+                let control=if let Some((wish,reached))=landing {
+                    handed_off=true;settled|=reached;Controls{wish,..Default::default()}
+                } else if handed_off {Controls::default()}
+                else {Controls{wish:if tick<24 {vec2(-0.70710677,0.70710677)} else {-Vec2::X},run:true,..Default::default()}};
+                pending.push_back(control);player.tick(&world,pending.pop_front().unwrap());
+                if player.feet.z< -0.1 {fell=true;break;}
+                views.push_back(player.clone());
+            }
+            if settle_intermediate {assert!(!fell && settled && player.feet.distance(intermediate)<8.,
+                "Intermediate landing failed at delay{delay}: {:?}",player.feet);}
+            else {assert!(fell,"Missing intermediate steering must reproduce the fall");}
+        }
     }
     #[test]
     fn delayed_corridor_landing_brakes_before_the_snapshot_descends() {

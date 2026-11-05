@@ -26,6 +26,10 @@ PLATFORM_RIGHT = [-7000, 698, 1632]
 PLATFORM_BANK = [-7208, 768, 1632.03125]
 PLATFORM_PARK = [-7256, 768, 1632.03125]
 NAV_SECTIONS = ((0, 52), (55, 76))
+# Observed ordinary footings along the ascent from 66 back to the upper shelf.
+# Separate short searches avoid a remote search exhausting its state limit.
+SHELF_APPROACH = ([-6020,3210,1996.4535], [-6236.352,3366.2947,2000.03125],
+                  [-6313.79,3264.695,2088.03125], [-6381.0264,3216.554,2088.03125])
 
 
 def forward_limit(step):
@@ -94,6 +98,21 @@ def verify_course(steps, completed, arrivals, history, start, last):
         goal = PLATFORM_BANK if receipt['step'] == 54 else steps[receipt['step']]['pos']
         assert receipt['goal'] == goal, 'Waypoint changed'
         verify_arrival(receipt, history)
+
+
+def verify_shelf_approaches(entries, history, completed, approaches, arrivals):
+    expected = {(role, index) for role in ROLES for index in range(len(SHELF_APPROACH))} if 65 in completed else set()
+    assert {(e['role'],e['index']) for e in entries} == expected and len(entries) == len(expected), 'Incomplete or repeated shelf approach'
+    for entry in entries:
+        assert entry['step'] == 65 and entry['goal'] == SHELF_APPROACH[entry['index']], 'Changed shelf approach'
+        verify_arrival(entry, history)
+    if 65 in completed:
+        for role in ROLES:
+            lower = next(e for e in approaches if e['step'] == 65 and e['role'] == role)
+            upper = next(e for e in arrivals if e['step'] == 65 and e['role'] == role)
+            ordered = sorted((e for e in entries if e['role'] == role),key=lambda e:e['index'])
+            ticks = [lower['tick']] + [e['tick'] for e in ordered] + [upper['tick']]
+            assert all(a < b for a,b in zip(ticks,ticks[1:])), 'Shelf approach reordered or bypassed the final ascent'
 
 
 def verify_entry(history):
@@ -212,6 +231,7 @@ class CuriosityPair(Pair):
 
     def __init__(self, args):
         self.step, self.completed, self.last_valid = -1, [], {}
+        self.navigation_timeout = getattr(args, 'navigation_timeout', 90)
         self.minimum_lead = min(1.5, .05 + 2 * (args.delay_ms + args.jitter_ms) / 1000)
         self.lead, self.lead_tick = self.minimum_lead, None
         super().__init__(args)
@@ -226,9 +246,10 @@ class CuriosityPair(Pair):
         (self.folder / 'course.json').write_bytes(raw)
         self.evidence.update(course_sha256=hashlib.sha256(raw).hexdigest(),
             executable_sha256=hashlib.sha256(args.exe.read_bytes()).hexdigest(),
-            arrivals=[], parking=[], approaches=[], forward_waiting=[], hazard_exits=[], hazard_jumps=[], combat_waits=[],
+            arrivals=[], parking=[], approaches=[], shelf_approaches=[], forward_waiting=[], hazard_exits=[], hazard_jumps=[], combat_waits=[],
             platform_moves=[], platform_waits=[], platform_carries=[], platform_jumps=[], platform_climbs=[], bank_waits=[],
             crossing_exit_goal=PLATFORM_BANK,
+            navigation_timeout=self.navigation_timeout,
             completed=self.completed, fresh=args.checkpoint is None,
             scope='Approach/platform segment only; ending and full visit remain unverified')
         deps = self.folder / 'fixture-dependencies'; deps.mkdir()
@@ -337,7 +358,8 @@ class CuriosityPair(Pair):
         for _ in range(4):
             self.set(role, goal, navigate=navigate, run=True, radius=radius)
             self.until(lambda: self.body(role)['player']['grounded'] and (self.reached(role)
-                or self.body(role)['player']['immersion']['kind'] in ('Lava', 'Slime')))
+                or self.body(role)['player']['immersion']['kind'] in ('Lava', 'Slime')),
+                self.navigation_timeout if navigate else 90)
             if self.reached(role):
                 return self.receipt(role, goal)
             # A live jump can miss a ledge. Use a recently observed safe pad
@@ -359,7 +381,7 @@ class CuriosityPair(Pair):
                 return True
             assert row['players'][slot]['immersion']['kind'] == 'Dry', 'Hot approach reached lava before a safe takeoff'
             return False
-        self.until(found)
+        self.until(found, self.navigation_timeout)
         selected_tick, pad = choice
         approach = self.move(role, pad, radius=2)
         before = self.history[role][-1]
@@ -424,7 +446,7 @@ class CuriosityPair(Pair):
                         choice = row['tick'], selected[0]
                         return True
                     return self.reached(role)
-                self.until(found)
+                self.until(found, self.navigation_timeout)
                 if self.body(role)['player']['immersion']['kind'] in ('Lava', 'Slime'):
                     self.escape_hazard(role)
                     continue
@@ -485,6 +507,11 @@ class CuriosityPair(Pair):
         for role in (first, other):
             if approach is not None:
                 self.evidence['approaches'].append(self.move(role, approach, navigate=True))
+            if self.step == 65:
+                for index, footing in enumerate(SHELF_APPROACH):
+                    receipt = self.move(role, footing, navigate=True, radius=2)
+                    self.evidence['shelf_approaches'].append(dict(receipt,index=index))
+                    print('PASS ordinary shelf approach', role, index, flush=True)
             entry = self.move(role, goal, navigate=True)
             self.escape_hazard(role)
             if self.clear():
@@ -624,6 +651,8 @@ class CuriosityPair(Pair):
 
     def verify(self):
         verify_course(self.steps, self.completed, self.evidence['arrivals'], self.history, self.args.start_step, self.args.last_step)
+        verify_shelf_approaches(self.evidence['shelf_approaches'], self.history, self.completed,
+                               self.evidence['approaches'], self.evidence['arrivals'])
         for entry in self.evidence['combat_waits']: verify_combat_wait(entry, self.history)
         for entry in self.evidence['platform_moves']: verify_arrival(entry, self.history)
         for entry in self.evidence['platform_waits']: verify_platform_wait(entry, self.history)
@@ -746,10 +775,13 @@ def main():
     parser.add_argument('--save-before', type=int, nargs='*', default=[0, 4, 8, 15, 23, 33, 41, 49, 52])
     parser.add_argument('--delay-ms', type=int, default=40)
     parser.add_argument('--jitter-ms', type=int, default=20)
+    parser.add_argument('--navigation-timeout', type=int, default=90,
+                        help='Bounded seconds per navigation leg, including asynchronous route search')
     args = parser.parse_args()
     if not 0 <= args.start_step <= args.last_step <= 76: parser.error('This approach/platform segment supports steps 0..76')
     if (args.start_step > 0) != (args.checkpoint is not None): parser.error('A resumed segment requires its unchanged checkpoint and positive start step')
     if not all(0 <= v <= 500 for v in (args.delay_ms, args.jitter_ms)): parser.error('Delay/jitter must be 0..500 ms')
+    if not 30 <= args.navigation_timeout <= 600: parser.error('Navigation timeout must be 30..600 seconds')
     pair = CuriosityPair(args)
     try: pair.run()
     except BaseException as error:

@@ -9,9 +9,13 @@ intermittently. Separate verified segments extend through point 64, but there
 is no continuous full-level pass. Both players now independently pass a real
 lava death, the exact ten-second revival at 25 health, and a spectator camera
 following the survivor's actual walk. These automated internet tests do not
-complete another campaign visit. Next are reliable traversal from 65 onward,
-the remaining scenes and exit, team-wipe and reconnect coverage.
-See the [current recovery evidence](JLAIR1.md#ordinary-lava-revival-and-moving-spectator).
+complete another campaign visit. The automated driver now retains supported
+landing control on intermediate ledges. Both players have separately verified
+lower-shelf arrivals, but Red still intermittently misses the next jump and
+has not completed the final ascent to point 65. Reliable traversal from 65
+onward, the remaining scenes and exit, team-wipe and reconnect coverage remain
+open. See the [recovery evidence](JLAIR1.md#ordinary-lava-revival-and-moving-spectator)
+and [current landing checks](JLAIR1.md#supported-landings-and-shelf-guidance).
 
 Six of the 39 campaign visits have combined verification evidence; 33 remain open.
 Earlier contact-system repeats are still required. Remaining work includes full
@@ -50,9 +54,9 @@ No additional campaign visit is counted as complete. Next is Burning Curiosity's
 full route with two independent internet clients, followed by recovery and
 reconnect checks. See [Burning Curiosity evidence](JLAIR1.md).
 
-Current validation: **915 active Rust tests** pass (three ignored), along with
-the locked release, nineteen traversal and five recovery guards for Curiosity
-(375 guards across the Python suite), seven package checks and
+Current validation: **917 active Rust tests** pass (three ignored), along with
+the locked release, twenty traversal and five recovery guards for Curiosity
+(376 guards across the Python suite), seven package checks and
 the 912-file source worktree audit. Negative tests cover partial boarding,
 floating bodies, marginal ledges, damaging-liquid navigation and stationary
 bodies that retain collision velocity, alongside valid sloped landings.

@@ -101,6 +101,7 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                 super::menu::panel(&ui, "Host co-op");
                 super::menu::text(&ui, match setup.status() {
                     Status::PreparingHelper => "Preparing internet hosting...",
+                    Status::CheckingConnection => "Checking your invite...",
                     _ => "Creating your invite...",
                 }, 150., 18.);
                 setup_input.update(&prefs, crate::look::window_focused());

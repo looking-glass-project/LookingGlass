@@ -26,6 +26,8 @@ pub const MAX_INPUT: usize = 8 * 1024;
 pub const MAX_STATE: usize = 8 * 1024 * 1024;
 const QUEUE: usize = 4;
 const IDLE: Duration = Duration::from_secs(15);
+const READY_PROBE: &str = "x-looking-glass-probe";
+const READY_REPLY: &str = "x-looking-glass-ready";
 /// Session-level ceiling for connection setup: DNS may retry for 20 seconds,
 /// followed by up to four TCP attempts and the TLS/WebSocket handshake. Keep
 /// this separate from the shorter identity-check timeout after connection.
@@ -243,6 +245,20 @@ fn handshake(stream: TcpStream, invite: &Invite) -> Result<WebSocket<HandshakeSt
                 "The players need compatible co-op builds.",
             ));
         }
+        if let Some(probe) = request.headers().get(READY_PROBE) {
+            if !valid_probe(probe.as_bytes()) {
+                return Err(reject(StatusCode::BAD_REQUEST, "Invalid readiness check."));
+            }
+            // An authenticated preflight must reach this exact listener without
+            // joining the session or consuming its only guest slot. A fresh
+            // challenge and no-store response exclude stale proxy responses.
+            let mut ready = reject(StatusCode::CONFLICT, "");
+            ready.headers_mut().insert(READY_REPLY, probe.clone());
+            ready.headers_mut().insert(header::CACHE_CONTROL, "no-store".parse().unwrap());
+            ready.headers_mut().insert(header::CONTENT_LENGTH, "0".parse().unwrap());
+            ready.headers_mut().insert(header::CONNECTION, "close".parse().unwrap());
+            return Err(ready);
+        }
         response
             .headers_mut()
             .insert(header::SEC_WEBSOCKET_PROTOCOL, PROTOCOL.parse().unwrap());
@@ -364,7 +380,12 @@ impl Drop for ConnectingSocket<'_> {
     }
 }
 
-fn connect(invite: &Invite, shared: &Shared) -> Result<WebSocket<MaybeTlsStream<TcpStream>>> {
+fn valid_probe(bytes: &[u8]) -> bool {
+    bytes.len() == 32 && bytes.iter().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+}
+
+fn connect(invite: &Invite, shared: &Shared, readiness: bool)
+    -> Result<Option<WebSocket<MaybeTlsStream<TcpStream>>>> {
     let url = invite.websocket_url();
     let uri: tungstenite::http::Uri = url.parse()?;
     let host = uri
@@ -402,8 +423,22 @@ fn connect(invite: &Invite, shared: &Shared) -> Result<WebSocket<MaybeTlsStream<
     request
         .headers_mut()
         .insert(header::SEC_WEBSOCKET_PROTOCOL, PROTOCOL.parse()?);
-    let (socket, response) =
-        tungstenite::client_tls_with_config(request, stream, Some(config(MAX_STATE)), None)
+    let challenge = if readiness {
+        let mut bytes = [0u8; 16];
+        getrandom::fill(&mut bytes).map_err(|_| anyhow::anyhow!("Could not check the invite."))?;
+        let value = bytes.iter().map(|b| format!("{b:02x}")).collect::<String>();
+        request.headers_mut().insert(READY_PROBE, value.parse()?);
+        Some(value)
+    } else { None };
+    let result = tungstenite::client_tls_with_config(request, stream, Some(config(MAX_STATE)), None);
+    anyhow::ensure!(!shared.stopped(), "Connection cancelled");
+    if let (Some(challenge), Err(tungstenite::HandshakeError::Failure(Error::Http(response)))) = (&challenge, &result) {
+        if response.status() == StatusCode::CONFLICT
+            && response.headers().get(READY_REPLY).is_some_and(|v| v.as_bytes() == challenge.as_bytes()) {
+            return Ok(None);
+        }
+    }
+    let (socket, response) = result
             .map_err(|error| {
                 // Never include request headers or response bodies in player logs.
                 let reason = match error {
@@ -420,6 +455,7 @@ fn connect(invite: &Invite, shared: &Shared) -> Result<WebSocket<MaybeTlsStream<
                 };
                 anyhow::anyhow!("{reason} Check the invite and that the host is still open.")
             })?;
+    anyhow::ensure!(!readiness, "The host did not confirm the invite readiness check.");
     anyhow::ensure!(
         response
             .headers()
@@ -433,7 +469,30 @@ fn connect(invite: &Invite, shared: &Shared) -> Result<WebSocket<MaybeTlsStream<
         MaybeTlsStream::NativeTls(tls) => tls.get_ref().set_nonblocking(true)?,
         _ => bail!("Unsupported TLS connection"),
     }
-    Ok(socket)
+    Ok(Some(socket))
+}
+
+/// One cancellable, authenticated round trip through the prospective invite.
+/// Success never advances the host generation or begins gameplay. The owner
+/// controls retries and its total deadline; dropping this handle closes any
+/// socket currently blocked in TLS/HTTP setup, just like cancelling Join.
+pub(super) struct Readiness { peer: Peer }
+impl Readiness {
+    pub(super) fn start(invite: Invite) -> Result<Self> {
+        let (peer, _, _, shared) = channels(State::Connecting, MAX_INPUT);
+        thread::Builder::new().name("coop-ready".into()).spawn(move || {
+            let result = connect(&invite, &shared, true);
+            shared.set(if shared.stopped() { State::Stopped } else {
+                match result {
+                    Ok(None) => State::Connected,
+                    Ok(Some(_)) => State::Disconnected("Unexpected readiness connection.".into()),
+                    Err(error) => State::Disconnected(error.to_string()),
+                }
+            });
+        })?;
+        Ok(Self { peer })
+    }
+    pub(super) fn state(&self) -> State { self.peer.state() }
 }
 
 pub fn join(invite: Invite, conditions: Conditions) -> Result<Peer> {
@@ -442,7 +501,7 @@ pub fn join(invite: Invite, conditions: Conditions) -> Result<Peer> {
         .name("coop-guest".into())
         .spawn(move || {
             let result = (|| {
-                let mut socket = connect(&invite, &shared)?;
+                let mut socket = connect(&invite, &shared, false)?.context("Missing player connection")?;
                 if shared.stopped() {
                     return Ok(());
                 }
@@ -680,12 +739,16 @@ mod tests {
         assert_eq!(result.unwrap_err().to_string(), "Connection cancelled");
     }
     #[test]
-    fn cancelling_a_stalled_join_closes_its_handshake_socket_promptly() {
-        for (drop_peer, secure) in [(false,false), (true,false), (false,true), (true,true)] {
+    fn cancelling_a_stalled_join_or_readiness_check_closes_its_socket_promptly() {
+        for (drop_peer, secure, readiness) in [
+            (false,false,false), (true,false,false), (false,true,false), (true,true,false),
+            (false,false,true), (true,false,true), (false,true,true), (true,true,true),
+        ] {
             let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
             listener.set_nonblocking(true).unwrap();
             let invite = Invite::new(&format!("{}://{}", if secure { "https" } else { "http" }, listener.local_addr().unwrap())).unwrap();
             let (requested, ready) = mpsc::channel();
+            let (cancelled, cancellation) = mpsc::channel();
             let server = thread::spawn(move || {
                 let started = Instant::now();
                 let mut socket = loop {
@@ -709,8 +772,11 @@ mod tests {
                 }
                 // Never answer the TLS/HTTP handshake. Cancel must close
                 // this real socket, not merely hide its connecting screen.
-                socket.set_read_timeout(Some(Duration::from_millis(750))).unwrap();
                 requested.send(()).unwrap();
+                // Do not spend the socket-close allowance waiting for the
+                // test thread to be scheduled under the full native suite.
+                cancellation.recv_timeout(Duration::from_secs(3)).unwrap();
+                socket.set_read_timeout(Some(Duration::from_millis(750))).unwrap();
                 // A TLS ClientHello may still be buffered; drain only those
                 // bytes, then require EOF/reset without waiting for timeout.
                 let mut drained = 0;
@@ -721,14 +787,21 @@ mod tests {
                     }
                 }
             });
-            let peer = join(invite, Conditions::default()).unwrap();
+            let peer = if readiness {
+                Readiness::start(invite).unwrap().peer
+            } else {
+                join(invite, Conditions::default()).unwrap()
+            };
             let shared = peer.shared.clone();
             ready.recv_timeout(Duration::from_secs(4)).unwrap();
+            let cancel_started = Instant::now();
             if drop_peer { drop(peer); } else { peer.stop(); }
+            assert!(cancel_started.elapsed() < Duration::from_millis(750), "Cancel itself blocked");
+            cancelled.send(()).unwrap();
             let closed = server.join().unwrap();
             assert!(matches!(&closed, Ok(0)) || matches!(&closed, Err(e)
                 if matches!(e.kind(), std::io::ErrorKind::ConnectionReset | std::io::ErrorKind::ConnectionAborted)),
-                "Cancelled handshake remained open (TLS={secure}, drop={drop_peer}): {closed:?}");
+                "Cancelled handshake remained open (TLS={secure}, drop={drop_peer}, readiness={readiness}): {closed:?}");
             wait_for(|| *shared.state.lock().unwrap() == State::Stopped);
         }
     }
@@ -800,6 +873,111 @@ mod tests {
             assert!(!matches!(g, State::Disconnected(_) | State::Stopped), "Host: {h:?}, guest: {g:?}");
             h == State::Connected && g == State::Connected
         });
+    }
+    #[test]
+    fn readiness_leaves_the_slot_empty_and_does_not_disturb_a_connected_guest() {
+        let (host, invite) = host(Conditions::default()).unwrap();
+        for _ in 0..3 {
+            let check = Readiness::start(invite.clone()).unwrap();
+            wait_for(|| check.state() != State::Connecting);
+            assert_eq!(check.state(), State::Connected);
+            assert_eq!(host.state(), State::Waiting);
+            assert_eq!(host.generation(), 0);
+            assert_eq!(host.receive(), None);
+        }
+        let guest = join(invite.clone(), Conditions::default()).unwrap();
+        wait_connected(&host, &guest);
+        assert_eq!(host.generation(), 1);
+        let check = Readiness::start(invite).unwrap();
+        wait_for(|| check.state() != State::Connecting);
+        assert!(matches!(check.state(), State::Disconnected(reason) if reason.contains("HTTP 409")));
+        assert_eq!(host.generation(), 1);
+        assert!(guest.send(b"still joined".to_vec()).unwrap());
+        wait_for(|| host.receive().is_some_and(|data| data == b"still joined"));
+    }
+
+    #[test]
+    fn readiness_requires_the_invite_protocol_path_and_valid_challenge() {
+        let (host, invite) = host(Conditions::default()).unwrap();
+        let wrong = Invite::new(invite.origin()).unwrap();
+        let check = Readiness::start(wrong).unwrap();
+        wait_for(|| check.state() != State::Connecting);
+        assert!(matches!(check.state(), State::Disconnected(reason) if reason.contains("HTTP 401")));
+        for (kind, status) in [
+            ("protocol", StatusCode::BAD_REQUEST),
+            ("path", StatusCode::NOT_FOUND),
+            ("query", StatusCode::NOT_FOUND),
+            ("short", StatusCode::BAD_REQUEST),
+            ("uppercase", StatusCode::BAD_REQUEST),
+        ] {
+            let mut request = invite.websocket_url().into_client_request().unwrap();
+            request.headers_mut().insert(header::AUTHORIZATION, invite.authorization().parse().unwrap());
+            request.headers_mut().insert(header::SEC_WEBSOCKET_PROTOCOL, PROTOCOL.parse().unwrap());
+            request.headers_mut().insert(READY_PROBE, "a".repeat(32).parse().unwrap());
+            match kind {
+                "protocol" => { request.headers_mut().remove(header::SEC_WEBSOCKET_PROTOCOL); }
+                "path" => *request.uri_mut() = invite.websocket_url().replace("/coop", "/wrong").parse().unwrap(),
+                "query" => *request.uri_mut() = format!("{}?wrong", invite.websocket_url()).parse().unwrap(),
+                "short" => { request.headers_mut().insert(READY_PROBE, "a".parse().unwrap()); }
+                "uppercase" => { request.headers_mut().insert(READY_PROBE, "A".repeat(32).parse().unwrap()); }
+                _ => unreachable!(),
+            }
+            let socket = TcpStream::connect(invite.origin().strip_prefix("http://").unwrap()).unwrap();
+            socket.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+            let result = tungstenite::client(request, socket);
+            let Err(tungstenite::HandshakeError::Failure(Error::Http(response))) = result else {
+                panic!("Invalid readiness request was not rejected: {kind}: {result:?}");
+            };
+            assert_eq!(response.status(), status, "{kind}");
+            assert!(response.headers().get(READY_REPLY).is_none(), "{kind}");
+            assert_eq!(host.state(), State::Waiting);
+            assert_eq!(host.generation(), 0);
+        }
+    }
+
+    #[test]
+    fn readiness_rejects_unrelated_or_replayed_responses_and_ordinary_upgrades() {
+        let mut previous = None;
+        for kind in ["missing", "replayed", "upgrade"] {
+            let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+            listener.set_nonblocking(true).unwrap();
+            let invite = Invite::new(&format!("http://{}", listener.local_addr().unwrap())).unwrap();
+            let check = Readiness::start(invite).unwrap();
+            let mut accepted = None;
+            wait_for(|| { accepted = listener.accept().ok(); accepted.is_some() });
+            let socket = accepted.unwrap().0;
+            socket.set_nonblocking(false).unwrap();
+            socket.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+            let mut current = None;
+            let _ = tungstenite::accept_hdr(socket, |request: &Request, response: Response| {
+                let challenge = request.headers().get(READY_PROBE).unwrap();
+                assert!(valid_probe(challenge.as_bytes()));
+                assert_ne!(Some(challenge), previous.as_ref());
+                current = Some(challenge.clone());
+                if kind == "upgrade" { return Ok(response); }
+                let mut rejected = reject(StatusCode::CONFLICT, "private response body");
+                if kind == "replayed" {
+                    rejected.headers_mut().insert(READY_REPLY, previous.clone().unwrap());
+                }
+                Err(rejected)
+            });
+            previous = current;
+            wait_for(|| check.state() != State::Connecting);
+            let State::Disconnected(reason) = check.state() else {
+                panic!("Unrelated response marked ready: {kind}");
+            };
+            assert!(!reason.contains("private response body"));
+        }
+    }
+
+    #[test]
+    fn cancellation_before_socket_registration_cannot_start_a_handshake() {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let socket = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        let (peer, _, _, shared) = channels(State::Connecting, MAX_INPUT);
+        peer.stop();
+        assert!(ConnectingSocket::new(&shared, &socket).is_err());
+        assert!(shared.connecting.lock().unwrap().is_none());
     }
     #[test]
     fn separate_endpoints_exchange_delayed_packets_and_reconnect_to_same_host() {

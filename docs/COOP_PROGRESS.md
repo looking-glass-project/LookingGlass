@@ -1,6 +1,6 @@
 # Co-op progress
 
-Updated 5 November 2026. Branch: `coop`. **Estimated overall completion: 55.3%.**
+Updated 5 November 2026. Branch: `coop`. **Estimated overall completion: 55.6%.**
 The older 42% reports are historical. This percentage measures delivered and
 verified behavior against the full co-op scope; it is not a running test's progress.
 
@@ -27,12 +27,12 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | Area | Credited points | Maximum |
 | --- | ---: | ---: |
 | Foundation and independent client diagnostics | 9.5 | 10 |
-| Internet Host/Join | 9.5 | 15 |
+| Internet Host/Join | 9.75 | 15 |
 | Two players, movement and presentation | 11 | 15 |
 | Combat, individual resources and death | 10.5 | 20 |
 | Scenes, transport and progression | 11.75 | 20 |
 | Full campaign verification | 3.08 | 20 |
-| **Total** | **55.33, rounded to 55.3** | **100** |
+| **Total** | **55.58, rounded to 55.6** | **100** |
 
 ## Implemented features and remaining work
 
@@ -52,7 +52,7 @@ yet verified across every level and failure condition.
 | Combat and resources | Nearest-visible targeting, individual damage, inventory and consumables in integrated levels | Remaining enemies/bosses and level-specific rewards, with both players as the target/collector |
 | Death and saves | Exact ten-second countdown, moving spectator camera, safe 25-health revival; shared checkpoint wipes, public save/leave/continue and storage-error/backup menu flow, public save refusal/retry during deaths/scenes, public guest restart during either player's countdown | Each visit's recovery matrix and remaining transport/death combinations |
 | Scenes and machinery | First-arrival ownership, original single-Alice scenes, hidden partner and safe reunion; public intro/dialogue reconnects with either theatre owner; all-living boarding on integrated rides | Remaining level adapters, both scene owners, watched/skipped cases, transports and exits |
-| Regression checks | 928 active Rust tests; 410 Python guards; current Curiosity native/single-player baseline comparisons | Full campaign verification and required earlier contact-system repeats on the final build |
+| Regression checks | 934 active Rust tests; 410 Python guards; current Curiosity native/single-player baseline comparisons | Full campaign verification and required earlier contact-system repeats on the final build |
 
 Campaign status from `COOP_CAMPAIGN.md`:
 
@@ -168,6 +168,57 @@ in the evidence below.
 | Combat/death | Shared targets, individual resources, exact countdown, moving spectator camera, 25-health reunion and shared wipe, representative moving-platform revival/carry | Consolidated repeat, then level-specific enemies and recovery matrices |
 | Presentation | Both Alice models, contact separation and replicated ambient/weapon effects in focused tests; contact/ambient baseline repeats on `c5cb7fc` | Broader campaign effects and audio; no new audio verification in this pass |
 | Consolidation | Automated native, menu and network fixtures retain build identities and private evidence | Run the core set on one frozen build after the remaining checks/fixes |
+
+## Authenticated invite readiness, 5 November 2026
+
+Build `0b5bca3` checks its prospective public invite before exposing it. After
+helper registration and the existing startup grace, a background worker uses
+the same DNS/TCP/TLS and authenticated endpoint as Join. Only the expected reply
+to a fresh random challenge succeeds. The host remains waiting with no guest
+slot consumed, generation change or gameplay started. The menu shows
+"Checking your invite..." while this runs. Transient failures retry within a
+60-second budget; timeout/helper failure returns an error, and Cancel closes
+an in-progress handshake socket and releases the owned helper.
+
+All **934 active Rust tests** pass (three ignored); the locked release, 410
+Python guards and seven source-package tests pass. Added coverage uses real
+loopback sockets for slot preservation, invalid authentication/protocol/path,
+malformed and replayed challenges, ordinary upgrades, transient failure,
+deadline/helper failure and cancellation during HTTP/TLS setup. The initial
+malformed-path test accidentally used an HTTP rather than WebSocket scheme;
+that fixture was corrected. A subsequent full run exposed a cancellation test
+whose socket deadline began before Cancel was dispatched. It now synchronizes
+that action, checks Cancel's own duration and separately requires prompt EOF.
+The final full suite passes; earlier failed logs remain in private evidence.
+
+Public tests on the byte-identical executable pass:
+
+- `network-test-266666220b5748b7a853cdcf92648c5e`: independent processes, isolated
+  profiles, 16 ordered exchanges, 40/20 ms delay/jitter and clean disconnect.
+- `menu-test-e38c28f83d344935b8a0509c58743d5d`: real main/ESC solo import,
+  save/leave, expired-link feedback, Continue co-op with a fresh invite and two
+  exact solo returns (66.27 s).
+- `menu-test-7e9a518372294142abc5c4995a780efe`: DNS/HTTP errors, cancelled Join,
+  failed/cancelled Host, successful public retry in the same processes, save,
+  leave and exact solo return (63.80 s).
+- `host-stall-test-49c9bc9570904e1a8a0f1e82b2b0954d`: three controlled stalls,
+  recovered input timing, contact separation, both models and ambient effects;
+  680 matching states, zero settled input backlog and under 7 ms simulation
+  debt with 40/20 ms delay/jitter (65.81 s).
+
+All case folders are under `private/coop/`. The retained manifest is
+`private/coop/invite-readiness-0b5bca3-20261105/manifest.json`. The executable SHA
+is `32f9559ff0c7c3d38722eda021cfdddf81fb366298e54db43f0eb42f33b2d2df`.
+The remaining network cohort is running separately; these passes do not mark
+core consolidation complete or transfer older save/recovery evidence to a new
+native build.
+
+This adds 0.25 Internet Host/Join points for verified positive route readiness:
+**55.58 total, reported as 55.6%**. Campaign counts remain 6 combined / 21 partial /
+12 not run. The check proves reachability from the host at setup time; it cannot
+guarantee another computer's DNS cache or continued provider availability.
+[Cloudflare Quick Tunnels](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/)
+remain a development service without an uptime guarantee.
 
 ## Fixed-build core checkpoint, 5 November 2026
 

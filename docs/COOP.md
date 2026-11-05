@@ -6,7 +6,7 @@ For the concise current status, see [Co-op progress](COOP_PROGRESS.md).
 This is work in progress. A policy test or a connected pair of windows does not
 establish campaign support. Single-player behavior and saves must remain supported.
 
-Current milestone: **50.1% estimated overall; six campaign visits have combined
+Current milestone: **55.6% estimated overall; six campaign visits have combined
 verification evidence, 33 remain open.** Earlier contact-system repeats are still
 required as detailed in the campaign matrix. Pool of Tears has 38 passing native
 component cases plus public two-client opening and bank checkpoint segments.
@@ -16,7 +16,7 @@ recovery remain open for both visits. Report these smaller milestones alongside
 the total; a successful component or segment is not a completed campaign visit.
 
 Status checked on **5 November 2026**: the older approximately 42% figure is
-historical; the current weighted estimate is **50.1%**. Six of 39
+historical; the current weighted estimate is **55.6%**. Six of 39
 campaign visits have combined evidence, with earlier contact-system repeats
 still required. Repeated component tests do not increase this total.
 

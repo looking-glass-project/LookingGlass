@@ -4,7 +4,7 @@ import unittest
 import tempfile
 from pathlib import Path
 
-from coop_recovery import verify_trace, verify_views, verify_northern_coverage
+from coop_recovery import verify_trace, verify_views, verify_northern_coverage,verify_presence
 from test_coop_checkmate import CheckmatePair
 
 
@@ -36,6 +36,28 @@ def trace(paused=0, waiting=0):
 
 
 class RecoveryGuards(unittest.TestCase):
+    def portal_rows(self):
+        rows=[]
+        for tick,x,warp in ((10,0,0),(20,1000,15)):
+            rows.append(dict(epoch=1,tick=tick,checkpoint_generation=0,owner=None,scene=None,
+                camera_player='Blue',camera_target=[x,0,48],camera_subject_feet=[x,0,0],
+                players=[dict(health=50,feet=[x,0,0],warped_at=warp),dict(health=50,feet=[48,0,0],warped_at=0)]))
+        return rows
+
+    def test_portal_presence_needs_the_exact_independently_verified_boundary(self):
+        verify_presence(self.portal_rows(),'host',portal_warps={(1,0,15)})
+        for allowed in ((),{(1,1,15)},{(1,0,14)},{(2,0,15)}):
+            with self.subTest(allowed=allowed),self.assertRaisesRegex(AssertionError,'Unscripted route warp'):
+                verify_presence(self.portal_rows(),'host',portal_warps=allowed)
+
+    def test_portal_permission_does_not_allow_a_backdated_stamp_or_overlap(self):
+        rows=self.portal_rows();rows[1]['players'][0]['warped_at']=5
+        with self.assertRaisesRegex(AssertionError,'Unscripted route warp'):
+            verify_presence(rows,'host',portal_warps={(1,0,5)})
+        rows=self.portal_rows();rows[1]['players'][1]['feet']=[1000,0,0]
+        with self.assertRaisesRegex(AssertionError,'overlap'):
+            verify_presence(rows,'host',portal_warps={(1,0,15)})
+
     def test_exact_revive_with_cinematic_pause_and_safe_spawn_wait(self):
         result = verify_trace(trace(13, 9), 'test', True)
         self.assertEqual(result['revivals'], [dict(player=0, epoch=1, death_tick=1,

@@ -19,26 +19,29 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | Full campaign verification | 3.08 | 20 |
 | **Total** | **48.58, rounded to 48.6** | **100** |
 
-Latest completed traversal sections: resumed **141** and **142-143** pass.
-Both players reach the fourth chair and return to dry ground. Red dies on her
-first attempt, then revives beside Blue after exactly **1,200 active ticks
-(10 seconds)** at **25 health**, with personal resources and spectator/return
-cameras verified. Her successful retry makes a new personal approach; spawning
-near Blue does not count as reaching the chair. This section has **4,229 matching
-player/world/native states** and retains the failed attempt separately.
+Latest completed traversal sections: resumed **144-145** and **146-149** pass.
+Both players enter the lowered clock portal through ordinary jump/climb input,
+then personally reach the final lever approach. The first arrival leaves the
+portal exit clear for the second. This section has **361 matching
+player/world/native states** and retains the normal checkpoint before 146.
 
-The next section adds two personal waypoint arrivals, one supported waiting
-handoff and the full five-second wait, with **426 matching states** and no new
-death. The runner now chooses an already usable side footing at this waypoint
-instead of walking into a forward pocket. Final health is **26.93/23**, and the
-normal checkpoint before 144 is retained. All **186 Clockwork Python guards**
-and **13 generic recovery guards** pass. Native source remains `84c8eee`; its
-previous 905 active Rust tests, 72 paired/driver checks and exact single-player
-11+1 baseline were not rerun for these Python-only changes.
+Red then uses the final lever and owns the watched 30-second Stop scene. Blue
+stays hidden and still; both reunite safely. After the original 20-second wait,
+Red approaches and enters the original exit, moving both players into About Face.
+The shared transition has its own receipt, rather than claiming that both
+players walked to the exit waypoint. This section has **1,122 matching states**,
+including **27 after arrival**, with health preserved at **26.93/23** and personal
+resource, camera and body-clearance checks passing. No new deaths occur.
 
-Next: paired second portal, final scene and exit, followed by fresh full-route,
-other recovery and reconnect verification. These resumed segments do not
-complete a campaign visit; overall stays **48.6%**.
+Earlier resumed 141 verifies Red's exact 10-second revival and a new personal
+chair approach; 142-143 verifies onward waiting. All **210 Clockwork Python
+guards**, **15 generic recovery guards** and seven package checks pass. Native
+source remains `84c8eee`; its previous 905 active Rust tests, 72 paired/driver
+checks and exact single-player 11+1 baseline were not rerun for Python-only changes.
+
+Next: fresh full-route, remaining scene-owner, recovery and reconnect verification.
+These checkpoint segments through the exit do not complete the full visit's
+verification matrix; overall stays **48.6%**.
 See [Clockwork evidence](HATTER1.md).
 
 Earlier diagnostic work: source `84c8eee` detects an actual off-course landing

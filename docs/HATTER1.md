@@ -1232,3 +1232,60 @@ evidence. These runs use two processes over the internet transport with 40 ms
 added delay and 20 ms jitter. Second-portal traversal, final scene/exit, fresh
 full-route, Blue recovery, team wipe and reconnect repeats remain open. No full
 visit is credited, and overall completion stays **48.6%**.
+
+
+## Lowered clock portal, final scene and shared exit (5 November 2026)
+
+Resumed **144-145** passes on unchanged native source `84c8eee`. Each player
+uses ordinary jump/climb input to enter the clock's lowered portal. The verifier
+checks the four solved chairs, completed lowering, original source and target,
+native takeoff, matching personal warp stamps on both peers, unchanged life,
+grounded clear arrival and a waiting handoff before the follower enters.
+The generic recovery presence check accepts only these independently verified
+epoch/player/warp tuples; every other unscripted warp still fails.
+
+Two earlier attempts crossed with Red but stopped while selecting a waiting
+point on the small destination platform. The runner can hold an already clear,
+dry arrival, use an observed supported neighbor, or follow the original onward
+waypoint before inviting the follower through. The successful run exercises the
+first option; the onward fallback has guard coverage but no separate successful
+live receipt yet. It records **two crossings, two personal 145 arrivals and
+361 matching player/world/native states**, ending at **26.93/23 health**.
+Evidence: `private/coop/hatter1-route-7b0a017e8e5e49a7a8f6e5244d7b8053/result-summary.json`.
+Original observations SHA-256:
+`628e0132b719642b2613926d39584f2fee0c83fa727190e4e666945e8478b6fa`.
+The normal checkpoint before 146, tick 264670, has SHA-256
+`0dec088f49bf70189603ad0c912aa0ff25cea7c714f2dd3e66f8f705acb96a46`.
+
+The final scene verifier now handles the boolean `stopped` flag explicitly and
+requires the full 30-second watched scene, its actual lever user, hidden/frozen
+partner, preserved resources and safe reunion. A first 146-148 run passes the
+scene but enters About Face while the leading player moves aside near the exit.
+That run remains failed because its prefix verifier did not support a level
+transition. The terminal fixture now treats 148-149 as a complete exit sequence:
+one player personally reaches the original approach and walks toward the
+original exit; the native trigger moves both players into the next visit.
+The shared transition is not recorded as two personal waypoint arrivals.
+
+Resumed **146-149** passes. Red owns the Stop scene, both reunite, the original
+20-second wait completes, and Red enters the exit. Both clients arrive in
+`hatter2`, epoch 2, at its default entrance. The verifier checks completed
+Clockwork progression, acknowledged exit movement, nearby source contact,
+clear grounded arrivals, preserved health/spawn stamps and personal resources,
+rendered camera subjects and matching destination state. It records **1,122
+matching player/world/native states**, including **27 in About Face**, with no
+new death and final health **26.93/23**.
+Evidence: `private/coop/hatter1-route-f2336ac9cc204138b700947146faa2fe/result-summary.json`.
+Original observations SHA-256:
+`e93c64e1270f78d611573f7f3f66836a4ab1428dd023eed2dc05069dd28ad78c`.
+
+Both saved frozen verifiers replay successfully, including the closed recovery
+traces. The stronger current exit resource check also passes the retained live
+observations. All **210 Clockwork Python guards**, **15 generic recovery guards**,
+seven package checks and the source worktree audit pass. No native source or
+gameplay damage changed; the prior 905 active Rust tests, locked release,
+72 native paired/driver checks and exact single-player 11+1 baseline remain the
+build evidence. These are checkpoint segments over the internet transport at
+40 ms added delay and 20 ms jitter. Fresh full-route, remaining scene-owner,
+recovery and reconnect coverage remain open; no full visit or About Face battle
+is credited. Overall completion remains **48.6%**.

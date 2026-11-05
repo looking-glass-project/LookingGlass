@@ -11,7 +11,7 @@ from test_coop_hatter1 import recorded_node, verify_node_resolutions
 from test_coop_hatter1 import verify_scene_handoff, verify_contact_handoff
 from test_coop_hatter1 import verify_doorway_approaches
 from test_coop_hatter1 import next_door_footing, verify_door_waiting
-from test_coop_hatter1 import verify_first_portal
+from test_coop_hatter1 import verify_first_portal,verify_clock_portal,verify_clockwork_exit
 from test_coop_hatter1 import chair_return,verify_chair_departures,verify_chair_hops
 from test_coop_hatter1 import ClockworkPair,ChairDeath,verify_chair_retries
 
@@ -441,6 +441,145 @@ class FirstPortal(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError,'obstructs the arrival'):self.check()
 
 
+class ClockPortal(unittest.TestCase):
+    def setUp(self):
+        source=FirstPortal();source.setUp()
+        self.steps=source.steps;self.entities=source.entities
+        self.evidence=dict(clock_portal_jumps=source.evidence['portal_jumps'],clock_portal_waiting=source.evidence['portal_waiting'])
+        self.history=source.history
+        self.entities[125]=dict(classname='trigger_teleport',targetname='clock_teleport',target='end',origin='-768 1892 544')
+        self.entities[124]=dict(classname='func_teleportdest',targetname='end',origin='-2144 2272 192')
+        takeoff=self.steps[142]['nav'];park=[-2096,2272,192]
+        receipt=self.evidence['clock_portal_waiting'][0];receipt.update(goal=park,candidates=[park],feet=park)
+        for rows in self.history.values():
+            for row in rows:
+                row['clockwork']=dict(cubes=[True]*4,clock=1.,age=10.)
+                row['driver']['neighbors']=[[park],[]]
+                for slot,body in enumerate(row['players']):
+                    old=body['feet']
+                    if old[0]==-2800:body['feet']=list(takeoff)
+                    elif old[0]==-2740:body['feet']=[-768,1980,150]
+                    elif old[0]==-768:body['feet']=[-2144,2272,192 if body['grounded'] else 200]
+                    else:body['feet']=park
+                    if slot==1:body['spawned_at']=80
+                for event in row['driver']['input_events']:
+                    for b in event['before']+event['after']:b[0]=list(takeoff)
+
+    def check(self):return verify_clock_portal(self.evidence,self.steps,self.history,self.entities)
+
+    def test_lowered_clock_has_two_personal_crossings_after_an_earlier_revival(self):
+        self.assertEqual(self.check(),{(1,0,130),(1,1,330)})
+
+    def test_unfinished_puzzle_and_lowering_are_rejected(self):
+        for mode in ('chair','clock','time'):
+            self.setUp();state=self.history['host'][0]['clockwork']
+            if mode=='chair':state['cubes'][3]=False
+            elif mode=='clock':state['clock']=None
+            else:state['age']=5.9
+            with self.subTest(mode=mode),self.assertRaisesRegex(AssertionError,'before puzzle lowering'):self.check()
+
+    def test_original_high_portal_position_is_not_the_lowered_contact(self):
+        self.entities[125]['origin']='-768 1892 900'
+        with self.assertRaisesRegex(AssertionError,'lowered clock portal position'):self.check()
+
+    def test_rescue_teleport_cannot_replace_source_contact(self):
+        self.history['host'][1]['players'][0]['feet']=[0,0,0]
+        with self.assertRaisesRegex(AssertionError,'source contact'):self.check()
+
+    def test_revival_cannot_replace_second_portal(self):
+        self.history['guest'][7]['players'][1]['spawned_at']=330
+        with self.assertRaisesRegex(AssertionError,'revival or a scene'):self.check()
+
+    def test_unobserved_takeoff_cannot_authorize_warp(self):
+        for row in self.history['host']:row['driver']['input_events']=[]
+        with self.assertRaisesRegex(AssertionError,'takeoff unobserved'):self.check()
+
+    def test_wrong_destination_is_rejected(self):
+        self.history['guest'][2]['players'][0]['feet']=[-768,3232,64]
+        with self.assertRaisesRegex(AssertionError,'wrong destination'):self.check()
+
+    def test_waiting_handoff_must_precede_second_crossing(self):
+        self.evidence['clock_portal_waiting'][0]['tick']=320
+        with self.assertRaisesRegex(AssertionError,'out of order'):self.check()
+
+    def test_already_clear_dry_arrival_can_be_held_without_an_extra_step(self):
+        receipt=self.evidence['clock_portal_waiting'][0];receipt['source']='arrival'
+        body=self.history['host'][3]['players'][0]
+        body.update(feet=receipt['goal'],immersion=dict(level=0))
+        self.check()
+        body['feet']=[-2140,2272,192]
+        with self.assertRaisesRegex(AssertionError,'dry supported arrival'):self.check()
+
+    def test_occupied_arrival_cannot_be_used_as_a_waiting_point(self):
+        receipt=self.evidence['clock_portal_waiting'][0]
+        receipt.update(source='arrival',goal=[-2140,2272,192])
+        self.history['host'][3]['players'][0].update(feet=receipt['goal'],immersion=dict(level=0))
+        with self.assertRaisesRegex(AssertionError,'insufficient waiting clearance'):self.check()
+
+    def test_original_onward_waypoint_can_clear_a_small_portal_platform(self):
+        receipt=self.evidence['clock_portal_waiting'][0];goal=self.steps[145]['nav']
+        receipt.update(source='onward',goal=goal,feet=goal)
+        self.history['host'][4]['players'][0]['feet']=goal
+        self.check()
+        receipt['goal']=[-2480,2400,256]
+        with self.assertRaisesRegex(AssertionError,'original onward waypoint'):self.check()
+
+
+class ClockworkExit(unittest.TestCase):
+    def setUp(self):
+        self.steps=json.loads((Path(__file__).resolve().parents[1]/'src/levels/hatter1/route_steps.json').read_text())
+        self.entry=dict(role='host',approach_tick=100,approach_command=7,exit_command=8,arrival_ticks=dict(host=200,guest=200))
+        players=[dict(feet=list(self.steps[148]['nav']) if i==0 else [-2500,2300,256],health=25+i,
+            grounded=True,spawned_at=80 if i else 0,stats=dict(sanity=25+i,will=30+i,difficulty='Normal',selected=i,
+                owned=[1,i],collected=[str(i)],school_items={},staff_component=False)) for i in range(2)]
+        clock=dict(stopped=True,levers=[1]*5,cubes=[True]*4,hare=1,port=1,gryphon=1)
+        approach=dict(map='hatter1',epoch=1,tick=100,owner=None,players=players,clockwork=clock,
+                      driver=dict(command=7,reached=True,clear=[True,True]))
+        contact=copy.deepcopy(approach);contact.update(tick=120);contact['players'][0]['feet']=[-2528,1780,192];contact['driver']['command']=8
+        arrival=copy.deepcopy(contact);arrival.update(map='hatter2',epoch=2,tick=200,visit_entry=None,checkpoint_generation=0)
+        for i,b in enumerate(arrival['players']):b['feet']=[5664+i*48,-1088,0]
+        arrival['driver']['network_states']=[dict(epoch=2,tick=t,sha256=str(t),world_sha256='w'+str(t),native_sha256='n'+str(t)) for t in range(180,200)]
+        self.history={r:copy.deepcopy([approach,contact,arrival]) for r in ('host','guest')}
+
+    def check(self):return verify_clockwork_exit(self.entry,self.steps,self.history)
+
+    def test_first_entrant_transitions_both_players_with_individual_resources(self):
+        self.assertEqual(self.check(),20)
+
+    def test_closed_clock_cannot_authorize_an_exit(self):
+        self.history['host'][1]['clockwork']['stopped']=False
+        with self.assertRaisesRegex(AssertionError,'bypassed Clockwork'):self.check()
+
+    def test_exit_needs_its_own_ordinary_approach_and_contact(self):
+        self.history['host'][0]['players'][0]['feet']=[0,0,0]
+        with self.assertRaisesRegex(AssertionError,'personally reached'):self.check()
+        self.setUp();self.history['guest'][1]['players'][0]['feet']=[0,0,0]
+        with self.assertRaisesRegex(AssertionError,'contact was not approached'):self.check()
+
+    def test_partner_must_arrive_in_about_face(self):
+        self.history['guest'][-1]['map']='other'
+        with self.assertRaisesRegex(AssertionError,'shared About Face'):self.check()
+
+    def test_transition_cannot_refill_health_or_replace_personal_inventory(self):
+        self.history['host'][-1]['players'][1]['health']=100
+        with self.assertRaisesRegex(AssertionError,'reset a player'):self.check()
+        self.setUp();self.history['guest'][-1]['players'][1]['stats']['owned']=[9,9]
+        with self.assertRaisesRegex(AssertionError,'personal owned'):self.check()
+
+    def test_new_map_requires_matching_native_states(self):
+        self.history['guest'][-1]['driver']['network_states'][0]['native_sha256']='wrong'
+        with self.assertRaisesRegex(AssertionError,'replication incomplete'):self.check()
+
+    def test_exit_cannot_refill_will(self):
+        self.history['guest'][-1]['players'][1]['stats']['will']=100
+        with self.assertRaisesRegex(AssertionError,'personal Will'):self.check()
+
+    def test_final_approach_requires_the_shared_exit_sequence(self):
+        for start,last in ((146,148),(148,148),(149,149)):
+            with self.subTest(start=start,last=last),self.assertRaisesRegex(AssertionError,'complete 148-149'):
+                validate_course_range(self.steps,start,last)
+
+
 class DoorWaiting(unittest.TestCase):
     def setUp(self):
         self.steps=[{} for _ in range(131)]
@@ -562,6 +701,41 @@ class SceneHandoffs(unittest.TestCase):
     def check(self): verify_scene_handoff(self.entry,self.history,self.levers)
 
     def test_watched_port_and_shared_reunion(self): self.check()
+
+    def stop(self):
+        self.entry.update(step=146,scene='Hatter1_End')
+        self.levers[0].update(step=146,lever=4)
+        for peer,rows in self.history.items():
+            for row,t in zip(rows[:-1],(0,15,29.6)):
+                row.update(tick=120+round(t*120),scene='Hatter1_End')
+                row['clockwork']=dict(stopped=False,coop=dict(actor=0),scene=dict(kind='Stop',time=t,line=0,skip=None))
+            rows[-1]['tick']=3730;rows[-1]['clockwork']=dict(stopped=True,scene=None)
+            for body in rows[-1]['players']:body['warped_at']=3720
+            self.entry['ends'][peer]=3730
+
+    def test_watched_stop_and_shared_reunion(self):
+        self.stop();self.check()
+
+    def test_false_stop_flag_cannot_claim_completion(self):
+        self.stop();self.history['guest'][-1]['clockwork']['stopped']=False
+        with self.assertRaisesRegex(AssertionError,'Missing completed scene'):self.check()
+
+    def test_stop_requires_its_full_thirty_seconds(self):
+        self.stop()
+        for peer,rows in self.history.items():
+            rows[2]['tick']=2400;rows[2]['clockwork']['scene']['time']=19
+            rows[-1]['tick']=2530
+            for body in rows[-1]['players']:body['warped_at']=2520
+            self.entry['ends'][peer]=2530
+        with self.assertRaisesRegex(AssertionError,'Stop scene ended early'):self.check()
+
+    def test_stop_belongs_to_the_final_lever_user(self):
+        self.stop();self.levers[0]['role']='guest'
+        with self.assertRaisesRegex(AssertionError,'lever user'):self.check()
+
+    def test_stop_partner_must_remain_hidden(self):
+        self.stop();self.history['guest'][1]['presentation']['visible_players'][1]=True
+        with self.assertRaisesRegex(AssertionError,'displayed'):self.check()
 
     def test_red_lever_user_owns_scene(self):
         self.entry['role']='guest';self.levers[0]['role']='guest'

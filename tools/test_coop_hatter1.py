@@ -2,12 +2,13 @@
 
 Each player must earn a separate waypoint receipt. The first stops at a native
 clear/supported neighbor to let the second arrive. The initial runner supports
-nav/walk/node/wait/lever steps, the watched Hare/Port/Gryphon handoffs and a paired gap
+nav/walk/node/wait/lever steps, watched Hare/Port/Gryphon/Stop handoffs and a paired gap
 crossing adapted from steps 36-42, sequential first-portal jumps at 136-137,
-and chair contacts/departures at 138-141.
+chair contacts/departures at 138-141 and the lowered clock portal at 144.
 A scene-triggered reunion is recorded
-separately from personal walking arrivals. Other timed inputs, portals and
-later scene handoffs remain explicit future work.
+separately from personal walking arrivals. The first entrant at the original
+final exit moves both players into About Face; that shared transition has its
+own receipt rather than two claimed personal exit-waypoint arrivals.
 An explicit checkpoint can resume a separately labelled segment,
 with an exact native restore receipt. The runner never edits authoritative
 positions, resources or progression.
@@ -39,7 +40,7 @@ CORRIDOR_HANDOFFS = (25,26,27,28,33,34,35,100,101,102,103,104,105,106,107)
 STAIR_HANDOFFS = (21,22,23,81,82,83,84,85)
 DOOR_HANDOFFS = (128,)
 SCENES = {'Hatter1_Cinema1': ('Hare','hare',(60,61,62)), 'Port_Cine': ('Port','port',(67,)),
-          'Hatter1_Cinema2': ('Gryphon','gryphon',(112,))}
+          'Hatter1_Cinema2': ('Gryphon','gryphon',(112,)), 'Hatter1_End': ('Stop','stopped',(146,))}
 CONTACT_SCENES = {'Hatter1_Cinema1': (60,62), 'Hatter1_Cinema2': (112,)}
 
 
@@ -52,14 +53,19 @@ class ChairDeath(Exception):
     """An actual death interrupts this player's current chair attempt."""
 
 
+def scene_finished(clock, flag):
+    return clock[flag] is True if flag=='stopped' else clock[flag] is not None
+
+
 def verify_scene_handoff(entry, history, levers):
     scene=entry['scene'];kind,flag,steps=SCENES[scene]
     assert entry['step'] in steps and entry['role'] in ('host','guest'), 'Unexpected Clockwork scene handoff'
     owner='Blue' if entry['role']=='host' else 'Red';slot=0 if owner=='Blue' else 1;partner=1-slot
     assert set(history)==set(entry['starts'])==set(entry['ends'])=={'host','guest'}, 'Scene needs both clients'
-    if kind=='Port':
-        used=[r for r in levers if r['step']==66 and r['lever']==3]
-        assert len(used)==1 and used[0]['role']==entry['role'], 'Port owner differs from the lever user'
+    if kind in ('Port','Stop'):
+        step,lever=(66,3) if kind=='Port' else (146,4)
+        used=[r for r in levers if r['step']==step and r['lever']==lever]
+        assert len(used)==1 and used[0]['role']==entry['role'], 'Scene owner differs from the lever user'
     warps=[]
     for peer,rows in history.items():
         rows=[r for r in rows if entry['starts'][peer]<=r['tick']<=entry['ends'][peer]]
@@ -71,7 +77,7 @@ def verify_scene_handoff(entry, history, levers):
             assert before['driver']['command']==entry['trigger_command'], 'Scene trigger movement was not observed'
         for row in active:
             clock=row['clockwork'];native=clock['scene']
-            assert native['kind']==kind and native['skip'] is None and clock[flag] is None, 'Scene skipped or completed early'
+            assert native['kind']==kind and native['skip'] is None and not scene_finished(clock,flag), 'Scene skipped or completed early'
             assert clock['coop']['actor']==slot and row['camera_player']==owner, 'Scene lost its actor or camera'
             assert not row['presentation']['visible_players'][partner], 'Scene displayed the waiting partner'
             assert row['players'][partner]['feet']==before['players'][partner]['feet'], 'Scene moved the waiting partner'
@@ -83,13 +89,16 @@ def verify_scene_handoff(entry, history, levers):
             assert {r['clockwork']['scene']['line'] for r in active}==set(range(count)), f'Watched {kind} scene missed dialogue'
             assert max(r['clockwork']['scene']['time'] for r in active)>=opening, f'{kind} scene ended before its opening action'
         reunited=[r for r in rows if r['tick']>active[-1]['tick'] and r['owner'] is None and r['scene'] is None
-                  and r['clockwork'][flag] is not None]
+                  and scene_finished(r['clockwork'],flag)]
         assert reunited, 'Missing completed scene and reunion'
         after=reunited[0];a,b=after['players'];warp=a['warped_at']
         assert warp==b['warped_at'] and before['tick']<warp<=after['tick'] and all(warp>p['warped_at'] for p in before['players']), 'Missing shared reunion stamp'
         if kind=='Port':
             assert warp-before['tick']+before['clockwork']['scene']['time']*120>=14.75*120-2, 'Watched Port scene ended early'
             assert max(r['clockwork']['scene']['time'] for r in active)>=14.4, 'Port scene ending was not observed'
+        if kind=='Stop':
+            assert warp-before['tick']+before['clockwork']['scene']['time']*120>=30*120-2, 'Watched Stop scene ended early'
+            assert max(r['clockwork']['scene']['time'] for r in active)>=29.5, 'Stop scene ending was not observed'
         assert all(p['grounded'] and p['health']>0 for p in after['players']) and all(after['driver']['clear']), 'Unsafe scene reunion'
         assert distance(a['feet'][:2],b['feet'][:2])>=35.95 or abs(a['feet'][2]-b['feet'][2])>=55.95, 'Scene reunion overlaps players'
         assert distance(a['feet'][:2],b['feet'][:2])<=256 and abs(a['feet'][2]-b['feet'][2])<=256, 'Scene reunion separates partners'
@@ -310,6 +319,8 @@ def validate_gap_course(steps):
 
 
 def validate_course_range(steps, start, last):
+    if last>=148:
+        assert start<=148 and last==149, 'The paired exit needs the complete 148-149 sequence'
     if start<=42 and last>=36:
         assert start<=36 and last>=42, 'The paired gap needs the complete 36-42 sequence'
         validate_gap_course(steps)
@@ -317,7 +328,7 @@ def validate_course_range(steps, start, last):
         assert start<=136 and last>=137, 'The paired portal needs the complete 136-137 sequence'
         validate_first_portal_course(steps)
     assert all(next(iter(steps[i])) in ('nav','walk','node','wait','lever') or 36<=i<=42
-               or i==137
+               or i==137 or (i==144 and steps[i]=={'portal':[-768,1962,184]})
                for i in range(start,last+1)), 'Requested prefix needs an unimplemented input type'
 
 
@@ -331,12 +342,38 @@ def verify_first_portal(evidence, steps, history, entities):
     assert portal['classname']=='trigger_teleport' and dest['classname']=='func_teleportdest' and portal['target']==dest['targetname'], 'Wrong native first portal'
     origin=[float(v) for v in portal['origin'].split()];destination=[float(v) for v in dest['origin'].split()]
     jumps=evidence['portal_jumps'];parks=evidence['portal_waiting']
+    verify_portal_crossings(jumps,parks,steps[136]['nav'],origin,destination,history)
+    assert all(next(r for r in history[j['role']] if r['tick']==j['before_tick'])['players'][0 if j['role']=='host' else 1]['spawned_at']==0
+               for j in jumps), 'First portal resumed an unverified revival'
+
+
+def verify_clock_portal(evidence, steps, history, entities):
+    assert steps[142]=={'nav':[-768,2056,64.03125]} and steps[144]=={'portal':[-768,1962,184]}, 'Review changed clock portal course'
+    portal,dest=entities[125],entities[124]
+    assert portal['classname']=='trigger_teleport' and portal['targetname']=='clock_teleport' \
+        and dest['classname']=='func_teleportdest' and portal['target']==dest['targetname'], 'Wrong native clock portal'
+    base=[float(v) for v in portal['origin'].split()]
+    origin=[base[0],base[1]+70,base[2]-360]
+    assert origin==steps[144]['portal'], 'Wrong lowered clock portal position'
+    jumps=evidence['clock_portal_jumps'];parks=evidence['clock_portal_waiting']
+    for jump in jumps:
+        for rows in history.values():
+            approach=[r for r in rows if jump['before_tick']<=r['tick']<=jump['warp']]
+            assert approach and all(all(r['clockwork']['cubes']) and r['clockwork']['clock'] is not None
+                and r['clockwork']['age']-r['clockwork']['clock']>=5 for r in approach), 'Clock portal entered before puzzle lowering'
+    destination=[float(v) for v in dest['origin'].split()]
+    verify_portal_crossings(jumps,parks,steps[142]['nav'],origin,destination,history,onward=steps[145]['nav'])
+    return {(1,0 if j['role']=='host' else 1,j['warp']) for j in jumps}
+
+
+def verify_portal_crossings(jumps, parks, takeoff, origin, destination, history, onward=None):
     assert len(jumps)==2 and {j['role'] for j in jumps}=={'host','guest'}, 'Missing personal portal crossing'
     for jump in jumps:
         role=jump['role'];slot=0 if role=='host' else 1;warps=[]
         own=next(r for r in history[role] if r['tick']==jump['before_tick'])
         before=own['players'][slot]
-        assert before['grounded'] and distance(before['feet'][:2],steps[136]['nav'][:2])<8, 'Portal jump did not start on the takeoff point'
+        assert before['grounded'] and distance(before['feet'][:2],takeoff[:2])<8 \
+            and abs(before['feet'][2]-takeoff[2])<35, 'Portal jump did not start on the takeoff point'
         assert any(jump['before_tick']<=r['tick']<=jump['warp'] and r['driver']['command']==jump['command'] for r in history[role]), 'Portal jump command unobserved'
         events=[e for r in history['host'] for e in r['driver'].get('input_events',[])]
         assert any(e['kind']=='jump' and jump['before_tick']<=e['tick']<jump['warp'] and e['input'][slot]
@@ -353,7 +390,7 @@ def verify_first_portal(evidence, steps, history, entities):
             assert changed, 'Missing replicated portal warp'
             after=changed[0];body=after['players'][slot];warp=body['warped_at']
             assert warp==jump['warp'] and warp>jump['before_tick'] and after['tick']-warp<=60, 'Wrong portal warp stamp'
-            assert body['spawned_at']==before['spawned_at']==0 and body['health']>0 and after['owner'] is None, 'Portal was replaced by revival or a scene'
+            assert body['spawned_at']==before['spawned_at'] and body['health']>0 and after['owner'] is None, 'Portal was replaced by revival or a scene'
             assert distance(body['feet'][:2],destination[:2])<64 and abs(body['feet'][2]-destination[2])<128, 'Portal reached the wrong destination'
             approach=[r for r in rows if jump['before_tick']<=r['tick']<warp]
             assert approach and distance(approach[-1]['players'][slot]['feet'][:2],origin[:2])<180 and abs(approach[-1]['players'][slot]['feet'][2]-origin[2])<192, 'Portal source contact unobserved'
@@ -365,11 +402,54 @@ def verify_first_portal(evidence, steps, history, entities):
     park=parks[0];first=jumps[0];second=jumps[1];role=first['role'];slot=0 if role=='host' else 1
     assert park['role']==role and first['arrival_tick']<=park['selected_tick']<park['tick']<second['before_tick'], 'Portal handoff out of order'
     selected=next(r for r in history[role] if r['tick']==park['selected_tick'])
-    assert park['goal'] in selected['driver']['neighbors'][slot]==park['candidates'], 'Portal waiting point was not observed'
+    if park.get('source')=='arrival':
+        body=selected['players'][slot]
+        assert park['goal']==body['feet'] and body['grounded'] and selected['driver']['clear'][slot] \
+            and body['immersion']['level']==0, 'Portal waiting point was not a dry supported arrival'
+        assert distance(park['goal'][:2],destination[:2])>=48, 'Portal arrival has insufficient waiting clearance'
+    elif park.get('source')=='onward':
+        assert onward is not None and park['goal']==onward, 'Portal waiting must use the original onward waypoint'
+    else:
+        assert park['goal'] in selected['driver']['neighbors'][slot]==park['candidates'], 'Portal waiting point was not observed'
     arrived=next(r for r in history[role] if r['tick']==park['tick']);body=arrived['players'][slot]
     assert arrived['driver']['command']==park['command'] and arrived['driver']['reached'] and body['grounded'], 'Portal waiting arrival unacknowledged'
     assert body['feet']==park['feet'] and distance(body['feet'][:2],park['goal'][:2])<8, 'Portal waiting arrival missed'
+    assert abs(body['feet'][2]-park['goal'][2])<35 and arrived['driver']['clear'][slot], 'Portal waiting arrival obstructed or wrong height'
+    assert body['warped_at']==first['warp'] and body['spawned_at']==selected['players'][slot]['spawned_at'], 'Portal waiting used another warp or revival'
     assert distance(body['feet'][:2],destination[:2])>=35.95 or abs(body['feet'][2]-destination[2])>=55.95, 'Portal waiter obstructs the arrival'
+
+
+def verify_clockwork_exit(entry, steps, history):
+    assert steps[148]=={'nav':[-2528,1848,192.03125]} and steps[149]=={'walk':[-2528,1764,192.03125]}, 'Review changed Clockwork exit course'
+    role=entry['role'];slot=0 if role=='host' else 1
+    approach=next(r for r in history[role] if r['epoch']==1 and r['tick']==entry['approach_tick'])
+    body=approach['players'][slot]
+    assert approach['map']=='hatter1' and approach['owner'] is None and body['grounded'] and body['health']>0 \
+        and distance(body['feet'][:2],steps[148]['nav'][:2])<8 and abs(body['feet'][2]-steps[148]['nav'][2])<35, 'Exit approach was not personally reached'
+    assert approach['driver']['command']==entry['approach_command'] and approach['driver']['reached'], 'Exit approach command unobserved'
+    snapshots={}
+    for peer,rows in history.items():
+        source=[r for r in rows if r['map']=='hatter1' and r['epoch']==1]
+        arrived=[r for r in rows if r['map']=='hatter2' and r['epoch']==2]
+        assert source and arrived and source[-1]['tick']<arrived[0]['tick'], 'Missing ordered shared About Face transition'
+        assert all(r['visit_entry'] is None for r in arrived), 'Wrong About Face entrance'
+        last=source[-1];clock=last['clockwork']
+        assert clock['stopped'] and all(t is not None for t in clock['levers']) and all(clock['cubes']) \
+            and all(clock[f] is not None for f in ('hare','port','gryphon')), 'Exit bypassed Clockwork progression'
+        assert distance(last['players'][slot]['feet'][:2],steps[149]['walk'][:2])<64 \
+            and abs(last['players'][slot]['feet'][2]-steps[149]['walk'][2])<64, 'Native exit contact was not approached'
+        if peer==role:assert last['driver']['command']==entry['exit_command'], 'Exit movement command unobserved'
+        first=arrived[0]
+        assert first['tick']==entry['arrival_ticks'][peer] and first['checkpoint_generation']==0, 'Unrecorded arrival or checkpoint wipe'
+        assert all(p['health']>0 and p['grounded'] for p in first['players']) and all(first['driver']['clear']), 'Unsafe About Face arrival'
+        for old,new in zip(last['players'],first['players']):
+            assert new['spawned_at']==old['spawned_at'] and new['health']==old['health'], 'Transition revived or reset a player'
+            verify_rejoin_stats(old['stats'],new['stats'],first['tick']-last['tick'])
+        snapshots[peer]={(s['epoch'],s['tick']):(s['sha256'],s['world_sha256'],s['native_sha256'])
+            for r in arrived for s in r['driver']['network_states'] if s['epoch']==2}
+    shared=snapshots['host'].keys()&snapshots['guest'].keys()
+    assert len(shared)>=20 and all(snapshots['host'][k]==snapshots['guest'][k] for k in shared), 'About Face state replication incomplete'
+    return len(shared)
 
 
 def verify_gap_hold(hold, goal, history):
@@ -715,7 +795,7 @@ class ClockworkPair(Pair):
             effective_course_sha256=hashlib.sha256(effective).hexdigest(), waypoint_adjustments=adjustments,
             executable_sha256=hashlib.sha256(args.exe.read_bytes()).hexdigest(),
             arrivals=[], levers=[], holds=[], parking=[], stair_waiting=[], corridor_waiting=[], yields=[], descent_arrivals=[], descent_jumps=[], ledge_pulls=[], gear_boarding=[], gear_exits=[], gap_jumps=[], gap_holds=[], gap_waiting=[], node_resolutions=[],
-            scene_handoffs=[], doorway_approaches=[], door_waiting=[], portal_jumps=[], portal_waiting=[], chair_departures=[], failed_chair_attempts=[], port_player=args.port_player, completed=self.completed, scope='Fresh Clockwork prefix only')
+            scene_handoffs=[], doorway_approaches=[], door_waiting=[], portal_jumps=[], portal_waiting=[], clock_portal_jumps=[], clock_portal_waiting=[], chair_departures=[], failed_chair_attempts=[], port_player=args.port_player, completed=self.completed, scope='Fresh Clockwork prefix only')
         if args.start_step<=36<=args.last_step:
             self.evidence['gap_adaptation']='Steps 36-42 run separately per player: original approach, preparation wait and run-up, then actual jump and feedback steering to the original landing. This does not claim identical replay of the single-player timed air inputs.'
         dependencies = self.folder / 'fixture-dependencies'; dependencies.mkdir()
@@ -772,7 +852,9 @@ class ClockworkPair(Pair):
             assert report['route_driver'].get('recovery_trace_error') is None, 'Host recovery trace failed'
         else:super().validate_report(role, report)
         assert report['build'] == self.args.build, 'Executable differs from the frozen build'
-        assert report['visit']['map'] == self.map_name and report['visit']['epoch'] == 1, 'Unexpected visit during prefix'
+        allowed={(self.map_name,1)}
+        if self.step==149 and self.args.last_step==149:allowed.add((self.next_map,2))
+        assert (report['visit']['map'],report['visit']['epoch']) in allowed, 'Unexpected visit during prefix'
         assert all(not b['stats']['god'] and not b['stats']['notarget'] for b in report['frame']['players']), 'Cheated route'
         assert getattr(self,'allow_revival',False) or all(b['spawned_at'] == 0 for b in report['frame']['players']), 'Prefix silently respawned a player'
         if report['combat']['stage']['owner'] is None and all(b['stats']['sanity']>0 for b in report['frame']['players']):
@@ -798,7 +880,8 @@ class ClockworkPair(Pair):
                 self.commands['guest']['input_lead'] = self.lead
                 self.evidence['last_measured_input_lead'] = self.lead
         for role, report in self.reports.items():
-            self.history[role][-1]['clockwork'] = self.state(role)
+            self.history[role][-1]['clockwork'] = self.state(role) if report['visit']['map']==self.map_name else None
+            self.history[role][-1]['visit_entry'] = report['visit']['entry']
             self.history[role][-1].setdefault('presentation',report['presentation'])
             for observed, body in zip(self.history[role][-1]['players'], report['frame']['players']):
                 observed.update(ledge=body['player'].get('ledge'), climbs=body['player']['climbs'],immersion=body['player']['immersion'])
@@ -961,7 +1044,7 @@ class ClockworkPair(Pair):
                              for r in self.reports.values()),15)
         starts={peer:next(r['tick'] for r in rows if r['scene']==scene and r['owner'] is not None)
                 for peer,rows in self.history.items()}
-        self.until(lambda:all(r['combat']['stage']['owner'] is None and self.state(peer)[flag] is not None
+        self.until(lambda:all(r['combat']['stage']['owner'] is None and scene_finished(self.state(peer),flag)
             and all(b['player']['grounded'] for b in r['frame']['players']) for peer,r in self.reports.items()),240)
         entry=dict(step=self.step,scene=scene,role=role,trigger_command=trigger_command,starts=starts,
                    ends={peer:r['frame']['tick'] for peer,r in self.reports.items()})
@@ -1161,6 +1244,60 @@ class ClockworkPair(Pair):
                 self.evidence['portal_waiting'].append(receipt);self.set(role,park,run=True)
         verify_first_portal(self.evidence,self.steps,self.history,self.entities)
 
+    def cross_clock_portal(self):
+        assert self.steps[144]=={'portal':[-768,1962,184]}, 'Review changed clock portal course'
+        takeoff=self.steps[142]['nav'];goal=self.steps[144]['portal']
+        first=min(self.commands,key=lambda r:distance(self.body(r)['player']['feet'],takeoff))
+        other='guest' if first=='host' else 'host'
+        self.set(other,attack=True)
+        for role in (first,other):
+            self.move(role,takeoff,navigate=True,yield_partner=other if role==first else first)
+            report=self.reports[role];slot=0 if role=='host' else 1
+            old_warp=self.body(role)['warped_at']
+            jump=dict(role=role,before_tick=report['frame']['tick'],commands=[])
+            self.set(role,goal,run=True,jump=True,attack=False)
+            jump['command']=self.commands[role]['id'];jump['commands'].append(jump['command'])
+            last_jump=report['frame']['tick']
+            def entered():
+                nonlocal last_jump
+                if self.body(role)['warped_at']>old_warp:return True
+                report=self.reports[role];tick=report['frame']['tick'];body=self.body(role)['player']
+                assert all(b['stats']['sanity']>0 for b in report['frame']['players']), 'Player died during clock portal approach'
+                assert tick-jump['before_tick']<=1800, 'Clock portal input exceeded the original approach bound'
+                hang=body.get('ledge')
+                if report['route_driver']['command']==self.commands[role]['id'] and tick-last_jump>=40 \
+                        and (body['grounded'] or (hang and not hang['pulling'])):
+                    self.set(role,goal,run=True,jump=True,attack=False)
+                    jump['commands'].append(self.commands[role]['id']);last_jump=tick
+                return False
+            self.until(entered,45)
+            jump['warp']=self.body(role)['warped_at'];self.set(role,attack=False)
+            self.until(lambda:self.body(role)['player']['grounded']
+                and math.hypot(*self.body(role)['player']['velocity'][:2])<20
+                and all(r['frame']['players'][slot]['warped_at']==jump['warp'] for r in self.reports.values()),15)
+            jump['arrival_tick']=self.reports[role]['frame']['tick'];self.evidence['clock_portal_jumps'].append(jump)
+            if role==first:
+                report=self.reports[role];at=list(self.body(role)['player']['feet'])
+                candidates=report['route_driver']['neighbors'][slot]
+                destination=[float(v) for v in self.entities[124]['origin'].split()]
+                source='neighbor'
+                if distance(at[:2],destination[:2])>=48 and self.body(role)['player']['immersion']['level']==0:
+                    park,ready,source=at,True,'arrival'
+                elif any(distance(p[:2],destination[:2])>=48 and distance(p[:2],at[:2])>=16 for p in candidates):
+                    park,ready=parking_target(candidates,at,destination,destination,[],prefer_forward=False)
+                else:
+                    # There may be no one-step waiting point on the small
+                    # arrival platform. Walk the original onward route before
+                    # inviting the second player through the portal.
+                    park,ready,source=self.steps[145]['nav'],True,'onward'
+                assert ready, 'Clock portal arrival has no observed clear waiting point'
+                receipt=dict(role=role,goal=park,source=source,selected_tick=report['frame']['tick'],candidates=candidates)
+                self.move(role,park,navigate=source=='onward')
+                receipt.update(tick=self.reports[role]['frame']['tick'],command=self.reports[role]['route_driver']['command'],
+                    feet=list(self.body(role)['player']['feet']))
+                self.evidence['clock_portal_waiting'].append(receipt);self.set(role,park,run=True)
+        verify_clock_portal(self.evidence,self.steps,self.history,self.entities)
+
     def go_without_scene(self, goal, navigate=False):
         first = self.first if self.step in (60,112) else min(self.commands, key=lambda r: distance(self.body(r)['player']['feet'], goal) + (0 if r == self.first else 16))
         if 81<=self.step<=108:
@@ -1288,7 +1425,29 @@ class ClockworkPair(Pair):
         self.until(lambda: self.state(role)['levers'][index] is not None and self.state(role).get('pull') is None, 15)
         self.evidence['levers'].append(dict(step=self.step, lever=index, role=role, command=command,
             tick=self.reports[role]['frame']['tick'], time=self.state(role)['levers'][index]))
+        if index==4:
+            self.watch_scene('Hatter1_End',role,command)
         self.set(role, attack=True)
+
+    def leave_level(self):
+        goal=self.steps[148]['nav']
+        role=min(self.commands,key=lambda r:distance(self.body(r)['player']['feet'],goal))
+        other='guest' if role=='host' else 'host'
+        self.set(other,attack=True)
+        self.move(role,goal,navigate=True,yield_partner=other)
+        entry=dict(role=role,approach_tick=self.reports[role]['frame']['tick'],
+                   approach_command=self.reports[role]['route_driver']['command'])
+        self.step=149
+        self.set(role,self.steps[149]['walk'],run=True,attack=False)
+        entry['exit_command']=self.commands[role]['id']
+        self.until(self.arrived,60)
+        entry['arrival_ticks']={peer:next(r['tick'] for r in rows if r['map']==self.next_map and r['epoch']==2)
+                                for peer,rows in self.history.items()}
+        start=self.reports['host']['frame']['tick']
+        for peer in self.commands:self.set(peer,attack=False,epoch=2)
+        self.until(lambda:all(r['frame']['tick']>=start+180 for r in self.reports.values()),15)
+        entry['matching_arrival_states']=verify_clockwork_exit(entry,self.steps,self.history)
+        self.evidence['exit_handoff']=entry
 
     def save_checkpoint(self, step):
         for role in self.commands: self.set(role, attack=False)
@@ -1321,7 +1480,12 @@ class ClockworkPair(Pair):
             if self.saved:
                 revivals += [dict(player=i,epoch=self.saved['frame']['epoch'],spawn_tick=b['spawned_at'])
                     for i,b in enumerate(self.saved['frame']['players'])]
-        verify_arrivals(self.steps, self.completed, self.evidence['arrivals'], self.history,self.evidence['scene_handoffs'],revivals)
+        exited=self.evidence.get('exit_handoff')
+        regular=[i for i in self.completed if not exited or i<148]
+        if exited:
+            assert self.completed[-2:]==[148,149], 'Incomplete requested exit sequence'
+            verify_clockwork_exit(exited,self.steps,self.history)
+        verify_arrivals(self.steps, regular, self.evidence['arrivals'], self.history,self.evidence['scene_handoffs'],revivals)
         verify_node_resolutions(self.source_steps,self.steps,self.completed,self.evidence['node_resolutions'],self.history,self.entities)
         for entry in self.evidence['scene_handoffs']:
             assert entry['step'] in self.completed, 'Scene handoff outside completed course'
@@ -1332,6 +1496,7 @@ class ClockworkPair(Pair):
             assert names.count('Hatter1_Cinema1')==1, 'Missing Hare scene handoff'
         if 67 in self.completed: assert names.count('Port_Cine')==1, 'Missing Port scene handoff'
         if 112 in self.completed: assert names.count('Hatter1_Cinema2')==1, 'Missing Gryphon scene handoff'
+        if 146 in self.completed: assert names.count('Hatter1_End')==1, 'Missing Stop scene handoff'
         if 1 in self.completed:
             verify_descent(self.evidence['descent_arrivals'], self.evidence['descent_jumps'], self.history)
         verify_ledge_pulls(self.evidence['ledge_pulls'], self.history)
@@ -1346,6 +1511,7 @@ class ClockworkPair(Pair):
         if 17 in self.completed: verify_gear_exit(self.evidence['gear_exits'],self.steps[17]['nav'],self.history)
         if 36 in self.completed: verify_gap_sequence(self.evidence,self.steps,self.history)
         if 136 in self.completed: verify_first_portal(self.evidence,self.steps,self.history,self.entities)
+        portal_warps=verify_clock_portal(self.evidence,self.steps,self.history,self.entities) if 144 in self.completed else set()
         expected = [i for i in self.completed if 'lever' in self.steps[i]]
         assert [r['step'] for r in self.evidence['levers']] == expected, 'Missing lever receipts'
         for receipt in self.evidence['levers']:
@@ -1370,12 +1536,13 @@ class ClockworkPair(Pair):
                 assert distance(park['goal'][:2], goal[:2]) >= 48, 'Waiting target obstructs the arrival lane'
         interrupted={r['step'] for r in self.evidence['scene_handoffs'] if 'interrupted_goal' in r}
         assert sorted([p['step'] for p in self.evidence['parking'] if p['ready']]
-            +[p['step'] for kind in ('stair_waiting','corridor_waiting','door_waiting') for p in self.evidence[kind]]) == [i for i in self.completed
+            +[p['step'] for kind in ('stair_waiting','corridor_waiting','door_waiting') for p in self.evidence[kind]]) == [i for i in regular
             if next(iter(self.steps[i])) in ('nav','walk') and i not in (36,37,42,136,138,139,140,141) and i not in interrupted], 'Missing completed parking handoff'
         for role, rows in self.history.items():
-            assert rows and all(r['map'] == self.map_name and r['epoch'] == 1 and r['checkpoint_generation'] == 0 for r in rows)
+            allowed={(self.map_name,1)}|({(self.next_map,2)} if exited else set())
+            assert rows and all((r['map'],r['epoch']) in allowed and r['checkpoint_generation']==0 for r in rows)
             if getattr(self,'allow_revival',False):
-                verify_recovery_presence(rows,role)
+                verify_recovery_presence(rows,role,portal_warps=portal_warps)
                 assert all(p['health']>0 for p in rows[-1]['players']), 'Recovery route ends with a dead player'
             else:assert all(p['health'] > 0 and p['spawned_at'] == 0 for r in rows for p in r['players']), 'Prefix contains a death'
         for field, metric in (('sha256','matching_sent_and_restored_states'), ('world_sha256','matching_world_states'), ('native_sha256','matching_native_states')):
@@ -1411,6 +1578,16 @@ class ClockworkPair(Pair):
                 self.completed.extend((136,137))
                 print('PASS paired portal sequence 136-137',flush=True)
                 continue
+            if self.step==144:
+                self.cross_clock_portal()
+                self.completed.append(144)
+                print('PASS paired clock portal 144',flush=True)
+                continue
+            if self.step==148 and self.args.last_step==149:
+                self.leave_level()
+                self.completed.extend((148,149))
+                print('PASS original exit approach and shared About Face arrival',flush=True)
+                break
             key, value = next(iter(step.items()))
             if key in ('nav', 'walk'): self.go(value, key == 'nav')
             elif key=='node': self.go(self.resolve_node(value),True)
@@ -1423,7 +1600,7 @@ class ClockworkPair(Pair):
             else: raise AssertionError('Unimplemented course action')
             self.completed.append(self.step)
             print('PASS Clockwork prefix step', self.step, flush=True)
-        self.save_checkpoint(self.args.last_step + 1)
+        if not self.evidence.get('exit_handoff'):self.save_checkpoint(self.args.last_step + 1)
         self.verify()
         print('PASS', 'resumed' if self.saved else 'fresh', 'Clockwork prefix', self.completed[0], self.completed[-1], self.evidence['matching_sent_and_restored_states'], 'matching states', flush=True)
 
@@ -1448,7 +1625,8 @@ def main():
     if (args.start_step == 0) != (args.checkpoint is None): parser.error('A nonzero start-step requires a checkpoint; fresh runs start at zero')
     if not all(0 <= v <= 500 for v in (args.delay_ms, args.jitter_ms)): parser.error('Delay/jitter must be 0..500 ms')
     if args.require_revival and not args.allow_revival:parser.error('--require-revival requires --allow-revival')
-    if args.allow_revival and not 138<=args.start_step<=args.last_step<=143:parser.error('Recovery continuation currently covers chair segments 138..143')
+    if args.allow_revival and not 138<=args.start_step<=args.last_step<=149:parser.error('Recovery continuation currently covers final segments 138..149')
+    if args.last_step==149 and args.start_step>148:parser.error('The exit requires its ordinary approach at step 148')
     pair = ClockworkPair(args)
     try: pair.run()
     except BaseException as error:

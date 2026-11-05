@@ -107,7 +107,8 @@ def read_trace(path, build, require_revival=False):
         return verify_trace((json.loads(line) for line in source), build, require_revival)
 
 
-def verify_presence(rows, role, *, generation=0):
+def verify_presence(rows, role, *, generation=0, portal_warps=()):
+    """Portal exceptions must first pass the route's source/destination verifier."""
     local = 0 if role == 'host' else 1
     for row in rows:
         assert row['checkpoint_generation'] == generation, 'Unexpected team wipe'
@@ -142,8 +143,10 @@ def verify_presence(rows, role, *, generation=0):
     for old, row in zip(rows, rows[1:]):
         if old['epoch'] != row['epoch']:
             continue
-        warped = any(a['warped_at'] != b['warped_at'] for a, b in zip(old['players'], row['players']))
-        assert not warped or old['owner'] is not None or row['owner'] is not None, 'Unscripted route warp'
+        for slot,(a,b) in enumerate(zip(old['players'],row['players'])):
+            if a['warped_at']==b['warped_at'] or old['owner'] is not None or row['owner'] is not None:continue
+            assert (row['epoch'],slot,b['warped_at']) in portal_warps \
+                and old['tick']<b['warped_at']<=row['tick'], 'Unscripted route warp'
         if row['owner'] is not None and row['owner'] == old['owner'] and row['scene'] == old['scene']:
             other = 1 if row['owner'] == 'Blue' else 0
             assert row['players'][other]['feet'] == old['players'][other]['feet'], 'Scene moved waiting partner'

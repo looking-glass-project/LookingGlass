@@ -204,3 +204,26 @@ exact 1,200-tick, 25-health revivals, safe separate grips, both rendered cameras
 full first-frame agreement and 290 matching body/world/native states. See
 `COOP_PROGRESS.md` for the retained passes and failed preparation attempts.
 This recovery segment does not establish full Garden traversal.
+
+## Moving-platform countdown reconnects
+
+`tools/test_coop_fulcrum_countdown.py` resumes a normal, unchanged Funhouse
+checkpoint with both players on the second fulcrum. Each player runs off its
+side in turn. The survivor tips the board using ordinary walking, and the owned
+guest process is restarted during each countdown. An exact host trace verifies
+ten seconds, 25 health, personal resources and safe supported placement. Both
+client views must show the correct spectator camera and separate bodies.
+The board must be moving across each spawn boundary, and each revived player
+must remain supported and travel with it while receiving neutral input.
+
+```powershell
+python tools/test_coop_regressions.py --exe <tested-exe> --data <local-base> --fulcrum-checkpoint <unchanged-fulcrum-save> --only fulcrum-countdown --delay-ms 40 --jitter-ms 20
+```
+
+Public invites are the default; `--local` is a separate baseline. The fixture
+uses measured round-trip time to anticipate its ordinary steering commands.
+It rejects an unintended survivor death, extra revival, stationary support,
+driven carry and mismatched first-frame state. Source `c5cb7fc` passes both roles
+over the internet with 426 matching body/world/native-enemy states. See
+`COOP_PROGRESS.md` for the pass and retained failed preparation attempts.
+This component does not complete Funhouse or another campaign visit.

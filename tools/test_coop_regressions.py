@@ -61,7 +61,7 @@ def result_from_log(log):
               'both_models_and_particles_visible', 'checkpoint_sha256', 'resume_point', 'lifts',
               'minimum_will', 'final_health', 'staged_initial_spawn', 'host_stalls',
               'host_recovery', 'guest_recovery', 'wipe', 'loading_rejoin', 'recovery',
-              'countdown_rejoin', 'countdown_rejoins', 'revivals', 'exact_recovery',
+              'countdown_rejoin', 'countdown_rejoins', 'revivals', 'exact_recovery', 'moving_support_recovery',
               'minimum_health', 'scene_rejoin', 'scene_reunion')
     metrics = {key: result['evidence'][key] for key in fields if key in result['evidence']}
     rejoin = result['evidence'].get('rejoin')
@@ -148,7 +148,7 @@ def main():
                                                    'travel-rejoin-outbound', 'travel-rejoin-return',
                                                    'death-rejoin-blue', 'death-rejoin-red',
                                                    'swim-countdown-blue', 'swim-countdown-red',
-                                                   'rope-countdown',
+                                                   'rope-countdown', 'fulcrum-countdown',
                                                    'scene-rejoin-blue-intro', 'scene-rejoin-blue-dialogue',
                                                    'scene-rejoin-red-intro', 'scene-rejoin-red-dialogue',
                                                    'stairs-blue', 'stairs-red', 'school2-blue', 'school2-red',
@@ -163,6 +163,8 @@ def main():
     parser.add_argument('--school-checkpoint', type=Path)
     parser.add_argument('--rope-checkpoint', type=Path,
                         help='Unchanged captured Blue-on-rope/Red-falling checkpoint for rope-countdown')
+    parser.add_argument('--fulcrum-checkpoint', type=Path,
+                        help='Unchanged captured second-fulcrum checkpoint for fulcrum-countdown')
     parser.add_argument('--school2-checkpoint', type=Path)
     parser.add_argument('--return-checkpoint', type=Path)
     parser.add_argument('--return-resume-point', choices=('entrance', 'theatre', 'spiral', 'observatory-approach', 'observatory'))
@@ -201,6 +203,10 @@ def main():
         if not args.rope_checkpoint or not args.rope_checkpoint.is_file():
             parser.error('The rope countdown check needs an existing --rope-checkpoint')
         args.rope_checkpoint = args.rope_checkpoint.resolve()
+    if 'fulcrum-countdown' in selected:
+        if not args.fulcrum_checkpoint or not args.fulcrum_checkpoint.is_file():
+            parser.error('The moving-support countdown check needs an existing --fulcrum-checkpoint')
+        args.fulcrum_checkpoint = args.fulcrum_checkpoint.resolve()
     if 'school2-resume' in selected and not args.school2_checkpoint:
         parser.error('The school2-resume regression needs --school2-checkpoint')
     if 'return-resume' in selected and not args.return_checkpoint:
@@ -221,6 +227,9 @@ def main():
     if args.rope_checkpoint:
         cases['rope-countdown'] = ([sys.executable, str(ROOT / 'tools/test_coop_rope_countdown.py'),
             *common, '--checkpoint', str(args.rope_checkpoint)], 300, True)
+    if args.fulcrum_checkpoint:
+        cases['fulcrum-countdown'] = ([sys.executable, str(ROOT / 'tools/test_coop_fulcrum_countdown.py'),
+            *common, '--checkpoint', str(args.fulcrum_checkpoint)], 300, True)
     for direction in ('outbound', 'return'):
         cases['travel-rejoin-' + direction] = ([sys.executable, str(ROOT / 'tools/test_coop_travel.py'), *common,
                                                '--reconnect-at', direction], 300, True)

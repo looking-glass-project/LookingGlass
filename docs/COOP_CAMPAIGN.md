@@ -11,6 +11,14 @@ waiting/landing positions before release. The focused contact/effect checks
 in `COOP.md` do not substitute for those campaign repeats.
 The return-school row was verified with the contact system enabled.
 
+Core recovery update, 5 November 2026: unchanged build `c5cb7fc` passes both
+public countdown reconnects and exact ten-second, 25-health revivals beside a
+survivor on Funhouse's moving fulcrum. Neutral revived bodies remain supported
+and are carried with the brush. Both cameras, resources, safe separation and
+426 matching player/world/native-enemy states pass. See `COOP_PROGRESS.md` for
+the retained final case and failed fixture preparation. This recovery component
+adds no completed campaign visit; the consolidated core suite remains next.
+
 On 27 October 2026, source `685a05d` repeats all 39 entrance checks plus four
 underwater recovery cases, all 82 shared-world checks, five Fortress adapter
 checks and 15 Beyond adapter checks successfully. Beyond's old Rage test assumed

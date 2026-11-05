@@ -19,6 +19,21 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | Full campaign verification | 3.08 | 20 |
 | **Total** | **49.33, rounded to 49.3** | **100** |
 
+Latest network milestone: a **fresh full About Face route passes** in two
+independent internet clients on source `3298768`, using ordinary controls with
+40 ms delay and 20 ms jitter. Ten personal arrivals, both reward pickups, the
+shared lift, Red-owned watched Gryphon exit and actual shared `jlair1` arrival
+are verified. The closed evidence has **6,805 matching player/world/native
+states**. Blue's death at 23,061 revives at 24,261 with exactly 25 health and
+verified resources, placement and spectator/returning cameras. A separate
+resumed ending verifies Blue ownership with 2,169 matching states.
+
+Nine new Python verifier guards and seven package checks pass. Renderer
+counters show live particles/effect batches in both clients with zero dropped
+batches; no images were inspected. Native code is unchanged. Red recovery,
+team-wipe/reconnect and remaining ending cases keep this visit partial, so
+the estimate remains **49.3%** and the combined-visit count remains six.
+
 Latest native milestone: About Face source `3298768` passes **83 staged cases
 plus three summaries** for combat, personal resources, both lifts and the original
 scenes. The bridge waits for both players to clear it; lifts enforce boarding and
@@ -34,9 +49,9 @@ were inspected. Under the existing component weighting this adds **0.75 points**
 0.25 combat/resources, 0.25 movement and 0.25 progression. Total is now **49.3%**.
 
 No campaign row is completed by staged components. Six of 39 retain combined
-verification evidence. Next: About Face's full route in two independent clients,
-actual onward arrival, recovery/reconnects and rendered delivery. Clockwork's
-full-route/recovery gaps also remain. See [About Face evidence](HATTER2.md).
+verification evidence. Next: About Face's remaining recovery/reconnect and
+ending cases, then the next level's paired adapter. Clockwork's full-route and
+recovery gaps also remain. See [About Face evidence](HATTER2.md).
 
 Latest completed traversal sections: resumed **144-145** and **146-149** pass.
 Both players enter the lowered clock portal through ordinary jump/climb input,

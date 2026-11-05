@@ -25,9 +25,12 @@ shared machinery and original scenes. Source `3298768` passes **83 staged cases
 plus three summaries**, 905 active Rust tests and a locked release. Existing
 single-player component/route output matches the baseline exactly. This adds
 0.25 points each for combat/resources, movement and progression: **49.33 total,
-reported as 49.3%**. No full campaign row is added. Full two-client traversal,
-onward arrival, recovery/reconnects and rendered delivery remain open. See
-[About Face evidence](HATTER2.md).
+reported as 49.3%**. A fresh full two-client route now passes with 6,805 matching
+states, personal rewards, shared lift, Red-owned watched ending, exact Blue
+revival and actual paired onward arrival. A separate Blue-owned ending also
+passes. Renderer counters show particles/effects in both clients with no dropped
+batches. Remaining recovery/reconnect and ending cases keep this campaign row
+partial; total remains 49.3%. See [About Face evidence](HATTER2.md).
 
 Latest Clockwork evidence covers resumed route sections 144-145 and 146-149:
 both portal arrivals, the Red-owned watched final scene, safe reunion and the

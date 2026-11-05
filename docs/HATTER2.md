@@ -51,11 +51,85 @@ and the empty-return fixture originally lacked verified player footing. The fina
 run asserts clear supported entrance positions, full deck footprints and actual
 landing support; these requirements were not relaxed to pass the tests.
 
-Full two-client traversal, the actual shared onward arrival, rendered/network
-delivery, deaths, checkpoint recovery and reconnects remain unverified. These
-component checks add 0.25 points each to combat/resources, movement and progression
-under the existing weighting, bringing total estimated co-op completion to 49.3%.
-They do not complete another campaign visit.
+The native component milestone brought estimated total completion to 49.3%.
+The network evidence below now verifies a fresh full route, but the remaining
+recovery/reconnect matrix keeps this campaign row partial and adds no percentage.
+
+## Independent-client route and recovery
+
+`tools/test_coop_hatter2.py` drives two real processes with isolated profiles using
+ordinary movement, funded weapons and normal saves. Internet hosting is the
+default, with 40 ms added delay and 20 ms jitter. No position, health, inventory
+or progression writes are used. Screenshots were not inspected.
+
+The fresh V5 run on native source `3298768` exits successfully after the complete
+entrance-to-exit route. Both players cross the bridge, fight the 2,600-health
+Hatter through his original three malfunctions, collect their own blade/Watch,
+ride the lift and jump to the upper landing. Red owns the watched five-line
+Gryphon scene; Blue stays hidden and frozen. Both reach `jlair1`, finish its
+original entry scene and reunite with clear, grounded, separated bodies.
+
+The closed evidence has **10 personal waypoint receipts and 6,805 matching
+player/world/native states** (6,797 before process shutdown). Blue dies at tick
+23,061 and revives at 24,261: exactly 1,200 active ticks, 25 health, preserved
+personal resources, safe placement and the correct spectator/returning camera.
+The complete host trace has 1,580 records. Hatter victory health is 50/33. After
+the next level's original entry scene it is 100/33: that controller currently
+grants its arrival refill to Blue, so this does not claim paired `jlair1` support.
+
+A separate resumed victory run verifies Blue's watched Gryphon ownership and
+actual shared arrival, with 2,169 matching states. An earlier fresh prefix
+through the Watch landing has 6,209 matching states and two exact Blue revivals.
+Those separate runs retain their narrower scopes; they are not fresh full runs.
+
+Both clients submit environmental particles and effect batches in the fresh
+run: maximum live puffs 1,198/1,279, submitted batches 3,280/3,505, zero dropped
+batches. This is renderer/state delivery evidence, not a pixel comparison.
+
+Evidence is retained under `private/coop/`:
+
+- Fresh V5: `hatter2-route-d0cef301eb6e41309869328fda67da5e/`, successful
+  `result.json` and independently replayed `verified-full-route.json`.
+  Observations SHA-256:
+  `0aa46d0af818c5b38241829e4ea78cde11cfa986c241a3d8fd3ddf7fd1ca14aa`.
+- Blue ending: `hatter2-route-95033e47a6b5459ab133896c6ef6591e/verified-ending.json`.
+- Earlier fresh prefix: `hatter2-route-a396b442fd9049aa954d5b1bf4618d9b/verified-prefix.json`.
+  Its ordinary victory checkpoint is tick 30,675, SHA-256
+  `cc79f82879fba7f88c424b854b49d0562d68b478fa759c399fc70e46885b2c86`.
+
+Retained failures distinguish test defects from gameplay: the first strict run
+stopped on a real death; recovery mode now proves the full timer and resources.
+Later runs exposed Python's comparison against the native f32 door cap, a missing
+forward movement after the exit approach, and the scene verifier rejecting the
+committed `Done` loading state. All are corrected without changing the game.
+The full-history replay also scopes combat to its original visit, so a revival
+stamp carried into the next epoch is not misclassified as a new death.
+
+Nine Python verifier guards and seven source-package checks pass. The exact
+frozen V5 verifier and the current verifier both replay the retained milestones.
+The strengthened ending audit measures the physical tail to the first destination
+frame, excluding the next entry scene: 1,305/1,306 ticks, above the original
+1,302-tick minimum. The next level's dialogue cannot mask an early departure.
+Native source is unchanged from the 905-test/release/83-component milestone;
+those builds were not repeated for these Python-only changes.
+
+For another full run, supply the executable's printed native build identity:
+
+```powershell
+python tools/test_coop_hatter2.py --exe <exe> --build <native-build-hash> --data <base-folder> --first red --allow-revival
+python -m unittest discover -s tools -p test_coop_hatter2_guards.py
+```
+
+`--stop-after combat` records only the entrance/fight prefix. `--checkpoint` accepts
+an unchanged normal victory checkpoint alongside its original observations,
+history and host recovery trace; its SHA, resume receipt and prior revivals must
+verify. Resumed runs cannot claim fresh completion. `--local` is an explicit
+local-network alternative. Team wipes fail this runner pending dedicated proof.
+
+Remaining: Red's exact death/revival case, team-wipe checkpoint recovery,
+disconnect/rejoin around combat/transports/transition, live skipped/dead-partner
+ending cases, and broader campaign/contact regressions. Six of 39 visits retain
+combined verification evidence; total remains 49.3%.
 
 ## Single-player implementation
 

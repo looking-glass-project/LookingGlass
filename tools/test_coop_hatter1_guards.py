@@ -13,7 +13,7 @@ from test_coop_hatter1 import verify_doorway_approaches
 from test_coop_hatter1 import next_door_footing, verify_door_waiting
 from test_coop_hatter1 import verify_first_portal
 from test_coop_hatter1 import chair_return,verify_chair_departures,verify_chair_hops
-from test_coop_hatter1 import ClockworkPair
+from test_coop_hatter1 import ClockworkPair,ChairDeath,verify_chair_retries
 
 
 class ChairDeparture(unittest.TestCase):
@@ -120,6 +120,100 @@ class ChairDeparture(unittest.TestCase):
         self.projected()
         for row in self.history['host']:row['driver']['return_landings'][0]=[[-300,0,33.31]]
         with self.assertRaisesRegex(AssertionError,'no observed dry'):self.check()
+
+    def shared_floor(self):
+        self.projected()
+        self.receipts[0].update(goal=[248,0,33.31],selected_player=1)
+        for role,rows in self.history.items():
+            for row in rows:
+                if row['tick']>=200:row['players'][0]['feet']=[248,0,33.31]
+                if role=='host':row['driver']['return_landings']=[[],[[248,0,33.31]]]
+
+    def test_native_floor_near_partner_is_available_when_own_projection_is_missing(self):
+        self.shared_floor();self.check()
+
+    def test_shared_floor_source_must_be_recorded(self):
+        self.shared_floor();del self.receipts[0]['selected_player']
+        with self.assertRaisesRegex(AssertionError,'observed safe footing'):self.check()
+
+    def test_shared_floor_still_requires_clearance_from_the_waiting_player(self):
+        self.shared_floor()
+        for row in self.history['host']:row['driver']['return_landings'][1]=[[232,0,33.31]]
+        with self.assertRaisesRegex(AssertionError,'no observed dry'):self.check()
+
+
+class ChairRecovery(unittest.TestCase):
+    def setUp(self):
+        self.events=[dict(player=1,epoch=1,death_tick=200,spawn_tick=1400)]
+        self.attempts=[dict(step=141,role='guest',start_tick=100,previous_spawn=0,
+            death_seen_tick=250,spawn_tick=1400,receipts=dict(arrivals=[dict(tick=190)]))]
+        self.arrivals=[dict(step=141,role='guest',tick=1500)]
+        self.departures=[dict(step=141,role='guest',approach_tick=1410,before_tick=1500)]
+        self.history={'guest':[dict(tick=250,players=[{},dict(health=0,spawned_at=0)]),
+            dict(tick=1500,players=[{},dict(health=25,spawned_at=1400)])]}
+
+    def check(self):verify_chair_retries(self.attempts,self.events,self.arrivals,self.departures,self.history)
+
+    def test_verified_revival_precedes_a_new_personal_approach(self):self.check()
+
+    def test_unverified_revival_cannot_authorize_a_retry(self):
+        self.events=[]
+        with self.assertRaisesRegex(AssertionError,'own verified revival'):self.check()
+
+    def test_spawning_at_partner_cannot_replace_a_new_approach(self):
+        self.departures[0]['approach_tick']=100
+        with self.assertRaisesRegex(AssertionError,'replaced the personal'):self.check()
+
+    def test_one_death_cannot_authorize_two_attempts(self):
+        self.attempts*=2
+        with self.assertRaisesRegex(AssertionError,'own verified revival'):self.check()
+
+    def test_unaccounted_death_is_not_hidden(self):
+        self.events.append(dict(player=0,epoch=1,death_tick=300,spawn_tick=1500))
+        with self.assertRaisesRegex(AssertionError,'outside a recorded'):self.check()
+
+    def test_retry_requires_an_observed_dead_body(self):
+        self.history['guest'][0]['players'][1]['health']=1
+        with self.assertRaisesRegex(AssertionError,'original dead body'):self.check()
+
+    def test_runtime_archives_failed_receipts_and_repeats_the_original_goal(self):
+        for role,slot in (('host',0),('guest',1)):
+            with self.subTest(role=role):
+                pair=ClockworkPair.__new__(ClockworkPair)
+                pair.step=141;pair.allow_revival=True;pair.serial=0;pair.lead=.2;pair.commands={}
+                pair.evidence={k:[] for k in ('arrivals','ledge_pulls','chair_departures','yields','failed_chair_attempts')}
+                goal=[-608,2272,212.03125];calls=[]
+                bodies=[dict(stats=dict(sanity=40),spawned_at=0,player=dict(feet=[0,0,64])) for _ in range(2)]
+                pair.reports={r:dict(frame=dict(tick=100,players=bodies),route_driver=dict(command=0)) for r in ('host','guest')}
+                def move(who,at,navigate,yield_partner=None):
+                    self.assertEqual((who,at),(role,goal));calls.append(at)
+                    pair.set(role,at,navigate=navigate)
+                    pair.reports[role]['route_driver']['command']=pair.commands[role]['id']
+                    if len(calls)==1:
+                        pair.evidence['arrivals'].append(dict(step=141,role=role,tick=190))
+                        pair.evidence['chair_departures'].append(dict(step=141,role=role,before_tick=190))
+                        bodies[slot]['stats']['sanity']=0;pair.reports[role]['frame']['tick']=200
+                        raise ChairDeath(role)
+                    self.assertFalse(pair.evidence['arrivals'],'Respawn was recorded as a personal arrival')
+                    self.assertEqual(bodies[slot]['player']['feet'],[50,0,64])
+                    pair.reports[role]['frame']['tick']=1500;bodies[slot]['player']['feet']=at
+                def until(predicate,seconds):
+                    self.assertIsNone(pair.commands[role]['goal']);self.assertFalse(pair.commands[role]['attack'])
+                    self.assertTrue(pair.commands['host']['recovery_trace']);self.assertFalse(pair.commands['guest']['recovery_trace'])
+                    self.assertFalse(predicate())
+                    bodies[slot].update(spawned_at=1400,stats=dict(sanity=25),player=dict(feet=[50,0,64]))
+                    for report in pair.reports.values():report['frame']['tick']=1400
+                    self.assertTrue(predicate())
+                def leave(who,at,start):
+                    self.assertEqual(start,1400)
+                    pair.evidence['chair_departures'].append(dict(step=141,role=who,approach_tick=start,before_tick=1500))
+                pair.move=move;pair.until=until;pair.leave_chair=leave
+                pair.traverse_chair(role,goal,True,None)
+                self.assertEqual(len(calls),2);self.assertIsNone(pair.moving_role)
+                self.assertEqual(len(pair.evidence['arrivals']),1)
+                failed=pair.evidence['failed_chair_attempts'][0]
+                self.assertEqual(failed['receipts']['arrivals'][0]['tick'],190)
+                self.assertEqual(failed['spawn_tick'],1400)
 
 
 class LedgeHandoffCommands(unittest.TestCase):
@@ -924,6 +1018,15 @@ class Arrivals(unittest.TestCase):
                 with self.assertRaisesRegex(AssertionError, 'Invalid arrival'): self.check()
                 row[field] = old
 
+    def test_exact_verified_spawn_allows_an_independent_later_arrival(self):
+        self.history['guest'][0]['players'][1]['spawned_at']=99
+        verify_arrivals(self.steps,[0,1],self.receipts,self.history,revivals=[dict(player=1,epoch=1,spawn_tick=99)])
+
+    def test_other_players_revival_cannot_authorize_this_arrival(self):
+        self.history['guest'][0]['players'][1]['spawned_at']=99
+        with self.assertRaisesRegex(AssertionError,'Invalid arrival'):
+            verify_arrivals(self.steps,[0,1],self.receipts,self.history,revivals=[dict(player=0,epoch=1,spawn_tick=99)])
+
     def test_missed_position(self):
         self.history['host'][0]['players'][0]['feet'][0] += 9
         self.receipts[0]['feet'][0] += 9
@@ -1160,6 +1263,14 @@ class YieldReceipts(unittest.TestCase):
 
 
 class Parking(unittest.TestCase):
+    def test_clock_approach_uses_an_observed_ready_side_point_before_the_forward_pocket(self):
+        candidates=[[-771.6982421875,2110.91796875,64.03125],
+            [-771.6982421875,2014.91796875,64.03125],[-737.7571411132812,2096.859130859375,64.03125]]
+        at=[-771.6982421875,2062.91796875,64.03125]
+        incoming=[-895.1575317382812,2450.95361328125,64.03125];goal=[-768,2056,64.03125]
+        self.assertEqual(parking_target(candidates,at,incoming,goal),(candidates[1],False))
+        self.assertEqual(parking_target(candidates,at,incoming,goal,prefer_forward=False),(candidates[2],True))
+
     def test_corner_detour_can_temporarily_remain_inside_arrival_radius(self):
         at=[-6239.9565,3350.7563,48.03125]
         goal=[-6208,3328,48.03125];incoming=[-6215.8867,3167.8276,48.03125]

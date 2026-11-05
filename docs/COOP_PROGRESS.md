@@ -19,22 +19,26 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | Full campaign verification | 3.08 | 20 |
 | **Total** | **48.58, rounded to 48.6** | **100** |
 
-Latest completed traversal section: resumed **140** now passes. Both players
-reach the third chair and return to dry ground, with **3,004 matching
-player/world/native states**. Red's pull-up includes an acknowledged release of
-movement while the native animation finishes, followed by an observed jump
-from the dry rim onto the cushion. This avoids walking into the slime beside it.
-Both departure jumps and their final landings pass; ordinary damage remains.
-Final health is **42.93/6.53**, and a normal checkpoint before 141 is retained.
+Latest completed traversal sections: resumed **141** and **142-143** pass.
+Both players reach the fourth chair and return to dry ground. Red dies on her
+first attempt, then revives beside Blue after exactly **1,200 active ticks
+(10 seconds)** at **25 health**, with personal resources and spectator/return
+cameras verified. Her successful retry makes a new personal approach; spawning
+near Blue does not count as reaching the chair. This section has **4,229 matching
+player/world/native states** and retains the failed attempt separately.
 
-The previous attempt exposed why a jump issued after the pull-up was too late:
-the older forward command could carry Red off the narrow rim before the new
-input arrived. New controller regressions reproduce that failure for both roles,
-and all **173 Python guards** pass. Native source is unchanged at `84c8eee`,
-with its previously verified 905 active Rust tests, 72 paired/driver checks and
-exact single-player 11+1 baseline. The fourth chair, later route and recovery
-remain open; Red's low health needs attention through ordinary gameplay.
-No additional full campaign visit is credited; overall stays **48.6%**.
+The next section adds two personal waypoint arrivals, one supported waiting
+handoff and the full five-second wait, with **426 matching states** and no new
+death. The runner now chooses an already usable side footing at this waypoint
+instead of walking into a forward pocket. Final health is **26.93/23**, and the
+normal checkpoint before 144 is retained. All **186 Clockwork Python guards**
+and **13 generic recovery guards** pass. Native source remains `84c8eee`; its
+previous 905 active Rust tests, 72 paired/driver checks and exact single-player
+11+1 baseline were not rerun for these Python-only changes.
+
+Next: paired second portal, final scene and exit, followed by fresh full-route,
+other recovery and reconnect verification. These resumed segments do not
+complete a campaign visit; overall stays **48.6%**.
 See [Clockwork evidence](HATTER1.md).
 
 Earlier diagnostic work: source `84c8eee` detects an actual off-course landing

@@ -1180,3 +1180,55 @@ checks and exact single-player 11+1 baseline remain the relevant build evidence.
 The fourth chair and later route, full-route repeats and recovery/reconnects
 remain open. Red's low health is retained, not reset for the next test. This
 resumed section adds no full-visit credit; overall remains **48.6%**.
+
+
+## Fourth chair, individual revival and onward waiting (5 November 2026)
+
+The paired runner can now explicitly verify recovery during chair steps 138-141.
+An actual death interrupts that player's attempt and preserves its receipts
+separately. The survivor continues with ordinary inputs while the native
+revival timer runs. A revived player must repeat their own original approach
+and dry departure. The unchanged recovery verifier checks exact timing, initial
+health, preserved personal resources, clear supported placement near the survivor
+and spectator/return cameras. Team wipes, waiting-partner deaths and unaccounted
+revivals fail this scoped fixture; they are not silently accepted.
+
+An initial fourth-chair attempt found no projected return floor near Red's own
+observed approach. The selector now also considers native supported floor
+queries near the living grounded partner, after exhausting the player's own
+observations. It records that source and retains the same dry-footing, partner
+clearance, actual jump and landing checks. The original failed run remains at
+`private/coop/hatter1-route-08f59277d55e48d29b5ebb48b7a10c08`.
+
+Resumed **141** then passes on unchanged native source `84c8eee`. Red dies at
+tick 240518 and revives at 241718: exactly 1,200 active ticks, no paused or
+safe-placement wait ticks, and 25 initial health. Her new approach starts at
+241728; her personal arrival is observed at 258701 and dry return at 259132.
+Both players' final arrivals and departures pass, with **4,229 matching
+player/world/native states** and final health **26.93/23**. The closed native
+trace has 1,438 records and passes replay verification. Evidence:
+`private/coop/hatter1-route-7d4bf6e2591d4f54b5f31c1d6151083a/result-summary.json`.
+Original observations SHA-256:
+`811de4bd11e1c183b569694be35c401c0f2fd9972d2ebe9da3dda85e14acbb29`.
+
+The first onward replay stalls at 142 because the waiting controller prefers a
+forward pocket over an already usable side footing. The regression reproduces
+that recorded geometry; the corrected choice preserves the existing clearance
+requirements. Resumed **142-143** now passes with two personal arrivals, one
+waiting handoff, the full five-second hold and **426 matching player/world/native
+states**. Both remain at **26.93/23 health**, with no new death or revival.
+Evidence:
+`private/coop/hatter1-route-702a2dfdcecd46388706f29c5a0d8ca3/result-summary.json`.
+Original observations SHA-256:
+`76fcdc5bcff98af1bf11f7f48987809406f9520ab9b21fe4bb8e3ff6ac5da02b`.
+The normal checkpoint before 144, tick 262159, has SHA-256
+`c7396c87c58d6ab5d98ed7366fb8bf519e94a6ffa8c73fe5b50d029242e76b72`.
+
+All **186 Clockwork Python guards**, **13 generic recovery guards** and seven
+source-package checks pass. The frozen verifiers replay both successful runs;
+native code is unchanged, so the prior 905 active Rust tests, locked release,
+72 paired/driver checks and exact single-player 11+1 baseline remain the build
+evidence. These runs use two processes over the internet transport with 40 ms
+added delay and 20 ms jitter. Second-portal traversal, final scene/exit, fresh
+full-route, Blue recovery, team wipe and reconnect repeats remain open. No full
+visit is credited, and overall completion stays **48.6%**.

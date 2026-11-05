@@ -138,6 +138,7 @@ def main():
     parser.add_argument('--jitter-ms', type=int, default=20)
     parser.add_argument('--rope-checkpoint', type=Path)
     parser.add_argument('--fulcrum-checkpoint', type=Path)
+    parser.add_argument('--source-save', type=Path, help='Optional existing quiet solo save for the import case')
     parser.add_argument('--school-fixture', type=Path, help='Optional saved SchoolPair Python module for lift checks')
     args = parser.parse_args()
     selected = list(dict.fromkeys(args.only or CASES))
@@ -152,6 +153,8 @@ def main():
             parser.error(f'{name} requires --{name}-checkpoint with an unchanged normal gameplay save')
     if args.school_fixture and (not args.school_fixture.is_file() or args.school_fixture.suffix != '.py'):
         parser.error('--school-fixture must be an existing Python module')
+    if args.source_save and ('import' not in selected or not args.source_save.is_file()):
+        parser.error('--source-save requires the import case and an existing solo save file')
     try:
         require_desktop(args.seat_session, any(name.startswith('save-') for name in selected))
     except ValueError as error:
@@ -163,6 +166,9 @@ def main():
     report = dict(status='running', passed=False, internet=not args.local, executable=str(args.exe),
         executable_sha256=executable_hash, selected=selected, fixtures=fixtures, cases=[],
         scope='Focused saves, menu eligibility, reconnect and recovery; not full campaign verification')
+    if args.source_save:
+        args.source_save = args.source_save.resolve()
+        report['source_save'] = dict(path=str(args.source_save), sha256=digest(args.source_save))
     if args.school_fixture:
         args.school_fixture = args.school_fixture.resolve()
         report['school_fixture'] = dict(path=str(args.school_fixture), sha256=digest(args.school_fixture))
@@ -175,7 +181,7 @@ def main():
             report[name + '_checkpoint'] = dict(path=str(path), sha256=digest(path))
 
     watched = {ROOT / 'tools' / name: value for name, value in fixtures.items()}
-    for key in ('school_fixture', 'rope_checkpoint', 'fulcrum_checkpoint'):
+    for key in ('school_fixture', 'rope_checkpoint', 'fulcrum_checkpoint', 'source_save'):
         if key in report:
             watched[Path(report[key]['path'])] = report[key]['sha256']
 
@@ -207,6 +213,8 @@ def main():
             command.extend(['--delay-ms', str(args.delay_ms), '--jitter-ms', str(args.jitter_ms)])
         if name in ('rope', 'fulcrum'):
             command.extend(['--checkpoint', report[name + '_checkpoint']['path']])
+        if name == 'import' and args.source_save:
+            command.extend(['--source-save', str(args.source_save)])
         log = folder / (name + '.log')
         item = dict(name=name, passed=False, log=str(log), timeout_seconds=case.seconds,
             delay_ms=0 if normal_menu else args.delay_ms,

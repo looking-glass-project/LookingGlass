@@ -47,6 +47,18 @@ If a worktree's SchoolPair helper has unrelated edits, `--school-fixture`
 can select a saved Python module for the lift cases. It is loaded through an
 owned wrapper; the worktree file is not replaced. Its path/hash is recorded.
 
+For `import`, optional `--source-save <solo-save.json>` tests a copy of an
+existing solo save. Choose a living Alice in a quiet, safe location: this
+strict check requires preserved positions/resources while clients reconnect.
+Before the guest joins, it compares Blue's entire body, inventory, camera,
+character, world, story, hints and NPC state against the original file. It
+allows only different decimal spellings of the same native 32-bit float.
+State-changing migrations fail this preservation check. The original file is
+never used as a writable profile and its hash is checked throughout the run.
+The import, resume, resume-after-loss and backup phases still run. This option replaces
+the generated school/swimming preparation and its storage-failure fixture;
+retain those default-case results as separate coverage.
+
 The runner writes `private/coop/core-suite-<id>/summary.json` plus per-case logs.
 It records the executable hash, runtime build identity, fixture hashes, input
 checkpoint hashes, effective delays, evidence folders and result-file hashes.

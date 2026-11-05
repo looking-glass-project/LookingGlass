@@ -52,7 +52,7 @@ yet verified across every level and failure condition.
 | Combat and resources | Nearest-visible targeting, individual damage, inventory and consumables in integrated levels | Remaining enemies/bosses and level-specific rewards, with both players as the target/collector |
 | Death and saves | Exact ten-second countdown, moving spectator camera, safe 25-health revival; shared checkpoint wipes, public save/leave/continue and storage-error/backup menu flow, public save refusal/retry during deaths/scenes, public guest restart during either player's countdown | Each visit's recovery matrix and remaining transport/death combinations |
 | Scenes and machinery | First-arrival ownership, original single-Alice scenes, hidden partner and safe reunion; public intro/dialogue reconnects with either theatre owner; all-living boarding on integrated rides | Remaining level adapters, both scene owners, watched/skipped cases, transports and exits |
-| Regression checks | 934 active Rust tests; 419 Python guards; current Curiosity native/single-player baseline comparisons | Full campaign verification and required earlier contact-system repeats on the final build |
+| Regression checks | 934 active Rust tests; 424 Python guards; current Curiosity native/single-player baseline comparisons | Full campaign verification and required earlier contact-system repeats on the final build |
 
 Campaign status from `COOP_CAMPAIGN.md`:
 
@@ -168,6 +168,39 @@ in the evidence below.
 | Combat/death | Shared targets, individual resources, exact countdown, moving spectator camera, 25-health reunion and shared wipe, representative moving-platform revival/carry | Consolidated repeat, then level-specific enemies and recovery matrices |
 | Presentation | Both Alice models, contact separation and replicated ambient/weapon effects in focused tests; contact/ambient baseline repeats on `c5cb7fc` | Broader campaign effects and audio; no new audio verification in this pass |
 | Consolidation | `0b5bca3`: 934 native tests, both public menu flows, eight public network cases and thirteen local core cases pass, including abrupt host-loss menu recovery | Finish these thirteen cases over public invites on this same build once provisioning is available; retain the failed public attempts |
+
+## Archived solo save import, 5 November 2026
+
+The original Village solo autosave from the 9 October movement-fix work now
+passes the full import suite on unchanged build `0b5bca3`. Before its first
+guest connects, the runner compares Blue's complete body, resources, camera,
+character, world interactions, story, hints and NPC state with the archived
+file. No differences remain after accounting for equivalent JSON spellings
+of native 32-bit floats. Red receives the same earned starting resources at a
+separate safe position. The source file remains unchanged.
+
+All four connected phases pass: import, fresh-process resume, resume after
+abrupt host loss, and backup recovery. Each also restarts and rejoins the guest.
+The final checked-in runner result is
+`private/coop/core-suite-1902de13b88844d696b763337e1c3da2/summary.json`, case
+`import-test-beaa7e9d6c5c48a3b24c6f5590fe02f9`, taking 33.44 seconds. This is
+loopback evidence with 40/20 ms delay/jitter, not a new public-invite pass or
+proof of every older save format or campaign visit.
+
+The initial probe exposed a test teardown race: sending Finish to both clients
+together could close the host before the guest read its own command, yielding
+a normal host-ended error. The import runner now waits for a successful guest
+exit before finishing the host, retaining failure checks on both processes.
+The default generated school/swimming preparation and all four network phases
+also pass with this ordering: `core-suite-e31f227be06442acaa20edd48fa9e279`,
+case `import-test-7516ff8eb9aa42c7aab58aa12dbf4615`, taking 34.95 seconds.
+The failed probe is retained separately and receives no passing-suite credit.
+
+`--source-save` makes this reproducible with an isolated copy of an existing
+quiet save; the core runner records and checks its hash. Five new guards reject
+partial resets, stale observations, lost fields and altered values, and cover
+the shutdown order. All 424 Python guards and seven source-package tests pass.
+No native gameplay code changed. Overall completion remains **55.6%**.
 
 ## Abrupt host loss through the menus, 5 November 2026
 

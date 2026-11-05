@@ -7,13 +7,61 @@ state verifies both clients retain progress. No desktop input or image inspectio
 import argparse
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
+import struct
 import subprocess
 import time
 import uuid
 
 from test_coop_play import ROOT, read
+
+
+def same_saved_state(expected, actual, label):
+    """Compare serialized native state, allowing only f32 JSON spelling changes."""
+    if isinstance(expected, dict) and isinstance(actual, dict):
+        assert expected.keys() == actual.keys(), label + ' fields changed'
+        for key in expected:
+            same_saved_state(expected[key], actual[key], label + '.' + key)
+    elif isinstance(expected, list) and isinstance(actual, list):
+        assert len(expected) == len(actual), label + ' length changed'
+        for index, (before, after) in enumerate(zip(expected, actual)):
+            same_saved_state(before, after, f'{label}[{index}]')
+    elif type(expected) in (float, int) and type(actual) in (float, int) and (
+            isinstance(expected, float) or isinstance(actual, float)):
+        assert math.isfinite(expected) and math.isfinite(actual), label + ' is not finite'
+        assert struct.pack('f', expected) == struct.pack('f', actual), label + ' changed'
+    else:
+        assert type(expected) is type(actual) and expected == actual, label + ' changed'
+
+
+def imported_before_play(game, report):
+    """Strict compatibility check for an existing quiet save, before guest joins.
+
+    This deliberately rejects migrations that alter state; it cannot label a
+    position reset or removed inventory as a successful preserved-save import.
+    """
+    assert report['playing'] is False and report['frame']['tick'] == 0, 'Import already advanced'
+    level = game['campaign']['levels'][game['current']]
+    assert report['visit']['map'] == level['map'] and report['visit']['entry'] == level['entry']
+    blue, red = report['frame']['players']
+    same_saved_state(game['player'], blue['player'], 'Blue body')
+    for body in (blue, red):
+        same_saved_state(game['stats'], body['stats'], 'personal resources')
+        for field in ('yaw', 'pitch'):
+            same_saved_state(game['view'][field], body[field], 'saved camera ' + field)
+    assert sum((a-b)**2 for a,b in zip(blue['player']['feet'], red['player']['feet'])) >= 40**2
+    world = report['combat']
+    for saved, imported in (('interactions', 'world'), ('story', 'story'), ('hints', 'hints')):
+        same_saved_state(level[saved], world['stage'][imported], saved)
+    same_saved_state(level['npcs'], world['npcs'], 'NPCs')
+    same_saved_state(game['character'], world['characters'][0], 'Blue character')
+    assert report['completed_visits'] == len(game['campaign']['completed']), 'Completed visits changed'
+    # Expected state for the following network samples. The actual native save
+    # is written by the production checkpoint operation after both players join.
+    return dict(visit=report['visit'], frame=dict(report['frame'], combat=world),
+                campaign=dict(completed=game['campaign']['completed']))
 
 
 class Pair:
@@ -88,14 +136,24 @@ class Pair:
         self.processes[role] = subprocess.Popen(command, cwd=ROOT, stdout=log,
             stderr=subprocess.STDOUT, creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
 
-    def connect(self):
+    def connect(self, source_game=None):
         (self.folder / 'host' / 'route-resume.json').unlink(missing_ok=True)
         self.start('host')
         self.until(self.invite.exists, 150)
+        expected = None
+        if source_game is not None:
+            def waiting():
+                report = read(self.folder / 'host/coop-live.json')
+                return report if report and report['pid'] == self.processes['host'].pid else None
+            self.until(waiting, 30)
+            report = waiting()
+            (self.folder / 'import-before-join.json').write_text(json.dumps(report))
+            expected = imported_before_play(source_game, report)
         self.start('guest')
         self.until(lambda: len(self.reports) == 2)
         receipt = read(self.folder / 'host' / 'route-resume.json')
         assert receipt and receipt['verified'], 'Missing exact pre-simulation restore receipt'
+        return expected
 
     def rejoin(self):
         process = self.processes.pop('guest')
@@ -127,14 +185,18 @@ class Pair:
             assert all(r['used'] == expected['frame']['combat']['stage']['world']['used'] for r in rows), 'Door reset'
             assert all(sum((a-b)**2 for a, b in zip(r['feet'][0], players[0]['player']['feet'])) < 1
                 for r in rows), 'Blue returned to entrance or moved unexpectedly'
-        assert all(r['completed'] == 1 for r in self.history['host']), 'Cached history lost'
+        assert all(r['completed'] == len(expected['campaign']['completed'])
+                   for r in self.history['host']), 'Cached history lost'
         assert not (self.folder / 'guest' / 'coop-checkpoint.json').exists(), 'Guest wrote host checkpoint'
 
     def finish(self):
-        for role in self.processes:
+        # Let the guest finish first. Ending the host concurrently can turn a
+        # successful test into a guest "host ended the session" error before
+        # the guest observes its own local finish command.
+        for role in ('guest', 'host'):
             self.command(role)
             self.commands[role]['finish'] = True
-        self.until(lambda: all(p.poll() is not None for p in self.processes.values()), 30, allow_exit=True)
+            self.until(lambda: self.processes[role].poll() is not None, 30, allow_exit=True)
 
     def crash_host(self):
         """Abrupt process loss after a committed save; no graceful shutdown hook."""
@@ -178,17 +240,34 @@ def run(args):
     sentinel = folder / 'guest' / 'saves' / 'slot1.json'
     sentinel.write_text('Guest solo save must remain unchanged')
     print('Evidence:', folder, flush=True)
-    with (folder / 'prepare.log').open('w') as log:
-        subprocess.run([str(args.exe.resolve()), '--data', str(args.data.resolve()), '--no-audio',
-            '--profile', str(folder / 'host'), '--coop-import-check'], cwd=ROOT,
-            stdout=log, stderr=subprocess.STDOUT, timeout=120, check=True)
-    storage = read(folder / 'host' / 'coop-write-check' / 'verified.json')
-    assert storage and storage['passed'], 'Missing native storage-failure proof'
-    if os.name == 'nt':
-        assert storage['failed_replacements'] == storage['failed_write_wipes'] == 2
+    source_game = None
+    source_file = getattr(args, 'source_save', None)
+    original = {}
+    if source_file is not None:
+        source_file = source_file.resolve()
+        raw = source_file.read_bytes()
+        envelope = json.loads(raw)
+        assert envelope['format'] == 'looking-glass-save', 'Expected a solo save'
+        source_game = envelope['payload']
+        assert not source_game['view']['flying'] and source_game['stats']['sanity'] > 0
+        original[source_file] = raw
+        (folder / 'host/saves').mkdir()
+        (folder / 'host/saves/slot1.json').write_bytes(raw)
+        (folder / 'source-save.json').write_text(json.dumps(dict(path=str(source_file),
+            sha256=hashlib.sha256(raw).hexdigest(), version=envelope['version'],
+            saved_at=envelope.get('saved_at'), storage_failure_fixture=False), indent=2))
+    else:
+        with (folder / 'prepare.log').open('w') as log:
+            subprocess.run([str(args.exe.resolve()), '--data', str(args.data.resolve()), '--no-audio',
+                '--profile', str(folder / 'host'), '--coop-import-check'], cwd=ROOT,
+                stdout=log, stderr=subprocess.STDOUT, timeout=120, check=True)
+        storage = read(folder / 'host' / 'coop-write-check' / 'verified.json')
+        assert storage and storage['passed'], 'Missing native storage-failure proof'
+        if os.name == 'nt':
+            assert storage['failed_replacements'] == storage['failed_write_wipes'] == 2
     source = folder / 'host' / 'saves' / 'slot1.json'
-    unchanged = {source: source.read_bytes(), sentinel: sentinel.read_bytes()}
-    expected = read(folder / 'host' / 'coop-import-expected.json')
+    unchanged = {source: source.read_bytes(), sentinel: sentinel.read_bytes(), **original}
+    expected = read(folder / 'host' / 'coop-import-expected.json') if source_game is None else None
     checkpoint = folder / 'host' / 'coop-checkpoint.json'
     for phase in ('import', 'resume', 'resume-after-loss', 'backup'):
         previous = checkpoint.read_bytes() if checkpoint.exists() else None
@@ -200,7 +279,9 @@ def run(args):
         before = checkpoint.read_bytes() if checkpoint.exists() else None
         pair = Pair(args, folder, phase, resume=phase != 'import')
         try:
-            pair.connect()
+            imported = pair.connect(source_game if phase == 'import' else None)
+            if imported is not None:
+                expected = imported
             pair.rejoin()
             pair.verify(expected)
             if phase == 'import':
@@ -228,6 +309,8 @@ if __name__ == '__main__':
     parser.add_argument('--exe', type=Path, required=True)
     parser.add_argument('--data', type=Path, required=True)
     parser.add_argument('--local', action='store_true')
+    parser.add_argument('--source-save', type=Path,
+                        help='Copy an existing quiet solo save; require preserved state before simulation')
     parser.add_argument('--delay-ms', type=int, default=40)
     parser.add_argument('--jitter-ms', type=int, default=20)
     args = parser.parse_args()

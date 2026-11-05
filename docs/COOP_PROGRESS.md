@@ -37,7 +37,7 @@ full route with two independent internet clients, followed by recovery and
 reconnect checks. See [Burning Curiosity evidence](JLAIR1.md).
 
 Current validation: **913 active Rust tests** pass (three ignored), along with
-the locked release, nine Python evidence guards, seven package checks and
+the locked release, twelve Python evidence guards, seven package checks and
 the 910-file source worktree audit. Negative tests cover partial boarding,
 floating bodies, marginal ledges, damaging-liquid navigation and stationary
 bodies that retain collision velocity, alongside valid sloped landings.
@@ -95,6 +95,19 @@ The normal checkpoint before 53 retains both players beside the raised platform.
 Separate evidence covers approach points 0-52; a fresh continuous repeat is
 still required. Next: actual paired platform boarding and crossing, then the
 remaining route; recovery and reconnect coverage remain open.
+A separate **53** internet segment on `9f1acd0` now passes both personal
+arrivals and actual single-rider waiting: Red has full native deck contact,
+Blue remains off the platform, and it stays raised for at least 120 ticks in
+both clients. There are **317 matching player/world/native states**, no new
+damage, death or revival, and a normal checkpoint before 54. This build only
+adds read-only platform contact diagnostics; the native platform cases and
+single-player outputs remain identical.
+The crossing extension remains failed. Its latest attempt verifies actual
+carry, Blue's automatic bank climb and ordinary jump to point 54, then Blue
+slides off the sloped landing while the next navigation plan starts. Red has
+not crossed. Earlier failed attempts exposed unnecessary observation delay
+and a climb mistaken for a jump; the runner now handles both explicitly.
+There is no paired step-54 or full-route credit. No screenshots were used.
 Total remains **50.1%**; no extra completed visit is credited.
 
 Latest network milestone: a **fresh full About Face route passes** in two

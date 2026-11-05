@@ -279,14 +279,14 @@ deaths or revivals; the closed host trace has 43 rows. A normal checkpoint befor
 and stationary. The separate segment evidence now covers approach points 0-52,
 but it is not one fresh continuous run on the latest build.
 
-`tools/test_coop_jlair1.py` automates approach steps 0-52, retains exact ordinary
+`tools/test_coop_jlair1.py` supports approach/platform steps 0-54, retains exact ordinary
 checkpoint receipts and freezes its source dependencies in private evidence.
 The fresh passing run covers only 0-3; later segments have separate evidence above.
 The approach still needs a fresh continuous repeat, including climb reliability
 from 32. The shared sinking platform, subsequent climb, Caterpillar and onward
 transition are still open.
 An explicit `--checkpoint` plus `--start-step` tests a separate resumed segment;
-it never claims a fresh full route. Nine Python guards reject missing or
+it never claims a fresh full route. Twelve Python guards reject missing or
 duplicated personal arrivals, unacknowledged movement, respawn substitutes,
 invalid combat waits, revisited waiting bays, stale hazard exits, unsupported
 hot takeoffs, jumps without an acknowledged airborne body and skipped forward
@@ -296,3 +296,35 @@ approach points.
 python tools/test_coop_jlair1.py --exe <frozen-executable> --build <full-source-id> --data <local-base-directory> --last-step 3 --save-before 0 3
 python -m unittest discover -s tools -p "test_coop_jlair1_guards.py"
 ```
+
+## Actual paired boarding and remaining crossing failure
+
+Source `9f1acd0` adds read-only current deck contact, full-footprint boarding,
+sink displacement and departure state to the local route report. It changes
+no gameplay/save behavior. Its 913 active Rust tests, locked release, 26 paired
+native cases plus summary and seven single-player components pass. Both native
+single-player route records match the baseline; the known cast-free step-54
+failure remains unchanged. Twelve Python evidence guards cover the new waiting,
+carry and automatic-climb observations as well as earlier arrivals.
+
+A resumed internet **53-only** segment starts from the unchanged normal
+checkpoint before 53, uses two independent profiles with 40 ms delay and 20 ms
+jitter, and passes both personal arrivals. The first Alice returns by ordinary
+controls to leave the platform for the second. Red then boards fully while
+Blue remains off it. Both clients observe at least 120 ticks with full Red
+contact, no Blue contact, zero sink displacement and no departure. All **317**
+comparable player/world/native states match. Both retain **100/46.67 health**
+without damage, death or revival. The normal checkpoint before 54 is retained.
+
+The resumed **54-only** crossing is still failed. The first attempt waited
+for an extra report while the platform descended into lava. Carry evidence
+now uses the preceding contact report, so it does not impose that delay. A
+second attempt reveals that ordinary jump input initiates the native bank
+climb; the fixture now lets that climb finish before issuing the next jump.
+The latest attempt records real carry, a completed native climb and Blue's
+ordinary jump/grounded personal arrival at 54. Blue then retains downhill
+landing velocity and falls into lava while the next navigation plan starts.
+Red remains alive on the platform's original static-floor handoff and has not
+crossed. This is one personal arrival in a failed run, **not a paired step-54
+pass**, and does not complete Burning Curiosity. A continuous repeat and the
+rest of the route/recovery/reconnect coverage remain open.

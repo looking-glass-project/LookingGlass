@@ -372,6 +372,7 @@ pub struct Report {
     pub carry_velocity: Option<Vec3>,
     pub funhouse_exit: Option<crate::levels::funhouse::ExitReport>,
     pub funhouse_pendulums: Option<crate::levels::funhouse::PendulumReport>,
+    pub curiosity_platform: Option<crate::levels::jlair1::PlatformReport>,
     pub blade_pickups: [bool; 2],
     pub cards_pickups: [bool; 2],
     pub expected: Option<Vec3>,
@@ -1239,6 +1240,8 @@ impl Driver {
     pub fn observe(&mut self, frame: &Frame, arena: &Arena, world: &World) {
         self.report.observed_epoch = frame.epoch;
         self.report.observed_tick = frame.tick;
+        self.report.curiosity_platform = arena.stage.interactions.levels.iter().find_map(|s|
+            crate::levels::jlair1::route_platform(s.ctl.as_ref(), frame.players.each_ref().map(|b| &b.player)));
         self.report.surface = self.command.as_ref()
             .filter(|c| c.epoch == frame.epoch && self.report.command == Some(c.id))
             .and_then(|c| Some((c.surface?, c.goal?)))

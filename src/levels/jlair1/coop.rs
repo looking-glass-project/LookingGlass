@@ -8,6 +8,25 @@ pub(super) struct State {
     descending: bool,
 }
 
+/// Read-only contact evidence for the local two-client route fixture.
+#[derive(Serialize)]
+pub(crate) struct PlatformReport {
+    pub sink: f32,
+    pub descending: bool,
+    pub riders: [bool; 2],
+    pub full: [bool; 2],
+}
+
+pub(crate) fn route_platform(ctl: &dyn LevelController, players: [&Player; 2]) -> Option<PlatformReport> {
+    let o = ctl.downcast_ref::<Curiosity>()?;
+    Some(PlatformReport {
+        sink: o.saved.sink,
+        descending: o.saved.coop.as_ref().is_some_and(|s| s.descending),
+        riders: players.map(|p| o.sink_contact(p, false)),
+        full: players.map(|p| o.sink_contact(p, true)),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

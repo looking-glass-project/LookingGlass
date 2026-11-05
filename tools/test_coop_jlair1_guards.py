@@ -2,7 +2,7 @@
 import copy
 import unittest
 
-from test_coop_jlair1 import verify_arrival, verify_course, verify_combat_wait, waiting_target, escape_target, hot_approach_target, verify_jump_flight, verify_forward_approaches
+from test_coop_jlair1 import verify_arrival, verify_course, verify_combat_wait, waiting_target, escape_target, hot_approach_target, verify_jump_flight, verify_forward_approaches, verify_platform_wait, verify_platform_carry, verify_platform_climb
 
 
 class CuriosityEvidenceTests(unittest.TestCase):
@@ -107,6 +107,53 @@ class CuriosityEvidenceTests(unittest.TestCase):
         self.row['driver']['command'] = 3
         with self.assertRaisesRegex(AssertionError, 'Unacknowledged'):
             verify_forward_approaches(entry, steps, self.history)
+
+    def test_platform_wait_rejects_partial_boarding_and_early_departure(self):
+        history = {r:[dict(copy.deepcopy(self.row), tick=t) for t in (10,70,130)] for r in ('host','guest')}
+        for rows in history.values():
+            for row in rows:
+                row['driver']['curiosity_platform'] = dict(full=[False,True], riders=[False,True], sink=0, descending=False)
+        entry = dict(rider='guest', start={r:10 for r in history}, end={r:130 for r in history})
+        verify_platform_wait(entry, history)
+        bad = copy.deepcopy(history); bad['guest'][1]['driver']['curiosity_platform']['full'][1] = False
+        with self.assertRaisesRegex(AssertionError, 'fully boarded'):
+            verify_platform_wait(entry, bad)
+        bad = copy.deepcopy(history); bad['host'][1]['driver']['curiosity_platform']['sink'] = 1
+        with self.assertRaisesRegex(AssertionError, 'departed without'):
+            verify_platform_wait(entry, bad)
+
+    def test_platform_carry_rejects_motion_without_rider_contact_or_body_descent(self):
+        history = dict(host=[dict(copy.deepcopy(self.row), tick=t) for t in (10,40)])
+        for row, sink in zip(history['host'], (10,35)):
+            row['driver']['curiosity_platform'] = dict(sink=sink, descending=True, riders=[True,False])
+            row['players'][0]['feet'][2] = 100-sink
+        entry = dict(rider='host', before=10, after=40)
+        verify_platform_carry(entry, history)
+        initial = copy.deepcopy(history)
+        initial['host'][0]['driver']['curiosity_platform'].update(sink=0, descending=False)
+        initial['host'][0]['players'][0]['feet'][2] = 100
+        verify_platform_carry(entry, initial)
+        bad = copy.deepcopy(history); bad['host'][1]['driver']['curiosity_platform']['riders'][0] = False
+        with self.assertRaisesRegex(AssertionError, 'actual platform contact'):
+            verify_platform_carry(entry, bad)
+        bad = copy.deepcopy(history); bad['host'][1]['players'][0]['feet'][2] = 90
+        with self.assertRaisesRegex(AssertionError, 'did not follow'):
+            verify_platform_carry(entry, bad)
+
+    def test_platform_climb_requires_native_action_and_completed_landing(self):
+        rows = [dict(copy.deepcopy(self.row), tick=t) for t in (10,20,30)]
+        for row, count in zip(rows, (2,3,3)):
+            row['players'][0].update(climb=None, climbs=count, jumps=7)
+        rows[1]['players'][0].update(climb=dict(end=self.goal), grounded=False)
+        history = dict(host=rows)
+        entry = dict(role='host', before=10, active=20, after=30, command=4)
+        verify_platform_climb(entry, history)
+        bad = copy.deepcopy(history); bad['host'][1]['players'][0]['climb'] = None
+        with self.assertRaisesRegex(AssertionError, 'never completed'):
+            verify_platform_climb(entry, bad)
+        bad = copy.deepcopy(history); bad['host'][2]['players'][0]['climbs'] = 2
+        with self.assertRaisesRegex(AssertionError, 'ordinary climb'):
+            verify_platform_climb(entry, bad)
 
 
 if __name__ == '__main__': unittest.main()

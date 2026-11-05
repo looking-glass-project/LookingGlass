@@ -6,6 +6,7 @@ mod coop_check;
 mod route;
 mod saves;
 mod scene;
+pub(crate) use coop::{route_platform, PlatformReport};
 use super::{state, Beat, Check, Registration, Run};
 use crate::{
     assets::Assets,

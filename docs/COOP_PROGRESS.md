@@ -167,7 +167,31 @@ in the evidence below.
 | Rejoining | Idle gameplay, either player's ground/underwater/rope/moving-platform countdown, either theatre owner in introduction/dialogue, rotating lift, outbound/return loading barriers | Consolidated repeat; underwater proof uses the Blue-led route and does not close the known trap-repeatability gap |
 | Combat/death | Shared targets, individual resources, exact countdown, moving spectator camera, 25-health reunion and shared wipe, representative moving-platform revival/carry | Consolidated repeat, then level-specific enemies and recovery matrices |
 | Presentation | Both Alice models, contact separation and replicated ambient/weapon effects in focused tests; contact/ambient baseline repeats on `c5cb7fc` | Broader campaign effects and audio; no new audio verification in this pass |
-| Consolidation | `0b5bca3`: 934 native tests, both public menu flows, eight public network cases and all twelve selected local core cases pass | Finish the twelve local cases over public invites on this same build once provisioning is available; retain the failed public attempt |
+| Consolidation | `0b5bca3`: 934 native tests, both public menu flows, eight public network cases and thirteen local core cases pass, including abrupt host-loss menu recovery | Finish these thirteen cases over public invites on this same build once provisioning is available; retain the failed public attempts |
+
+## Abrupt host loss through the menus, 5 November 2026
+
+`tools/test_coop_menu_host_loss.py` closes a gap between diagnostic host-loss
+coverage and the normal player-facing menus. It passes on unchanged build
+`0b5bca3` through the checked-in core runner, using two rendered processes,
+native input and passive state receipts. This run is **loopback only**.
+
+After loading independent solo saves, the host imports its game and writes a
+primary checkpoint and backup through the menu. Terminating only that owned
+host process tree produces the guest's visible disconnect explanation in
+0.969 seconds. The surviving guest returns to its exact suspended solo state,
+accepts ordinary movement, then enters Join again through ESC. A fresh host
+process uses Continue co-op and creates a different invite; the same guest
+process rejoins with saved resources, positions, used world interactions and
+cached visit count preserved. Both players then return to their own solo
+states. The two solo files, primary checkpoint and backup retain their bytes.
+
+Evidence: `private/coop/core-suite-06283cf9f6d948608ab058b5323ba07d/summary.json`
+and `private/coop/menu-test-b045e7cc7f74431eb05c4addb2f000de/`. The full check
+took 29.75 seconds and inspected no screenshots. It is now selectable as
+`host-loss-menu` in the thirteen-case core runner. Its public-invite repeat
+remains open alongside the previous twelve core cases. No native files changed,
+no campaign visit was added, and overall completion remains **55.6%**.
 
 ## Authenticated invite readiness, 5 November 2026
 

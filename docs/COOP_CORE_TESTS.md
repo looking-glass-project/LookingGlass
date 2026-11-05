@@ -1,6 +1,6 @@
 # Automated core save and recovery checks
 
-`tools/test_coop_core.py` runs the twelve focused save/recovery groups used by
+`tools/test_coop_core.py` runs thirteen focused save/recovery groups used by
 the core readiness checklist. It complements `tools/test_coop_regressions.py`
 and the main/ESC menu lifecycle tests. A passing selection does not certify
 all core behavior or any complete campaign visit.
@@ -22,8 +22,8 @@ Replace `4` with the observed session. Internet invites are the default. Add
 `--local` to explicitly select loopback; every case receipt must match that
 choice. Both clients use independent processes and profiles. Delay/jitter
 defaults to 40/20 ms per sender and can be set with `--delay-ms`/`--jitter-ms`.
-The storage-menu fixture uses its normal menu connection without injected
-delay; its effective values are recorded separately.
+The storage and host-loss menu fixtures use normal connections without injected
+delay; their effective values are recorded separately.
 
 | Case | Required coverage |
 | --- | --- |
@@ -31,6 +31,7 @@ delay; its effective values are recorded separately.
 | `import` | Solo conversion, fresh co-op resume, abrupt host loss, resume after loss, backup and guest rejoins |
 | `checkpoint` | Shared travel/cache, fresh-process primary/backup load and team wipes |
 | `storage` | Locked-file failures, retry, backup repair and damaged-save feedback through the menu |
+| `host-loss-menu` | Abrupt host loss, guest error/solo return, fresh-host Continue and same-process guest rejoin |
 | `save-death` | Refused menu save during both countdowns, successful safe retries |
 | `save-scene-blue`, `save-scene-red` | Refused introduction/dialogue saves and successful post-scene save |
 | `lift-blue`, `lift-red` | Both boarding orders and guest restart during the rotating lift |
@@ -38,7 +39,7 @@ delay; its effective values are recorded separately.
 | `rope` | Both countdown reconnects and rope-adjacent revivals |
 | `fulcrum` | Both countdown reconnects, moving-platform revivals and passive carry |
 
-Without `--only`, all twelve cases are selected. The full selection requires
+Without `--only`, all thirteen cases are selected. The full selection requires
 `--rope-checkpoint` and `--fulcrum-checkpoint` pointing to unchanged ordinary
 gameplay checkpoints captured by the corresponding route fixtures. The saves
 and original assets remain private and are not bundled with the source.

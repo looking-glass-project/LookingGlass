@@ -1,4 +1,4 @@
-"""Run the twelve focused co-op save/recovery checks in an isolated desktop.
+"""Run focused co-op save/recovery checks in an isolated desktop.
 
 Public invites are the default; --local explicitly selects loopback. This
 complements test_coop_regressions.py and the main/ESC menu lifecycle fixtures.
@@ -36,6 +36,7 @@ CASES = {
     'checkpoint': Case('test_coop_checkpoint.py', results=('result.json', 'resume-result.json',
         'backup-result.json'), seconds=600),
     'storage': Case('test_coop_menu_storage.py', menu=True),
+    'host-loss-menu': Case('test_coop_menu_host_loss.py', menu=True),
     'save-death': Case('test_coop_menu_save_rules.py', ('--case', 'death'), menu=True),
     'save-scene-blue': Case('test_coop_menu_save_rules.py', ('--case', 'scene', '--first', 'blue'), menu=True),
     'save-scene-red': Case('test_coop_menu_save_rules.py', ('--case', 'scene', '--first', 'red'), menu=True),
@@ -131,7 +132,7 @@ def main():
     parser.add_argument('--exe', type=Path, required=True)
     parser.add_argument('--data', type=Path, required=True)
     parser.add_argument('--seat-session', type=int, required=True)
-    parser.add_argument('--only', nargs='+', choices=CASES, help='Default: all twelve cases')
+    parser.add_argument('--only', nargs='+', choices=CASES, help=f'Default: all {len(CASES)} cases')
     parser.add_argument('--local', action='store_true')
     parser.add_argument('--delay-ms', type=int, default=40)
     parser.add_argument('--jitter-ms', type=int, default=20)
@@ -201,14 +202,15 @@ def main():
             command.append('--local')
         if case.menu:
             command.extend(['--seat-session', str(args.seat_session)])
-        if name != 'storage':
+        normal_menu = name in ('storage', 'host-loss-menu')
+        if not normal_menu:
             command.extend(['--delay-ms', str(args.delay_ms), '--jitter-ms', str(args.jitter_ms)])
         if name in ('rope', 'fulcrum'):
             command.extend(['--checkpoint', report[name + '_checkpoint']['path']])
         log = folder / (name + '.log')
         item = dict(name=name, passed=False, log=str(log), timeout_seconds=case.seconds,
-            delay_ms=0 if name == 'storage' else args.delay_ms,
-            jitter_ms=0 if name == 'storage' else args.jitter_ms)
+            delay_ms=0 if normal_menu else args.delay_ms,
+            jitter_ms=0 if normal_menu else args.jitter_ms)
         report['cases'].append(item)
         save()
         before = {p.resolve() for p in EVIDENCE.iterdir() if p.is_dir()}

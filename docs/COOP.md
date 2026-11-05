@@ -29,7 +29,15 @@ components and the full native combat route match the earlier baseline exactly;
 the separate cast-free step-54 traversal failure is unchanged. This adds 0.75
 points under the existing component weighting, bringing the total to **50.08,
 reported as 50.1%**. Full two-client traversal, recovery and reconnects remain
-open; the combined-visit count stays six. See [Burning Curiosity](JLAIR1.md).
+open; the combined-visit count stays six. Its fresh internet opening now passes
+steps 0-3: eight personal arrivals, watched entry, both early lava crossings and
+2,133 matching states, without deaths. This segment adds no percentage credit.
+Separately audited steps 4-20 and a resumed 21-23 run extend the approach evidence.
+Source `ca4cc26` corrects sloped-footing checks in the automated planner; the
+previously stalled climb passes with 2,224 matching states and both players at
+100 health. A normal checkpoint before 24 is retained. All 907 active Rust tests
+and the native/single-player baseline comparisons pass. The full route stays open.
+See [Burning Curiosity](JLAIR1.md).
 
 About Face now has a native paired adapter for combat, personal rewards,
 shared machinery and original scenes. Source `3298768` passes **83 staged cases

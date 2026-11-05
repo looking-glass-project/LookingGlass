@@ -2077,6 +2077,11 @@ personal essence, sinking-platform boarding/carry/obstruction, compressed saves,
 and original arrival/Caterpillar scenes with watched/skipped and dead-partner
 cases. It does not establish full independent-client traversal or recovery.
 
+`tools/test_coop_jlair1.py` separately reserves independent-client approach
+segments through steps 0-52, with individual ordinary-input arrivals, safe
+waiting moves, original arrival playback and unchanged normal checkpoint resumes.
+A passing prefix does not establish the shared lava crossing or a full visit.
+
 `tools/test_coop_hatter1.py` separately reserves fresh two-client Clockwork
 prefix tests, using the internet session by default, individual waypoint
 receipts, supported waiting moves, ordinary lever inputs and normal checkpoints.

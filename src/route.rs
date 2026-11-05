@@ -1190,9 +1190,24 @@ impl Route {
 }
 
 fn supported_footing(world:&World,feet:Vec3)->bool {
+    // Box contact stands above the centre of an inclined floor. Flat rays from
+    // that contact height can miss the downhill side of a perfectly supported
+    // landing. Keep the existing eight-unit margin, measured on the floor plane.
+    let contact=world.body_trace(feet,feet-Vec3::Z*3.);
+    if contact.start_solid || contact.fraction>=1. || contact.normal.z<0.65 {return false;}
+    let start=feet+Vec3::Z;
+    let centre=world.sweep(start,start-Vec3::Z*41.,Vec3::ZERO);
+    if centre.start_solid || centre.fraction>=1. || centre.normal.z<0.65 {return false;}
+    let ground=start-Vec3::Z*(41.*centre.fraction);
+    let plane_contact=ground.z+centre.normal.truncate().abs()
+        .dot(crate::collision::PLAYER_HALF.truncate())/centre.normal.z;
+    // The centre ray must describe the actual box contact, not a lower floor
+    // beneath an overhanging body whose side barely touches an upper ledge.
+    if (plane_contact-(feet.z-3.*contact.fraction)).abs()>2. {return false;}
     [Vec3::ZERO,Vec3::X*8.,-Vec3::X*8.,Vec3::Y*8.,-Vec3::Y*8.].iter().all(|offset| {
-        let high=feet+*offset+Vec3::Z;
-        let floor=world.sweep(high,high-Vec3::Z*19.,Vec3::ZERO);
+        let plane_z=-(centre.normal.x*offset.x+centre.normal.y*offset.y)/centre.normal.z;
+        let high=ground+*offset+Vec3::Z*(plane_z+8.);
+        let floor=world.sweep(high,high-Vec3::Z*16.,Vec3::ZERO);
         !floor.start_solid && floor.fraction<1. && floor.normal.z>=0.65
     })
 }
@@ -1200,6 +1215,35 @@ fn supported_footing(world:&World,feet:Vec3)->bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn remote_footing_accepts_real_slopes_without_accepting_edges_or_floating_bodies() {
+        for normal in [vec3(-1.,0.,1.).normalize(),vec3(-0.7,-0.7,1.).normalize()] {
+            let world=World::sloped_fixture(vec3(-120.,-120.,-300.),vec3(120.,120.,300.),
+                crate::bsp::Plane {normal,distance:0.});
+            let at=|x|world.actor_footing(vec3(x,0.,200.),crate::collision::PLAYER_CENTER,
+                crate::collision::PLAYER_HALF,400.).unwrap();
+            let feet=at(0.);
+            assert!(supported_footing(&world,feet),"Rejected actual sloped body contact: {feet:?}");
+            assert!(!supported_footing(&world,feet+Vec3::Z*12.),"Accepted floating body above a slope");
+            assert!(!supported_footing(&world,at(118.)),"Accepted a landing without its eight-unit edge margin");
+            let mut player=Player::new(at(-60.));player.grounded=true;
+            let goal=at(60.);
+            let plan=Route::plan_grounded(&world,&player,goal,22.).expect("Supported slope has an ordinary walking route");
+            for (input,_) in plan {
+                assert!(!input.jump);
+                for _ in 0..24 {player.tick(&world,input);}
+            }
+            assert!(player.grounded && player.feet.distance(goal)<22.);
+        }
+        let lip=World::fixture(&[
+            (vec3(-200.,-200.,-80.),vec3(200.,200.,-30.)),
+            (vec3(10.,-100.,-30.),vec3(100.,100.,0.)),
+        ]);
+        let feet=Vec3::Z*0.03125;
+        assert!(lip.body_trace(feet,feet-Vec3::Z*3.).fraction<1.,"Fixture must catch the upper lip");
+        assert!(!supported_footing(&lip,feet),"Lower floor cannot justify marginal contact with an upper lip");
+    }
 
     #[test]
     fn remote_plan_lands_on_supported_center_before_walking_inward() {

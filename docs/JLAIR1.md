@@ -129,3 +129,48 @@ These are native component and single-player regression results. A fresh full
 route with two independent internet clients, rendered personal pickups, deaths,
 shared checkpoint recovery and reconnects remain unverified for this visit.
 No additional completed campaign visit is credited by these staged checks.
+
+The first fresh two-client internet approach now passes **steps 0-3**, including
+the watched arrival and both actual early lava crossings. Source `56160ff` has
+eight personal waypoint receipts, two separately verified return-to-approach
+walks, supported waiting positions and **2,133 matching player/world/native
+states** with 40 ms delay and 20 ms jitter. Both players survive at 98.75/95.42
+health; the closed host trace has no deaths or revivals. A normal checkpoint
+before step 4 is retained. An earlier attempt failed when Red approached the
+crossing from the sideways waiting bay; it remains failed evidence.
+
+A separate resumed attempt verifies **steps 4-20** through its closed evidence:
+34 personal arrivals, five ordinary forward waiting walks and **5,582 matching
+player/world/native states**, with no deaths or revivals. On steep slopes without
+a same-height waiting bay, the leader walks to the next original route point so
+the follower can arrive. That longer attempt fails at step 21 when Red's planner
+times out; the successful prefix is explicitly bounded before that failure.
+
+Source `ca4cc26` fixes the automated planner's sloped-footing checks: its existing
+eight-unit support margin follows the actual floor plane, with real body contact
+required. A lower floor cannot justify marginal contact with an upper ledge.
+The new regression also verifies ordinary walking up axis-aligned and diagonal
+slopes. All **907 active Rust tests** pass (three ignored); the locked release,
+26 paired cases plus summary, single-player baseline comparisons, three Python
+evidence guards, seven package checks and the 910-file worktree audit pass.
+
+The previously stalled climb now passes in a separate **21-23** internet replay
+from the unchanged normal checkpoint: six personal arrivals, one forward waiting
+walk and **2,224 matching player/world/native states**. Both players finish at
+100 health with no deaths or revivals. The ordinary checkpoint before 24 is
+retained. This replay uses the original step-21 goal and the corrected planner;
+the unsuccessful extra approach point was removed.
+
+`tools/test_coop_jlair1.py` automates approach steps 0-52, retains exact ordinary
+checkpoint receipts and freezes its source dependencies in private evidence.
+The fresh passing run covers only 0-3; 4-20 and 21-23 have separate evidence above.
+The remaining approach from 24, shared sinking
+platform, subsequent climb, Caterpillar and onward transition are still open.
+An explicit `--checkpoint` plus `--start-step` tests a separate resumed segment;
+it never claims a fresh full route. Three Python verifier guards reject missing
+or duplicated personal arrivals, unacknowledged movement and respawn substitutes.
+
+```powershell
+python tools/test_coop_jlair1.py --exe <frozen-executable> --build <full-source-id> --data <local-base-directory> --last-step 3 --save-before 0 3
+python -m unittest discover -s tools -p "test_coop_jlair1_guards.py"
+```

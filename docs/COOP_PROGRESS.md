@@ -36,10 +36,28 @@ No additional campaign visit is counted as complete. Next is Burning Curiosity's
 full route with two independent internet clients, followed by recovery and
 reconnect checks. See [Burning Curiosity evidence](JLAIR1.md).
 
-Current validation: **906 active Rust tests** pass (three ignored), along with
-the locked release, seven package checks and the 908-file source worktree audit.
-The new boarding unit rejects partial support, jumping and a floating body with
-a stale grounded flag. No images were inspected for this milestone.
+Current validation: **907 active Rust tests** pass (three ignored), along with
+the locked release, three new Python evidence guards, seven package checks and
+the 910-file source worktree audit. Negative tests cover partial boarding,
+floating bodies and marginal ledges, alongside valid sloped landings.
+No images were inspected for these milestones.
+
+Burning Curiosity's first fresh internet segment now passes **steps 0-3** with
+eight personal arrivals, watched entry, both early lava crossings and 2,133
+matching player/world/native states. Both survive without revival at 98.75/95.42
+health; a normal checkpoint before step 4 is retained. The longer approach and
+full route remain open. This segment adds no percentage or completed-visit credit.
+A later resumed attempt has independently verified evidence through **4-20**:
+34 personal arrivals, five forward waiting walks and 5,582 matching states, with
+no deaths. That longer attempt fails at guest planning for step 21; its successful
+prefix is bounded separately. This also adds no percentage or completed visit.
+Source `ca4cc26` then corrects the automated planner's floor-plane checks, keeping
+its eight-unit support margin and requiring actual body contact. The previously
+stalled climb now passes in a separate resumed **21-23** internet run: six personal
+arrivals, one forward waiting walk and 2,224 matching states. Both finish at
+100 health without revival; a normal checkpoint before 24 is retained. Native
+component and single-player baseline outputs remain identical. Next: approach
+24-52 and the shared sinking-platform crossing. Total remains **50.1%**.
 
 Latest network milestone: a **fresh full About Face route passes** in two
 independent internet clients on source `3298768`, using ordinary controls with

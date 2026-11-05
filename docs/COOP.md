@@ -1373,7 +1373,7 @@ restored world the new entrance checkpoint. Individual resources and pickup
 entitlements travel with each player's roster entry, never with an old world copy.
 Destination geometry, restored collision, arrival positions and art are prepared
 before committing the local visit history. A load error still ends the co-op session;
-there is no persistent shared save/resume UI or recoverable failed-transition UI yet.
+host-owned checkpoints now support save/resume, but failed-transition recovery still ends the session.
 
 Protocol revision 3 adds an ordered guest loading acknowledgement. The host keeps
 draining old controls until it receives that acknowledgement, then begins its
@@ -1406,6 +1406,19 @@ requests a normal load barrier to the return entrance, disconnects/rejoins the g
 then requests the first entrance again. It checks exact world/NPC restoration,
 separate visit histories, personal resources, paired relocations and clean exits.
 The destination requests are staged; this does not exercise the quest-gated exits.
+
+Loading-barrier reconnects can be tested separately with
+`python tools/test_coop_regressions.py --exe target/release/looking-glass.exe --data <original-base-folder> --only travel-rejoin-outbound travel-rejoin-return`.
+Public invites and 40/20 ms delay/jitter are the defaults; add `--local` for
+loopback. The runner briefly suspends only its owned guest before departure,
+observes the host waiting at the actual Loading barrier, verifies frozen world
+and player state, then terminates and restarts that guest on the same invite.
+It checks the pending destination, paired arrival, personal resources, unchanged
+simulation clock during loading, fresh process identity and cached-world return.
+No positions, resources, world state or readiness messages are injected. Native
+session tests also interrupt after the Loading acknowledgement, after guest
+readiness, and after the host finishes loading. These component checks do not
+certify quest exits or the full campaign.
 
 On 2026-10-23, the public-invite run `travel-test-9b33f710636c4e03a1a54e81c9830d98`
 passed all gameplay assertions at 40 ms delay + 20 ms jitter per sender, including

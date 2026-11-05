@@ -2,10 +2,13 @@
 
 Run in Anode. The --coop-travel-check fixture requests ordinary load barriers;
 it deliberately does not claim to traverse the quest-gated school exits. With
---reconnect, close/restart the guest on arrival at the return visit. Both clients
-capture their final views and exit themselves; desktop input is unnecessary.
+--reconnect, close/restart the guest after arrival at the second visit. With
+--reconnect-at outbound/return, interrupt the actual loading barrier instead.
+Both clients capture their final views and exit themselves; desktop input is
+unnecessary.
 """
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -13,6 +16,7 @@ import subprocess
 import time
 import uuid
 from test_coop_play import ROOT, read
+from coop_travel_rejoin import LoadingReconnect
 
 
 def run(args):
@@ -23,6 +27,14 @@ def run(args):
     active, history = {}, {'host': [], 'guest': []}
     flags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
     disconnected = False
+    reconnect_at = getattr(args, 'reconnect_at', 'arrival')
+    loading = LoadingReconnect(folder, 2 if reconnect_at == 'outbound' else 3) if reconnect_at != 'arrival' else None
+    sources = {}
+    for name in ('test_coop_travel.py', 'coop_travel_rejoin.py'):
+        source = (ROOT / 'tools' / name).read_bytes()
+        (folder / name).write_bytes(source)
+        sources[name] = hashlib.sha256(source).hexdigest()
+    build = None
     try:
         def start(role, replacement=False):
             profile = folder / role
@@ -57,6 +69,11 @@ def run(args):
                 if not report or report['pid'] != process.pid:
                     continue
                 frame, visit = report['frame'], report['visit']
+                assert build is None or report['build'] == build, 'Clients used different builds'
+                build = report['build']
+                if role == 'host' and loading and loading.observe(report, active, start):
+                    disconnected = True
+                    break
                 key = (visit['epoch'], frame['tick'], report['playing'])
                 if history[role] and tuple(history[role][-1]['key']) == key:
                     continue
@@ -68,9 +85,9 @@ def run(args):
                     'generation': frame['checkpoint_generation'], 'completed': report['completed_visits'],
                     'spawned_at': [b['spawned_at'] for b in frame['players']],
                     'warped_at': [b['warped_at'] for b in frame['players']]})
-                if role == 'host' and visit['epoch'] == 2 and args.reconnect and not disconnected:
+                if role == 'host' and visit['epoch'] == 2 and args.reconnect and not loading and not disconnected:
                     guest = active['guest']
-                    subprocess.run(['taskkill', '/PID', str(guest.pid), '/T', '/F'], capture_output=True, check=True)
+                    guest.kill()
                     guest.wait(timeout=10)
                     disconnected = True
                     # Wait for the production listener to observe the lost peer;
@@ -101,7 +118,7 @@ def run(args):
             assert all(r['warped_at'][0] == r['warped_at'][1] and r['warped_at'][0] > 0 for r in returned), 'Players did not relocate together'
         assert history['host'][-1]['completed'] == 2, 'First and return visit histories were conflated'
         assert 'cached shared world and NPC state restored exactly' in (folder / 'host.log').read_text(), 'No full restore evidence'
-        assert not args.reconnect or disconnected
+        assert not (args.reconnect or loading) or disconnected
         (folder / 'ready.json').write_text(json.dumps({'reconnected': disconnected, 'passed': True}))
         print('Travel validated. Waiting for automatic captures and clean client exits.', flush=True)
         deadline = time.monotonic() + 30
@@ -111,15 +128,23 @@ def run(args):
         assert all(p.returncode == 0 for p in active.values()), 'Final clients did not exit cleanly'
         assert all((folder / role / 'coop-screenshot.png').exists() for role in active), 'A client did not capture its final view'
         (folder / 'result.json').write_text(json.dumps({'passed': True, 'internet': not args.local,
+            'build': build, 'fixture_sha256': sources, 'reconnect_at': reconnect_at,
+            'evidence': {'loading_rejoin': loading.evidence['summary']} if loading else {},
             'reconnected': disconnected, 'delay_ms': args.delay_ms, 'jitter_ms': args.jitter_ms,
             'scope': 'staged travel/cache/epoch fixture; quest-gated exits and campaign completion not verified'}, indent=2))
         print('PASS shared visit history, return-visit separation, paired transitions, restored world and clean final exits.', flush=True)
     finally:
         (folder / 'history.json').write_text(json.dumps(history, indent=2))
-        for p in processes:
-            if p.poll() is None:
-                subprocess.run(['taskkill', '/PID', str(p.pid), '/T', '/F'], capture_output=True)
-                p.wait(timeout=10)
+        try:
+            if loading:
+                loading.close()
+        finally:
+            for p in processes:
+                if p.poll() is None:
+                    # The host owns its tunnel helper too. Keep failure cleanup
+                    # scoped to this still-live child and its descendants.
+                    subprocess.run(['taskkill', '/PID', str(p.pid), '/T', '/F'], capture_output=True)
+                    p.wait(timeout=10)
         for log in logs:
             log.close()
         invite.unlink(missing_ok=True)
@@ -132,9 +157,12 @@ if __name__ == '__main__':
     parser.add_argument('--data', type=Path, required=True)
     parser.add_argument('--local', action='store_true')
     parser.add_argument('--reconnect', action='store_true')
+    parser.add_argument('--reconnect-at', choices=('arrival', 'outbound', 'return'), default='arrival')
     parser.add_argument('--delay-ms', type=int, default=0)
     parser.add_argument('--jitter-ms', type=int, default=0)
     args = parser.parse_args()
+    if args.reconnect_at != 'arrival' and os.name != 'nt':
+        parser.error('Loading-barrier interruption requires Windows process suspension')
     if not (0 <= args.delay_ms <= 500 and 0 <= args.jitter_ms <= 500):
         parser.error('Network test delays must be between 0 and 500 milliseconds')
     run(args)

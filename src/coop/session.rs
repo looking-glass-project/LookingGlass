@@ -985,6 +985,61 @@ mod tests {
     }
 
     #[test]
+    fn disconnect_at_each_loading_barrier_rejoins_the_pending_visit_without_old_controls() {
+        // Interrupt before Enter reaches the guest, after Loading, after Ready,
+        // and after the host has loaded while its guest has not finished.
+        for cut in 0..4 {
+            let (mut host, mut guest, invite) = pair();
+            play(&mut host, &mut guest);
+            guest.controls(Input { wish: Vec2::X, primary: true, ..Default::default() }).unwrap();
+            until(&mut host, &mut guest, |h, _| h.acknowledged_input() == 1);
+            host.enter("skool1".into(), Some("skool1_start2".into()), Default::default(), Instant::now()).unwrap();
+            if cut > 0 {
+                until(&mut host, &mut guest, |h, g| h.can_load() && g.phase() == Phase::Loading);
+                assert_eq!(guest.take_visit().unwrap().epoch, 2);
+            }
+            if cut == 2 {
+                guest.loaded(2).unwrap();
+                until(&mut host, &mut guest, |h, _| h.guest_ready);
+            }
+            if cut == 3 { host.loaded(2).unwrap(); }
+            assert_eq!(host.phase(), Phase::Loading);
+            drop(guest);
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while host.phase() != Phase::Waiting {
+                host.poll(Instant::now()).unwrap();
+                assert!(Instant::now() < deadline, "Lost loading guest retained its slot");
+                thread::sleep(Duration::from_millis(2));
+            }
+            assert_eq!(host.visit.epoch, 2);
+            assert_eq!(host.visit.entry.as_deref(), Some("skool1_start2"));
+            assert_eq!(host.local_ready, cut == 3);
+            assert!(host.can_load());
+            assert!(!host.guest_ready && !host.guest_loading);
+            assert_eq!(host.controls(Instant::now()).0.wish, Vec2::ZERO);
+            assert!(!host.controls(Instant::now()).1.primary);
+            let mut replacement = Guest::new(transport::join(invite, Conditions::default()).unwrap(),
+                identity(), Instant::now()).unwrap();
+            until(&mut host, &mut replacement, |_, g| g.phase() == Phase::Loading);
+            assert_eq!(replacement.take_visit().unwrap(), host.visit);
+            replacement.loaded(2).unwrap();
+            until(&mut host, &mut replacement, |h, _| h.guest_ready);
+            if cut != 3 {
+                assert_eq!(host.phase(), Phase::Loading, "Replacement bypassed host loading");
+                host.loaded(2).unwrap();
+            }
+            until(&mut host, &mut replacement, |h, g| h.phase() == Phase::Playing && g.phase() == Phase::Playing);
+            assert_eq!(host.acknowledged_input(), 0);
+            assert!(host.send_frame(snapshot(2, 1441)).unwrap());
+            until(&mut host, &mut replacement, |_, g| g.last_tick == Some(1441));
+            assert_eq!(replacement.take_frame().unwrap().epoch, 2);
+            replacement.controls(Input { wish: Vec2::Y, ..Default::default() }).unwrap();
+            until(&mut host, &mut replacement, |h, _| h.acknowledged_input() == 1);
+            assert_eq!(host.controls(Instant::now()).0.wish, Vec2::Y);
+        }
+    }
+
+    #[test]
     fn mismatch_releases_the_guest_slot_and_a_matching_player_can_rejoin() {
         let (peer, invite) = transport::host(Conditions::default()).unwrap();
         let mut host = Host::new(peer, identity(), visit()).unwrap();

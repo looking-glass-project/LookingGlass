@@ -774,6 +774,8 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                     // briefly hold this file on Windows; never end gameplay.
                     if let Ok(bytes) = serde_json::to_vec(&serde_json::json!({ "role": if launch.host { "host" } else { "guest" },
                         "pid": std::process::id(), "build": env!("LOOKING_GLASS_BUILD"), "playing": playing, "frame": frame, "focused": focused,
+                        "session_phase": format!("{:?}", host.as_ref().map_or_else(|| guest.as_ref().unwrap().phase(), Host::phase)),
+                        "pending_visit": pending_visit, "can_load": host.as_ref().map(Host::can_load),
                         "camera_player": watched, "camera": camera_eye, "camera_target": target,
                         "camera_subject_feet": camera_subject_feet,
                         "audio": audio.report,

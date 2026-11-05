@@ -60,7 +60,7 @@ def result_from_log(log):
               'contact_distance', 'stationary_partner_unchanged',
               'both_models_and_particles_visible', 'checkpoint_sha256', 'resume_point', 'lifts',
               'minimum_will', 'final_health', 'staged_initial_spawn', 'host_stalls',
-              'host_recovery', 'guest_recovery', 'wipe')
+              'host_recovery', 'guest_recovery', 'wipe', 'loading_rejoin')
     metrics = {key: result['evidence'][key] for key in fields if key in result['evidence']}
     rejoin = result['evidence'].get('rejoin')
     if rejoin:
@@ -143,6 +143,7 @@ def main():
     parser.add_argument('--only', nargs='+', choices=('fixture-scenes', 'world', 'school2', 'presence', 'host-stalls', 'school',
                                                    'school-blue', 'school-red', 'lift-blue', 'lift-red',
                                                    'lift-rejoin-blue', 'lift-rejoin-red',
+                                                   'travel-rejoin-outbound', 'travel-rejoin-return',
                                                    'stairs-blue', 'stairs-red', 'school2-blue', 'school2-red',
                                                    'dice-blue', 'dice-red', 'altar-blue', 'altar-red',
                                                    'gym-jump-blue', 'gym-jump-red', 'school2-resume',
@@ -204,6 +205,9 @@ def main():
         'presence': ([sys.executable, str(ROOT / 'tools/test_coop_presence.py'), *common], 300, True),
         'host-stalls': ([sys.executable, str(ROOT / 'tools/test_coop_host_stalls.py'), *common], 300, True),
     }
+    for direction in ('outbound', 'return'):
+        cases['travel-rejoin-' + direction] = ([sys.executable, str(ROOT / 'tools/test_coop_travel.py'), *common,
+                                               '--reconnect-at', direction], 300, True)
     for first in ('blue', 'red'):
         cases['return-' + first] = ([sys.executable, str(ROOT / 'tools/test_coop_school_return.py'), *common,
                                     '--first', first, '--rejoin'], 1560, True)
@@ -248,7 +252,8 @@ def main():
                   executable=str(args.exe), executable_sha256=digest(args.exe),
                   internet=not args.local, delay_ms=args.delay_ms, jitter_ms=args.jitter_ms,
                   selected=selected, fixtures={p.name: digest(p) for p in sorted([
-                      *(ROOT / 'tools').glob('test_coop_*.py'), ROOT / 'tools/coop_diagnostics.py'])},
+                      *(ROOT / 'tools').glob('test_coop_*.py'), ROOT / 'tools/coop_diagnostics.py',
+                      ROOT / 'tools/coop_travel_rejoin.py'])},
                   cases=[])
 
     def save():

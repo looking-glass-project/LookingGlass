@@ -1,6 +1,6 @@
 # Co-op progress
 
-Updated 5 November 2026. Branch: `coop`. **Estimated overall completion: 52.6%.**
+Updated 5 November 2026. Branch: `coop`. **Estimated overall completion: 52.8%.**
 The older 42% reports are historical. This percentage measures delivered and
 verified behavior against the full co-op scope; it is not a running test's progress.
 
@@ -27,12 +27,12 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | Area | Credited points | Maximum |
 | --- | ---: | ---: |
 | Foundation and independent client diagnostics | 9 | 10 |
-| Internet Host/Join | 8.5 | 15 |
+| Internet Host/Join | 8.75 | 15 |
 | Two players, movement and presentation | 11 | 15 |
 | Combat, individual resources and death | 9.75 | 20 |
 | Scenes, transport and progression | 11.25 | 20 |
 | Full campaign verification | 3.08 | 20 |
-| **Total** | **52.58, rounded to 52.6** | **100** |
+| **Total** | **52.83, rounded to 52.8** | **100** |
 
 ## Implemented features and remaining work
 
@@ -47,12 +47,12 @@ yet verified across every level and failure condition.
 | Area | Implemented and demonstrated | Remaining work |
 | --- | --- | --- |
 | One-PC setup | `coop` branch; independent game processes, profiles/saves and automated state/log checks | Finish reproducible campaign coverage and repeat it on the final build |
-| Host / Join | Main/ESC controls, public internet menu flow, authenticated transport, cancellation and countdown/cutscene/moving-lift reconnect cases | Level-transition reconnects, other transports, and public provisioning/DNS reliability |
+| Host / Join | Main/ESC controls, public internet menu flow, authenticated transport, cancellation and countdown/cutscene/moving-lift/loading-barrier reconnect cases | Other transport/recovery cases and public provisioning/DNS reliability |
 | Players and presentation | Blue/red Alice, separate input/cameras, body separation, replicated weapon effects | Broader contact/effect checks and reliable traversal through all swimming, leaves, ropes and moving supports |
 | Combat and resources | Nearest-visible targeting, individual damage, inventory and consumables in integrated levels | Remaining enemies/bosses and level-specific rewards, with both players as the target/collector |
 | Death and saves | Exact ten-second countdown, moving spectator camera, safe 25-health revival; shared checkpoint wipes, public save/leave/continue menu flow and guest restart during either player's countdown | Broader connection-failure coverage and each visit's recovery matrix |
 | Scenes and machinery | First-arrival ownership, original single-Alice scenes, hidden partner and safe reunion; all-living boarding on integrated rides | Remaining level adapters, both scene owners, watched/skipped cases, transports and exits |
-| Regression checks | 925 active Rust tests; 389 Python guards; current Curiosity native/single-player baseline comparisons | Full campaign verification and required earlier contact-system repeats on the final build |
+| Regression checks | 926 active Rust tests; 396 Python guards; current Curiosity native/single-player baseline comparisons | Full campaign verification and required earlier contact-system repeats on the final build |
 
 Campaign status from `COOP_CAMPAIGN.md`:
 
@@ -111,9 +111,51 @@ remain separate from the 39-visit campaign acceptance matrix.
   spiral lift, with either player boarding first. The lift waits for its second
   rider, holds its full world/body state during disconnection and completes the
   ride after rejoining with both attachments and starting resources preserved.
-- Next: reconnects during level transitions and other transports, plus investigation
-  of transient DNS/provisioning reliability. Core gameplay acceptance remains
+- Verified on `9921a3e`: guest restart while the host waits at the normal loading
+  barrier, both outbound and returning to a cached school visit. Both cases pass
+  over loopback and public invites with 40/20 ms delay/jitter, retaining personal
+  resources, visit history and cached world state. Native socket tests cover four
+  interrupted loading stages, including either client's readiness boundary.
+- Next: other transport/recovery cases and investigation of transient
+  DNS/provisioning reliability. Core gameplay acceptance remains
   ahead of further campaign traversal; staged component passes do not finish it.
+
+## Loading-barrier reconnect evidence, 5 November 2026
+
+Build `9921a3e` adds passive session-phase/pending-visit diagnostics and a native
+socket regression; normal gameplay and loading rules are unchanged. The automated
+travel runner suspends only its own guest before departure, observes the host
+in Loading with the next visit pending, and verifies a frozen full frame/world.
+It terminates that guest, waits for the host to load its pending destination and
+hold there without advancing the simulation, then starts a fresh guest on the
+same invite. Both continue through all three visit epochs and clean exits.
+
+| Public-invite case | Held simulation tick | Fresh guest tick | Result |
+| --- | ---: | ---: | --- |
+| Outbound to the return-school entrance | 1440 | 1442 | Pass |
+| Return to the cached first entrance | 2041 | 2043 | Pass |
+
+Public suite: `private/coop/regression-suite-5618659c836c4efea039031063f49ea8/summary.json`.
+Loopback suite: `private/coop/regression-suite-aa4d01e85f8b49d1b4d646295d0d4399/summary.json`.
+Both use 40 ms delay and 20 ms jitter per sender. The checks retain health, Will,
+earned weapon copies, pickup/drop history and paired relocation markers, with
+exact cached world/NPC restoration on return. The destination's normal campaign
+weapon grants are required exactly; arbitrary additions or resource resets fail.
+The first local attempt stopped on an overly strict no-grants assertion. Its
+evidence was retained and the oracle corrected before the complete passing runs.
+
+Native tests interrupt before Enter reaches the guest, after Loading, after guest
+Ready and after the host finishes loading. They verify that the guest slot is
+released, the pending visit is retained, both readiness requirements still apply,
+and old controls cannot move the rejoined player. Seven oracle guard tests cover
+missed barriers, advancing clocks, stale processes, lost resources, wrong
+visits, duplicated history and body resets. All 926 active Rust tests, 396 Python
+guards, seven source-package tests and the locked release build pass.
+
+These are staged transitions between visits of the school map, using real load
+barriers and independent clients. They do not certify quest exits, all map pairs,
+or another campaign visit. The added 0.25 point credits loading-interruption
+coverage only. No screenshots were inspected.
 
 ## Moving-lift reconnect evidence, 5 November 2026
 

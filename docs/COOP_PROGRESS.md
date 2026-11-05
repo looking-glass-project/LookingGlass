@@ -1,6 +1,6 @@
 # Co-op progress
 
-Updated 5 November 2026. Branch: `coop`. **Estimated overall completion: 54.1%.**
+Updated 5 November 2026. Branch: `coop`. **Estimated overall completion: 54.3%.**
 The older 42% reports are historical. This percentage measures delivered and
 verified behavior against the full co-op scope; it is not a running test's progress.
 
@@ -26,13 +26,13 @@ shared transports, swimming/leaves and single-player regressions across the camp
 
 | Area | Credited points | Maximum |
 | --- | ---: | ---: |
-| Foundation and independent client diagnostics | 9.25 | 10 |
+| Foundation and independent client diagnostics | 9.5 | 10 |
 | Internet Host/Join | 9.25 | 15 |
 | Two players, movement and presentation | 11 | 15 |
 | Combat, individual resources and death | 10 | 20 |
 | Scenes, transport and progression | 11.5 | 20 |
 | Full campaign verification | 3.08 | 20 |
-| **Total** | **54.08, rounded to 54.1** | **100** |
+| **Total** | **54.33, rounded to 54.3** | **100** |
 
 ## Implemented features and remaining work
 
@@ -50,7 +50,7 @@ yet verified across every level and failure condition.
 | Host / Join | Main/ESC controls, public internet menu flow, authenticated transport, prompt handshake cancellation, failure/retry recovery and countdown/cutscene/moving-lift/loading-barrier reconnect cases | Other transport/recovery cases and public provisioning/DNS availability |
 | Players and presentation | Blue/red Alice, separate input/cameras, body separation, replicated weapon effects | Broader contact/effect checks and reliable traversal through all swimming, leaves, ropes and moving supports |
 | Combat and resources | Nearest-visible targeting, individual damage, inventory and consumables in integrated levels | Remaining enemies/bosses and level-specific rewards, with both players as the target/collector |
-| Death and saves | Exact ten-second countdown, moving spectator camera, safe 25-health revival; shared checkpoint wipes, public save/leave/continue and storage-error/backup menu flow, public guest restart during either player's countdown | Unsafe-time save feedback, each visit's recovery matrix and remaining transport/death combinations |
+| Death and saves | Exact ten-second countdown, moving spectator camera, safe 25-health revival; shared checkpoint wipes, public save/leave/continue and storage-error/backup menu flow, public save refusal/retry during deaths/scenes, public guest restart during either player's countdown | Each visit's recovery matrix and remaining transport/death combinations |
 | Scenes and machinery | First-arrival ownership, original single-Alice scenes, hidden partner and safe reunion; public intro/dialogue reconnects with either theatre owner; all-living boarding on integrated rides | Remaining level adapters, both scene owners, watched/skipped cases, transports and exits |
 | Regression checks | 928 active Rust tests; 396 Python guards; current Curiosity native/single-player baseline comparisons | Full campaign verification and required earlier contact-system repeats on the final build |
 
@@ -127,9 +127,12 @@ remain separate from the 39-visit campaign acceptance matrix.
 - Verified on `c5cb7fc`: real-menu primary/backup write failures, successful retry,
   fresh-process backup continuation/repair and both-corrupt feedback. Loopback and
   public-invite runs preserve all three suspended solo returns and the solo slot.
-- Next: normal-menu save refusal during a death countdown or owned scene, followed
-  by a successful save when safe; then focused recovery while attached to ropes
-  or moving supports, and reconnection during an underwater death countdown.
+- Also verified on `c5cb7fc`: normal-menu save refusal during either player's
+  countdown and both theatre owners' introduction/dialogue, followed by successful
+  safe retries. All three public cases use the same final fixture and 40/20 ms
+  delay/jitter; timers, cameras, original scenes and saved files remain correct.
+- Next: reconnection during an underwater death countdown, then focused recovery
+  while attached to ropes or moving supports.
   Existing temple entrance/exit reconnects do not cover that countdown interruption.
   External DNS/provisioning availability remains a limitation despite verified
   error/cancel/retry handling. Finish with a consolidated core run on one frozen
@@ -143,13 +146,66 @@ in the evidence below.
 
 | Core area | Current evidence | Next required check |
 | --- | --- | --- |
-| Existing saves | Solo import and co-op resume, individual resources, cached visits, fresh processes, unchanged solo files | Normal-menu refusal/retry while a player is dead or a scene owns control |
+| Existing saves | Solo import and co-op resume, individual resources, cached visits, fresh processes, unchanged solo files, normal-menu refusal/retry while dead or in a scene | Consolidated repeat on the final core build |
 | Storage failures | Real locked-file failures, retry, corrupt-primary backup recovery/repair, both-corrupt feedback; public menu tests | Covered for these cases; electrical power loss and disk exhaustion are not simulated |
 | Host/Join lifecycle | Public main/ESC flow, fresh invites, invalid/expired links, DNS/HTTP failure, Cancel, retry, exact solo return | Public service availability remains an external limitation |
 | Rejoining | Idle gameplay, either player's countdown, either theatre owner in introduction/dialogue, rotating lift, outbound/return loading barriers | Rope/support state and underwater-countdown interruption |
 | Combat/death | Shared targets, individual resources, exact countdown, moving spectator camera, 25-health reunion and shared wipe | Representative recovery on moving support, then level-specific enemies and recovery matrices |
 | Presentation | Both Alice models, contact separation and replicated ambient/weapon effects in focused tests | Repeat the focused baseline with the final core build; no new audio verification in this pass |
 | Consolidation | Automated native, menu and network fixtures retain build identities and private evidence | Run the core set on one frozen build after the remaining checks/fixes |
+
+## Saving during deaths and scenes, 5 November 2026
+
+`tools/test_coop_menu_save_rules.py` verifies the real ESC/Save checkpoint UI on
+unchanged native build `c5cb7fc`. Three public cases pass with 40 ms delay and
+20 ms jitter per sender, sharing the exact final fixture identity. The fixture
+checks the public invite scope rather than inferring it from its arguments.
+
+The death case uses normal guard damage in the first school entrance. Save is
+refused during each player's countdown, with the displayed reason and both disk
+files checked. The attempt neither resets nor skips the life timer. Both clients
+then observe moving-partner spectating, exactly 1,200 active ticks to revival,
+25 health and 48-unit separation. Save succeeds after each revival, with the
+new file's tick matching the menu receipt. The pair agrees on 1,259 transmitted
+game, world and enemy states. Public evidence:
+`private/coop/menu-death-save-9361ba6310024cb4845451149caba201/result.json`
+(137.89 seconds; Red dies first).
+
+| Public victim | Death tick | Revival tick | Refused Save tick | Successful Save tick |
+| --- | ---: | ---: | ---: | ---: |
+| Red | 5932 | 7132 | 6208 | 7285 |
+| Blue | 11857 | 13057 | 12173 | 13277 |
+
+Each theatre owner is tested during the camera introduction and active dialogue.
+The refused saves preserve the committed files. The original scene continues,
+its waiting partner stays hidden/frozen, and both clients agree on safe reunion.
+Save then succeeds with both reunited bodies and no remaining scene owner.
+
+| Public theatre owner | Reunion tick | Successful Save tick | Evidence directory |
+| --- | ---: | ---: | --- |
+| Blue | 5848 | 5931 | `private/coop/menu-test-339f436e11c943919ab590ef1ab8eaa8/` |
+| Red | 5873 | 5923 | `private/coop/menu-test-6bfdcc75f63a4d6ab2cb788cebb63c1a/` |
+
+The Blue/Red public scene cases take 83.12/79.44 seconds. Local baselines also
+pass: `private/coop/menu-death-save-d6972cc826a84e46bf7762b5564e1fbe/`
+(both deaths, Blue first) and `private/coop/menu-test-040f6b8d0e8f444a879ddfefe63ba6cd/`
+(Blue theatre). The final fixture adds explicit invite/scene-phase assertions;
+all three public results independently match its current source hashes.
+
+Earlier local attempts remain failed evidence. Two stopped at the background
+job's denied window activation, one at a straight-line approach blocked by the
+partner, one after the first safe retry because the survivor had not moved, and
+one on the second approach across the revived body. The fixture now uses Anode's
+owned-window focus action, separate approach lanes and a distinct survivor
+waypoint. These corrections do not change collision, damage, revival or save
+rules; the original recovery/camera assertions remain intact. No screenshots
+were inspected, and unrelated seat windows were left open.
+
+Current checks: 396 Python guards, seven package tests and source audits pass.
+The frozen executable retains its earlier 928-active-test and locked-release
+validation; no native source changed in this pass. The 0.25 foundation point
+credits normal-menu save eligibility and retry coverage. Campaign status stays
+6 combined, 21 partial and 12 not run; overall completion is 54.3%.
 
 ## Menu storage recovery, 5 November 2026
 

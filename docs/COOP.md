@@ -1413,6 +1413,20 @@ then requests the first entrance again. It checks exact world/NPC restoration,
 separate visit histories, personal resources, paired relocations and clean exits.
 The destination requests are staged; this does not exercise the quest-gated exits.
 
+Normal-menu save eligibility has an Anode fixture:
+`python tools/test_coop_menu_save_rules.py --exe target/release/looking-glass.exe --data <original-base-folder> --seat-session <Anode-session-id> --case death`.
+It uses ordinary school guard damage for both death roles, real ESC/Save input,
+unchanged checkpoint files during refusal, exact countdown/camera checks, and
+successful saves after revival. Use `--case scene --first blue` or `--first red`
+to watch the staged original theatre with that owner: saving is refused during
+its introduction and dialogue, then succeeds after safe reunion. These are core
+component checks, not a complete school route. Public invites and 40/20 ms
+delay/jitter are default; `--local` isolates behavior over loopback.
+Forward `ANODE_AGENT_ID` and `ANODE_LEASE_TOKEN` from the active Anode lease to the
+test process, and retain that lease throughout the run. The installed Anode CLI
+focuses freshly discovered owned game windows when Windows refuses activation
+from the background test job; it does not close or modify unrelated seat apps.
+
 Save-file failure and recovery has a separate real-menu fixture:
 `python tools/test_coop_menu_storage.py --exe target/release/looking-glass.exe --data <original-base-folder> --seat-session <Anode-session-id>`.
 It uses real Windows file locks in isolated profiles, checks visible Save errors

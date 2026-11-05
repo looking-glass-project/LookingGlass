@@ -60,7 +60,8 @@ def result_from_log(log):
               'contact_distance', 'stationary_partner_unchanged',
               'both_models_and_particles_visible', 'checkpoint_sha256', 'resume_point', 'lifts',
               'minimum_will', 'final_health', 'staged_initial_spawn', 'host_stalls',
-              'host_recovery', 'guest_recovery', 'wipe', 'loading_rejoin')
+              'host_recovery', 'guest_recovery', 'wipe', 'loading_rejoin', 'recovery',
+              'countdown_rejoin', 'minimum_health', 'scene_rejoin', 'scene_reunion')
     metrics = {key: result['evidence'][key] for key in fields if key in result['evidence']}
     rejoin = result['evidence'].get('rejoin')
     if rejoin:
@@ -97,7 +98,7 @@ def failure_from_log(log, rendered):
             if role not in reports:
                 continue
             report = reports[role]
-            route = report.get('route_driver', {})
+            route = report.get('route_driver') or {}
             state = dict(visit=report.get('visit'), tick=report['frame']['tick'],
                          route={k: route.get(k) for k in
                                 ('command', 'phase', 'reached', 'error', 'scene', 'replans',
@@ -144,6 +145,9 @@ def main():
                                                    'school-blue', 'school-red', 'lift-blue', 'lift-red',
                                                    'lift-rejoin-blue', 'lift-rejoin-red',
                                                    'travel-rejoin-outbound', 'travel-rejoin-return',
+                                                   'death-rejoin-blue', 'death-rejoin-red',
+                                                   'scene-rejoin-blue-intro', 'scene-rejoin-blue-dialogue',
+                                                   'scene-rejoin-red-intro', 'scene-rejoin-red-dialogue',
                                                    'stairs-blue', 'stairs-red', 'school2-blue', 'school2-red',
                                                    'dice-blue', 'dice-red', 'altar-blue', 'altar-red',
                                                    'gym-jump-blue', 'gym-jump-red', 'school2-resume',
@@ -209,6 +213,11 @@ def main():
         cases['travel-rejoin-' + direction] = ([sys.executable, str(ROOT / 'tools/test_coop_travel.py'), *common,
                                                '--reconnect-at', direction], 300, True)
     for first in ('blue', 'red'):
+        for phase, seconds in (('intro', 6), ('dialogue', 30)):
+            cases[f'scene-rejoin-{first}-{phase}'] = ([sys.executable, str(ROOT / 'tools/test_coop_scene.py'), *common,
+                '--first', first, '--rejoin', '--rejoin-at', str(seconds)], 420, True)
+        cases['death-rejoin-' + first] = ([sys.executable, str(ROOT / 'tools/test_coop_play.py'), *common,
+                                          '--death', '--death-first', first, '--rejoin'], 300, True)
         cases['return-' + first] = ([sys.executable, str(ROOT / 'tools/test_coop_school_return.py'), *common,
                                     '--first', first, '--rejoin'], 1560, True)
         cases['return-recovery-' + first] = ([sys.executable, str(ROOT / 'tools/test_coop_school_return_recovery.py'),

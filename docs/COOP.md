@@ -1242,6 +1242,12 @@ hidden waiting partner. Both clients then watch the original scene through its
 normal completion and must agree on the safe reunion. `--local` scopes the
 result to loopback, including the requested artificial delay/jitter.
 
+All four owner/phase combinations are available as one automated suite:
+`python tools/test_coop_regressions.py --exe target/release/looking-glass.exe --data <original-base-folder> --only scene-rejoin-blue-intro scene-rejoin-blue-dialogue scene-rejoin-red-intro scene-rejoin-red-dialogue`.
+The report records the scene/dialogue clocks and both clients' reunion evidence.
+Public invites and 40/20 ms delay/jitter are the defaults; `--local` remains an
+explicit loopback-only check. No images are opened by the runner.
+
 The staged entrance is single-file. Before simulation, its collision-checked
 front spawn slot is assigned to the requested first arrival. Ordinary walking
 and the actual contact trigger still start the scene; no live body, clock or
@@ -1663,6 +1669,13 @@ encounter then continues through the exact 1,200-active-tick revival at 25 healt
 and a shared checkpoint wipe. Both roles are required: Red dead, and Blue dead
 with the surviving Red reconnecting. This check does not credit public joining
 when `--local` is supplied. All receipts and the exact Python fixture stay private.
+
+Both death/rejoin cases are available in one automated report:
+`python tools/test_coop_regressions.py --exe target/release/looking-glass.exe --data <original-base-folder> --only death-rejoin-blue death-rejoin-red`.
+The runner checks build identity, retains failed reconnect snapshots for diagnosis,
+and records each death/respawn/checkpoint tick and remaining countdown. Public
+invites and 40/20 ms delay/jitter are the defaults. Captures stay private and are
+not inspected; the assertions use state and camera receipts.
 
 The Blue-first development driver walks around the stationary Red using observed
 waypoint arrivals. Its old straight approach stopped at the player contact radius

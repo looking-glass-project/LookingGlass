@@ -1,6 +1,6 @@
 # Co-op progress
 
-Updated 5 November 2026. Branch: `coop`. **Estimated overall completion: 53.3%.**
+Updated 5 November 2026. Branch: `coop`. **Estimated overall completion: 53.8%.**
 The older 42% reports are historical. This percentage measures delivered and
 verified behavior against the full co-op scope; it is not a running test's progress.
 
@@ -29,10 +29,10 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | Foundation and independent client diagnostics | 9 | 10 |
 | Internet Host/Join | 9.25 | 15 |
 | Two players, movement and presentation | 11 | 15 |
-| Combat, individual resources and death | 9.75 | 20 |
-| Scenes, transport and progression | 11.25 | 20 |
+| Combat, individual resources and death | 10 | 20 |
+| Scenes, transport and progression | 11.5 | 20 |
 | Full campaign verification | 3.08 | 20 |
-| **Total** | **53.33, rounded to 53.3** | **100** |
+| **Total** | **53.83, rounded to 53.8** | **100** |
 
 ## Implemented features and remaining work
 
@@ -50,8 +50,8 @@ yet verified across every level and failure condition.
 | Host / Join | Main/ESC controls, public internet menu flow, authenticated transport, prompt handshake cancellation, failure/retry recovery and countdown/cutscene/moving-lift/loading-barrier reconnect cases | Other transport/recovery cases and public provisioning/DNS availability |
 | Players and presentation | Blue/red Alice, separate input/cameras, body separation, replicated weapon effects | Broader contact/effect checks and reliable traversal through all swimming, leaves, ropes and moving supports |
 | Combat and resources | Nearest-visible targeting, individual damage, inventory and consumables in integrated levels | Remaining enemies/bosses and level-specific rewards, with both players as the target/collector |
-| Death and saves | Exact ten-second countdown, moving spectator camera, safe 25-health revival; shared checkpoint wipes, public save/leave/continue menu flow and guest restart during either player's countdown | Broader connection-failure coverage and each visit's recovery matrix |
-| Scenes and machinery | First-arrival ownership, original single-Alice scenes, hidden partner and safe reunion; all-living boarding on integrated rides | Remaining level adapters, both scene owners, watched/skipped cases, transports and exits |
+| Death and saves | Exact ten-second countdown, moving spectator camera, safe 25-health revival; shared checkpoint wipes, public save/leave/continue menu flow and public guest restart during either player's countdown | Each visit's recovery matrix and remaining transport/death combinations |
+| Scenes and machinery | First-arrival ownership, original single-Alice scenes, hidden partner and safe reunion; public intro/dialogue reconnects with either theatre owner; all-living boarding on integrated rides | Remaining level adapters, both scene owners, watched/skipped cases, transports and exits |
 | Regression checks | 928 active Rust tests; 396 Python guards; current Curiosity native/single-player baseline comparisons | Full campaign verification and required earlier contact-system repeats on the final build |
 
 Campaign status from `COOP_CAMPAIGN.md`:
@@ -120,10 +120,55 @@ remain separate from the 39-visit campaign acceptance matrix.
   cancelled Join and failed/cancelled Host setup, followed by a successful public
   join, checkpoint save, leave and exact solo return in the same game processes.
   Cancel now closes an established but stalled TLS/WebSocket handshake socket.
-- Next: remaining transport/recovery cases and consolidated internet gameplay
-  acceptance. External DNS/provisioning availability remains a limitation even
+- Also verified on `0c5e717` through public invites: both death-countdown guest
+  restarts and all four theatre owner/introduction-or-dialogue reconnect cases,
+  each with 40/20 ms delay/jitter. The same frozen build completes exact revival,
+  shared checkpoint recovery, watched scenes and safe reunions on both clients.
+- Next: consolidate the core acceptance checklist and remaining transport/death
+  combinations. External DNS/provisioning availability remains a limitation even
   though error/cancel/retry handling is verified. Core gameplay acceptance remains
   ahead of further campaign traversal; staged component passes do not finish it.
+
+## Public countdown and cutscene reconnects, 5 November 2026
+
+Six automated cases pass over public invites on unchanged native build `0c5e717`,
+with 40 ms delay and 20 ms jitter per sender. The guest is a fresh process after
+each interruption. Retained snapshots prove that the inactive host holds its full
+frame and world; the replacement inherits the running timer or scene state.
+
+| Death case | Death tick | Revival tick | Health / separation | Shared checkpoint tick |
+| --- | ---: | ---: | --- | ---: |
+| Blue dies; living Red reconnects | 2008 | 3208 | 25 / 48 units | 4201 |
+| Red dies and reconnects | 2077 | 3277 | 25 / 48 units | 4261 |
+
+Both clients agree on the exact 1,200-active-tick revival and later team wipe.
+The dead player's camera follows the moving survivor and returns to its own body
+after revival. Personal resources and body identities survive reconnection.
+Suite: `private/coop/regression-suite-5a62b7313b014e2b99d617bce86e760f/summary.json`.
+
+| Theatre owner / restart phase | Reconnect ticks | Authoritative reunion tick |
+| --- | --- | ---: |
+| Blue / introduction | 1017 to 1019 | 5848 |
+| Blue / dialogue | 3891 to 3892 | 5846 |
+| Red / introduction | 1036 to 1037 | 5870 |
+| Red / dialogue | 3921 to 3923 | 5872 |
+
+All four preserve the owner, scene cues, pending contacts, personal resources,
+and hidden/frozen waiting partner. Introduction reconnects keep dialogue queued;
+dialogue reconnects retain the current line and advance it only by active ticks.
+Both clients watch the original scene to completion and agree on a 48-unit
+reunion without respawn or checkpoint markers.
+Suite: `private/coop/regression-suite-1f0f564f3329490c9bef83cc1b82e8ca/summary.json`.
+
+The regression runner now exposes both death cases and all four scene cases with
+compact timer/reunion metrics and build identity checks. Test fixtures retain
+before/held/after snapshots, including failure evidence, without opening images.
+All 928 active Rust tests, 396 Python guards, seven source-package tests and the
+locked release build pass. No native gameplay change was needed in this pass.
+
+The added 0.5 point credits public verification: 0.25 for death recovery and 0.25
+for the scene matrix. These staged school scenarios do not complete a campaign
+visit, every map's recovery behavior, skipped scenes or audible voice playback.
 
 ## Connection failure and cancellation recovery, 5 November 2026
 

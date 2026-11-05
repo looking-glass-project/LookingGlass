@@ -92,6 +92,7 @@ def run(args):
     processes, logs = [], []
     active, log_paths, latest = {}, {}, {}
     rejoined = None
+    build = None
     flags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
     try:
         def start(role, reconnecting=False):
@@ -125,6 +126,8 @@ def run(args):
                 report = read(folder / role / 'coop-live.json')
                 if not report or report['pid'] != active[role].pid or not report['playing']:
                     continue
+                assert build is None or report['build'] == build, 'Clients used different builds'
+                build = report['build']
                 latest[role] = report
                 frame, stage = report['frame'], report['combat']['stage']
                 if history[role] and history[role][-1]['tick'] == frame['tick']:
@@ -142,7 +145,7 @@ def run(args):
                 scene = stage['world']['school'].get('first_cinema')
                 if stage['owner'] == args.first.title() and scene and scene['beat'] == 'Theatre' and scene['time'] >= args.rejoin_at:
                     old_pid = guest.pid
-                    subprocess.run(['taskkill', '/PID', str(old_pid), '/T', '/F'], capture_output=True, check=True)
+                    guest.kill()
                     guest.wait(timeout=10)
                     disconnect_deadline = time.monotonic() + 15
                     while True:
@@ -162,13 +165,13 @@ def run(args):
                         after = read(folder / 'guest' / 'coop-live.json')
                         assert guest.poll() is None, 'Replacement guest failed: ' + log_paths['guest'].read_text()
                         if after and after['pid'] == guest.pid and after['playing']:
-                            (folder / 'rejoin.json').write_text(json.dumps(dict(passed=False, before=before, after=after), indent=2))
+                            (folder / 'rejoin.json').write_text(json.dumps(dict(passed=False, before=before, held=held, after=after), indent=2))
                             rejoined = verify_scene_rejoin(before, after, args.first, old_pid)
                             break
                         assert time.monotonic() < join_deadline, 'Guest rejoin timeout'
                         time.sleep(.05)
                     (folder / 'rejoin.json').write_text(json.dumps(dict(passed=True,
-                        evidence=rejoined, before=before, after=after), indent=2))
+                        evidence=rejoined, before=before, held=held, after=after), indent=2))
                     print('PASS fresh guest rejoined during scene; owner, clocks, resources and hidden partner preserved', flush=True)
             time.sleep(.05)
         assert not args.rejoin or rejoined is not None, 'Scene reconnect was not exercised'
@@ -180,7 +183,8 @@ def run(args):
         assert results['host']['reunion_tick'] == results['guest']['reunion_tick'], 'Guest did not see the authoritative reunion'
         assert abs(results['host']['separation'] - results['guest']['separation']) < .1
         (folder / 'result.json').write_text(json.dumps({'passed': True, 'first': args.first,
-            'build': latest['host']['build'], 'fixture_sha256': hashlib.sha256(source).hexdigest(),
+            'build': build, 'fixture_sha256': hashlib.sha256(source).hexdigest(),
+            'evidence': {'scene_rejoin': rejoined, 'scene_reunion': results},
             'rejoin': rejoined, 'rejoin_at': args.rejoin_at if args.rejoin else None,
             'internet': not args.local, 'delay_ms': args.delay_ms, 'jitter_ms': args.jitter_ms,
             'results': results, 'scope': 'school theatre fixture only; campaign not validated'}, indent=2))

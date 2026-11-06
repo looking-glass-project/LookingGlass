@@ -1,6 +1,6 @@
 # Co-op progress
 
-Updated 6 November 2026. Branch: `coop`. **Estimated overall completion: 57.8%.**
+Updated 6 November 2026. Branch: `coop`. **Estimated overall completion: 58.3%.**
 The older 42% reports are historical. This percentage measures delivered and
 verified behavior against the full co-op scope; it is not a running test's progress.
 
@@ -16,7 +16,9 @@ shared plate/gate and escort integration, with native component evidence on
 on `7c3ca24`, verified by 58 staged component cases. Build `ccd6cd1` adds their
 paired scenes, personal Eye Staff reward, shared bridge and exit handling, with
 55 further world/scene cases, including both post-battle walking orders across
-the bridge and through the actual castle exit. Nine other late controllers
+the bridge and through the actual castle exit. Water Logged now has its shared
+water machinery, personal currents/fan hits and original introduction on
+`d06ded3`, with 66 native paired cases. Eight other late controllers
 still lack explicit co-op hooks. These are implementation gaps
 before full traversal testing. Campaign-specific
 verification, including the unfinished Burning Curiosity route, stays separate.
@@ -42,9 +44,9 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | Internet Host/Join | 10.75 | 15 |
 | Two players, movement and presentation | 11 | 15 |
 | Combat, individual resources and death | 11 | 20 |
-| Scenes, transport and progression | 12.5 | 20 |
+| Scenes, transport and progression | 13 | 20 |
 | Full campaign verification | 3.08 | 20 |
-| **Total** | **57.83, rounded to 57.8** | **100** |
+| **Total** | **58.33, rounded to 58.3** | **100** |
 
 ## Implemented features and remaining work
 
@@ -72,18 +74,44 @@ Campaign status from `COOP_CAMPAIGN.md`:
   Pandemonium, Fortress of Doors (first visit), Beyond the Wall, Fortress of
   Doors (return visit), and Skool Daze (return visit). The first five retain
   historical build-specific passes and still require contact-system repeats.
-- **24 visits have partial evidence.** Some already have complete internet
+- **25 visits have partial evidence.** Some already have complete internet
   traversals, including Wholly Morel Ground, Castling and About Face, but still
   have outstanding reliability, recovery, reconnect or scene cases. Others
   currently have components or checkpoint segments only.
-- **9 visits are marked Not run for level-specific co-op verification:**
+- **8 visits are marked Not run for level-specific co-op verification:**
   Airborne Terror, Mystifying Madness,
-  Water Logged, Labyrinthine Revenge, Machinations, Battle Royale,
+  Labyrinthine Revenge, Machinations, Battle Royale,
   Ascension, Castle Keep and Heart of Darkness. Broad entrance checks cover
-  all 39 visits; they do not complete these nine level checks.
+  all 39 visits; they do not complete these eight level checks.
 
 See the [full campaign matrix](COOP_CAMPAIGN.md). Future updates should separate
 working features, partial route milestones and completed verification visits.
+
+### Water Logged core integration checkpoint
+
+Build `d06ded3` adds one shared machinery update, atomic living-rider carry,
+either-player weighted flusher controls and separate current cooldowns and fan
+hits. Both living players receive the original shell/air preparation; air
+sources refill only their own contact. Either living player's Watch freezes
+the original water/lid/fan clocks while weighted trays retain their normal
+motion. Dead players neither weigh down trays nor block fans or receive pushes.
+Optional paired state preserves old solo stages, pending damage ownership and
+remaining cooldowns; malformed state is rejected before replacing live state.
+
+The headless paired check passes 66 cases: 48 machinery/hazard/swimming cases,
+12 original-introduction combinations, and six physical flusher-trigger cases.
+Both swimming orders cross the live drain using ordinary controls and preserve
+an exact saved future. Either Alice activates all three native flusher triggers
+through normal body physics. Both scene owners, early/late skips, watched,
+paused/restored playback, dead partners and safe reunion are covered. The
+original 16-case solo check has byte-identical output to frozen `291af36`.
+
+This adds 0.5 scene/progression points and makes Water Logged Partial, with no
+full campaign verification points. Full two-client traversal with native combat,
+rendered effects and recovery/rejoin acceptance remain open. Fan-safe revival
+placement needs specific coverage before this visit's recovery is considered
+ready. The controller currently relies on generic clear-body placement rather
+than a dedicated fan-sweep exclusion for respawning.
 
 ### Jabberwock core integration checkpoint
 
@@ -99,7 +127,7 @@ all four original solo check/route logs exactly match `7c3ca24`.
 This adds 0.5 scene/progression points, with no full campaign verification points.
 The remaining scope includes full two-client combat-to-exit routes, rendered
 effects and the encounter-specific death/wipe/rejoin matrix. Core integration
-continues with the nine controllers listed above.
+continues with the eight controllers listed above.
 
 Build `7c3ca24` adds one shared combat clock, closest-visible living targets,
 stable attack ownership across saves, physical damage to either body and

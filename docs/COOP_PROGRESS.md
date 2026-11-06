@@ -56,7 +56,7 @@ yet verified across every level and failure condition.
 | Combat and resources | Nearest-visible targeting, individual damage, inventory and consumables in integrated levels | Remaining enemies/bosses and level-specific rewards, with both players as the target/collector |
 | Death and saves | Exact ten-second countdown, moving spectator camera, safe 25-health revival; shared checkpoint wipes, public save/leave/continue and storage-error/backup menu flow, public save refusal/retry during deaths/scenes, public guest restart during either player's countdown | Each visit's recovery matrix and remaining transport/death combinations |
 | Scenes and machinery | First-arrival ownership, original single-Alice scenes, hidden partner and safe reunion; public intro/dialogue reconnects with either theatre owner; all-living boarding on integrated rides | Remaining level adapters, both scene owners, watched/skipped cases, transports and exits |
-| Regression checks | 936 active Rust tests; 439 Python guards; current Curiosity native/single-player baseline comparisons | Full campaign verification and required earlier contact-system repeats on the final build |
+| Regression checks | 938 active Rust tests; 443 Python guards; current weapon-effect rendering/network checks and Curiosity native/single-player baseline comparisons | Full campaign verification and required earlier contact-system repeats on the final build |
 
 Campaign status from `COOP_CAMPAIGN.md`:
 
@@ -170,7 +170,7 @@ in the evidence below.
 | Host/Join lifecycle | Public main/ESC flow, authenticated invite preflight, fresh invites, invalid/expired links, DNS/HTTP failure, Cancel, retry, exact solo return on `0b5bca3` | Public provisioning can still rate-limit new sessions |
 | Rejoining | Current-build public passes for idle gameplay, either player's ground/underwater/rope/moving-platform countdown, either theatre owner, rotating lift and both loading barriers | Per-visit matrix; underwater proof uses the Blue-led route and does not close the Red-led trap-repeatability gap |
 | Combat/death | Shared targets, personal resources, exact countdown, spectator camera, 25-health reunion, shared wipe and moving-platform revival/carry; focused current-build public consolidation passes | Level-specific enemies and recovery matrices |
-| Presentation | Both Alice models, contact separation and replicated ambient/weapon effects in focused tests; contact/ambient baseline repeats on `c5cb7fc` | Broader campaign effects and audio; no new audio verification in this pass |
+| Presentation | Both Alice models, contact separation and replicated ambient/weapon effects; `66ebd44` repeats weapon rendering/network checks, verifies survivor-camera audio inputs and passes actual shared-mixer output regressions | Broader campaign effects and current-build audible output from two live co-op clients |
 | Consolidation | `0b5bca3`: 934 native tests, both public menu flows, eight public network cases, and all thirteen selected core groups pass over public invites and locally | Full campaign coverage; provider rate limits remain an external service limitation |
 
 ## Core internet consolidation completed, 5 November 2026
@@ -213,6 +213,57 @@ This completes the focused core milestone, not the full game. Campaign status
 remains six combined, twenty-one partial and twelve not run. The known Red-led
 Temple route gap, broader effects/audio and per-visit acceptance cases remain.
 The weighted estimate rises one Internet Host/Join point to **56.6%**.
+
+## Spectator audio and weapon effects, 6 November 2026
+
+On frozen build `66ebd44`, co-op audio now uses the same player as the camera
+for health reactions, swimming ambience and the underwater filter. Previously,
+a dead player's submerged body could keep the dry survivor's view muffled.
+Changing the subject clears only personal reaction/swim state, so switching
+between different health values cannot invent a pain cry. Shared world sounds
+and dialogue continue. Native tests cover either player dying, both dry/wet
+survivor combinations and return to the revived player.
+
+The public-invite recovery fixture passes in 140.86 seconds with 40/20 ms
+delay/jitter. It exercises an ordinary shared wipe, both real drowning roles,
+both fresh-guest countdown rejoins and exact ten-second revivals. The listener
+matches the camera in 550 host and 545 guest observations, including 51/48
+spectator observations. The guest runs in four fresh processes. An independent
+audit also checks each recorded first rejoined frame. The final stricter verifier
+requires revival after the observed death in the same checkpoint generation;
+the saved observations pass with 3/191 post-revival rows. Earlier shared-wipe
+spawns cannot substitute for that coverage.
+
+The live fixture's two swimmers remain submerged, so the mixed dry/wet cases
+are native-test evidence. Anode has no isolated audio endpoint: this run checks
+the actual mixer inputs and sets `speaker_output_verified: false`; it does not
+claim a new audible-output or sound-fidelity pass.
+
+Separate audio-only regressions then pass on the PC's output device, using the
+same frozen executable and isolated files, without opening game windows. They
+measure fourteen gameplay intervals and seven liquid/reaction intervals in
+22.73/18.66 seconds. App-only 44.1 kHz stereo captures contain 22.35/18.25 seconds
+of output. Mute and pause are silent; expected audible phases have nonzero
+output without clipping, and no requested audio files are missing. These are
+production shared-mixer regressions, not an audible two-client co-op run or a
+subjective sound-quality assessment. Evidence is
+`private/coop-listener-audio-output-66ebd44/`.
+
+On the same executable, all six native effect pixel comparisons pass: sparks,
+swing trails and projectile trails for both skins remain visible and match
+across three repeated restores each. A separate 26.34-second public combat
+check receives all three effect types and both emitting players on both clients,
+with 63 matching player/world/native states. These automated checks inspect
+rendered pixels and network state without model image lookups.
+
+Evidence: `private/coop/audio-listener-3a0fff842e8146808293fb8b7562b522/`,
+`private/coop/weapon-effects-261091c7703548b98832633b1a17998c/` and
+`private/coop-listener-verified.json`. Original live receipts and fixture copies
+remain unchanged; the audit records the tightened validator's hash separately.
+All 938 active Rust tests pass (five ignored), the locked release builds, 443
+Python guards and seven package tests pass. Owned windows are closed and Anode
+is released. The thirteen-group save/rejoin milestone remains on its separate
+`0b5bca3` build. Overall remains **56.6%**; no full campaign visit is credited.
 
 ## Save coverage audit and bounded ending evidence, 6 November 2026
 

@@ -108,3 +108,29 @@ Guard tests need no game assets or desktop:
 ```powershell
 python -m unittest discover -s tools -p test_coop_core_guards.py
 ```
+
+## Spectator audio listener
+
+The separate `tools/test_coop_audio_listener.py` fixture checks the production
+audio listener during both players' ordinary underwater deaths, ten-second
+revivals, fresh guest rejoins and a shared checkpoint wipe. Run it in Anode:
+
+```powershell
+python tools/test_coop_audio_listener.py --exe <frozen-executable> --build <full-build-identity> --data "<original-base-folder>"
+```
+
+Internet invites and 40/20 ms delay/jitter are the defaults; `--local` selects
+loopback. It records which player's health, swimming ambience and underwater
+filter the mixer uses, and requires that player to match the actual camera
+subject. Both clients must cover normal play, spectating and revived play.
+The inherited recovery checks also require actual drowning, exact revival
+timing, safe placement and preserved resources after fresh guest restarts.
+
+`audio-listeners.json` records the observations; `recovery-result.json` retains
+the underlying recovery proof. The final `result.json` exists only after the
+additional listener checks pass. This check runs without an audio endpoint and
+sets `speaker_output_verified: false`: it validates mixer inputs, not audible
+speaker output. The existing `test_coop_audio.py` and `test_coop_voice.py` fixtures
+require real audio output and app-only recordings for their separate checks.
+
+Asset-free guard tests are available through `test_coop_audio_listener_guards.py`.

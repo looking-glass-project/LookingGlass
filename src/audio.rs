@@ -1042,9 +1042,15 @@ impl Audio {
     pub fn restore_world(&mut self) {
         self.stop_voice();
         self.pending.clear(); self.effects.clear(); self.loops.clear();
+        self.reset_listener_player();
+        self.world_sounds = world::State::default();
+    }
+    /// Switching the camera to another Alice must not compare their different
+    /// health values as damage or carry the previous body's swimming ambience.
+    /// Shared world sounds and dialogue continue across this personal change.
+    pub fn reset_listener_player(&mut self) {
         self.reaction = None; self.last_sanity = None;
         self.reaction_gate = reaction::Gate::default(); self.swim_bed = None;
-        self.world_sounds = world::State::default();
     }
     pub fn diagnostics(&self) -> (u64, f32, u64, usize) {
         (self.monitor.count.load(Ordering::Relaxed) / 2,
@@ -1826,6 +1832,22 @@ pub fn test_output(assets: &mut Assets, name: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn changing_listener_clears_personal_reactions_without_stopping_shared_audio() {
+        let mut audio = Audio::new(true, None);
+        let (voice, _voice_output) = Sink::new_idle();
+        let (swim, _swim_output) = Sink::new_idle();
+        audio.voice = Some(voice);
+        audio.swim_bed = Some(swim);
+        audio.last_sanity = Some(100.);
+        assert!(audio.reaction_gate.accept(reaction::Kind::Death, 2.));
+        audio.pending.push(Request {path:"sound/world/test.wav".into(),origin:None,volume:1.});
+        audio.reset_listener_player();
+        assert!(audio.last_sanity.is_none() && audio.swim_bed.is_none() && audio.reaction.is_none());
+        assert!(audio.reaction_gate.accept(reaction::Kind::Pain, 1.));
+        assert!(audio.voice.is_some());
+        assert_eq!(audio.pending.len(), 1);
+    }
     #[test]
     fn watch_keeps_pcm_playing_but_defers_random_speaker_events() {
         let mut audio = Audio::new(true, None);

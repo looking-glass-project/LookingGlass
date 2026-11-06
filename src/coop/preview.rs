@@ -691,7 +691,7 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                 let scripted = arena.stage.camera(&scene.world);
                 let (camera_eye, target, up) = scripted.map_or((follow_eye, follow_target, Vec3::Z), |c| (c.eye, c.target, c.up));
                 let listening = target - camera_eye;
-                audio.update(assets,&arena,frame,&scene.world,local,camera_eye,listening.y.atan2(listening.x),elapsed,playing)?;
+                audio.update(assets,&arena,frame,&scene.world,watched,camera_eye,listening.y.atan2(listening.x),elapsed,playing)?;
                 let view = Camera3D { position: camera_eye, target, up,
                     fovy: if scripted.is_some() { arena.stage.scene_fovy(screen_width() / screen_height()) } else { 60_f32.to_radians() },
                     z_near: 2., z_far: 30000., ..Default::default() };

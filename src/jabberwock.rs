@@ -1,8 +1,10 @@
 //! The two Jabberwock encounters share an actor, but never their win conditions.
-mod art;
 mod altar_check;
+mod art;
 mod battle;
 pub(crate) mod check;
+mod coop;
+pub(crate) mod coop_check;
 mod data;
 mod fire_check;
 mod saves;
@@ -94,6 +96,8 @@ struct Wave {
 #[derive(Clone, Serialize, Deserialize)]
 struct Saved {
     version: u8,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    coop: Option<coop::State>,
     kind: Kind,
     phase: Phase,
     time: f32,
@@ -168,6 +172,9 @@ impl state::State for Saved {
             "Invalid exit door"
         );
         self.boss.validate(self.kind)?;
+        if let Some(coop) = &self.coop {
+            coop.validate(self.kind)?;
+        }
         ensure!(
             self.waves.len() <= 6 && (self.kind == Kind::Lair || self.waves.is_empty()),
             "Invalid waves"
@@ -266,6 +273,7 @@ impl Encounter {
             data,
             saved: Saved {
                 version: 1,
+                coop: None,
                 kind,
                 phase: Phase::Intro,
                 time: 0.,
@@ -298,6 +306,81 @@ impl Encounter {
         };
         o.rebuild(map)?;
         Ok(o)
+    }
+    fn fight(
+        &mut self,
+        dt: f32,
+        world: &World,
+        eye: Vec3,
+        notarget: bool,
+        stopped: bool,
+        players: Option<[crate::combat::PlayerTarget; 2]>,
+    ) -> Feedback {
+        let mut out = Feedback::default();
+        self.saved.boss.opponents.players = players;
+        self.saved.boss.opponents.selected_player =
+            players.and_then(|_| self.saved.coop.as_ref().unwrap().boss_player);
+        self.saved.remainder += f64::from(dt.min(0.1));
+        self.saved.boss.freeze_spirals = stopped;
+        while self.saved.remainder + 1e-9 >= 1. / 120. {
+            self.saved.remainder = (self.saved.remainder - 1. / 120.).max(0.);
+            if self.saved.kind == Kind::Lair {
+                self.saved.ticks = (self.saved.ticks + 1).min(10800);
+                if (self.saved.wave_count == 0 && self.saved.ticks >= 3600)
+                    || (self.saved.wave_count == 1 && self.saved.ticks >= 7200)
+                {
+                    self.wave();
+                }
+            }
+            self.saved
+                .boss
+                .step(self.saved.kind, world, eye, notarget, &self.data, &mut out);
+            if let Some(state) = &mut self.saved.coop {
+                if players.is_some() {
+                    state.boss_player = self.saved.boss.opponents.selected_player;
+                }
+            }
+            for (slot, w) in self.saved.waves.iter_mut().enumerate() {
+                w.actor.opponents.players = players;
+                w.actor.opponents.selected_player =
+                    players.and_then(|_| self.saved.coop.as_ref().unwrap().wave_players[slot]);
+                if stopped {
+                    continue;
+                }
+                if w.launch < 1.5 {
+                    w.launch = (w.launch + battle::STEP).min(1.5);
+                    let t = w.launch / 1.5;
+                    w.actor.feet = w.from.lerp(w.to, t) + Vec3::Z * (4. * t * (1. - t) * 120.);
+                    if w.launch >= 1.5 {
+                        w.actor.place(world);
+                    }
+                } else {
+                    w.actor.notarget = notarget;
+                    let clip = w.actor.clip();
+                    let time = w.actor.time;
+                    let rig = &self.data.rigs["c_jabberspawn"];
+                    for cue in rig.audio.between(
+                        clip,
+                        crate::audio::events::Span {
+                            start: time,
+                            end: time + battle::STEP,
+                            duration: rig.duration(clip),
+                            frame_time: rig.frame(clip),
+                            looping: w.actor.loops(),
+                            entered: time == 0.,
+                        },
+                    ) {
+                        out.cue_sounds.push((cue.path, w.actor.feet));
+                    }
+                    w.actor.step(world, eye, &self.data, &mut out);
+                    if players.is_some() {
+                        self.saved.coop.as_mut().unwrap().wave_players[slot] =
+                            w.actor.opponents.selected_player;
+                    }
+                }
+            }
+        }
+        out
     }
     fn phase(&mut self, p: Phase) {
         self.saved.phase = p;
@@ -383,6 +466,29 @@ impl Encounter {
     }
 }
 impl LevelController for Encounter {
+    fn coop_prepare(&mut self, players: &mut [crate::level::CoopPlayer<'_>; 2]) {
+        self.alive = players.iter().any(|p| p.stats.alive());
+        self.pair_state();
+    }
+    fn coop_advance_roster(
+        &mut self,
+        dt: f32,
+        _: &Bsp,
+        _: &mut World,
+        players: &mut [crate::level::CoopPlayer<'_>; 2],
+        _: &[Collider],
+    ) -> Result<()> {
+        self.pair_resources(dt, players);
+        Ok(())
+    }
+    fn coop_combat_roster(
+        &mut self,
+        dt: f32,
+        world: &World,
+        players: &mut [crate::level::CoopPlayer<'_>; 2],
+    ) -> Feedback {
+        self.pair_fight(dt, world, players)
+    }
     fn particles(&self, steam: &mut crate::particles::Steam) {
         // The reward scene draws this altar itself. Its placed copy must never
         // emit as ambient scenery, including before the reward and after pickup.
@@ -882,64 +988,17 @@ impl LevelController for Encounter {
             .and_then(|w| w.actor.hit(h))
     }
     fn combat(&mut self, c: &mut Combat<'_>) -> Feedback {
-        let mut out = Feedback::default();
-        if self.saved.phase != Phase::Fight || c.dt <= 0. || !c.stats.alive() {
-            return out;
+        if self.saved.phase != Phase::Fight || !c.dt.is_finite() || c.dt <= 0. || !c.stats.alive() {
+            return Feedback::default();
         }
-        self.saved.remainder += f64::from(c.dt.min(0.1));
-        self.saved.boss.freeze_spirals = c.stats.powers.stopped > 0.;
-        while self.saved.remainder + 1e-9 >= 1. / 120. {
-            self.saved.remainder = (self.saved.remainder - 1. / 120.).max(0.);
-            if self.saved.kind == Kind::Lair {
-                self.saved.ticks = (self.saved.ticks + 1).min(10800);
-                if (self.saved.wave_count == 0 && self.saved.ticks >= 3600)
-                    || (self.saved.wave_count == 1 && self.saved.ticks >= 7200)
-                {
-                    self.wave();
-                }
-            }
-            self.saved.boss.step(
-                self.saved.kind,
-                c.world,
-                c.player.eye(),
-                c.notarget,
-                &self.data,
-                &mut out,
-            );
-            for w in &mut self.saved.waves {
-                if c.stats.powers.stopped > 0. {
-                    continue;
-                }
-                if w.launch < 1.5 {
-                    w.launch = (w.launch + battle::STEP).min(1.5);
-                    let t = w.launch / 1.5;
-                    w.actor.feet = w.from.lerp(w.to, t) + Vec3::Z * (4. * t * (1. - t) * 120.);
-                    if w.launch >= 1.5 {
-                        w.actor.place(c.world);
-                    }
-                } else {
-                    w.actor.notarget = c.notarget;
-                    let clip = w.actor.clip();
-                    let time = w.actor.time;
-                    let rig = &self.data.rigs["c_jabberspawn"];
-                    for cue in rig.audio.between(
-                        clip,
-                        crate::audio::events::Span {
-                            start: time,
-                            end: time + battle::STEP,
-                            duration: rig.duration(clip),
-                            frame_time: rig.frame(clip),
-                            looping: w.actor.loops(),
-                            entered: time == 0.,
-                        },
-                    ) {
-                        out.cue_sounds.push((cue.path, w.actor.feet));
-                    }
-                    w.actor.step(c.world, c.player.eye(), &self.data, &mut out);
-                }
-            }
-        }
-        out
+        self.fight(
+            c.dt,
+            c.world,
+            c.player.eye(),
+            c.notarget,
+            c.stats.powers.stopped > 0.,
+            None,
+        )
     }
     fn loot_sources(&self) -> Vec<crate::loot::Source> {
         self.saved

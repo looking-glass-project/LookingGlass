@@ -170,12 +170,21 @@ also pass the final six-line verifier; the original live fixtures remain frozen.
 
 The focused save/rejoin milestone does not mean every level's mechanics have
 co-op adapters. The source audit on 6 November found that the remaining late
-controllers (`jlair2`, `tower1`, `hedge2`, `tower2`, `hedge3`, `tower3`,
-`grounds1`, `grounds2`, `facade`, `keep`, `qlair`) still use the default paired
+controllers (`tower1`, `hedge2`, `tower2`, `hedge3`, `tower3`,
+`grounds2`, `facade`, `keep`, `qlair`) still use the default paired
 hooks. Those hooks do not advance the single-player machinery or combat twice;
 they are intentionally empty until a controller has an explicit shared update.
-The Jabberwock controller serves both `jlair2` and `grounds1` and also lacks those
-adapters. These are implementation gaps, not simply missing route-test receipts.
+These are implementation gaps, not simply missing route-test receipts.
+
+The shared Jabberwock controller (`jlair2` and `grounds1`) now has explicit
+combat and personal-healing hooks. On `7c3ca24`, `--jlair2-coop-check` runs 58
+headless cases across both maps: separate healing cycles and views, solo-save
+import without a cooldown reset, compressed state restoration/continuation,
+stable boss/wave targets, both physical damage recipients, cover, dead/hidden
+players, Pocket Watch and one combat clock at 30/60/144 Hz. Both solo component
+and production-input route logs exactly match the prior frozen build. This
+does not yet provide paired victory scenes, Eye Staff collection, bridge/exit
+progression or a complete two-client route/rejoin/death matrix.
 
 Majestic Maze now has its explicit shared update. Its component checks are
 `--hedge1-coop-check` and `--hedge1-coop-cast-check` (the latter needs a window,

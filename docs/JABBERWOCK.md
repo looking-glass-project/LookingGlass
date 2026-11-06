@@ -1,5 +1,33 @@
 # Jabberwock: both major battles
 
+## Co-op combat and personal healing (2026-11-06)
+
+The host now advances each boss and its waves once, retaining the original
+120 Hz battle schedule and boss immunity/health rules. The boss chooses the
+nearest visible living Alice; committed attacks retain their target until it
+becomes ineligible. Melee, breath, beam and spiral collision use both living
+bodies, and a spiral can damage the other player with its ordinary visible
+splash without damaging its direct victim twice. Dive contact can hit both
+overlapping bodies once. Each of the six Lair wave actors retains its target
+slot across a save. A living player's Pocket Watch stops the same spirals and
+waves as solo play; it does not freeze the boss or breath packets.
+
+Healing is individual, including the current pickup location, eight-second
+cooldown and local art visibility. Importing a solo save initializes both
+players from that save's current cycle/cooldown. Collection cannot heal the
+partner, consume their pickup or revive a dead player. Optional validated
+co-op state preserves existing solo snapshots and compressed co-op restores.
+
+On frozen source `7c3ca2407b8bd1378499a813103a913152e67a7a2292404622bf77bf1671a8b3`,
+`--jlair2-coop-check` passes 58 staged cases using the supplied rigs across both
+maps. It runs headlessly without screenshots. The two existing solo checks and
+two production-input solo routes pass with byte-identical logs to `c6f580e`.
+Private manifests retain executable/source hashes and per-check receipts.
+
+This is a combat/resource milestone. Paired victory scenes, Eye Staff reward,
+drawbridge and exit progression are still missing. No full paired route,
+internet rejoin, encounter death/recovery or rendered-effects pass is claimed.
+
 ## Eye altar visibility correction (2026-10-01)
 
 The placed Eye Staff altar emitted its purple plume during the introduction and

@@ -1,6 +1,6 @@
 # Co-op progress
 
-Updated 6 November 2026. Branch: `coop`. **Estimated overall completion: 56.8%.**
+Updated 6 November 2026. Branch: `coop`. **Estimated overall completion: 57.3%.**
 The older 42% reports are historical. This percentage measures delivered and
 verified behavior against the full co-op scope; it is not a running test's progress.
 
@@ -12,8 +12,11 @@ saves. Both requested save paths are included in the
 [core acceptance checklist](COOP_CORE_TESTS.md#current-saverejoin-acceptance).
 The overall all-level goal remains active. Majestic Maze now has its missing
 shared plate/gate and escort integration, with native component evidence on
-`c6f580e`. Eleven other late controllers still lack explicit co-op hooks; those
-are implementation gaps before full traversal testing. Campaign-specific
+`c6f580e`. Both Jabberwock encounters now have shared combat and personal healing
+on `7c3ca24`, verified by 58 staged component cases. Their victory scenes,
+Eye Staff reward, bridge and exit still need paired integration. Nine other late
+controllers still lack explicit co-op hooks. These are implementation gaps
+before full traversal testing. Campaign-specific
 verification, including the unfinished Burning Curiosity route, stays separate.
 
 The fresh pre-change checkpoint run on 5 November passed staged shared travel,
@@ -36,10 +39,10 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | Foundation and independent client diagnostics | 9.5 | 10 |
 | Internet Host/Join | 10.75 | 15 |
 | Two players, movement and presentation | 11 | 15 |
-| Combat, individual resources and death | 10.5 | 20 |
+| Combat, individual resources and death | 11 | 20 |
 | Scenes, transport and progression | 12 | 20 |
 | Full campaign verification | 3.08 | 20 |
-| **Total** | **56.83, rounded to 56.8** | **100** |
+| **Total** | **57.33, rounded to 57.3** | **100** |
 
 ## Implemented features and remaining work
 
@@ -59,7 +62,7 @@ yet verified across every level and failure condition.
 | Combat and resources | Nearest-visible targeting, individual damage, inventory and consumables in integrated levels | Remaining enemies/bosses and level-specific rewards, with both players as the target/collector |
 | Death and saves | Exact ten-second countdown, moving spectator camera, safe 25-health revival; shared checkpoint wipes, public save/leave/continue and storage-error/backup menu flow, public save refusal/retry during deaths/scenes, public guest restart during either player's countdown | Each visit's recovery matrix and remaining transport/death combinations |
 | Scenes and machinery | First-arrival ownership, original single-Alice scenes, hidden partner and safe reunion; public intro/dialogue reconnects with either theatre owner; all-living boarding on integrated rides | Remaining level adapters, both scene owners, watched/skipped cases, transports and exits |
-| Regression checks | 940 active Rust tests; 450 Python guards; Maze paired components and exact solo regression, plus build-specific weapon-effect/audio and Curiosity baseline checks | Full campaign verification and required earlier contact-system repeats on the final build |
+| Regression checks | 940 active Rust tests; 450 Python guards; Maze and Jabberwock paired components and exact solo route logs, plus build-specific weapon-effect/audio and Curiosity baseline checks | Full campaign verification and required earlier contact-system repeats on the final build |
 
 Campaign status from `COOP_CAMPAIGN.md`:
 
@@ -67,18 +70,36 @@ Campaign status from `COOP_CAMPAIGN.md`:
   Pandemonium, Fortress of Doors (first visit), Beyond the Wall, Fortress of
   Doors (return visit), and Skool Daze (return visit). The first five retain
   historical build-specific passes and still require contact-system repeats.
-- **22 visits have partial evidence.** Some already have complete internet
+- **24 visits have partial evidence.** Some already have complete internet
   traversals, including Wholly Morel Ground, Castling and About Face, but still
   have outstanding reliability, recovery, reconnect or scene cases. Others
   currently have components or checkpoint segments only.
-- **11 visits are marked Not run for level-specific co-op verification:**
-  Jabberwock's Lair, Airborne Terror, Mystifying Madness,
-  Water Logged, Labyrinthine Revenge, Machinations, Royal Rage, Battle Royale,
+- **9 visits are marked Not run for level-specific co-op verification:**
+  Airborne Terror, Mystifying Madness,
+  Water Logged, Labyrinthine Revenge, Machinations, Battle Royale,
   Ascension, Castle Keep and Heart of Darkness. Broad entrance checks cover
-  all 39 visits; they do not complete these eleven level checks.
+  all 39 visits; they do not complete these nine level checks.
 
 See the [full campaign matrix](COOP_CAMPAIGN.md). Future updates should separate
 working features, partial route milestones and completed verification visits.
+
+### Jabberwock combat and healing checkpoint
+
+Build `7c3ca24` adds one shared combat clock, closest-visible living targets,
+stable attack ownership across saves, physical damage to either body and
+individual eight-second healing cycles in both encounters. Fifty-eight native
+cases cover both slots, cover, dead/hidden players, six Lair wave targets,
+30/60/144 Hz solo combat parity, Pocket Watch rules, compressed continuation,
+solo-save conversion and invalid-save rejection. Both existing solo checks and
+both production-input solo routes have byte-identical logs to frozen `c6f580e`.
+This credits 0.5 combat/resource points. It adds no full campaign verification
+points and no two-client route, rejoin, death/recovery or rendered-effects pass.
+Next: the original victory scenes, first-arrival ownership, personal Eye Staff,
+safe shared reunion, drawbridge and departure in these same two controllers.
+The full Rust suite passes with four test workers. Its default-concurrency run
+hit the previously observed 750 ms socket-cancellation timeout; that unchanged
+test also passes alone. Both receipts are retained, and the intermittent
+cancellation deadline remains a test-reliability issue to investigate.
 
 ## Core readiness priority
 

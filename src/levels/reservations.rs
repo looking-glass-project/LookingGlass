@@ -349,7 +349,11 @@ pub static RESERVATIONS: [Reservation; 39] = [
         route: &["--jlair1-route-check"], skip: &["--jlair1-skip-route-check"],
         render: &["--jlair1-render-check"],
     }), ..visit(25, "jlair1") },
-    visit(26, "jlair2"),
+    Reservation { flags: Some(VisitFlags {
+        contract: &["--jlair2-check", "--jlair2-coop-check"],
+        route: &["--jlair2-route-check"], skip: &["--jlair2-skip-route-check"],
+        render: &["--jlair2-render-check"],
+    }), ..visit(26, "jlair2") },
     returning(
         27,
         "wforest-return",

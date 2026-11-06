@@ -27,6 +27,11 @@ pub static REGISTRATION: super::Registration = super::Registration {
     ],
     checks: &[
         super::Check {
+            flag: "--jlair2-coop-check",
+            help: "Verify paired Jabberwock combat and personal healing in both arenas.",
+            run: super::Run::Headless(jabberwock::coop_check::check),
+        },
+        super::Check {
             flag: "--jlair2-check",
             help: "Verify Jabberwock survival, waves, reward and saves.",
             run: super::Run::Headless(|a| jabberwock::check::check(a, Kind::Lair)),

@@ -72,6 +72,9 @@ pub(super) struct Shot {
 }
 #[derive(Clone, Serialize, Deserialize)]
 pub(super) struct Boss {
+    // Bodies are supplied by the host; only the selected slot is saved by the encounter.
+    #[serde(skip)]
+    pub opponents: combat::Opponents,
     pub at: Vec3,
     pub home: Vec3,
     pub yaw: f32,
@@ -96,6 +99,7 @@ pub(super) struct Boss {
 impl Boss {
     pub fn new(pose: Transform, kind: Kind) -> Self {
         Self {
+            opponents: Default::default(),
             at: pose.translation,
             home: pose.translation,
             yaw: pose.rotation.to_euler(EulerRot::ZYX).0,
@@ -236,24 +240,27 @@ impl Boss {
     fn melee(&mut self, w: &World, eye: Vec3, damage: f32, push: f32, out: &mut Feedback) {
         let start = self.at + Vec3::Z * 54.;
         let end = start + Quat::from_rotation_z(self.yaw) * Vec3::X * 190.;
-        let target = Target {
-            id: 0,
-            center: eye - Vec3::Z * 20.,
-            half: crate::collision::PLAYER_HALF,
-        };
-        if combat::contact_box(
+        let targets = self.opponents.bodies(eye);
+        if let Some((id, _)) = combat::contact_box(
             &combat::Context {
                 world: w,
-                targets: &[target],
+                targets: &targets,
             },
             start,
             end,
             vec3(16., 16., 32.),
-        )
-        .is_some()
-        {
-            out.damage += damage;
-            out.impulse += (eye - start).normalize_or_zero() * push;
+        ) {
+            let at = if self.opponents.players.is_some() {
+                targets.iter().find(|t| t.id == id).unwrap().center + Vec3::Z * 20.
+            } else {
+                eye
+            };
+            out.strike(
+                id,
+                damage,
+                (at - start).normalize_or_zero() * push,
+                combat::DamageKind::Other,
+            );
         }
     }
     pub(super) fn emit(&mut self, d: &Data, eye: Vec3, spiral: bool) {
@@ -298,6 +305,19 @@ impl Boss {
         out: &mut Feedback,
     ) {
         let dt = STEP;
+        let (eye, ignore, _) = self.opponents.aim(
+            w,
+            self.target(0).center,
+            eye,
+            ignore,
+            !matches!(self.action, Action::Ready | Action::Walk | Action::Fly),
+        );
+        // A committed attack keeps its aim. Its physical path can still hit either body.
+        let targets = if self.opponents.players.is_some() || !ignore {
+            self.opponents.bodies(eye)
+        } else {
+            Vec::new()
+        };
         let before = self.time;
         self.time += dt;
         self.pain_wait = (self.pain_wait - dt).max(0.);
@@ -384,7 +404,9 @@ impl Boss {
             }
             _ => {}
         }
-        if !ignore && matches!(self.action, Action::Beam | Action::BeamEnd) {
+        if (self.opponents.players.is_some() || !ignore)
+            && matches!(self.action, Action::Beam | Action::BeamEnd)
+        {
             let start = d
                 .boss()
                 .tag(
@@ -402,23 +424,16 @@ impl Boss {
             self.pulse -= dt;
             if self.pulse <= 0. {
                 self.pulse += 0.25;
-                let target = Target {
-                    id: 0,
-                    center: eye - Vec3::Z * 20.,
-                    half: crate::collision::PLAYER_HALF,
-                };
-                if combat::contact(
+                if let Some((id, _)) = combat::contact(
                     &combat::Context {
                         world: w,
-                        targets: &[target],
+                        targets: &targets,
                     },
                     start,
                     end,
                     3.,
-                )
-                .is_some()
-                {
-                    out.damage += 5.;
+                ) {
+                    out.strike(id, 5., Vec3::ZERO, combat::DamageKind::Other);
                 }
             }
         }
@@ -470,7 +485,28 @@ impl Boss {
                 let delta = (self.aim - self.at).clamp_length_max(750. * dt);
                 let old = self.at;
                 self.move_air(&d.arena, delta);
-                if !self.contact
+                if !self.contact && self.opponents.players.is_some() {
+                    for target in &targets {
+                        let at = target.center + Vec3::Z * 20.;
+                        let sight = w.sweep(
+                            self.target(0).center - (self.at - old),
+                            at,
+                            Vec3::splat(0.5),
+                        );
+                        if self.target(0).center.distance(target.center) < 150.
+                            && !sight.start_solid
+                            && sight.fraction >= 1.
+                        {
+                            out.strike(
+                                target.id,
+                                25.,
+                                (at - old).normalize_or_zero() * 250.,
+                                combat::DamageKind::Other,
+                            );
+                            self.contact = true;
+                        }
+                    }
+                } else if !self.contact
                     && self.target(0).center.distance(eye - Vec3::Z * 20.) < 150.
                     && clear
                 {
@@ -613,11 +649,6 @@ impl Boss {
             }
             _ => {}
         }
-        let target = Target {
-            id: 0,
-            center: eye - Vec3::Z * 20.,
-            half: crate::collision::PLAYER_HALF,
-        };
         for s in &mut self.shots {
             if s.spiral && self.freeze_spirals {
                 continue;
@@ -628,23 +659,23 @@ impl Boss {
             }
             let end = s.at + s.velocity * dt;
             let half = if s.spiral { 8. } else { 12. };
-            let hit = if ignore {
-                None
-            } else {
-                combat::contact(
-                    &combat::Context {
-                        world: w,
-                        targets: &[target],
-                    },
-                    s.at,
-                    end,
-                    half,
-                )
-            };
+            let hit = combat::contact(
+                &combat::Context {
+                    world: w,
+                    targets: &targets,
+                },
+                s.at,
+                end,
+                half,
+            );
             let wall = w.sweep(s.at, end, Vec3::splat(half));
-            if let Some((_, f)) = hit {
-                out.damage += if s.spiral { 150. } else { 5. };
-                out.impulse += s.velocity.normalize_or_zero() * if s.spiral { 400. } else { 20. };
+            if let Some((id, f)) = hit {
+                out.strike(
+                    id,
+                    if s.spiral { 150. } else { 5. },
+                    s.velocity.normalize_or_zero() * if s.spiral { 400. } else { 20. },
+                    combat::DamageKind::Other,
+                );
                 s.at = s.at.lerp(end, f);
                 s.ended = Some(s.age);
             } else if wall.start_solid {
@@ -670,17 +701,22 @@ impl Boss {
             if s.spiral && s.ended == Some(s.age) {
                 out.spatial_sounds
                     .push(("sound/weapon/staff/explode1.wav", s.at));
-                let offset = target.center - s.at;
-                let fraction = (1. - offset.length() / 400.).max(0.);
-                let sight = w.sweep(s.at, target.center, Vec3::ZERO);
-                if !ignore
-                    && hit.is_none()
-                    && fraction > 0.
-                    && !sight.start_solid
-                    && sight.fraction >= 1.
-                {
-                    out.damage += 100. * fraction;
-                    out.impulse += offset.normalize_or_zero() * 400. * fraction;
+                for target in &targets {
+                    let offset = target.center - s.at;
+                    let fraction = (1. - offset.length() / 400.).max(0.);
+                    let sight = w.sweep(s.at, target.center, Vec3::ZERO);
+                    if hit.is_none_or(|(id, _)| id != target.id)
+                        && fraction > 0.
+                        && !sight.start_solid
+                        && sight.fraction >= 1.
+                    {
+                        out.strike(
+                            target.id,
+                            100. * fraction,
+                            offset.normalize_or_zero() * 400. * fraction,
+                            combat::DamageKind::Other,
+                        );
+                    }
                 }
             }
         }

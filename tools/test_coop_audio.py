@@ -10,8 +10,24 @@ from pathlib import Path
 import wave
 
 from test_coop_village import Pair, ROOT
+from test_coop_play import distance
 
 NOTES = [f'sound/ambience/special/door_machine_tone{i}.wav' for i in (3, 4, 5)]
+RESET_GOALS = {'host': (1200, 457, 0), 'guest': (1200, 537, 0)}
+
+
+def verify_reset_approaches(entries, history):
+    assert len(entries)==2 and {e['role'] for e in entries}=={'host','guest'}, 'Missing personal lever approach'
+    for entry in entries:
+        role=entry['role'];slot=0 if role=='host' else 1
+        assert entry['goal']==list(RESET_GOALS[role]), 'Changed lever approach'
+        row=next(r for r in history[role] if r['tick']==entry['tick'] and r['epoch']==1)
+        body=row['players'][slot];other=row['players'][1-slot]
+        assert row['map']=='fortress2' and row['owner'] is None, 'Approach is not ordinary play'
+        assert row['driver']['command']==entry['command'] and row['driver']['reached'], 'Unobserved lever approach'
+        assert body['health']>0 and body['grounded'] and all(row['driver']['clear']), 'Unsafe lever approach'
+        assert body['feet']==entry['feet'] and distance(body['feet'][:2],entry['goal'][:2])<8 and abs(body['feet'][2]-entry['goal'][2])<8, 'Missed lever approach'
+        assert distance(body['feet'][:2],other['feet'][:2])>=35.95 or abs(body['feet'][2]-other['feet'][2])>=55.95, 'Lever approach overlaps partner'
 
 
 class AudioPair(Pair):
@@ -68,6 +84,25 @@ class AudioPair(Pair):
         self.wait(.5)
         print('PASS original reset scene and ordered notes for', owner, flush=True)
 
+    def approach_reset_lever(self):
+        # Both positions can see/reach the original lever. An 80-unit gap lets
+        # each player settle without asking contact physics to overlap bodies.
+        first='host' if self.args.first=='blue' else 'guest'
+        entries=[]
+        for role in self.commands:self.set(role,attack=True)
+        for role in (first,'guest' if first=='host' else 'host'):
+            self.set(role,RESET_GOALS[role],navigate=True,attack=True)
+            self.until(lambda:self.reached(role),60)
+        # Keep both goals active while ordinary combat/knockback settles.
+        self.until(lambda:all(self.reached(role) for role in self.commands),60)
+        for role in (first,'guest' if first=='host' else 'host'):
+            row=self.history[role][-1];slot=0 if role=='host' else 1
+            entries.append(dict(role=role,goal=list(RESET_GOALS[role]),tick=row['tick'],
+                                command=self.commands[role]['id'],feet=row['players'][slot]['feet']))
+        verify_reset_approaches(entries,self.history)
+        self.evidence['reset_approaches']=entries
+        print('PASS both separated reset-lever approaches',flush=True)
+
     def run(self):
         self.start_pair()
         self.wait(1)
@@ -81,7 +116,7 @@ class AudioPair(Pair):
         self.until(lambda: all(r['combat']['stage']['owner'] is None for r in self.reports.values()), 20)
         self.rejoin_guest()
         assert not self.notes('guest'), 'A new guest replayed the old demonstration notes'
-        self.go((1200, 497, 0), True)
+        self.approach_reset_lever()
         self.operate('host')
         self.operate('guest')
         for role, report in self.reports.items():

@@ -56,7 +56,7 @@ yet verified across every level and failure condition.
 | Combat and resources | Nearest-visible targeting, individual damage, inventory and consumables in integrated levels | Remaining enemies/bosses and level-specific rewards, with both players as the target/collector |
 | Death and saves | Exact ten-second countdown, moving spectator camera, safe 25-health revival; shared checkpoint wipes, public save/leave/continue and storage-error/backup menu flow, public save refusal/retry during deaths/scenes, public guest restart during either player's countdown | Each visit's recovery matrix and remaining transport/death combinations |
 | Scenes and machinery | First-arrival ownership, original single-Alice scenes, hidden partner and safe reunion; public intro/dialogue reconnects with either theatre owner; all-living boarding on integrated rides | Remaining level adapters, both scene owners, watched/skipped cases, transports and exits |
-| Regression checks | 938 active Rust tests; 443 Python guards; current weapon-effect rendering/network checks and Curiosity native/single-player baseline comparisons | Full campaign verification and required earlier contact-system repeats on the final build |
+| Regression checks | 938 active Rust tests; 450 Python guards; current weapon-effect rendering/network and live co-op audio checks, plus Curiosity native/single-player baseline comparisons | Full campaign verification and required earlier contact-system repeats on the final build |
 
 Campaign status from `COOP_CAMPAIGN.md`:
 
@@ -170,7 +170,7 @@ in the evidence below.
 | Host/Join lifecycle | Public main/ESC flow, authenticated invite preflight, fresh invites, invalid/expired links, DNS/HTTP failure, Cancel, retry, exact solo return on `0b5bca3` | Public provisioning can still rate-limit new sessions |
 | Rejoining | Current-build public passes for idle gameplay, either player's ground/underwater/rope/moving-platform countdown, either theatre owner, rotating lift and both loading barriers | Per-visit matrix; underwater proof uses the Blue-led route and does not close the Red-led trap-repeatability gap |
 | Combat/death | Shared targets, personal resources, exact countdown, spectator camera, 25-health reunion, shared wipe and moving-platform revival/carry; focused current-build public consolidation passes | Level-specific enemies and recovery matrices |
-| Presentation | Both Alice models, contact separation and replicated ambient/weapon effects; `66ebd44` repeats weapon rendering/network checks, verifies survivor-camera audio inputs and passes actual shared-mixer output regressions | Broader campaign effects and current-build audible output from two live co-op clients |
+| Presentation | Both Alice models, contact separation and replicated ambient/weapon effects; `66ebd44` repeats weapon rendering/network checks, verifies survivor-camera audio inputs, shared-mixer output and actual two-client puzzle/dialogue audio | Campaign-specific effects/audio; subjective sound quality is not certified by these automated checks |
 | Consolidation | `0b5bca3`: 934 native tests, both public menu flows, eight public network cases, and all thirteen selected core groups pass over public invites and locally | Full campaign coverage; provider rate limits remain an external service limitation |
 
 ## Core internet consolidation completed, 5 November 2026
@@ -213,6 +213,44 @@ This completes the focused core milestone, not the full game. Campaign status
 remains six combined, twenty-one partial and twelve not run. The known Red-led
 Temple route gap, broader effects/audio and per-visit acceptance cases remain.
 The weighted estimate rises one Internet Host/Join point to **56.6%**.
+
+## Live two-client audio, 6 November 2026
+
+The remaining focused audible co-op check now passes on frozen `66ebd44`.
+Two public-invite puzzle runs cover Blue-first and Red-first demonstrations,
+both reset-lever operators and a fresh guest rejoin in 71.97/70.95 seconds.
+Each client receives the same three notes once per sequence; the fresh guest
+does not replay the completed demonstration. A separate 83.47-second public
+opening-scene run watches all six dialogue lines once, in order, on both clients.
+All three cases use independent processes/profiles and 40/20 ms delay/jitter.
+
+These runs use the PC's output endpoint because Anode has no audio endpoint.
+All eight app-only recordings contain real 44.1 kHz stereo mixer output.
+Private cross-correlation against the locally supplied original sounds finds
+the three ordered note onsets in both initial-client captures and in both
+fresh-guest captures (scores 0.769-0.833), and the first Rabbit voice on both
+clients (0.964/0.975). Capture length is capped at 30 seconds: later reset
+sequences and the other five voice lines are runtime cue/clock evidence, not
+full acoustic comparisons. No microphone/system audio or model image lookups
+are used. This is bounded output verification, not subjective sound fidelity.
+
+Two earlier attempts remain failed evidence. The original audio fixture sent
+both bodies to one point and stalled against correct player separation. The
+first separated-goal revision disabled defensive attacks and a player died.
+The final fixture retains ordinary combat and waits for both distinct, safe
+arrivals before using the original lever. No native physics, health or enemy
+rules changed. New guards reject unsafe/missing arrivals and partner overlap.
+The voice verifier now requires all six opening lines rather than a three-line
+minimum; all 308 saved observations per client pass the stricter verifier.
+
+Evidence: `private/coop-live-audio-combat-manifest.json` and
+`private/coop-live-audio-verified.json`. All 33 recorded artifact hashes, frozen
+fixture hashes and executable identity were independently rechecked. The final
+validators are recorded separately from the unmodified live receipts. All 450
+Python guards and seven package tests pass; the prior 938 active Rust tests and
+locked release result apply to the unchanged native source. Owned test windows
+are closed. Both save families remain covered by the separate thirteen-group
+`0b5bca3` milestone. Overall remains **56.6%**, with no campaign visit credited.
 
 ## Spectator audio and weapon effects, 6 November 2026
 

@@ -12,6 +12,37 @@ import wave
 from test_coop_village import Pair, ROOT
 
 
+# The entry registry has one Rabbit line followed by five introductory lines.
+# These are asset identifiers only; dialogue and recordings stay with the user.
+OPENING_VOICES = [
+    'sound/character/white_rabbit/vo/rbt000.wav',
+    'sound/character/alice/vo/alcz1001.wav',
+    'sound/character/cheshire_cat/vo/catz101.wav',
+    'sound/character/alice/vo/alcz1002.wav',
+    'sound/character/cheshire_cat/vo/catz102.wav',
+    'sound/character/cheshire_cat/vo/catz103.wav',
+]
+
+
+def verify_opening_voices(rows):
+    """Require the whole watched opening, with one start per authored line."""
+    order = []
+    previous = None
+    for row in rows:
+        if row['path'] and (previous is None or previous['path'] != row['path']):
+            order.append(row['path'])
+        assert row['starts'] == len(order), 'Missed or restarted a voice'
+        if previous is not None and previous['path'] == row['path']:
+            assert row['elapsed'] >= previous['elapsed'], 'Dialogue clock ran backwards'
+        if row['story'] is not None:
+            assert abs(row['story'][2] - row['elapsed']) < .001, 'Audio does not follow the host dialogue clock'
+        previous = row
+    assert order == OPENING_VOICES, 'Incomplete or reordered opening dialogue'
+    assert any(row['running'] and row['elapsed'] > 1 for row in rows), 'No watched spoken line'
+    assert any(not row['running'] and row['path'] for row in rows), 'No cinematic speech hold observed'
+    return order
+
+
 class VoicePair(Pair):
     evidence_prefix = 'village-voice-'
 
@@ -46,14 +77,7 @@ class VoicePair(Pair):
                               and r['combat']['stage']['owner'] is None for r in self.reports.values()), 180)
         line_orders = {}
         for role, rows in self.voice_rows.items():
-            order = []
-            for row in rows:
-                if row['path'] and (not order or order[-1] != row['path']):
-                    order.append(row['path'])
-            assert len(order) >= 3, f'{role}: opening dialogue was not observed'
-            assert rows[-1]['starts'] == len(order), f'{role}: missed or restarted a voice'
-            assert any(row['running'] and row['elapsed'] > 1 for row in rows), 'No watched spoken line'
-            assert any(not row['running'] and row['path'] for row in rows), 'No cinematic speech hold observed'
+            order = verify_opening_voices(rows)
             audio = self.reports[role]['audio']
             assert audio['output_frames'] > 44100 and audio['peak'] > .001 and audio['missing'] == 0
             line_orders[role] = order

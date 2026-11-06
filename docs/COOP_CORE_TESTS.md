@@ -24,8 +24,8 @@ safe retries and locked-file failures are also covered. See the current
 the build-specific evidence and remaining limits.
 
 These passes establish the focused save/rejoin milestone. Invite provisioning
-can still be rate-limited externally; broader effects/audio and each campaign
-visit's recovery cases remain separate work.
+can still be rate-limited externally; campaign-specific effects/audio and each visit's
+recovery cases remain separate work.
 
 ## Running the checks
 
@@ -134,3 +134,34 @@ speaker output. The existing `test_coop_audio.py` and `test_coop_voice.py` fixtu
 require real audio output and app-only recordings for their separate checks.
 
 Asset-free guard tests are available through `test_coop_audio_listener_guards.py`.
+
+## Live co-op audio output
+
+`tools/test_coop_audio.py` exercises the staged Beyond musical demonstration,
+both reset-lever operators and a fresh guest rejoin. Run once with `--first blue`
+and once with `--first red`. The lever approaches use separate destinations;
+both players must arrive alive, grounded, clear and separated while ordinary
+combat remains active. Three ordered notes must match on both clients for each
+demonstration/reset. Rejoining must not replay the completed demonstration.
+
+`tools/test_coop_voice.py` watches the village opening without skipping. It
+requires all six authored voice identifiers in order, exactly one start per
+line, increasing playback time, the host's dialogue clock and cinematic holds.
+The stricter verifier rejects partial playback even when both clients omit the
+same lines. Its asset-free guards cover missing/reordered lines, restarted
+voices, clock drift and absent watched/held playback.
+
+Both fixtures take `--exe <frozen-executable> --data "<original-base-folder>"`.
+Public invites and 40/20 ms delay/jitter are the defaults. These checks require
+an actual audio output endpoint. If Anode has none, use an available desktop
+with audio. They capture only the game's own mix, with independent profiles
+and processes; no microphone or system loopback is recorded.
+
+On `66ebd44`, both note orders and the unskipped opening pass over public
+invites. All eight app recordings contain 44.1 kHz stereo output. A separate
+private waveform audit corroborates the initial notes on both clients, the
+first reset in both fresh-guest captures, and the first Rabbit voice on both
+clients. Recordings stop at 30 seconds, so the later resets and remaining five
+voice lines rely on runtime cue/clock evidence. This does not establish full
+campaign audio coverage or subjective sound quality. The saved observations
+also pass the final six-line verifier; the original live fixtures remain frozen.

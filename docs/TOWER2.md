@@ -37,8 +37,21 @@ The original 16-case solo check produces byte-identical output to `291af36`.
 These checks are headless and stage the entry prerequisites of each component
 course. They do not certify full two-client traversal, native combat through
 the whole visit, rendered effects, or the per-visit rejoin/death/wipe matrix.
-Revival placement around the complete fan sweep remains a core recovery gap:
-the controller does not yet provide a dedicated fan-hazard placement exclusion.
+Build `0e5f061` adds placement exclusion around each fan's complete rotation,
+derived from native local model bounds and the full player body. Checkpoints,
+solo conversion, reunion and revival use the existing hazard predicate;
+ordinary movement and lethal blade-contact damage remain unchanged. Watch
+and the saved blade angle cannot temporarily remove this exclusion.
+
+The paired check now passes 75 cases. Five new native fan cases reject
+currently clear gaps for either checkpoint slot and sample a complete
+rotation. Four staged revival cases cover both players, the real 1200-tick
+countdown, spectator selection, compressed countdown continuation, safe
+25-health placement and waiting for a safe location after the timer expires.
+Both bodies remain clear through a full fan cycle after Watch is released.
+The held case stages the survivor's later position; it is not a traversal or
+internet reconnect test. The solo 16-case log still exactly matches `291af36`.
+All 941 active Rust tests, 450 Python guards and seven package checks pass.
 
 ## Existing single-player behavior and evidence
 

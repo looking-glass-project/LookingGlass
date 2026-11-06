@@ -17,8 +17,9 @@ native cases pass, including both ordinary swimming orders, all six player/
 flusher activations and twelve Stage scene combinations. The solo 16-case log
 exactly matches `291af36`. Water Logged is Partial; current totals are six
 combined, twenty-five partial and eight not run. Full two-client combat and
-traversal, rendered effects and recovery/rejoin remain open, including a
-dedicated fan-sweep exclusion for revival placement.
+traversal, rendered effects and recovery/rejoin remain open. Follow-up `0e5f061`
+adds full fan-sweep placement exclusion and nine native checkpoint/revival
+cases (75 paired cases total); full per-visit recovery remains unverified.
 
 Core progression update, 6 November 2026: `ccd6cd1` adds Jabberwock paired
 scenes, personal Eye Staff reward, shared drawbridge and departure. Twenty-one
@@ -792,7 +793,7 @@ both original portals and the gated return, without cheats or recovery
 | 29 | `hedge1` | `Initial` | Partial: `c6f580e` passes 12 native paired plate/gate cases and seven production-cast cases, covering either player, shared carry/clock, obstruction, dead-body exclusion, pause/restore, child-owned Hold, real NPC contacts, both escort trigger actors, replica state and automatic exit retry. The full solo route and all eleven checkpoints/reports exactly match the baseline. Full independent-client escort/traversal, combat/pickups and death/wipe/rejoin remain open; see HEDGE1.md. |
 | 30 | `tower1` | `Initial` | Not run |
 | 31 | `hedge2` | `Initial` | Not run |
-| 32 | `tower2` | `Initial` | Partial: source `d06ded3` adds shared water/machinery, atomic living-rider carry, personal current waits/fan hits and original scene integration. All 66 native paired cases pass, including both ordinary swimming orders with saved continuation, 12 Stage introduction variants and six physical flusher activations through native contacts. The original 16-case solo log is byte-identical to `291af36`. Full two-client traversal/combat, rendered effects, fan-safe revival placement and per-visit rejoin/death/wipe acceptance remain open; see `TOWER2.md`. |
+| 32 | `tower2` | `Initial` | Partial: source `d06ded3` adds shared water/machinery, atomic living-rider carry, personal current waits/fan hits and original scene integration. All 66 native paired cases pass, including both ordinary swimming orders with saved continuation, 12 Stage introduction variants and six physical flusher activations through native contacts. The original 16-case solo log is byte-identical to `291af36`. Follow-up `0e5f061` adds full fan-sweep placement exclusion and nine native checkpoint/timed-revival cases (75 paired cases total). Full two-client traversal/combat, rendered effects and per-visit rejoin/death/wipe acceptance remain open; see `TOWER2.md`. |
 | 33 | `hedge3` | `Initial` | Not run |
 | 34 | `tower3` | `Initial` | Not run |
 | 35 | `grounds1` | `Initial` | Partial: explicit paired combat, personal healing/reward, scenes and exit integration. On `ccd6cd1`, 58 combat, 21 world/reward and 34 Stage/scene cases pass across both encounters, including both post-battle bridge/gate/exit walks. Both owners, watched/skipped/paused/restored scenes, dead partners, safe reunion and personal collections are covered. Four solo check/route logs exactly match `7c3ca24`. Full two-client combat routes, rendered effects and per-encounter rejoin/death/wipe acceptance remain open; see `JABBERWOCK.md`. |

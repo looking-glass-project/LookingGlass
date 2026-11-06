@@ -207,9 +207,12 @@ current waits and blade hits, old-save import and compressed continuation,
 physical flusher activations through the real Stage contact pipeline. The
 16-case solo check remains byte-identical to the previous frozen build.
 Full two-client combat/traversal, rendered effects and per-visit recovery/rejoin
-remain open. In particular, fan-sweep exclusion for revival placement still
-needs work; current clear-body placement alone does not prove future safety
-beside a rotating blade.
+remain open. Build `0e5f061` closes the fan-placement gap: a full-body
+exclusion covers each native fan's complete rotation, independent of Watch
+or saved angle. The paired check now passes 75 cases, adding five native
+fan/checkpoint cases and four both-player timed revival/reroute/wait cases.
+The latter include compressed countdown continuation, but do not constitute
+a two-client internet rejoin test. The original solo log remains identical.
 
 The shared Jabberwock controller (`jlair2` and `grounds1`) now has explicit
 combat and personal-healing hooks. On `7c3ca24`, `--jlair2-coop-check` runs 58

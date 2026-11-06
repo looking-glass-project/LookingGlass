@@ -5,6 +5,7 @@ mod coop;
 mod coop_check;
 mod motion;
 mod route;
+mod safety;
 mod scene;
 use super::{state, Check, Registration, Run};
 use crate::{
@@ -134,6 +135,7 @@ struct Tower {
     water: Liquid,
     data: scene::Data,
     currents: Vec<crate::traversal::Push>,
+    fan_sweeps: Vec<safety::FanSweep>,
     stopped: bool,
 }
 fn owned(e: &super::Entity) -> bool {
@@ -183,6 +185,7 @@ impl Tower {
             .filter(|p| [30, 48, 49, 50].contains(&p.id.0))
             .collect();
         let mut out = Self {
+            fan_sweeps: safety::load(map, &objects),
             objects,
             water: liquid,
             data: scene::Data::load(a, map)?,
@@ -272,6 +275,9 @@ impl LevelController for Tower {
     }
     fn ignores_watch(&self) -> bool {
         true
+    }
+    fn hazardous(&self, feet: Vec3) -> bool {
+        self.fan_sweeps.iter().any(|sweep| sweep.contains(feet))
     }
     fn coop_prepare(&mut self, players: &mut [crate::level::CoopPlayer<'_>; 2]) {
         self.prepare_pair(players);

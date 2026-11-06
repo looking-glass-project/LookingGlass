@@ -3,6 +3,8 @@ use super::*;
 use crate::{collision::{PLAYER_CENTER, PLAYER_HALF}, coop::world::Roster, level::CoopPlayer};
 #[path = "coop_scene_check.rs"]
 mod scenes;
+#[path = "coop_safety_check.rs"]
+mod safety;
 
 fn roster(r: &mut Roster) -> [CoopPlayer<'_>; 2] {
     r.players.each_mut().map(|p| CoopPlayer { player: &mut p.player, stats: &mut p.stats })
@@ -60,6 +62,7 @@ pub(super) fn check(a: &mut Assets) -> Result<()> {
     blocked_trays(a, &map)?;
     lids(a, &map)?;
     fans(a, &map)?;
+    safety::check(a, &map)?;
     currents(a, &map)?;
     for first in 0..2 { swim(a, &map, first)?; }
     scenes::check(a, &map)

@@ -1,6 +1,6 @@
 # Co-op progress
 
-Updated 6 November 2026. Branch: `coop`. **Estimated overall completion: 58.3%.**
+Updated 6 November 2026. Branch: `coop`. **Estimated overall completion: 58.6%.**
 The older 42% reports are historical. This percentage measures delivered and
 verified behavior against the full co-op scope; it is not a running test's progress.
 
@@ -18,7 +18,8 @@ paired scenes, personal Eye Staff reward, shared bridge and exit handling, with
 55 further world/scene cases, including both post-battle walking orders across
 the bridge and through the actual castle exit. Water Logged now has its shared
 water machinery, personal currents/fan hits and original introduction on
-`d06ded3`, with 66 native paired cases. Eight other late controllers
+`d06ded3`, with 66 native paired cases. Follow-up `0e5f061` adds fan-safe
+checkpoint/revival placement and nine native recovery checks. Eight other late controllers
 still lack explicit co-op hooks. These are implementation gaps
 before full traversal testing. Campaign-specific
 verification, including the unfinished Burning Curiosity route, stays separate.
@@ -43,10 +44,10 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | Foundation and independent client diagnostics | 9.5 | 10 |
 | Internet Host/Join | 10.75 | 15 |
 | Two players, movement and presentation | 11 | 15 |
-| Combat, individual resources and death | 11 | 20 |
+| Combat, individual resources and death | 11.25 | 20 |
 | Scenes, transport and progression | 13 | 20 |
 | Full campaign verification | 3.08 | 20 |
-| **Total** | **58.33, rounded to 58.3** | **100** |
+| **Total** | **58.58, rounded to 58.6** | **100** |
 
 ## Implemented features and remaining work
 
@@ -66,7 +67,7 @@ yet verified across every level and failure condition.
 | Combat and resources | Nearest-visible targeting, individual damage, inventory and consumables in integrated levels | Remaining enemies/bosses and level-specific rewards, with both players as the target/collector |
 | Death and saves | Exact ten-second countdown, moving spectator camera, safe 25-health revival; shared checkpoint wipes, public save/leave/continue and storage-error/backup menu flow, public save refusal/retry during deaths/scenes, public guest restart during either player's countdown | Each visit's recovery matrix and remaining transport/death combinations |
 | Scenes and machinery | First-arrival ownership, original single-Alice scenes, hidden partner and safe reunion; public intro/dialogue reconnects with either theatre owner; all-living boarding on integrated rides | Remaining level adapters, both scene owners, watched/skipped cases, transports and exits |
-| Regression checks | 940 active Rust tests; 450 Python guards; Maze and Jabberwock paired components and exact solo route logs, plus build-specific weapon-effect/audio and Curiosity baseline checks | Full campaign verification and required earlier contact-system repeats on the final build |
+| Regression checks | 941 active Rust tests; 450 Python guards; Maze and Jabberwock paired components and exact solo route logs, plus build-specific weapon-effect/audio and Curiosity baseline checks | Full campaign verification and required earlier contact-system repeats on the final build |
 
 Campaign status from `COOP_CAMPAIGN.md`:
 
@@ -86,6 +87,27 @@ Campaign status from `COOP_CAMPAIGN.md`:
 
 See the [full campaign matrix](COOP_CAMPAIGN.md). Future updates should separate
 working features, partial route milestones and completed verification visits.
+
+### Water Logged safe placement checkpoint
+
+Build `0e5f061` adds a conservative full-body exclusion for the complete
+rotation of all five native fans. It applies through the common checkpoint,
+solo-conversion, reunion and revival hazard predicate, even during Watch.
+Actual blade-contact damage and ordinary movement collision are unchanged.
+All 75 paired native cases pass, including nine new fan-boundary/checkpoint
+and both-player timed revival cases. The latter verify spectator selection,
+1200 simulation ticks, compressed countdown continuation, 25-health revival
+and waiting until a safe nearby location becomes available. The held case
+stages the survivor's later location; it does not certify escape traversal
+or an internet rejoin. The 16-case solo log remains byte-identical to
+`291af36`; 941 Rust tests, 450 Python guards and seven package checks pass.
+
+This closes a core recovery gap and adds 0.25 combat/death points, bringing
+the weighted estimate to 58.58 (58.6%). No campaign visit is marked complete;
+full Water Logged combat/traversal, rendered effects and per-visit network,
+rejoin/death/wipe coverage remain open. The failed initial fixture used an
+invalid Watch timer combination and is retained separately; the passing
+fixture activates Watch through the normal game method.
 
 ### Water Logged core integration checkpoint
 
@@ -108,10 +130,9 @@ original 16-case solo check has byte-identical output to frozen `291af36`.
 
 This adds 0.5 scene/progression points and makes Water Logged Partial, with no
 full campaign verification points. Full two-client traversal with native combat,
-rendered effects and recovery/rejoin acceptance remain open. Fan-safe revival
-placement needs specific coverage before this visit's recovery is considered
-ready. The controller currently relies on generic clear-body placement rather
-than a dedicated fan-sweep exclusion for respawning.
+rendered effects and recovery/rejoin acceptance remain open. The subsequent
+safe-placement checkpoint above closes the fan-sweep revival exclusion gap;
+it does not complete the visit's full recovery matrix.
 
 ### Jabberwock core integration checkpoint
 

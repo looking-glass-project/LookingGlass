@@ -1,12 +1,12 @@
 use super::*;
 use crate::collision::{PLAYER_CENTER, PLAYER_HALF};
-fn index(name: &str, prefix: &str) -> Option<usize> {
+pub(super) fn index(name: &str, prefix: &str) -> Option<usize> {
     name.strip_prefix(prefix)?
         .parse::<usize>()
         .ok()?
         .checked_sub(1)
 }
-fn axis(i: usize) -> Vec3 {
+pub(super) fn axis(i: usize) -> Vec3 {
     [Vec3::X, Vec3::X, Vec3::Z, Vec3::Y, Vec3::Z][i]
 }
 const SPEED: [f32; 5] = [256., -256., 256., -256., 100.];

@@ -8,6 +8,8 @@ pub(super) struct State {
     pub wave_players: [Option<usize>; 6],
     pub essence: [usize; 2],
     pub wait: [f32; 2],
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub world: Option<coop_world::State>,
 }
 impl State {
     pub fn validate(&self, kind: Kind) -> Result<()> {
@@ -35,6 +37,7 @@ impl Encounter {
             // Import the current cycle and remaining cooldown; joining is not a refill.
             essence: [self.saved.essence; 2],
             wait: [self.saved.essence_wait; 2],
+            world: None,
         })
     }
     pub(super) fn personal_essence(&self, local: Option<usize>) -> Option<Vec3> {
@@ -64,8 +67,6 @@ impl Encounter {
         }
         self.pair_state();
         let dt = dt.min(0.1);
-        self.saved.clock = (self.saved.clock + dt).min(86400.);
-        self.saved.time = (self.saved.time + dt).min(3600.);
         for wait in &mut self.saved.coop.as_mut().unwrap().wait {
             *wait = (*wait - dt).max(0.);
         }

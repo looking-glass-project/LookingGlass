@@ -5,6 +5,9 @@ mod battle;
 pub(crate) mod check;
 mod coop;
 pub(crate) mod coop_check;
+pub(crate) mod coop_scene_check;
+mod coop_world;
+pub(crate) mod coop_world_check;
 mod data;
 mod fire_check;
 mod saves;
@@ -174,6 +177,9 @@ impl state::State for Saved {
         self.boss.validate(self.kind)?;
         if let Some(coop) = &self.coop {
             coop.validate(self.kind)?;
+            if let Some(world) = &coop.world {
+                world.validate(self)?;
+            }
         }
         ensure!(
             self.waves.len() <= 6 && (self.kind == Kind::Lair || self.waves.is_empty()),
@@ -382,6 +388,45 @@ impl Encounter {
         }
         out
     }
+    fn advance_clocks(&mut self, dt: f32) {
+        self.saved.clock = (self.saved.clock + dt).min(86400.);
+        self.saved.time = (self.saved.time + dt).min(3600.);
+        self.saved.essence_wait = (self.saved.essence_wait - dt).max(0.);
+        self.saved.exit.advance(dt);
+        if self.saved.door_requested {
+            self.saved.door = (self.saved.door + dt).min(2.);
+        }
+        if let Some(t) = &mut self.saved.cat {
+            *t = (*t + dt).min(300.);
+        }
+        if let Some(t) = &mut self.saved.gnome {
+            *t = (*t + dt).min(30.);
+        }
+        if self.saved.dialogue_done {
+            self.saved.after_talk += dt;
+        }
+    }
+    fn advance_death(&mut self, dt: f32, w: &World) {
+        if self.saved.boss.flying {
+            let b = &mut self.saved.boss;
+            let body = b.target(0);
+            let delta = Vec3::Z * (-600. * dt);
+            let tr = w.sweep(body.center, body.center + delta, body.half);
+            if !tr.start_solid {
+                b.at += delta * tr.fraction;
+            }
+            if tr.fraction < 1. && tr.normal.z > 0.65 {
+                b.at.z -= 147.;
+                b.flying = false;
+                b.landed = true;
+            }
+        }
+        self.saved.boss.time =
+            (self.saved.boss.time + dt).min(self.data.boss().duration("death") + 1.);
+        if self.saved.time >= 10. {
+            self.phase(Phase::Outro);
+        }
+    }
     fn phase(&mut self, p: Phase) {
         self.saved.phase = p;
         self.saved.time = 0.;
@@ -469,17 +514,37 @@ impl LevelController for Encounter {
     fn coop_prepare(&mut self, players: &mut [crate::level::CoopPlayer<'_>; 2]) {
         self.alive = players.iter().any(|p| p.stats.alive());
         self.pair_state();
+        self.pair_world();
     }
     fn coop_advance_roster(
         &mut self,
         dt: f32,
-        _: &Bsp,
-        _: &mut World,
+        map: &Bsp,
+        world: &mut World,
         players: &mut [crate::level::CoopPlayer<'_>; 2],
-        _: &[Collider],
+        fixed: &[Collider],
     ) -> Result<()> {
-        self.pair_resources(dt, players);
-        Ok(())
+        self.pair_advance(dt, map, world, players, fixed)
+    }
+    fn coop_contacts(
+        &mut self,
+        dt: f32,
+        players: &mut [crate::level::CoopPlayer<'_>; 2],
+    ) -> Option<usize> {
+        self.pair_contacts(dt, players)
+    }
+    fn coop_events(&mut self) -> Events {
+        Events {
+            transition: self.saved.exit.request(self.saved.kind.exit()),
+            ..Default::default()
+        }
+    }
+    fn coop_scene_bound(&mut self, owner: usize, _: &Player) {
+        self.pair_world().actor = Some(owner);
+    }
+    fn coop_scene_step(&mut self, owner: usize, _: &mut Player, stats: &mut Stats) {
+        self.alive = stats.alive();
+        self.pair_world().actor = Some(owner);
     }
     fn coop_combat_roster(
         &mut self,
@@ -505,12 +570,23 @@ impl LevelController for Encounter {
             &format!("{}.won", self.id()),
             self.saved.phase == Phase::Done,
         );
+        if self.saved.kind == Kind::Lair {
+            f.flag(
+                "jlair2.coop_finale",
+                self.saved.coop.is_some()
+                    && self.saved.phase == Phase::Fight
+                    && self.saved.ticks >= 10800,
+            );
+        }
         f
     }
     fn gate(&self, t: &TriggerInfo<'_>) -> Option<crate::event::Condition> {
         use crate::event::Condition;
         if t.class == TriggerClass::Exit {
             return Some(Condition::flag(&format!("{}.won", self.id())));
+        }
+        if t.thread == "JLair2_Dead_Jabber" {
+            return Some(Condition::flag("jlair2.coop_finale"));
         }
         if matches!(
             t.thread,
@@ -524,6 +600,18 @@ impl LevelController for Encounter {
         None
     }
     fn event(&mut self, t: &str) -> Option<Events> {
+        if t == "JLair2_Dead_Jabber"
+            && self.saved.kind == Kind::Lair
+            && self.saved.coop.is_some()
+            && self.saved.phase == Phase::Fight
+            && self.saved.ticks >= 10800
+        {
+            self.saved.boss.shots.clear();
+            self.saved.boss.beam = None;
+            self.saved.waves.clear();
+            self.phase(Phase::Outro);
+            return Some(Events::default());
+        }
         if self.saved.kind == Kind::Grounds && matches!(t, "CatThread" | "GnomeGuard") {
             if self.saved.phase == Phase::Done {
                 if t == "CatThread" {
@@ -685,7 +773,11 @@ impl LevelController for Encounter {
         p: &mut Player,
         fixed: &[Collider],
     ) -> Result<()> {
-        if dt <= 0. || !self.alive {
+        if !dt.is_finite()
+            || dt <= 0.
+            || !self.alive
+            || (self.saved.coop.is_some() && !self.scripted())
+        {
             return Ok(());
         }
         let old_phase = self.saved.phase;
@@ -711,22 +803,7 @@ impl LevelController for Encounter {
             })
         });
         let dt = dt.min(0.1);
-        self.saved.clock = (self.saved.clock + dt).min(86400.);
-        self.saved.time = (self.saved.time + dt).min(3600.);
-        self.saved.essence_wait = (self.saved.essence_wait - dt).max(0.);
-        self.saved.exit.advance(dt);
-        if self.saved.door_requested {
-            self.saved.door = (self.saved.door + dt).min(2.);
-        }
-        if let Some(t) = &mut self.saved.cat {
-            *t = (*t + dt).min(300.);
-        }
-        if let Some(t) = &mut self.saved.gnome {
-            *t = (*t + dt).min(30.);
-        }
-        if self.saved.dialogue_done {
-            self.saved.after_talk += dt;
-        }
+        self.advance_clocks(dt);
         match self.saved.phase {
             Phase::Intro if self.saved.dialogue_done => self.finish_intro(w, p)?,
             Phase::Fight
@@ -740,27 +817,7 @@ impl LevelController for Encounter {
                 self.phase(Phase::Outro);
             }
             Phase::Fight if self.saved.boss.health == 0. => self.phase(Phase::Death),
-            Phase::Death => {
-                if self.saved.boss.flying {
-                    let b = &mut self.saved.boss;
-                    let body = b.target(0);
-                    let delta = Vec3::Z * (-600. * dt);
-                    let tr = w.sweep(body.center, body.center + delta, body.half);
-                    if !tr.start_solid {
-                        b.at += delta * tr.fraction;
-                    }
-                    if tr.fraction < 1. && tr.normal.z > 0.65 {
-                        b.at.z -= 147.;
-                        b.flying = false;
-                        b.landed = true;
-                    }
-                }
-                self.saved.boss.time =
-                    (self.saved.boss.time + dt).min(self.data.boss().duration("death") + 1.);
-                if self.saved.time >= 10. {
-                    self.phase(Phase::Outro);
-                }
-            }
+            Phase::Death => self.advance_death(dt, w),
             Phase::Outro
                 if self.saved.dialogue_done
                     && self.saved.after_talk
@@ -941,6 +998,9 @@ impl LevelController for Encounter {
         })
     }
     fn objective(&self) -> Option<String> {
+        if self.saved.phase == Phase::Reward && self.saved.coop.is_some() && !self.saved.eye {
+            return Some("Each Alice must collect the fallen eye before continuing.".into());
+        }
         Some(match self.saved.phase{Phase::Intro=>"The Jabberwock approaches.",Phase::Fight if self.saved.kind==Kind::Lair=>"Survive the Jabberwock until help arrives. Dodge its fire and defeat the Jabberspawn.",Phase::Fight if self.saved.boss.flying=>"Strike the Jabberwock in the air. Keep moving when it dives.",Phase::Fight=>"Finish the wounded Jabberwock. Dodge its breath and stay clear of its claws.",Phase::Reward=>"Collect the fallen eye to obtain the Eye Staff.",Phase::Bridge=>"The drawbridge is lowering.",Phase::Done=>"Continue through the castle gate.",_=>"The battle is over."}.into())
     }
     fn recovery_entry(&self, normal: (Vec3, f32)) -> (Vec3, f32) {

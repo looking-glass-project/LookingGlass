@@ -182,9 +182,18 @@ headless cases across both maps: separate healing cycles and views, solo-save
 import without a cooldown reset, compressed state restoration/continuation,
 stable boss/wave targets, both physical damage recipients, cover, dead/hidden
 players, Pocket Watch and one combat clock at 30/60/144 Hz. Both solo component
-and production-input route logs exactly match the prior frozen build. This
-does not yet provide paired victory scenes, Eye Staff collection, bridge/exit
-progression or a complete two-client route/rejoin/death matrix.
+and production-input route logs exactly match the prior frozen build.
+
+On `ccd6cd1`, `--jlair2-coop-world-check` adds 21 cases for shared world clocks,
+separate Eye Staff collection/views and personal Will refills, old solo/paired
+save compatibility, retryable departure, atomic drawbridge carry and the exit
+door. `--jlair2-coop-scene-check` adds 34 Stage cases: both original introductions
+and finales, both owners, watched/skipped, pause/restore, dead partners and safe
+reunion, plus both ordinary-input post-battle bridge/gate/exit walking orders.
+All checks are headless. The 58 earlier combat cases and four original solo
+checks/routes pass on this build too; the solo logs are byte-identical to the
+prior build. Complete two-client combat routes, rendered effects and the
+encounter-specific rejoin/death/wipe matrix remain open.
 
 Majestic Maze now has its explicit shared update. Its component checks are
 `--hedge1-coop-check` and `--hedge1-coop-cast-check` (the latter needs a window,

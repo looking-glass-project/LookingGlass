@@ -128,7 +128,7 @@ impl LevelArt for Art {
         if let Some(at) = o.personal_essence(self.local_player) {
             self.essence.draw(crate::loot::Grade::Medium, at, atm, camera, s.clock);
         }
-        if o.eye_visible() {
+        if o.personal_eye_visible(self.local_player) {
             self.eye
                 .draw_frame(o.data.points["eye_altar"], 1., bright, s.clock, true);
         }
@@ -173,7 +173,7 @@ impl LevelArt for Art {
                 atm,
             );
         }
-        if o.eye_visible() {
+        if o.personal_eye_visible(self.local_player) {
             if let Some(fx) = &mut self.altar {
                 fx.draw(
                     o.saved.clock,

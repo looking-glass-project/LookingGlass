@@ -350,7 +350,7 @@ pub static RESERVATIONS: [Reservation; 39] = [
         render: &["--jlair1-render-check"],
     }), ..visit(25, "jlair1") },
     Reservation { flags: Some(VisitFlags {
-        contract: &["--jlair2-check", "--jlair2-coop-check"],
+        contract: &["--jlair2-check", "--jlair2-coop-check", "--jlair2-coop-world-check", "--jlair2-coop-scene-check"],
         route: &["--jlair2-route-check"], skip: &["--jlair2-skip-route-check"],
         render: &["--jlair2-render-check"],
     }), ..visit(26, "jlair2") },

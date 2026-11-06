@@ -1,6 +1,6 @@
 # Co-op progress
 
-Updated 6 November 2026. Branch: `coop`. **Estimated overall completion: 57.3%.**
+Updated 6 November 2026. Branch: `coop`. **Estimated overall completion: 57.8%.**
 The older 42% reports are historical. This percentage measures delivered and
 verified behavior against the full co-op scope; it is not a running test's progress.
 
@@ -13,9 +13,11 @@ saves. Both requested save paths are included in the
 The overall all-level goal remains active. Majestic Maze now has its missing
 shared plate/gate and escort integration, with native component evidence on
 `c6f580e`. Both Jabberwock encounters now have shared combat and personal healing
-on `7c3ca24`, verified by 58 staged component cases. Their victory scenes,
-Eye Staff reward, bridge and exit still need paired integration. Nine other late
-controllers still lack explicit co-op hooks. These are implementation gaps
+on `7c3ca24`, verified by 58 staged component cases. Build `ccd6cd1` adds their
+paired scenes, personal Eye Staff reward, shared bridge and exit handling, with
+55 further world/scene cases, including both post-battle walking orders across
+the bridge and through the actual castle exit. Nine other late controllers
+still lack explicit co-op hooks. These are implementation gaps
 before full traversal testing. Campaign-specific
 verification, including the unfinished Burning Curiosity route, stays separate.
 
@@ -40,9 +42,9 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | Internet Host/Join | 10.75 | 15 |
 | Two players, movement and presentation | 11 | 15 |
 | Combat, individual resources and death | 11 | 20 |
-| Scenes, transport and progression | 12 | 20 |
+| Scenes, transport and progression | 12.5 | 20 |
 | Full campaign verification | 3.08 | 20 |
-| **Total** | **57.33, rounded to 57.3** | **100** |
+| **Total** | **57.83, rounded to 57.8** | **100** |
 
 ## Implemented features and remaining work
 
@@ -85,6 +87,20 @@ working features, partial route milestones and completed verification visits.
 
 ### Jabberwock combat and healing checkpoint
 
+The follow-up on `ccd6cd1` passes 21 world/reward cases and 34 Stage/scene cases:
+both original introductions and finales, both scene owners, watched/skipped,
+pause/restoration, frozen partners, dead partners and safe reunion. Each Alice
+collects their own Eye Staff and ordinary personal Will refill; departure waits
+for both collections and retries automatically after a failed transition.
+The drawbridge begins after reunion, carries living riders atomically and stops
+if either body is obstructed. Both ordinary-input post-battle crossing orders
+reach the castle's real exit trigger. The 58 combat/healing cases also pass;
+all four original solo check/route logs exactly match `7c3ca24`.
+This adds 0.5 scene/progression points, with no full campaign verification points.
+The remaining scope includes full two-client combat-to-exit routes, rendered
+effects and the encounter-specific death/wipe/rejoin matrix. Core integration
+continues with the nine controllers listed above.
+
 Build `7c3ca24` adds one shared combat clock, closest-visible living targets,
 stable attack ownership across saves, physical damage to either body and
 individual eight-second healing cycles in both encounters. Fifty-eight native
@@ -94,12 +110,17 @@ solo-save conversion and invalid-save rejection. Both existing solo checks and
 both production-input solo routes have byte-identical logs to frozen `c6f580e`.
 This credits 0.5 combat/resource points. It adds no full campaign verification
 points and no two-client route, rejoin, death/recovery or rendered-effects pass.
-Next: the original victory scenes, first-arrival ownership, personal Eye Staff,
-safe shared reunion, drawbridge and departure in these same two controllers.
-The full Rust suite passes with four test workers. Its default-concurrency run
+The scene, reward and exit hooks are covered by the follow-up described above.
+On `7c3ca24`, the full Rust suite passes with four test workers. Its default-concurrency run
 hit the previously observed 750 ms socket-cancellation timeout; that unchanged
 test also passes alone. Both receipts are retained, and the intermittent
 cancellation deadline remains a test-reliability issue to investigate.
+
+On `ccd6cd1`, the same cancellation test fails both in the four-worker suite
+(939 passed, one failed) and in isolation. A separate instrumented reproduction
+observes Windows rejecting shutdown on the duplicated connecting socket with
+`WSAENOTCONN`, while the worker remains Connecting. This is now tracked as a
+connection cancellation bug; the Jabberwock component and solo checks all pass.
 
 ## Core readiness priority
 

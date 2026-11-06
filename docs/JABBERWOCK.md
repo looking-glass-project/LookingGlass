@@ -1,5 +1,38 @@
 # Jabberwock: both major battles
 
+## Co-op scenes, rewards and exit (2026-11-06)
+
+Build `ccd6cd15eecf026f4d9694b5a69a2f9382f994c396c4278493b8401b8e3aaf5d`
+adds the remaining paired progression hooks. The Lair finale uses the normal
+trigger ordering after the survival timer opens its gate, retaining a waiting
+first entrant. Royal Rage advances its original death/fall sequence once, then
+binds the finale to the nearest living Alice. Both keep the original single
+Alice camera/performance, hide and freeze the partner, and use the normal safe
+reunion. Watched, skipped, paused and restored outcomes preserve personal stats.
+
+The Lair Eye Staff and its local model/effect availability are personal. Each
+living player collects once and receives the ordinary weapon pickup's own Will
+refill. The first collection neither consumes nor refills the partner's copy.
+The departure countdown starts after both collections; a dead partner who has
+not collected can do so after revival. Failed departure retries without another
+use press. Optional validated world state preserves older solo and paired saves.
+
+Royal Rage's drawbridge is a crossing that lowers from vertical, not a passenger
+lift. Its clock starts after the cinematic reunion. Living riders move together
+only when both proposed positions and paths are clear; an obstruction stops
+the brush without moving either rider. Dead bodies do not block or ride it.
+Either living Alice can open the castle door. Shared epilogue clocks advance
+once, and duplicate contacts do not restart them.
+
+`--jlair2-coop-world-check` passes 21 supplied-map cases.
+`--jlair2-coop-scene-check` passes 32 scene combinations plus two ordinary-input
+post-battle walks across the bridge, through the gate and into the real exit
+trigger, with either player leading. These fixtures stage battle prerequisites;
+they do not bypass prerequisites during ordinary play. All 58 earlier combat
+cases also pass. The two original solo checks and two solo routes produce
+byte-identical logs to `7c3ca24`. Full two-client combat-to-exit traversal,
+rendered effects and per-encounter death/wipe/rejoin acceptance remain open.
+
 ## Co-op combat and personal healing (2026-11-06)
 
 The host now advances each boss and its waves once, retaining the original
@@ -24,8 +57,8 @@ maps. It runs headlessly without screenshots. The two existing solo checks and
 two production-input solo routes pass with byte-identical logs to `c6f580e`.
 Private manifests retain executable/source hashes and per-check receipts.
 
-This is a combat/resource milestone. Paired victory scenes, Eye Staff reward,
-drawbridge and exit progression are still missing. No full paired route,
+That build was a combat/resource milestone; the follow-up above adds paired
+victory scenes, Eye Staff reward, drawbridge and exit progression. No full paired route,
 internet rejoin, encounter death/recovery or rendered-effects pass is claimed.
 
 ## Eye altar visibility correction (2026-10-01)

@@ -603,3 +603,68 @@ These runs use separate processes/profiles, 40 ms added delay and 20 ms jitter.
 No state, health, inventory or checkpoint bytes were edited to progress. No
 screenshots were inspected. Overall remains 56.6%; no additional campaign visit
 or completed paired point is credited.
+
+
+## Automated takeoff clock, 6 November 2026
+
+Frozen source `1a6b3ea` corrects the opt-in route driver's movement clock.
+The guest input timeline uses elapsed wall time and the host retains simulation
+debt after a brief stall. The route clock still discarded all but 100 ms per
+frame. After a slow guest frame this could prolong an already expired run-up,
+so the jump arrived only after the body had fallen off the ledge. The clock now
+consumes elapsed time, advances at most once per sampled frame, and grants the
+next previously unsampled input its full 200 ms interval after a stall. Normal
+8/16/33 ms frame remainders are preserved. This changes diagnostic control only;
+player movement rules, manual input, networking and save formats are unchanged.
+
+The optional native `recorded_curiosity_takeoff_probe` test uses local geometry
+via `LOOKING_GLASS_TEST_DATA`. From the observed ledge position, the host keeps
+ticking while the guest's next two input samples occur at 300 and 400 ms. The
+old clock issues the jump at tick 48, already airborne at height 1933.41, and
+the native jump count remains zero. The new clock issues it at tick 36 while
+grounded at height 1965.32 and records one actual jump. This is a deterministic
+reproduction of the failure mode; the precise frame intervals in the earlier
+live capture were not established. An ordinary unit test also rejects skipping
+or shortening the next unsampled step after this stall.
+
+All four current-build native comparison outputs are byte-identical to their
+baselines: 26 paired cases plus summary, seven solo components, full combat
+route, and the separate known cast-free point-54 failure. The latter still
+exits 1 and is not a traversal pass. Results are retained under
+`private/jlair1-clock-1a6b3ea/`.
+
+Two public-invite attempts resume the unchanged checkpoint before 65, with
+40 ms added delay, 20 ms jitter and independent processes/profiles. Both reach
+all four guidance points with each player, plus Blue's original upper shelf.
+Neither completes the paired original point 65:
+
+| Evidence folder under `private/coop/` | Full attempt | Bounded matching player/world/native states | Recovery rows through last guide |
+| --- | --- | ---: | ---: |
+| `jlair1-route-456b53ea0b23439ebdda321509565062` | Failed, Red search exhausted 100,001 states | 1,709 | 100 |
+| `jlair1-route-f96b698060444904b5eeb49fd8aadca5` | Failed, Red search exhausted 100,001 states | 992 | 59 |
+
+The first run uses the unchanged checked-in guide targets. Its bounded proof
+ends at tick 165408; Red's later final search fails from
+`[-6379.8335,3217.4895,2088.0313]`. The second uses the observed starting footing
+of Blue's successful final plan as its fourth guide. Its bounded proof ends at
+tick 160449; Red's later final search fails from
+`[-6373.0400,3210.4133,2088.0313]`. This adjustment did not resolve the search
+failure and has been reverted. The final checked-in fixture retains all four
+original guidance points and the original upper-shelf requirement.
+
+Each `verified-shelf-guidance.json` independently checks the saved fixture
+hashes, immutable checkpoint, exact restored state, ordered arrival receipts,
+grounded/support conditions, living unmodified players, camera/presence,
+network equality and recovery trace through its declared end tick. Both
+explicitly retain `full_attempt_passed: false` and `full_route: false`. Neither
+prefix contains a revival. These are stronger lower-climb observations, not a
+complete route or a guarantee that earlier movements are now always reliable.
+The next unresolved case is Red's final ascent search; raising its state bound
+or weakening the arrival checks has not been used to claim progress.
+
+Validation: 935 active Rust tests pass (four ignored), the optional native
+takeoff test passes explicitly, locked release builds, 427 Python guards and
+seven package tests pass. No screenshots were inspected. Anode test windows
+are closed and the lease released. The core readiness evidence remains on
+its separately frozen `0b5bca3` build. Overall stays 56.6%, with six combined,
+21 partial and 12 unrun campaign visits; no new paired point or visit credit.

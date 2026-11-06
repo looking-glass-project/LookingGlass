@@ -1,6 +1,6 @@
 # Co-op progress
 
-Updated 5 November 2026. Branch: `coop`. **Estimated overall completion: 56.6%.**
+Updated 6 November 2026. Branch: `coop`. **Estimated overall completion: 56.6%.**
 The older 42% reports are historical. This percentage measures delivered and
 verified behavior against the full co-op scope; it is not a running test's progress.
 
@@ -54,7 +54,7 @@ yet verified across every level and failure condition.
 | Combat and resources | Nearest-visible targeting, individual damage, inventory and consumables in integrated levels | Remaining enemies/bosses and level-specific rewards, with both players as the target/collector |
 | Death and saves | Exact ten-second countdown, moving spectator camera, safe 25-health revival; shared checkpoint wipes, public save/leave/continue and storage-error/backup menu flow, public save refusal/retry during deaths/scenes, public guest restart during either player's countdown | Each visit's recovery matrix and remaining transport/death combinations |
 | Scenes and machinery | First-arrival ownership, original single-Alice scenes, hidden partner and safe reunion; public intro/dialogue reconnects with either theatre owner; all-living boarding on integrated rides | Remaining level adapters, both scene owners, watched/skipped cases, transports and exits |
-| Regression checks | 934 active Rust tests; 427 Python guards; current Curiosity native/single-player baseline comparisons | Full campaign verification and required earlier contact-system repeats on the final build |
+| Regression checks | 935 active Rust tests; 427 Python guards; current Curiosity native/single-player baseline comparisons | Full campaign verification and required earlier contact-system repeats on the final build |
 
 Campaign status from `COOP_CAMPAIGN.md`:
 
@@ -211,6 +211,36 @@ This completes the focused core milestone, not the full game. Campaign status
 remains six combined, twenty-one partial and twelve not run. The known Red-led
 Temple route gap, broader effects/audio and per-visit acceptance cases remain.
 The weighted estimate rises one Internet Host/Join point to **56.6%**.
+
+## Automated takeoff timing, 6 November 2026
+
+The opt-in route controller now consumes elapsed guest frame time when a
+movement step expires. Its old 100 ms cap could hold a run-up too long while
+the host continued simulating, issuing the next jump after the player had
+already left the ledge. The new clock advances once per sampled frame and
+gives the next input its full interval. A native Curiosity regression models
+a 300 ms guest stall: the old clock jumps too late and records zero actual
+jumps; the corrected clock records one grounded takeoff. This reproduces a
+failure mode, not the exact timing of the earlier live capture.
+
+Frozen source `1a6b3ea` passes 935 active Rust tests (four ignored), the explicit
+asset-dependent takeoff regression, locked release, 427 Python guards and
+seven package checks. Its Curiosity native comparison logs match their prior
+baselines, including the known cast-free point-54 failure. Only the automated
+route driver changes; normal player input, physics, networking and saves do not.
+
+The original four-guide public fixture now records both lower approaches and
+all eight personal guide arrivals, plus Blue's original upper-shelf arrival.
+A bounded audit verifies 1,709 matching player/world/native states and no
+revivals through the last guide receipt. The complete run still fails: Red's
+final ascent exhausts 100,001 search states. A separate final-guide adjustment
+also fails after the eight guide receipts (992 matching states in its bounded
+audit); that adjustment has been reverted. Both failed runs remain recorded.
+
+The focused save/rejoin milestone remains complete on `0b5bca3`; these campaign
+tests do not replace or expand that build-specific evidence. No paired point-65
+or completed campaign visit is credited. Overall stays **56.6%**. See the
+[Curiosity evidence](JLAIR1.md#automated-takeoff-clock-6-november-2026).
 
 ## Campaign work resumed, 5 November 2026
 

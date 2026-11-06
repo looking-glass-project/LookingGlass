@@ -731,9 +731,10 @@ impl WalkingProgress {
         self.stalled(player.feet,now) && player.grounded
     }
 }
-/// The host clamps a slow render frame to 100 ms of simulation. Match that
-/// bound locally without using delayed snapshot arrivals as a movement clock.
-/// A long frame must never fast-forward through inputs that were not sampled.
+/// Follow sampled wall time, like the guest input timeline. The host retains
+/// simulation debt after a brief stall, so discarding elapsed guest time can
+/// hold a run-up past its takeoff. Advance at most once per sampled frame;
+/// after a stall give the next, previously unsampled input its full interval.
 struct NavigationClock {
     sampled: Instant,
     elapsed: Duration,
@@ -741,11 +742,14 @@ struct NavigationClock {
 impl NavigationClock {
     fn new(now: Instant) -> Self { Self { sampled:now, elapsed:Duration::ZERO } }
     fn advance(&mut self, now: Instant) -> bool {
-        self.elapsed += now.duration_since(self.sampled).min(Duration::from_millis(100));
+        let interval=now.duration_since(self.sampled);
+        if interval.is_zero() { return false; }
+        self.elapsed += interval;
         self.sampled = now;
         let step = Duration::from_millis(200);
         if self.elapsed < step { return false; }
-        self.elapsed -= step;
+        self.elapsed = if interval>Duration::from_millis(100) { Duration::ZERO }
+            else { self.elapsed-step };
         true
     }
 }
@@ -1975,6 +1979,39 @@ impl Driver {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    #[ignore = "requires LOOKING_GLASS_TEST_DATA"]
+    fn recorded_curiosity_takeoff_probe() {
+        let base=std::env::var_os("LOOKING_GLASS_TEST_DATA").unwrap();
+        let mut assets=crate::assets::Assets::open(std::path::Path::new(&base)).unwrap();
+        let map=crate::bsp::Bsp::parse(&assets.read("maps/jlair1.bsp").unwrap()).unwrap();
+        let world=World::from_bsp(&map).unwrap();
+        let mut start=Player::new(vec3(-6123.7124,2723.22,1984.03125));start.grounded=true;
+        for legacy in [true,false] {
+            let mut player=start.clone();
+            let now=Instant::now();let mut clock=NavigationClock::new(now);
+            let mut old_elapsed=Duration::ZERO;let mut sampled=now;
+            let mut issued=false;let mut takeoff=None;
+            for tick in 0..60 {
+                let mut jump=false;
+                // Hold the first sampled run input across a 300 ms guest
+                // frame, then sample again after 100 ms. The host keeps ticking.
+                if [36,48].contains(&tick) && !issued {
+                    let at=now+Duration::from_micros(tick*1_000_000/120);
+                    let advance=if legacy {
+                        old_elapsed+=(at-sampled).min(Duration::from_millis(100));
+                        sampled=at;old_elapsed>=Duration::from_millis(200)
+                    } else {clock.advance(at)};
+                    if advance {jump=true;issued=true;takeoff=Some((tick,player.feet,player.grounded));}
+                }
+                player.tick(&world,Controls{wish:if issued {vec2(0.70710677,0.70710677)} else {Vec2::Y},run:true,jump,..Default::default()});
+            }
+            let (tick,feet,grounded)=takeoff.unwrap();
+            println!("Curiosity legacy{legacy} takeoff tick{tick} {feet:?} grounded{grounded}, actual jumps{}",player.jumps);
+            if legacy {assert_eq!(tick,48);assert!(!grounded);assert_eq!(player.jumps,0);}
+            else {assert_eq!(tick,36);assert!(grounded);assert_eq!(player.jumps,1);}
+        }
+    }
     #[test]
     fn planning_waits_for_an_active_ledge_pull_even_at_zero_velocity() {
         let mut player=Player::new(vec3(-6182.801,-785.8058,1552.1563));
@@ -3399,14 +3436,24 @@ mod tests {
         let start = Instant::now();
         let mut clock = NavigationClock::new(start);
         assert!(!clock.advance(start + Duration::from_millis(100)));
-        // The recorded failure had a 450 ms frame on both clients. The host
-        // advances only 100 ms, so the guest must consume just one step here.
+        // Consume the expired input, but never skip the next unsampled jump
+        // or compress its interval while recovering from a long frame.
         let after_stall = start + Duration::from_millis(550);
         assert!(clock.advance(after_stall));
         assert!(!clock.advance(after_stall), "An unsampled jump step was discarded");
         assert!(!clock.advance(after_stall + Duration::from_millis(100)));
         assert!(clock.advance(after_stall + Duration::from_millis(200)));
         assert!(!clock.advance(after_stall + Duration::from_millis(200)));
+    }
+    #[test]
+    fn a_stalled_guest_issues_an_expired_takeoff_on_its_first_new_frame() {
+        let start=Instant::now();
+        let mut clock=NavigationClock::new(start);
+        let resumed=start+Duration::from_millis(300);
+        assert!(clock.advance(resumed),"Discarding stall time holds the run-up past the ledge");
+        assert!(!clock.advance(resumed),"The next input must be sampled before advancing again");
+        assert!(!clock.advance(resumed+Duration::from_millis(100)));
+        assert!(clock.advance(resumed+Duration::from_millis(200)));
     }
     #[test]
     fn navigation_clock_preserves_normal_frame_remainders() {

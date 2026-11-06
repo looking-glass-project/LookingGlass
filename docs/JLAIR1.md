@@ -668,3 +668,51 @@ seven package tests pass. No screenshots were inspected. Anode test windows
 are closed and the lease released. The core readiness evidence remains on
 its separately frozen `0b5bca3` build. Overall stays 56.6%, with six combined,
 21 partial and 12 unrun campaign visits; no new paired point or visit credit.
+
+
+## Remote approach directions, 6 November 2026
+
+The opt-in remote route search now retains the direction used to arrive at a
+search cell. Its delayed-turn safety check continues that preceding input;
+merging arrivals from different directions discarded potentially safe paths.
+The native reproduction failed after 100,002 states from the settled guest
+position, only 1.56 units from an earlier successful start. Keeping the incoming
+direction finds a route from both positions and the exact later live failure.
+The search limit, twelve-tick takeoff reserve, eight-unit first-landing support
+and normal player physics remain unchanged. Zero-margin native routes retain
+their previous state equivalence.
+
+The optional native `remote_curiosity_ascent_retains_approach_directions` test
+replays each selected input through actual movement/collision physics at all
+three recorded starts. It requires actual jumps, clear bodies, dry travel,
+grounded arrivals within 22 units, supported first contacts, and the full late
+input interval at grounded turns/takeoffs. The test passes explicitly on frozen source `c893e48`; all
+935 active Rust tests pass (five ignored), the locked release builds, 427 Python
+guards and seven package tests pass. All four Curiosity native comparison logs
+match their baselines, including the known cast-free point-54 failure. That
+failed comparison remains a failure, not a completed traversal.
+
+The paired fixture retains all four original ascent guides and adds an observed
+higher ledge before the unchanged original point 65. On the earlier `1a6b3ea`
+runtime, both players reached all five guides and Blue reached point 65, but
+Red's final search failed. Its bounded independent proof verifies ten guide
+arrivals, 1,845 matching player/world/native states and 108 recovery rows without
+revivals. That attempt remains failed and adds no paired point or visit credit.
+
+The current `c893e48` public-invite run completes the resumed **65-76** segment,
+with both players reaching every original goal: 24 personal arrivals and all
+ten guidance arrivals. Independent processes/profiles use 40 ms delay and
+20 ms jitter. The frozen-fixture audit rechecks exact checkpoint restoration,
+ordered arrivals, observed waiting bays, player/camera presence, saved checkpoint
+hashes, 7,419 matching player/world/native-enemy states and 431 recovery rows.
+Both finish alive at 92/77.67 health without revival. Ordinary checkpoints
+before 65, 66, 70, 74, 76 and 77 are retained.
+
+Evidence is `private/coop/jlair1-route-a6b6947a160e4842bf28b4bcfd91fd74/`, including
+`verified-direction-segment.json`. The formerly stalled paired point 65 is now
+verified. This is one completed segment, explicitly `full_route: false`; a fresh
+continuous repeat, the ending, both scene owners, recovery/rejoin combinations
+and complete campaign consolidation remain open. No state or checkpoint bytes
+were edited to progress. No screenshots were inspected; both test clients
+exited normally, owned windows are closed, and Anode is released.
+Overall remains 56.6%, with six combined, 21 partial and 12 unrun visits.

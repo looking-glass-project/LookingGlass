@@ -423,6 +423,10 @@ impl Route {
                         (next.feet.y / 12.).round() as i32,
                         (next.feet.z / 12.).round() as i32,
                         (next.velocity.z / 120.).round() as i32,
+                        // Remote transition safety holds the preceding input.
+                        // Arriving at one cell from a different direction can
+                        // leave the only safe late turn; keep both approaches.
+                        (takeoff_ticks>0).then_some(d),
                         // The early pull-up moves less than one position cell. Keep its
                         // animation clock distinct so the search can finish the climb.
                         next.ledge.as_ref().map(|h| (h.pulling, (h.elapsed * 10.).round() as u8)),
@@ -1234,6 +1238,43 @@ pub(crate) fn supported_footing(world:&World,feet:Vec3)->bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[ignore = "requires LOOKING_GLASS_TEST_DATA"]
+    fn remote_curiosity_ascent_retains_approach_directions() {
+        let base=std::env::var_os("LOOKING_GLASS_TEST_DATA").unwrap();
+        let mut assets=Assets::open(std::path::Path::new(&base)).unwrap();
+        let map=Bsp::parse(&assets.read("maps/jlair1.bsp").unwrap()).unwrap();
+        let world=World::from_bsp(&map).unwrap();
+        let goal=vec3(-6314.,3038.,2150.6575);
+        // Earlier successful arrival, settled guest, and the failed live search.
+        for feet in [vec3(-6474.3486,3274.1404,2208.03125),
+            vec3(-6474.0103,3275.6643,2208.03125),vec3(-6474.0015,3275.7017,2208.03125)] {
+            let mut player=Player::new(feet);player.grounded=true;
+            let plan=Route::plan_without_liquid_damage(&world,&player,goal,22.,12,false)
+                .unwrap_or_else(|states|panic!("No safe ascent from {feet:?} after {states} states"));
+            let mut previous=Controls::default();
+            for (input,expected) in plan {
+                if player.grounded && (input.jump || input.wish!=previous.wish) {
+                    let mut late=player.clone();
+                    for _ in 0..12 {
+                        late.tick(&world,Controls{jump:false,..previous});
+                        assert!(late.grounded && late.liquid_damage==0.,"Lost the late-input margin");
+                    }
+                }
+                for tick in 0..24 {
+                    let airborne=!player.grounded;
+                    player.tick(&world,Controls{jump:input.jump&&tick==0,..input});
+                    assert!(world.body_clear(player.feet) && player.liquid_damage==0.);
+                    if airborne && player.grounded {assert!(supported_footing(&world,player.feet));}
+                }
+                assert!(player.feet.distance(expected)<0.01);
+                previous=input;
+            }
+            assert!(player.grounded && player.jumps>0 && player.liquid_damage==0. && player.feet.distance(goal)<22.);
+            println!("Safe Curiosity route from {feet:?} reaches {:?}",player.feet);
+        }
+    }
 
     #[test]
     fn diagnostic_navigation_avoids_damaging_liquids_with_walks_and_jumps() {

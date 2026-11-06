@@ -28,8 +28,11 @@ PLATFORM_PARK = [-7256, 768, 1632.03125]
 NAV_SECTIONS = ((0, 52), (55, 76))
 # Observed ordinary footings along the ascent from 66 back to the upper shelf.
 # Separate short searches avoid a remote search exhausting its state limit.
+# The previous direct plan caught the bank edge. This observed higher ledge
+# gives the guest a supported descending approach.
 SHELF_APPROACH = ([-6020,3210,1996.4535], [-6236.352,3366.2947,2000.03125],
-                  [-6313.79,3264.695,2088.03125], [-6381.0264,3216.554,2088.03125])
+                  [-6313.79,3264.695,2088.03125], [-6381.0264,3216.554,2088.03125],
+                  [-6474.3486,3274.1404,2208.03125])
 
 
 def forward_limit(step):

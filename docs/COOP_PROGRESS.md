@@ -1,17 +1,20 @@
 # Co-op progress
 
-Updated 6 November 2026. Branch: `coop`. **Estimated overall completion: 56.6%.**
+Updated 6 November 2026. Branch: `coop`. **Estimated overall completion: 56.8%.**
 The older 42% reports are historical. This percentage measures delivered and
 verified behavior against the full co-op scope; it is not a running test's progress.
 
-The focused core readiness milestone now passes on one frozen build, including
+The focused save/rejoin milestone passes on frozen `0b5bca3`, including
 adding player 2 to a solo save and resuming an earlier co-op save. All thirteen
 selected core groups have public-invite passes, covering personal resources,
 fresh processes, rejoining, backup recovery, shared wipes and unchanged solo
 saves. Both requested save paths are included in the
 [core acceptance checklist](COOP_CORE_TESTS.md#current-saverejoin-acceptance).
-The overall all-level goal remains active; campaign-specific verification,
-including the unfinished Burning Curiosity route, is tracked separately.
+The overall all-level goal remains active. Majestic Maze now has its missing
+shared plate/gate and escort integration, with native component evidence on
+`c6f580e`. Eleven other late controllers still lack explicit co-op hooks; those
+are implementation gaps before full traversal testing. Campaign-specific
+verification, including the unfinished Burning Curiosity route, stays separate.
 
 The fresh pre-change checkpoint run on 5 November passed staged shared travel,
 guest reconnect, complete primary-save restoration and team-wipe restoration.
@@ -34,9 +37,9 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | Internet Host/Join | 10.75 | 15 |
 | Two players, movement and presentation | 11 | 15 |
 | Combat, individual resources and death | 10.5 | 20 |
-| Scenes, transport and progression | 11.75 | 20 |
+| Scenes, transport and progression | 12 | 20 |
 | Full campaign verification | 3.08 | 20 |
-| **Total** | **56.58, rounded to 56.6** | **100** |
+| **Total** | **56.83, rounded to 56.8** | **100** |
 
 ## Implemented features and remaining work
 
@@ -56,7 +59,7 @@ yet verified across every level and failure condition.
 | Combat and resources | Nearest-visible targeting, individual damage, inventory and consumables in integrated levels | Remaining enemies/bosses and level-specific rewards, with both players as the target/collector |
 | Death and saves | Exact ten-second countdown, moving spectator camera, safe 25-health revival; shared checkpoint wipes, public save/leave/continue and storage-error/backup menu flow, public save refusal/retry during deaths/scenes, public guest restart during either player's countdown | Each visit's recovery matrix and remaining transport/death combinations |
 | Scenes and machinery | First-arrival ownership, original single-Alice scenes, hidden partner and safe reunion; public intro/dialogue reconnects with either theatre owner; all-living boarding on integrated rides | Remaining level adapters, both scene owners, watched/skipped cases, transports and exits |
-| Regression checks | 938 active Rust tests; 450 Python guards; current weapon-effect rendering/network and live co-op audio checks, plus Curiosity native/single-player baseline comparisons | Full campaign verification and required earlier contact-system repeats on the final build |
+| Regression checks | 940 active Rust tests; 450 Python guards; Maze paired components and exact solo regression, plus build-specific weapon-effect/audio and Curiosity baseline checks | Full campaign verification and required earlier contact-system repeats on the final build |
 
 Campaign status from `COOP_CAMPAIGN.md`:
 
@@ -64,15 +67,15 @@ Campaign status from `COOP_CAMPAIGN.md`:
   Pandemonium, Fortress of Doors (first visit), Beyond the Wall, Fortress of
   Doors (return visit), and Skool Daze (return visit). The first five retain
   historical build-specific passes and still require contact-system repeats.
-- **21 visits have partial evidence.** Some already have complete internet
+- **22 visits have partial evidence.** Some already have complete internet
   traversals, including Wholly Morel Ground, Castling and About Face, but still
   have outstanding reliability, recovery, reconnect or scene cases. Others
   currently have components or checkpoint segments only.
-- **12 visits are marked Not run for level-specific co-op verification:**
-  Jabberwock's Lair, Majestic Maze, Airborne Terror, Mystifying Madness,
+- **11 visits are marked Not run for level-specific co-op verification:**
+  Jabberwock's Lair, Airborne Terror, Mystifying Madness,
   Water Logged, Labyrinthine Revenge, Machinations, Royal Rage, Battle Royale,
   Ascension, Castle Keep and Heart of Darkness. Broad entrance checks cover
-  all 39 visits; they do not complete these twelve level checks.
+  all 39 visits; they do not complete these eleven level checks.
 
 See the [full campaign matrix](COOP_CAMPAIGN.md). Future updates should separate
 working features, partial route milestones and completed verification visits.
@@ -168,10 +171,52 @@ in the evidence below.
 | Existing saves | Solo import and co-op resume, individual resources, cached visits, fresh processes, unchanged solo files, normal-menu refusal/retry while dead or in a scene; fixed-build import/resume/backup/host-loss/wipe repeat passes | Core save cases covered; each campaign visit still needs its recovery matrix |
 | Storage failures | Real locked-file failures, retry, corrupt-primary backup recovery/repair, both-corrupt feedback; public menu tests | Covered for these cases; electrical power loss and disk exhaustion are not simulated |
 | Host/Join lifecycle | Public main/ESC flow, authenticated invite preflight, fresh invites, invalid/expired links, DNS/HTTP failure, Cancel, retry, exact solo return on `0b5bca3` | Public provisioning can still rate-limit new sessions |
-| Rejoining | Current-build public passes for idle gameplay, either player's ground/underwater/rope/moving-platform countdown, either theatre owner, rotating lift and both loading barriers | Per-visit matrix; underwater proof uses the Blue-led route and does not close the Red-led trap-repeatability gap |
+| Rejoining | Public passes on the frozen core builds for idle gameplay, either player's ground/underwater/rope/moving-platform countdown, either theatre owner, rotating lift and both loading barriers | Per-visit matrix; underwater proof uses the Blue-led route and does not close the Red-led trap-repeatability gap |
 | Combat/death | Shared targets, personal resources, exact countdown, spectator camera, 25-health reunion, shared wipe and moving-platform revival/carry; focused current-build public consolidation passes | Level-specific enemies and recovery matrices |
 | Presentation | Both Alice models, contact separation and replicated ambient/weapon effects; `66ebd44` repeats weapon rendering/network checks, verifies survivor-camera audio inputs, shared-mixer output and actual two-client puzzle/dialogue audio | Campaign-specific effects/audio; subjective sound quality is not certified by these automated checks |
 | Consolidation | `0b5bca3`: 934 native tests, both public menu flows, eight public network cases, and all thirteen selected core groups pass over public invites and locally | Full campaign coverage; provider rate limits remain an external service limitation |
+
+## Maze core integration, 6 November 2026
+
+Source inspection found three implementation gaps: Maze machinery inherited an
+empty co-op update, the Arena did not supply native NPC contacts to movers, and
+the escort child only sampled the first living player. Frozen `c6f580e` fixes
+these together. Either living player can press the plate and trigger the escort.
+The child follows the closest visible living Alice, retaining only that actor's
+observed path; changing targets clears the previous path. The selected slot is
+saved and replicated, with an optional field for older saves.
+
+The plate/gates advance once per shared tick. Both living riders move only after
+all destinations are clear; a closing gate waits for either player. Dead bodies
+neither press nor ride the plate. The child's own Hold still controls departure,
+so two Alices cannot bypass the escort. A pending failed exit retries once from
+the shared update without requiring an E press. Solo play uses the same mover
+implementation with one body.
+
+All twelve supplied-map component cases and seven production-cast cases pass:
+both player slots at 30/60/144 Hz, solo clock parity, pause, snapshot continuation,
+blocked/released carry, dead-body exclusion, both gate blockers, actual Arena
+NPC contacts before/after restore, both native escort triggers and one-shot
+automatic exit retry. Two new asset-free escort regressions also pass. Broader
+shared-world and all 39 entrance/four underwater checks pass on this executable.
+
+The full ordinary solo route reaches tower1 in 28,351 simulation ticks at
+95.2152 health and 99.2 Will. All eleven JSON checkpoints/reports, including the
+destination arrival, exactly match a fresh `66ebd44` baseline; the route logs
+also have identical hashes. All 940 active Rust tests pass (five ignored), the
+locked release builds, and 450 Python guards/seven package tests pass. The first
+unit run retained a registration-list failure and a transient socket-cancel
+timeout; after fixing the registration list, the unchanged network test passes
+alone and in the final full suite. No timing assertion was relaxed.
+
+Evidence: `private/coop-maze-build.json`, `private/coop-maze-components.log`,
+`private/coop-maze-native-c6f580e/`, `private/coop-maze-solo-before/` and
+`private/coop-maze-solo-comparison.json`. Anode is released and owned windows
+are closed. No screenshots were inspected. This adds **0.25 progression points**
+for a working core adapter, bringing the estimate to **56.8%**. Maze becomes
+Partial; there is no new complete campaign visit. Its full two-client route,
+combat/pickups and death/wipe/rejoin matrix remain unverified. The next priority
+is the [remaining controller integration](COOP_CORE_TESTS.md#remaining-controller-integration).
 
 ## Core internet consolidation completed, 5 November 2026
 

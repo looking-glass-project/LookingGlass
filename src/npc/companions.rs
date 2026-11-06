@@ -24,6 +24,9 @@ pub(super) struct State {
     trail: Vec<Vec3>,
     #[serde(default)]
     path_retry: f32,
+    /// Stable Blue/Red identity for the remembered co-op escort path.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    coop_target: Option<usize>,
 }
 impl State {
     pub fn new(map: &str, spawn: &Spawn) -> Option<Self> {
@@ -46,6 +49,7 @@ impl State {
             grounded: false,
             trail: vec![],
             path_retry: 0.,
+            coop_target: None,
         })
     }
     pub fn valid(&self, spawn: &Spawn) -> bool {
@@ -68,6 +72,7 @@ impl State {
                 .all(|p| p.is_finite() && p.abs().max_element() < 1e6)
             && (self.role == Role::Chase || self.trail.is_empty())
             && (0. ..=0.25).contains(&self.path_retry)
+            && self.coop_target.is_none_or(|slot| slot < 2)
     }
     pub fn visible(&self) -> bool {
         match self.role {
@@ -177,6 +182,10 @@ impl Routes {
         eye: Vec3,
         speed_for: impl Fn(usize, &str) -> f32,
     ) {
+        self.update_eyes(actors, dt, world, &[Some(eye)], speed_for);
+    }
+    pub fn update_eyes(&mut self, actors: &mut [Actor], dt: f32, world: &World,
+        eyes: &[Option<Vec3>], speed_for: impl Fn(usize, &str) -> f32) {
         if !dt.is_finite() || dt <= 0. {
             return;
         }
@@ -189,16 +198,16 @@ impl Routes {
         let touch = |c: &Option<Collider>, p: Vec3, half: Vec3| {
             c.as_ref().is_some_and(|c| c.trace(p, p, half).start_solid)
         };
-        let start = touch(
+        let start = eyes.iter().flatten().any(|eye| touch(
             &self.start_trigger,
-            eye - Vec3::Z * 20.,
+            *eye - Vec3::Z * 20.,
             crate::collision::PLAYER_HALF,
-        );
-        let end = touch(
+        ));
+        let end = eyes.iter().flatten().any(|eye| touch(
             &self.end_trigger,
-            eye - Vec3::Z * 20.,
+            *eye - Vec3::Z * 20.,
             crate::collision::PLAYER_HALF,
-        );
+        ));
         let mut handoff = actors.iter().any(|a| {
             a.guide
                 .as_ref()
@@ -246,15 +255,25 @@ impl Routes {
                     Role::Prelude if s.stage == 2 => &self.end,
                     _ => &self.end[..0],
                 };
+                let selected = escort_eye(world, from, eyes, s.coop_target);
+                let paired_target = (eyes.len() == 2 && s.role == Role::Chase)
+                    .then(|| selected.map(|(slot, _)| slot)).flatten();
+                if s.coop_target != paired_target {
+                    s.trail.clear();
+                    s.path_retry = 0.;
+                    s.coop_target = paired_target;
+                }
                 let target = if s.role == Role::Chase {
-                    Some(eye - Vec3::Z * 48.)
+                    selected.map(|(_, eye)| eye - Vec3::Z * 48.)
                 } else {
                     route.get(s.node).copied()
                 };
                 let mut delta = target.unwrap_or(from) - from;
                 let distance = delta.truncate().length();
-                let sight = world.sweep(from + Vec3::Z * 45., eye, Vec3::splat(0.5));
-                let visible = !sight.start_solid && sight.fraction >= 1.;
+                let visible = selected.is_some_and(|(_, eye)| {
+                    let sight = world.sweep(from + Vec3::Z * 45., eye, Vec3::splat(0.5));
+                    !sight.start_solid && sight.fraction >= 1.
+                });
                 if s.role == Role::Chase {
                     if distance > 300. || distance < 60. {
                         s.trail.clear();
@@ -351,6 +370,25 @@ impl Routes {
 
 /// Scripted waypoints cross narrow, chamfered steps. Require support under the
 /// centre and sweep the whole body; requiring all four corners rejects those steps.
+fn escort_eye(world: &World, from: Vec3, eyes: &[Option<Vec3>],
+    previous: Option<usize>) -> Option<(usize, Vec3)> {
+    let nearest = |visible: bool| eyes.iter().enumerate().filter_map(|(slot, eye)| {
+        let eye = (*eye)?;
+        if visible {
+            let sight = world.sweep(from + Vec3::Z * 45., eye, Vec3::splat(0.5));
+            if from.truncate().distance(eye.truncate()) > 300. || sight.start_solid || sight.fraction < 1. {
+                return None;
+            }
+        }
+        Some((slot, eye))
+    }).min_by(|a, b| from.distance_squared(a.1).total_cmp(&from.distance_squared(b.1)));
+    // A briefly occluded escort may continue its already observed trail. Never
+    // retain a dead target, or carry one player's trail over to the other.
+    nearest(true)
+        .or_else(|| previous.and_then(|slot| eyes.get(slot).copied().flatten().map(|eye| (slot, eye))))
+        .or_else(|| nearest(false))
+}
+
 fn walk_route(world: &World, feet: Vec3, delta: Vec3, half: Vec3) -> Vec3 {
     let center = feet + Vec3::Z * (half.z + 0.1);
     let up = world.sweep(center, center + Vec3::Z * 16., half);
@@ -562,6 +600,56 @@ mod tests {
     }
     fn floor() -> World {
         World::fixture(&[(vec3(-1000., -1000., -20.), vec3(1000., 1000., 0.))])
+    }
+    #[test]
+    fn either_living_player_can_start_the_shared_escort_once() {
+        for first in 0..2 {
+            let mut routes = Routes {
+                transfer: vec![vec3(80., 0., 0.)],
+                start_trigger: Some(Collider::box_bounds(vec3(300., -20., 0.), vec3(340., 20., 100.))),
+                ..Default::default()
+            };
+            let mut actors = vec![child(Role::Prelude), child(Role::Chase)];
+            let mut eyes = [None; 2]; eyes[first] = Some(vec3(320., 0., 48.));
+            routes.update_eyes(&mut actors, 1./120., &floor(), &eyes, |_, _| 100.);
+            assert!((actors[0].time - 1./120.).abs() < 0.0001, "Companion clock advanced per player");
+            for _ in 1..120 { routes.update_eyes(&mut actors, 1./120., &floor(), &eyes, |_, _| 100.); }
+            assert!(!actors[0].guide.as_ref().unwrap().visible());
+            assert!(actors[1].guide.as_ref().unwrap().visible());
+        }
+    }
+    #[test]
+    fn escort_prefers_nearest_visible_living_player_and_preserves_saved_target() {
+        let world = World::fixture(&[
+            (vec3(-1000., -1000., -20.), vec3(1000., 1000., 0.)),
+            (vec3(40., -30., 0.), vec3(60., 30., 100.)),
+        ]);
+        let eyes = [Some(vec3(100., 0., 48.)), Some(vec3(0., 200., 48.))];
+        assert_eq!(escort_eye(&world, Vec3::ZERO, &eyes, Some(0)).unwrap().0, 1);
+        assert_eq!(escort_eye(&floor(), Vec3::ZERO, &eyes, Some(1)).unwrap().0, 0);
+        assert_eq!(escort_eye(&floor(), Vec3::ZERO, &[None, eyes[1]], Some(0)).unwrap().0, 1);
+        assert!(escort_eye(&floor(), Vec3::ZERO, &[None, None], Some(1)).is_none());
+        let mut routes = Routes::default();
+        let mut actor = child(Role::Chase); actor.guide.as_mut().unwrap().stage = 1;
+        let mut actors = vec![actor];
+        routes.update_eyes(&mut actors, 1./120., &world, &eyes, |_, _| 100.);
+        assert_eq!(actors[0].guide.as_ref().unwrap().coop_target, Some(1));
+        assert!(actors[0].position().y > 0. && actors[0].position().x == 0.);
+        let saved = serde_json::to_value(&actors).unwrap();
+        let mut restored = serde_json::from_value::<Vec<Actor>>(saved.clone()).unwrap();
+        for _ in 0..60 {
+            routes.update_eyes(&mut actors, 1./120., &world, &eyes, |_, _| 100.);
+            routes.update_eyes(&mut restored, 1./120., &world, &eyes, |_, _| 100.);
+        }
+        assert_eq!(serde_json::to_value(&actors).unwrap(), serde_json::to_value(restored).unwrap());
+        routes.update_eyes(&mut actors, 1./120., &floor(), &[eyes[0], None], |_, _| 100.);
+        let guide = actors[0].guide.as_ref().unwrap();
+        assert_eq!(guide.coop_target, Some(0));
+        assert!(guide.trail.iter().all(|p| p.y == 0.), "Retarget retained the dead partner's trail");
+        let mut old = saved;
+        old[0]["guide"].as_object_mut().unwrap().remove("coop_target");
+        let legacy = serde_json::from_value::<Vec<Actor>>(old).unwrap();
+        assert_eq!(legacy[0].guide.as_ref().unwrap().coop_target, None);
     }
     #[test]
     fn hidden_escort_activates_only_after_checked_handoff_and_keeps_state_on_restore() {

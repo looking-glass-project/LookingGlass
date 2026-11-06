@@ -165,3 +165,22 @@ clients. Recordings stop at 30 seconds, so the later resets and remaining five
 voice lines rely on runtime cue/clock evidence. This does not establish full
 campaign audio coverage or subjective sound quality. The saved observations
 also pass the final six-line verifier; the original live fixtures remain frozen.
+
+## Remaining controller integration
+
+The focused save/rejoin milestone does not mean every level's mechanics have
+co-op adapters. The source audit on 6 November found that the remaining late
+controllers (`jlair2`, `tower1`, `hedge2`, `tower2`, `hedge3`, `tower3`,
+`grounds1`, `grounds2`, `facade`, `keep`, `qlair`) still use the default paired
+hooks. Those hooks do not advance the single-player machinery or combat twice;
+they are intentionally empty until a controller has an explicit shared update.
+The Jabberwock controller serves both `jlair2` and `grounds1` and also lacks those
+adapters. These are implementation gaps, not simply missing route-test receipts.
+
+Majestic Maze now has its explicit shared update. Its component checks are
+`--hedge1-coop-check` and `--hedge1-coop-cast-check` (the latter needs a window,
+so run it in Anode). They cover both pressure-plate actors, shared clock/carry,
+blocked movement, dead-body exclusion, the real NPC contact pipeline, either
+escort trigger actor, restored NPC state and automatic exit retry. They do not
+prove a complete two-client escort route or its death/rejoin matrix. Continuing
+core work should add the missing controllers before resuming broad traversal.

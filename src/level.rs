@@ -294,6 +294,9 @@ pub trait LevelController: Any {
     /// Idempotent personal preparation, including automatic arrival scenes.
     /// This does not advance clocks or move either actor.
     fn coop_prepare(&mut self, _players: &mut [CoopPlayer<'_>; 2]) {}
+    /// Pending shared outputs, polled once per world tick without a use press.
+    /// This must not advance simulation clocks or consume personal contacts.
+    fn coop_events(&mut self) -> Events { Events::default() }
     /// Stable Blue/Red slots let machinery apply personal damage even when one
     /// player is dead. Existing movement-only adapters still receive living bodies.
     fn coop_advance_roster(&mut self, dt: f32, map: &Bsp, world: &mut World,

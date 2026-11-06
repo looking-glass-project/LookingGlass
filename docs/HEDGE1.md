@@ -27,6 +27,40 @@ Checks:
 
 Private diagnostics and checkpoints live under `private/hedge1`; no original assets or script bodies are redistributed.
 
+## Co-op integration, 6 November 2026
+
+`c6f580e` supplies an explicit paired machinery update. Either living Alice can
+press the plate; both riders are carried in the same fixed step. All candidate
+bodies must be clear before either moves, and a closing gate waits for either
+living player. Dead bodies are excluded. This four-unit pressure plate retains
+its ordinary occupancy behavior; it is not a passenger ride that waits for a
+second boarder. Only the real child holding its own volume can enable the exit.
+
+The production Arena now feeds native companion and enemy body contacts into
+the shared mover step, including after restoration. Either player can trigger
+the child's demonstration/handoff. The follower chooses the nearest visible
+living player and clears its remembered path when that slot changes. The slot
+is an optional saved field; existing solo guide state remains compatible.
+Pending failed departures retry once through the shared update without a use
+press, and pause cannot emit the retry.
+
+- `--hedge1-coop-check`: twelve native map cases for both slots at 30/60/144 Hz,
+  solo clock parity, pause/restore, blocked/released carry, dead-body exclusion,
+  both closing-gate blockers, child ownership and departure retry.
+- `--hedge1-coop-cast-check`: seven windowed production cases for actual Arena
+  contacts before/after restore, both native trigger actors, exact NPC replica
+  state and the shared automatic exit retry. Run in Anode; no image lookup is
+  required.
+
+Both checks pass, as do 940 active Rust tests, the shared-world checks and all
+39 entrances/four underwater recovery cases. A fresh full solo route on this
+build exactly matches a fresh `66ebd44` baseline: 28,351 ticks, one teleport,
+one transition, 20 loot collections, no hazard/lost ticks, and final resources
+95.2152 Sanity/99.2 Will. All eleven JSON checkpoints/reports and the route log
+match exactly. Evidence is in `private/coop-maze-native-c6f580e/` and
+`private/coop-maze-solo-before/`. Full independent-client traversal, personal
+combat/rewards and the death/wipe/rejoin matrix remain open.
+
 Verified on 2026-10-01:
 
 - The full default native route starts at the ordinary entrance on Normal difficulty and reaches `tower1$tower1_start1` in 25,580 simulation ticks. It completes the demonstration, handoff, portal, return escort, Hold and physical departure. It collects 17 essence drops and finishes with 48.196 Sanity and 98.400 Will; the tower arrival preserves both exactly. There are zero hazard/lost ticks, zero jumps, one authored teleport and exactly one transition. God mode, notarget and minimum-health assistance are disabled.

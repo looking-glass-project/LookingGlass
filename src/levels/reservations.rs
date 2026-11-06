@@ -359,7 +359,7 @@ pub static RESERVATIONS: [Reservation; 39] = [
         None,
     ),
     Reservation {flags:Some(VisitFlags {
-        contract:&["--hedge1-check", "--hedge1-save-write", "--hedge1-save-read"],
+        contract:&["--hedge1-check", "--hedge1-coop-check", "--hedge1-coop-cast-check", "--hedge1-save-write", "--hedge1-save-read"],
         route:&["--hedge1-route-check"], skip:&["--hedge1-skip-route-check"],
         render:&["--hedge1-render-check"],
     }), ..visit(28, "hedge1")},

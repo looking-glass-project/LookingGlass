@@ -2601,7 +2601,7 @@ impl Npcs {
     }
     pub fn update(&mut self, dt: f32, world: &World, eye: Vec3) -> combat::Feedback {
         self.player_targets(None);
-        self.update_targets(dt, world, eye, &[eye])
+        self.update_targets(dt, world, eye, &[eye], &[Some(eye)])
     }
     /// The host advances the cast once, with both live bodies available to each
     /// enemy. A trigger can be reached by either player in that same step.
@@ -2609,7 +2609,8 @@ impl Npcs {
         self.player_targets(Some(players));
         let eyes: Vec<_> = players.iter().filter(|p| p.alive).map(|p| p.eye).collect();
         let eye = eyes.first().copied().unwrap_or(players[0].eye);
-        self.update_targets(dt, world, eye, &eyes)
+        let escort_eyes = players.map(|p| p.alive.then_some(p.eye));
+        self.update_targets(dt, world, eye, &eyes, &escort_eyes)
     }
     fn player_targets(&mut self, players: Option<[combat::PlayerTarget; 2]>) {
         for a in &mut self.actors {
@@ -2621,23 +2622,23 @@ impl Npcs {
             if let Some(p) = &mut a.guard { p.opponents.players = players; }
         }
     }
-    fn update_targets(&mut self, dt: f32, world: &World, eye: Vec3, trigger_eyes: &[Vec3]) -> combat::Feedback {
+    fn update_targets(&mut self, dt: f32, world: &World, eye: Vec3, trigger_eyes: &[Vec3], escort_eyes: &[Option<Vec3>]) -> combat::Feedback {
         let mut _profile = crate::frame_profile::span("npcs");
         if dt <= 0. { _profile.cancel(); }
         if let Some(mut actors) = self.actor_world.take() {
             actors.copy_dynamic_from(world);
-            let result = self.update_cast(dt, &actors, eye, trigger_eyes);
+            let result = self.update_cast(dt, &actors, eye, trigger_eyes, escort_eyes);
             self.actor_world = Some(actors);
             result
         } else {
-            self.update_cast(dt, world, eye, trigger_eyes)
+            self.update_cast(dt, world, eye, trigger_eyes, escort_eyes)
         }
     }
-    fn update_cast(&mut self, dt: f32, world: &World, eye: Vec3, trigger_eyes: &[Vec3]) -> combat::Feedback {
+    fn update_cast(&mut self, dt: f32, world: &World, eye: Vec3, trigger_eyes: &[Vec3], escort_eyes: &[Option<Vec3>]) -> combat::Feedback {
         let mut feedback = combat::Feedback::default();
         if let Some(g)=&mut self.garden {g.update(dt,world,eye,&mut self.actors,&self.models);}
         self.companion_routes
-            .update(&mut self.actors, dt, world, eye, |index, clip| {
+            .update_eyes(&mut self.actors, dt, world, escort_eyes, |index, clip| {
                 let d = &self.models[index].data;
                 d.clips[clip].distance * d.def.scale / d.clips[clip].duration()
             });

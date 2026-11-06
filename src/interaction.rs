@@ -1255,10 +1255,11 @@ impl Interactions {
     pub fn advance_shared(&mut self, dt: f32) -> Events {
         let mut events = Events::default();
         if dt <= 0. || !dt.is_finite() { return events; }
+        for slot in &mut self.levels { events.merge(slot.ctl.coop_events()); }
         self.presentation.update(dt);
         // Co-op scenes deliberately suspend body-contact traversal. Their
         // completed return performance must still request the authored exit.
-        events.transition = self.completed_school_return();
+        events.transition = self.completed_school_return().or(events.transition);
         if self
             .school
             .as_mut()

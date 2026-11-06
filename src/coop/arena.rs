@@ -161,6 +161,10 @@ impl Arena {
         // phase. Preserve that live identity for each player's earned reward.
         let environmental_loot_before = self.stage.interactions.pool.as_ref()
             .map(|p| p.loot_sources()).unwrap_or_default();
+        // Plate/gate controllers sample the same live cast as solo play. These
+        // contacts are derived again after restore, before the shared mover tick.
+        self.stage.interactions.companions_for_movers(&self.npcs.companions());
+        self.stage.interactions.actors_for_movers(&self.npcs.targets());
         self.stage.before_move(roster, map, world, &inputs, world_dt)?;
         // A delayed shared output may have begun a scene. Its first scene tick
         // belongs to the next fixed step, never a second world update here.

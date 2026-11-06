@@ -55,7 +55,7 @@ struct Shared {
     generation: AtomicU64,
     disconnect_generation: AtomicU64,
     incoming: Mutex<Receiver<(u64, Vec<u8>)>>,
-    connecting: Mutex<Option<TcpStream>>,
+    connecting: Mutex<Option<Arc<TcpStream>>>,
 }
 impl Shared {
     fn set(&self, state: State) {
@@ -108,7 +108,8 @@ impl Peer {
     pub fn stop(&self) {
         self.shared.stop.store(true, Ordering::Relaxed);
         // TLS and WebSocket setup use bounded blocking reads on their worker.
-        // Closing the owned socket wakes those reads immediately on Cancel.
+        // Shut down the same socket handle used by the worker. A duplicated
+        // Windows socket can reject shutdown while the original is reading.
         let connecting = self.shared.connecting.lock().unwrap().take();
         if let Some(socket) = connecting { let _ = socket.shutdown(Shutdown::Both); }
     }
@@ -363,18 +364,36 @@ fn resolve_with_retry(
     }
 }
 
+/// Share ownership of one OS handle during a cancellable handshake. Duplicating
+/// the handle with TcpStream::try_clone can make concurrent shutdown return
+/// WSAENOTCONN on Windows even though the worker's connection remains open.
+struct ConnectStream(Arc<TcpStream>);
+impl Read for ConnectStream {
+    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+        (&*self.0).read(buffer)
+    }
+}
+impl Write for ConnectStream {
+    fn write(&mut self, data: &[u8]) -> std::io::Result<usize> {
+        (&*self.0).write(data)
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        (&*self.0).flush()
+    }
+}
+
 struct ConnectingSocket<'a>(&'a Shared);
 impl<'a> ConnectingSocket<'a> {
-    fn new(shared: &'a Shared, stream: &TcpStream) -> Result<Self> {
+    fn new(shared: &'a Shared, stream: &Arc<TcpStream>) -> Result<Self> {
         let mut connecting = shared.connecting.lock().unwrap();
         anyhow::ensure!(!shared.stopped(), "Connection cancelled");
-        *connecting = Some(stream.try_clone()?);
+        *connecting = Some(Arc::clone(stream));
         Ok(Self(shared))
     }
 }
 impl Drop for ConnectingSocket<'_> {
     fn drop(&mut self) {
-        // Release the duplicate on success AND failure. Otherwise a failed
+        // Release the shared handle on success AND failure. Otherwise a failed
         // upgrade would keep its connection alive while the error menu is open.
         self.0.connecting.lock().unwrap().take();
     }
@@ -385,7 +404,7 @@ fn valid_probe(bytes: &[u8]) -> bool {
 }
 
 fn connect(invite: &Invite, shared: &Shared, readiness: bool)
-    -> Result<Option<WebSocket<MaybeTlsStream<TcpStream>>>> {
+    -> Result<Option<WebSocket<MaybeTlsStream<ConnectStream>>>> {
     let url = invite.websocket_url();
     let uri: tungstenite::http::Uri = url.parse()?;
     let host = uri
@@ -412,6 +431,7 @@ fn connect(invite: &Invite, shared: &Shared, readiness: bool)
         }
     }
     let stream = stream.context("Cannot reach the host. Check that the host is still open.")?;
+    let stream = Arc::new(stream);
     let _connecting = ConnectingSocket::new(shared, &stream)?;
     stream.set_nodelay(true)?;
     stream.set_read_timeout(Some(Duration::from_secs(8)))?;
@@ -430,7 +450,7 @@ fn connect(invite: &Invite, shared: &Shared, readiness: bool)
         request.headers_mut().insert(READY_PROBE, value.parse()?);
         Some(value)
     } else { None };
-    let result = tungstenite::client_tls_with_config(request, stream, Some(config(MAX_STATE)), None);
+    let result = tungstenite::client_tls_with_config(request, ConnectStream(stream), Some(config(MAX_STATE)), None);
     anyhow::ensure!(!shared.stopped(), "Connection cancelled");
     if let (Some(challenge), Err(tungstenite::HandshakeError::Failure(Error::Http(response)))) = (&challenge, &result) {
         if response.status() == StatusCode::CONFLICT
@@ -465,8 +485,8 @@ fn connect(invite: &Invite, shared: &Shared, readiness: bool)
         "The invite does not point to a compatible Looking Glass host."
     );
     match socket.get_ref() {
-        MaybeTlsStream::Plain(tcp) => tcp.set_nonblocking(true)?,
-        MaybeTlsStream::NativeTls(tls) => tls.get_ref().set_nonblocking(true)?,
+        MaybeTlsStream::Plain(tcp) => tcp.0.set_nonblocking(true)?,
+        MaybeTlsStream::NativeTls(tls) => tls.get_ref().0.set_nonblocking(true)?,
         _ => bail!("Unsupported TLS connection"),
     }
     Ok(Some(socket))
@@ -976,7 +996,7 @@ mod tests {
         let socket = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
         let (peer, _, _, shared) = channels(State::Connecting, MAX_INPUT);
         peer.stop();
-        assert!(ConnectingSocket::new(&shared, &socket).is_err());
+        assert!(ConnectingSocket::new(&shared, &Arc::new(socket)).is_err());
         assert!(shared.connecting.lock().unwrap().is_none());
     }
     #[test]

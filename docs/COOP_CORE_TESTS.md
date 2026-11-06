@@ -27,6 +27,29 @@ These passes establish the focused save/rejoin milestone. Invite provisioning
 can still be rate-limited externally; campaign-specific effects/audio and each visit's
 recovery cases remain separate work.
 
+## Connection cancellation regression
+
+The previously intermittent cancellation failure reproduced in isolation on
+`ccd6cd1`. Instrumentation observed Windows returning `WSAENOTCONN` when Cancel
+shut down the duplicated socket, while the handshake worker remained Connecting.
+`291af36` shares ownership of the same OS socket handle instead. It retains
+the original timeout and releases the shared handle on successful and failed
+handshakes. No save, invite-protocol or TLS-verification rules change.
+
+The full 940-test Rust suite passes at default concurrency. The production test
+binary also passes 128 consecutive repeats of the existing eight cancellation
+variants, totaling 1,024 cases with the unchanged 750 ms socket-close bound.
+Those variants cover Join and invite readiness, plain and secure handshakes,
+and explicit cancellation and dropping the owner. Prior failures remain in
+the private evidence; a later pass does not erase them.
+
+The frozen `291af36` release also passes the existing two-process transport
+diagnostic through a fresh public HTTPS invite: 16 ordered exchanges, distinct
+host/guest process IDs and isolated profiles, 40/20 ms delay/jitter, observed
+guest disconnect and clean helper shutdown. All seven Jabberwock native logs
+are byte-identical to `ccd6cd1`. This is transport regression evidence; the
+full save/rejoin gameplay consolidation remains on `0b5bca3`.
+
 ## Running the checks
 
 Run it inside Anode with a stable built executable and the player's original

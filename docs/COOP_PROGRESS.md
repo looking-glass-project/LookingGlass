@@ -85,7 +85,7 @@ Campaign status from `COOP_CAMPAIGN.md`:
 See the [full campaign matrix](COOP_CAMPAIGN.md). Future updates should separate
 working features, partial route milestones and completed verification visits.
 
-### Jabberwock combat and healing checkpoint
+### Jabberwock core integration checkpoint
 
 The follow-up on `ccd6cd1` passes 21 world/reward cases and 34 Stage/scene cases:
 both original introductions and finales, both scene owners, watched/skipped,
@@ -113,14 +113,26 @@ points and no two-client route, rejoin, death/recovery or rendered-effects pass.
 The scene, reward and exit hooks are covered by the follow-up described above.
 On `7c3ca24`, the full Rust suite passes with four test workers. Its default-concurrency run
 hit the previously observed 750 ms socket-cancellation timeout; that unchanged
-test also passes alone. Both receipts are retained, and the intermittent
-cancellation deadline remains a test-reliability issue to investigate.
+test also passes alone. Both receipts are retained; the later investigation
+and fix follow below.
 
 On `ccd6cd1`, the same cancellation test fails both in the four-worker suite
 (939 passed, one failed) and in isolation. A separate instrumented reproduction
 observes Windows rejecting shutdown on the duplicated connecting socket with
 `WSAENOTCONN`, while the worker remains Connecting. This is now tracked as a
 connection cancellation bug; the Jabberwock component and solo checks all pass.
+
+Build `291af36` fixes cancellation by sharing one socket handle between the
+handshake worker and Cancel instead of duplicating it. The existing 750 ms
+deadline is unchanged. All 940 active Rust tests pass at default concurrency,
+and the production test binary passes 128 repeats of the eight cancellation
+variants (1,024 cases: Join/readiness, plain/TLS, Cancel/drop). The earlier
+failure logs are retained. The frozen release also passes 16 ordered exchanges
+through a fresh public HTTPS invite, using separate host/guest processes and
+profiles with 40/20 ms delay/jitter, followed by clean disconnect and helper
+shutdown. All seven Jabberwock component/scene/solo logs exactly match `ccd6cd1`.
+This transport check does not repeat the earlier gameplay/save acceptance suite.
+The repair adds no percentage or campaign-visit credit.
 
 ## Core readiness priority
 

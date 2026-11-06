@@ -63,6 +63,10 @@ struct Command {
     avoid_switches: bool,
     #[serde(default)]
     watch_dialogue: bool,
+    /// Hold the earned Watch's ordinary primary input. Inventory, cost and
+    /// recharge remain authoritative weapon behavior, observed by the fixture.
+    #[serde(default)]
+    use_watch: bool,
     /// Ordinary held skip input; authoritative scene ownership still applies.
     #[serde(default)]
     skip_scene: bool,
@@ -218,6 +222,17 @@ impl Command {
             && self.speed_limit.is_none() && !self.jump && !self.checkpoint && !self.finish),
             "Explicit swimming requires its own three-dimensional route goal");
         ensure!(self.marker.is_none_or(|i| i < 100_000), "Invalid route marker");
+        if self.use_watch {
+            ensure!(self.goal.is_none() && self.marker.is_none() && self.pathnode.is_none()
+                && self.surface.is_none() && self.rope.is_none() && self.runup.is_none()
+                && self.use_aim.is_none() && self.shoot_switch.is_none() && self.beyond_step.is_none()
+                && self.temple_follow.is_none() && self.garden_follow.is_none()
+                && self.sanctum_follow.is_none() && self.chess_follow.is_none() && self.castling_follow.is_none()
+                && !self.funhouse_exit && !self.funhouse_pendulums && !self.navigate && !self.horizontal
+                && !self.swim && !self.hold_goal && !self.attack && !self.run && !self.jump
+                && !self.checkpoint && !self.finish && !self.skip_scene,
+                "Watch input requires its own neutral route command");
+        }
         ensure!(!self.jump || !self.navigate && self.rope.is_none(),
             "Explicit jump needs straight movement, not a planned route or rope command");
         ensure!(!self.ledge_handoff || self.navigate && self.goal.is_some(),
@@ -1561,6 +1576,11 @@ impl Driver {
         if arena.stage.busy() {
             self.plan.clear(); self.planning_hold=None; self.segment_landing=None; self.ledge_goal=None; self.landing_feedback=LandingFeedback::default(); self.jumped = false; self.report.phase = "scene";
             self.swim_goal = None;
+            return;
+        }
+        if command.use_watch {
+            keys.weapon=Some(9);keys.primary=true;keys.alternate=false;
+            self.report.phase="using watch";
             return;
         }
         if let Some(first) = command.temple_follow {
@@ -3612,11 +3632,24 @@ mod tests {
         }
     }
     #[test]
+    fn watch_input_cannot_mix_with_navigation_checkpoint_or_combat_commands() {
+        let base=serde_json::json!({"id":1,"heartbeat":1,"epoch":1,"goal":null,
+            "navigate":false,"attack":false,"capture":false,"finish":false,"use_watch":true});
+        assert!(serde_json::from_value::<Command>(base.clone()).unwrap().validate().is_ok());
+        for (field,value) in [("goal",serde_json::json!([0,0,0])),("marker",1.into()),("pathnode",1.into()),
+            ("attack",true.into()),("navigate",true.into()),("run",true.into()),("jump",true.into()),
+            ("checkpoint",true.into()),("skip_scene",true.into()),("finish",true.into()),
+            ("use_aim",serde_json::json!([0,0])),("chess_follow","Blue".into())] {
+            let mut mixed=base.clone();mixed[field]=value;
+            assert!(serde_json::from_value::<Command>(mixed).unwrap().validate().is_err(),"{field}");
+        }
+    }
+    #[test]
     fn legacy_route_commands_remain_valid_and_rope_inputs_are_bounded() {
         let base=serde_json::json!({"id":1,"heartbeat":1,"epoch":1,"goal":null,"navigate":false,"attack":true,"capture":false,"finish":false});
         let old:Command=serde_json::from_value(base.clone()).unwrap(); assert!(old.validate().is_ok());
         assert!(old.rope.is_none() && old.marker.is_none() && old.pathnode.is_none() && !old.horizontal && !old.run && !old.jump);
-        assert!(old.use_aim.is_none() && !old.watch_dialogue && old.beyond_step.is_none());
+        assert!(old.use_aim.is_none() && !old.watch_dialogue && !old.use_watch && old.beyond_step.is_none());
         assert!(old.speed_limit.is_none() && !old.prefer_cards && old.temple_follow.is_none() && old.garden_follow.is_none());
         assert_eq!(old.arrival_radius,8.);
         for radius in [0.99,8.01] {

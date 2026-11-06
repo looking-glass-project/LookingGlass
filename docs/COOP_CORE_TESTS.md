@@ -5,6 +5,30 @@ the core readiness checklist. It complements `tools/test_coop_regressions.py`
 and the main/ESC menu lifecycle tests. A passing selection does not certify
 all core behavior or any complete campaign visit.
 
+## Current save/rejoin acceptance
+
+Both requested meanings of an earlier game are covered by the public-invite
+consolidation on frozen build `0b5bca3`:
+
+| Starting game | Verified behavior |
+| --- | --- |
+| Existing single-player save | Load the solo game, host from its current progress, add player 2, save co-op, then resume and rejoin with fresh processes. The original solo slot stays unchanged. |
+| Earlier co-op save | Continue the shared checkpoint with both players' personal resources and cached visits, rejoin after disconnection or host loss, recover from the previous backup, and restore the shared checkpoint after a team wipe. |
+
+The full focused milestone contains thirteen passing public core groups and
+nineteen phase results on the same executable. Their recorded hashes and the
+frozen executable were rechecked on 6 November 2026. This was an evidence audit,
+not a new gameplay run. Normal-menu save refusal during death/scene sequences,
+safe retries and locked-file failures are also covered. See the current
+[core acceptance checkpoint](COOP_PROGRESS.md#core-acceptance-checkpoint) for
+the build-specific evidence and remaining limits.
+
+These passes establish the focused save/rejoin milestone. Invite provisioning
+can still be rate-limited externally; broader effects/audio and each campaign
+visit's recovery cases remain separate work.
+
+## Running the checks
+
 Run it inside Anode with a stable built executable and the player's original
 base-data folder. Pass the actual session ID reported by `seat_status`. For
 `save-death` and either `save-scene-*` case, forward the current lease's

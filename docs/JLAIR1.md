@@ -716,3 +716,58 @@ and complete campaign consolidation remain open. No state or checkpoint bytes
 were edited to progress. No screenshots were inspected; both test clients
 exited normally, owned windows are closed, and Anode is released.
 Overall remains 56.6%, with six combined, 21 partial and 12 unrun visits.
+
+## Resumed ending fixture, 6 November 2026
+
+`tools/test_coop_jlair1_ending.py` starts from the unchanged ordinary checkpoint
+before point 77. It watches the original Caterpillar scene with a chosen first
+player, checks all fifteen scene stages on both clients, keeps the partner
+hidden and frozen, and verifies the original actor endpoint and safe reunion.
+It then requires personal arrivals at every ordinary ending goal. Later checks
+cover individual Meta-essence, ordinary Watch activation/cost, an observed jump
+and ledge pull, and actual onward travel. These later checks are implemented
+but have not yet passed in a live ending run. Every result is explicitly a
+resumed segment, not a complete visit.
+
+The opt-in route driver's `use_watch` command selects the earned weapon and
+holds normal primary input; ownership, Will cost and recharge remain ordinary
+authoritative game behavior. It cannot mix with navigation, combat or checkpoint
+commands. Normal player input, physics, saves and the network protocol are
+unchanged. The point-86 item is Meta-essence; personal Jacks were earned earlier
+and are required in the starting checkpoint. The pickup verifier accepts either
+health restoration or Will restoration beyond normal regeneration, while
+rejecting shared consumption or shared resource gains. That verifier correction
+has guard coverage only; the live run has not reached this item.
+
+The first public attempt successfully watched Blue's scene and reunited both
+players, but failed an overstrict resource assertion. Independent observations
+arrived one and twenty-two ordinary ticks after the authoritative reunion.
+Only normal Will regeneration and loot aging had occurred. The corrected
+verifier models these bounded idle ticks, including ordinary drop downgrade
+and expiry; it still rejects other resource changes. A separate audit retains
+that attempt as failed and proves only its watched-scene boundary, with 2,276
+matching player/world/native states.
+
+The second public attempt on frozen source `ddaf73b` passes the watched Blue
+scene and paired **77-82** prefix: twelve personal arrivals, safe waiting bays,
+5,219 matching player/world/native states and no revival. The ordinary checkpoint
+before 78 is retained. The full attempt exits with failure after point 83 times
+out: Blue remains below an intermediate planned landing and never confirms a
+settled arrival. The Red-owned scene, remaining ending, pickup, Watch use,
+climb and onward travel are still open. No timeout or arrival guard was relaxed.
+
+The first evidence folder is
+`private/coop/jlair1-ending-2db7bcb4fdef48619b6d14ae241aedd7/`, with
+`verified-scene-boundary.json`. The second is
+`private/coop/jlair1-ending-9899fbdb178b44599a060163e05f3e32/`, with
+`verified-ending-prefix.json`. Both audits keep `full_attempt_passed: false`
+and `full_route: false`; saved observations and frozen fixture dependencies
+are retained unchanged.
+
+Validation: 936 active native tests pass (five ignored), the locked release
+build passes, and 439 Python guards plus seven package tests pass. The paired
+native cases, single-player components and full native combat route preserve
+their baselines; the existing cast-free point-54 failure remains a failure.
+No images were inspected, owned windows are closed and Anode is released.
+The separate core save/rejoin milestone remains on `0b5bca3`. No complete
+campaign visit or additional percentage credit is claimed.

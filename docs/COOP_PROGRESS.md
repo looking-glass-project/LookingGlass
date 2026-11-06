@@ -8,8 +8,10 @@ The focused core readiness milestone now passes on one frozen build, including
 adding player 2 to a solo save and resuming an earlier co-op save. All thirteen
 selected core groups have public-invite passes, covering personal resources,
 fresh processes, rejoining, backup recovery, shared wipes and unchanged solo
-saves. The overall all-level goal remains active; campaign-specific verification,
-including the unfinished Burning Curiosity route, can now resume.
+saves. Both requested save paths are included in the
+[core acceptance checklist](COOP_CORE_TESTS.md#current-saverejoin-acceptance).
+The overall all-level goal remains active; campaign-specific verification,
+including the unfinished Burning Curiosity route, is tracked separately.
 
 The fresh pre-change checkpoint run on 5 November passed staged shared travel,
 guest reconnect, complete primary-save restoration and team-wipe restoration.
@@ -54,7 +56,7 @@ yet verified across every level and failure condition.
 | Combat and resources | Nearest-visible targeting, individual damage, inventory and consumables in integrated levels | Remaining enemies/bosses and level-specific rewards, with both players as the target/collector |
 | Death and saves | Exact ten-second countdown, moving spectator camera, safe 25-health revival; shared checkpoint wipes, public save/leave/continue and storage-error/backup menu flow, public save refusal/retry during deaths/scenes, public guest restart during either player's countdown | Each visit's recovery matrix and remaining transport/death combinations |
 | Scenes and machinery | First-arrival ownership, original single-Alice scenes, hidden partner and safe reunion; public intro/dialogue reconnects with either theatre owner; all-living boarding on integrated rides | Remaining level adapters, both scene owners, watched/skipped cases, transports and exits |
-| Regression checks | 935 active Rust tests; 427 Python guards; current Curiosity native/single-player baseline comparisons | Full campaign verification and required earlier contact-system repeats on the final build |
+| Regression checks | 936 active Rust tests; 439 Python guards; current Curiosity native/single-player baseline comparisons | Full campaign verification and required earlier contact-system repeats on the final build |
 
 Campaign status from `COOP_CAMPAIGN.md`:
 
@@ -211,6 +213,31 @@ This completes the focused core milestone, not the full game. Campaign status
 remains six combined, twenty-one partial and twelve not run. The known Red-led
 Temple route gap, broader effects/audio and per-visit acceptance cases remain.
 The weighted estimate rises one Internet Host/Join point to **56.6%**.
+
+## Save coverage audit and bounded ending evidence, 6 November 2026
+
+The thirteen public core groups and all nineteen phase-result hashes remain
+intact on frozen `0b5bca3`, including both solo-to-co-op import and previous
+co-op resume/rejoin. The frozen executable hash also matches. No core test was
+rerun or additional readiness point credited by this evidence audit.
+
+The already-running Curiosity ending attempt on `ddaf73b` completes Blue's
+watched Caterpillar scene, safe reunion and paired points 77-82. Its independent
+bounded audit verifies twelve personal arrivals and 5,219 matching
+player/world/native states. The complete attempt fails at point 83 when Blue
+does not settle on an intermediate ledge within the navigation timeout.
+Watch activation, the later personal Meta-essence, final climb and exit remain
+unverified by this live fixture. The earlier first attempt also remains failed;
+its boundary assertion incorrectly rejected normal post-scene regeneration and
+loot aging. The corrected verifier permits only changes explained by the
+authoritative reunion tick and normal fixed-step rules.
+
+The new ending fixture and opt-in ordinary Watch input have 936 passing native
+tests (five ignored), a locked release build, 439 Python guards and seven
+package tests. Four native comparison logs preserve the existing baseline,
+including the known cast-free point-54 failure. No screenshots were inspected;
+owned game windows are closed and Anode is released. Full campaign status and
+the **56.6%** estimate are unchanged. See [ending evidence](JLAIR1.md#resumed-ending-fixture-6-november-2026).
 
 ## Remote approach directions, 6 November 2026
 

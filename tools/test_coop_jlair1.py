@@ -25,7 +25,7 @@ PLATFORM_LEFT = [-7048, 698, 1632]
 PLATFORM_RIGHT = [-7000, 698, 1632]
 PLATFORM_BANK = [-7208, 768, 1632.03125]
 PLATFORM_PARK = [-7256, 768, 1632.03125]
-NAV_SECTIONS = ((0, 52), (55, 76))
+NAV_SECTIONS = ((0, 52), (55, 76), (77, 85), (87, 90), (98, 106))
 # Observed ordinary footings along the ascent from 66 back to the upper shelf.
 # Separate short searches avoid a remote search exhausting its state limit.
 # The previous direct plan caught the bank edge. This observed higher ledge
@@ -320,7 +320,7 @@ class CuriosityPair(Pair):
         for role, report in self.reports.items():
             row = self.history[role][-1]
             assert (row['epoch'], row['tick']) == (report['frame']['epoch'], report['frame']['tick'])
-            row.setdefault('curiosity', report['combat']['stage']['world']['levels'][self.map_name])
+            row.setdefault('curiosity', report['combat']['stage']['world']['levels'].get(self.map_name))
             row.setdefault('presentation', report['presentation'])
             for observed, body in zip(row['players'], report['frame']['players']):
                 observed.setdefault('ledge', body['player'].get('ledge'))
@@ -654,6 +654,9 @@ class CuriosityPair(Pair):
 
     def verify(self):
         verify_course(self.steps, self.completed, self.evidence['arrivals'], self.history, self.args.start_step, self.args.last_step)
+        self.verify_navigation_evidence()
+
+    def verify_navigation_evidence(self):
         verify_shelf_approaches(self.evidence['shelf_approaches'], self.history, self.completed,
                                self.evidence['approaches'], self.evidence['arrivals'])
         for entry in self.evidence['combat_waits']: verify_combat_wait(entry, self.history)

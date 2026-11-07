@@ -2016,6 +2016,10 @@ It uses ordinary controls and compressed replica checks, without staging battle
 prerequisites. It requires Anode's graphics context but does not capture images.
 This route check is separate from independent-process internet verification.
 
+`--grounds1-coop-route-check` extends that accelerated normal paired route to
+Royal Rage: ordinary flight/ground combat, original scenes, both bridge walkers,
+the opened gate and actual Battle Royale arrival. It does not stage boss defeat.
+
 `--wforest-coop-check` reserves staged co-op checks across both Caterpillar's
 Plot visits: shared machinery, individual healing, Staff arrival and original
 scene ownership/reunion. Full traversal and internet coverage remain separate.

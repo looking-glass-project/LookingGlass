@@ -393,7 +393,11 @@ pub static RESERVATIONS: [Reservation; 39] = [
         route: &["--tower3-route-check"], skip: &["--tower3-skip-route-check"],
         render: &["--tower3-render-check"],
     }), ..visit(33, "tower3") },
-    visit(34, "grounds1"),
+    Reservation { flags: Some(VisitFlags {
+        contract: &["--grounds1-check"],
+        route: &["--grounds1-route-check", "--grounds1-coop-route-check"], skip: &[],
+        render: &["--grounds1-render-check"],
+    }), ..visit(34, "grounds1") },
     Reservation { flags: Some(VisitFlags {
         contract: &["--grounds2-check", "--grounds2-save-check", "--grounds2-coop-check"],
         route: &["--grounds2-route-check"], skip: &["--grounds2-skip-route-check"],

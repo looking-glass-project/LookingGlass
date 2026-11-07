@@ -1,6 +1,6 @@
 # Co-op progress
 
-Updated 7 November 2026. Branch: `coop`. **Estimated overall completion: 69.2%.**
+Updated 7 November 2026. Branch: `coop`. **Estimated overall completion: 69.7%.**
 The target is now [100% playable co-op](COOP_PLAYABLE.md), followed by a
 separate polishing stage. Complete normal progression and core flows first;
 batch implementation and reuse passing evidence. The historical exhaustive
@@ -41,7 +41,7 @@ foundation point credited the missing import feature. The current additional
 Internet Host/Join point credits completed public core consolidation on `0b5bca3`;
 no additional campaign visit is credited.
 
-Fifteen of 39 visits now have credited normal paired route evidence. Six retain
+Sixteen of 39 visits now have credited normal paired route evidence. Six retain
 the historical combined designation; the broader matrix still labels 33 as
 partial because it includes polishing cases. The next priority is normal paired campaign
 pass, fixing progression blockers and checking core recovery at representative
@@ -55,8 +55,28 @@ remain in the polishing backlog.
 | Two players, movement and presentation | 11.75 | 15 |
 | Combat, individual resources and death | 13.5 | 20 |
 | Scenes, transport and progression | 16 | 20 |
-| Campaign playability | 7.69 | 20 |
-| **Total** | **69.19, rounded to 69.2** | **100** |
+| Campaign playability | 8.21 | 20 |
+| **Total** | **69.71, rounded to 69.7** | **100** |
+
+## Royal Rage playable route completed
+
+`4f1d1ea` extends the accelerated normal paired runner to Royal Rage. Both
+players use their normal entrance inventories and ordinary movement/weapon
+controls to defeat the 2,000-health Jabberwock, finish the original introduction
+and Gryphon farewell, wait for the drawbridge, cross to the opened gate and
+trigger the actual Battle Royale arrival. No combat outcome or progression is
+staged. Both finish alive at 100/72.27 health without revival or team wipe.
+
+The route covers 18,802 simulation ticks and 157 exact compressed arena
+replicas. Both players reach the gate before the leader activates the exit;
+the next map receives their unchanged personal resources. The shared runner's
+Lair regression also passes all 24,348 ticks and 203 replicas, preserving both
+Eye Staff rewards and forest arrival. These are normal production-Arena routes;
+independent-process public-invite/core evidence remains separate.
+
+All 944 active Rust tests, the locked release build, seven package checks and
+source audit pass. Gameplay code is unchanged. This credits Royal Rage once:
+`61.5 + 20 * 16 / 39 = 69.71`; 23 normal paired visits remain.
 
 ## Jabberwock survival playable route completed
 
@@ -263,7 +283,7 @@ Campaign status from `COOP_CAMPAIGN.md`:
   currently have components or checkpoint segments only.
 - **No visit remains without paired component evidence.** Heart of Darkness's
   adapter is integrated. Component coverage does not complete the full campaign
-  playability pass: 13 normal paired routes are credited, with 26 remaining.
+  playability pass: 16 normal paired routes are credited, with 23 remaining.
 
 See the [full campaign matrix](COOP_CAMPAIGN.md). Future updates should separate
 working features, partial route milestones and completed verification visits.

@@ -12,14 +12,14 @@ fn owner(arena: &Arena) -> &Encounter {
     arena.stage.interactions.levels.iter().find_map(|s| s.ctl.downcast_ref()).unwrap()
 }
 
-pub(crate) fn check(a: &mut Assets) -> crate::levels::BoxFuture<'_> {
-    Box::pin(async move { route(a).await })
+pub(crate) fn check(a: &mut Assets, kind: Kind) -> crate::levels::BoxFuture<'_> {
+    Box::pin(async move { route(a, kind).await })
 }
 
-async fn route(a: &mut Assets) -> Result<()> {
-    let visit = Visit { epoch: 1, map: "jlair2".into(), entry: Some("jlair2_start1".into()),
+async fn route(a: &mut Assets, kind: Kind) -> Result<()> {
+    let visit = Visit { epoch: 1, map: kind.map().into(), entry: Some(format!("{}_start1", kind.map())),
         difficulty: Default::default(), combat_preview: false };
-    let map = Bsp::parse(&a.read("maps/jlair2.bsp")?)?;
+    let map = Bsp::parse(&a.read(&format!("maps/{}.bsp", kind.map()))?)?;
     let mut world = World::from_bsp(&map)?;
     let mut arena = Arena::load(a, &map, &mut world, &visit, false)?;
     let (eye, yaw) = crate::interaction::spawn(&map, visit.entry.as_deref());
@@ -30,7 +30,14 @@ async fn route(a: &mut Assets) -> Result<()> {
     let mut guest_world = World::from_bsp(&map)?;
     let mut guest = Arena::load(a, &map, &mut guest_world, &visit, false)?;
     let mut corners = [0, 2];
-    let goals = [vec2(-1200., 0.), vec2(-1000., 1000.), vec2(-500., 900.), vec2(-550., 0.)];
+    let goals = if kind == Kind::Lair {
+        [vec2(-1200., 0.), vec2(-1000., 1000.), vec2(-500., 900.), vec2(-550., 0.)]
+    } else {
+        [vec2(-1200., -100.), vec2(-1200., 700.), vec2(-400., 700.), vec2(-400., -100.)]
+    };
+    let mut crossing = [0; 2];
+    let mut crossed_at = [None; 2];
+    let mut landed = false;
     let mut plans: [VecDeque<(Controls, Vec3)>; 2] = Default::default();
     let mut ages = [0; 2];
     let mut phases = BTreeMap::new();
@@ -40,7 +47,7 @@ async fn route(a: &mut Assets) -> Result<()> {
     let mut history = VecDeque::new();
     let mut arrival = None;
     let result: Result<()> = async {
-        ensure!(initial_staff == [0, 0], "Survival entrance already owns its reward");
+        ensure!(kind != Kind::Lair || initial_staff == [0, 0], "Survival entrance already owns its reward");
         for tick in 0..120 * 600 {
             let o = owner(&arena);
             let phase = o.saved.phase;
@@ -58,7 +65,7 @@ async fn route(a: &mut Assets) -> Result<()> {
                 let p = &body.player;
                 if phase == Phase::Fight {
                     let healing = (body.stats.sanity() < 75.).then(|| o.personal_essence(Some(i))).flatten();
-                    let goal = if o.saved.ticks >= 10800 {
+                    let goal = if kind == Kind::Lair && o.saved.ticks >= 10800 {
                         o.data.volumes["end_trigger"].interior_point().context("Missing survival exit volume")?.truncate()
                     } else if let Some(at) = healing { at.truncate() } else { goals[corners[i]] };
                     let delta = goal - p.feet.truncate();
@@ -69,12 +76,14 @@ async fn route(a: &mut Assets) -> Result<()> {
                         ..Default::default() };
                     let targets = o.targets();
                     let context = crate::combat::Context { world: &world, targets: &targets };
-                    if let Some(target) = targets.iter().filter(|t| t.id != Kind::Lair.base())
+                    if let Some(target) = targets.iter().filter(|t| kind == Kind::Grounds || t.id != kind.base())
                         .filter(|t| crate::combat::contact(&context, p.eye(), t.center, 1.).is_some_and(|(id, _)| id == t.id))
                         .min_by(|a, b| p.eye().distance_squared(a.center).total_cmp(&p.eye().distance_squared(b.center))) {
                         let aim = (target.center - p.eye()).normalize_or_zero();
                         inputs[i].1.yaw = aim.y.atan2(aim.x); inputs[i].1.pitch = aim.z.asin().clamp(-1.56, 1.56);
-                        inputs[i].1.weapon = Some(0); inputs[i].1.alternate = true;
+                        let staff = kind == Kind::Grounds && body.stats.copies(7) > 0 && body.stats.will() > 21.;
+                        inputs[i].1.weapon = Some(if staff { 7 } else { 0 });
+                        inputs[i].1.alternate = !staff; inputs[i].1.primary = staff;
                     }
                 } else if phase == Phase::Reward {
                     let taken = o.saved.coop.as_ref().and_then(|s| s.world.as_ref()).context("Missing personal reward state")?.eye;
@@ -96,6 +105,31 @@ async fn route(a: &mut Assets) -> Result<()> {
                             planned[i] = true;
                         }
                     }
+                } else if kind == Kind::Grounds && phase == Phase::Done {
+                    // Walk each lane across the lowered bridge; both reach the gate
+                    // before the leading player activates the onward trigger.
+                    let x = [150., 750., 1300., 1700.][crossing[i]];
+                    let y = 192. + if i == 0 { -48. } else { 48. };
+                    let origin = vec3(x, y, 300.);
+                    let bottom = origin - Vec3::Z * 600.;
+                    let goal = origin.lerp(bottom, world.body_trace(origin, bottom).fraction);
+                    if p.feet.distance(goal) < 40. {
+                        if crossing[i] < 2 { crossing[i] += 1; plans[i].clear(); }
+                        else { crossed_at[i].get_or_insert(tick); }
+                    } else if crossing[i] < 3 || crossed_at.iter().all(|at| at.is_some_and(|at| tick >= at + 250)) {
+                        if plans[i].is_empty() {
+                            plans[i] = Route::plan(&world, p, goal, 30.)
+                                .map_err(|n| anyhow::anyhow!("Bridge path failed for slot{i}: {n} states from {:?} to {goal:?}", p.feet))?.into();
+                            ages[i] = 0;
+                        }
+                        if let Some((control, _)) = plans[i].front() {
+                            inputs[i].0 = Controls { jump: control.jump && ages[i] == 0, ..*control };
+                            planned[i] = true;
+                        }
+                    }
+                    if crossing[i] == 2 && crossed_at.iter().all(|at| at.is_some_and(|at| tick >= at + 250)) {
+                        crossing[i] = 3; plans[i].clear();
+                    }
                 }
             }
             history.push_back(serde_json::json!({"tick":roster.tick,"phase":phase,"feet":before,
@@ -104,6 +138,7 @@ async fn route(a: &mut Assets) -> Result<()> {
             if history.len() > 240 { history.pop_front(); }
             arena.step(&mut roster, &map, &mut world, inputs)?;
             let o = owner(&arena);
+            landed |= kind == Kind::Grounds && phase == Phase::Fight && o.saved.boss.health <= 1000. && o.saved.boss.health > 0.;
             if o.saved.wave_count != old_wave_count {
                 waves.push((o.saved.ticks, o.saved.wave_count, o.saved.waves.len()));
             }
@@ -122,7 +157,7 @@ async fn route(a: &mut Assets) -> Result<()> {
                 ensure!(roster.players[id.partner().index()].player.feet == before[id.partner().index()], "Scene moved the hidden partner");
             }
             if old_owner.is_some() && arena.stage.owner.is_none() { reunions += 1; }
-            ensure!(roster.checkpoint_generation == 0, "Survival route team-wiped at tick{tick}");
+            ensure!(roster.checkpoint_generation == 0, "Jabberwock route team-wiped at tick{tick}");
             ensure!(roster.players.iter().all(|b| !b.stats.god && !b.stats.notarget), "Route enabled cheats");
             if !arena.stage.busy() && roster.players.iter().all(|b| b.stats.alive()) {
                 let d = roster.players[0].player.feet - roster.players[1].player.feet;
@@ -136,23 +171,31 @@ async fn route(a: &mut Assets) -> Result<()> {
                 guest.replicate(&serde_json::from_slice(&crate::coop::codec::decode(&bytes)?)?, &map, &mut guest_world)?;
                 ensure!(serde_json::to_value(guest.snapshot())? == serde_json::to_value(snapshot)?, "Restored guest state differs");
                 samples += 1;
-                if tick % 1200 == 0 { println!("Lair co-op t={} phase{:?} survival{} health{:?} feet{:?}", tick/120,
-                    owner(&arena).saved.phase, owner(&arena).saved.ticks, roster.players.each_ref().map(|b|b.stats.sanity()),
+                if tick % 1200 == 0 { println!("{kind:?} co-op t={} phase{:?} survival{} boss{} health{:?} feet{:?}", tick/120,
+                    owner(&arena).saved.phase, owner(&arena).saved.ticks, owner(&arena).saved.boss.health, roster.players.each_ref().map(|b|b.stats.sanity()),
                     roster.players.each_ref().map(|b|b.player.feet)); }
                 clear_background(BLACK); next_frame().await;
             }
             if arena.stage.transition.is_some() { break; }
         }
         let o = owner(&arena);
-        ensure!(arena.stage.transition.as_ref().is_some_and(|e| Kind::Lair.exit().matches(e))
-            && o.saved.ticks == 10800 && o.saved.wave_count == 2
+        ensure!(arena.stage.transition.as_ref().is_some_and(|e| kind.exit().matches(e)), "Missing onward exit");
+        if kind == Kind::Lair {
+        ensure!(o.saved.ticks == 10800 && o.saved.wave_count == 2
             && waves == [(3600, 1, 3), (7200, 2, 6)]
             && phases.get("Outro").zip(phases.get("Fight")).is_some_and(|(end, start)| end-start >= 10800)
             && o.saved.eye && o.saved.coop.as_ref().and_then(|s| s.world.as_ref()).is_some_and(|s| s.eye == [true, true])
             && reunions == 2 && roster.players.iter().all(|b| b.stats.alive() && b.stats.copies(7) == 1),
             "Incomplete survival, waves, scenes, personal rewards or exit");
-        let next_visit = Visit { epoch: 2, map: "wforest".into(), entry: Some("wforest_start2".into()), ..visit.clone() };
-        let next_map = Bsp::parse(&a.read("maps/wforest.bsp")?)?;
+        } else {
+            ensure!(landed && o.saved.boss.health == 0. && o.saved.phase == Phase::Done
+                && o.saved.door == 2. && crossed_at.iter().all(Option::is_some)
+                && phases.contains_key("Death") && phases.contains_key("Outro") && phases.contains_key("Bridge")
+                && reunions >= 2 && roster.players.iter().all(|b| b.stats.alive()),
+                "Incomplete Royal Rage battle, scenes, bridge or gate");
+        }
+        let next_visit = Visit { epoch: 2, map: kind.exit().map.into(), entry: Some(kind.exit().entrance.into()), ..visit.clone() };
+        let next_map = Bsp::parse(&a.read(&format!("maps/{}.bsp", next_visit.map))?)?;
         let mut next_world = World::from_bsp(&next_map)?;
         let next_arena = Arena::load(a, &next_map, &mut next_world, &next_visit, false)?;
         let (eye, yaw) = crate::interaction::spawn(&next_map, next_visit.entry.as_deref());
@@ -160,18 +203,18 @@ async fn route(a: &mut Assets) -> Result<()> {
             |at| !next_arena.stage.interactions.hazardous(at))?;
         for (old, new) in roster.players.iter().zip(&arrived.players) {
             ensure!(serde_json::to_value(&old.stats)? == serde_json::to_value(&new.stats)? && next_world.body_clear(new.player.feet),
-                "Forest return changed resources or obstructed a player");
+                "Onward arrival changed resources or obstructed a player");
         }
         arrival = Some(serde_json::json!({"visit":next_visit,"frame":arrived.frame(2,0)}));
         Ok(())
     }.await;
     let report = serde_json::json!({"build":env!("LOOKING_GLASS_BUILD"),"full_route_passed":result.is_ok(),
         "error":result.as_ref().err().map(|e|format!("{e:#}")),"phases":phases,"waves":waves,"reunions":reunions,"replica_samples":samples,
-        "frame":roster.frame(1,0),"world":arena.snapshot(),"arrival":arrival,"recent_inputs":history,
-        "scope":"Normal entrance-to-forest two-body production Arena simulation with compressed replica checks; no transport, screenshots or staged battle prerequisites"});
+        "frame":roster.frame(1,0),"world":arena.snapshot(),"arrival":arrival,"recent_inputs":history,"crossed_at":crossed_at,"landed":landed,
+        "scope":"Normal entrance-to-next-level two-body production Arena simulation with compressed replica checks; no transport, screenshots or staged battle prerequisites"});
     std::fs::create_dir_all(crate::preferences::path(""))?;
-    std::fs::write(crate::preferences::path("jlair2-coop-route.json"), serde_json::to_vec(&report)?)?;
+    std::fs::write(crate::preferences::path(&format!("{}-coop-route.json",kind.map())), serde_json::to_vec(&report)?)?;
     result?;
-    println!("PASS native co-op Jabberwock survival: {} ticks, {samples} exact replicas, both Eye rewards and actual forest-return arrival", roster.tick);
+    println!("PASS native co-op Jabberwock {kind:?}: {} ticks, {samples} exact replicas and actual {} arrival", roster.tick, kind.exit().map);
     Ok(())
 }

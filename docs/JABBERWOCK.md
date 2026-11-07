@@ -203,6 +203,24 @@ This proves normal paired progression, not independent-process internet
 delivery. Internet/core-flow evidence is tracked separately. The 944 active
 Rust tests, locked release build, seven package checks and source audit pass.
 
+## Co-op playable Royal Rage route, 7 November 2026
+
+`--grounds1-coop-route-check --no-audio` uses the same accelerated production
+Arena runner from the normal Royal Rage entrance. Both players fight with
+their actual starting weapons and resources; the fixture does not seed boss
+damage, defeat, scenes or bridge/gate progression. It watches the original
+introduction and farewell, waits for the drawbridge to lower, walks each player
+across a separate lane to the gate, then activates the actual castle exit.
+
+Build `4f1d1ea` passes 18,802 simulation ticks and 157 matching compressed
+arena replicas. The boss finishes dead and landed; both scene reunions pass.
+Blue and Red reach the gate at ticks 18,429 and 18,430, before departure.
+Both arrive at `grounds2_start1` with unchanged personal resources, alive at
+100/72.27 health and without revival or checkpoint rollback. The profile report
+is `grounds1-coop-route.json`. The shared Lair regression remains unchanged at
+24,348 ticks, 203 replicas and 100/75 health. Both runs capture no screenshots.
+They prove normal paired progression, with internet transport covered separately.
+
 ## Remaining original-game parity limits
 
 These are playable reconstructions, not a claim of frame-perfect original AI.

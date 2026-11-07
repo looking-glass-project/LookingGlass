@@ -1,6 +1,6 @@
 # Co-op progress
 
-Updated 7 November 2026. Branch: `coop`. **Estimated overall completion: 67.1%.**
+Updated 7 November 2026. Branch: `coop`. **Estimated overall completion: 68.2%.**
 The target is now [100% playable co-op](COOP_PLAYABLE.md), followed by a
 separate polishing stage. Complete normal progression and core flows first;
 batch implementation and reuse passing evidence. The historical exhaustive
@@ -41,7 +41,7 @@ foundation point credited the missing import feature. The current additional
 Internet Host/Join point credits completed public core consolidation on `0b5bca3`;
 no additional campaign visit is credited.
 
-Eleven of 39 visits now have credited normal paired route evidence. Six retain
+Thirteen of 39 visits now have credited normal paired route evidence. Six retain
 the historical combined designation; the broader matrix still labels 33 as
 partial because it includes polishing cases. The next priority is normal paired campaign
 pass, fixing progression blockers and checking core recovery at representative
@@ -55,8 +55,36 @@ remain in the polishing backlog.
 | Two players, movement and presentation | 11.75 | 15 |
 | Combat, individual resources and death | 13.5 | 20 |
 | Scenes, transport and progression | 16 | 20 |
-| Campaign playability | 5.64 | 20 |
-| **Total** | **67.14, rounded to 67.1** | **100** |
+| Campaign playability | 6.67 | 20 |
+| **Total** | **68.17, rounded to 68.2** | **100** |
+
+## Connected Clockwork and Funhouse routes
+
+Clockwork's retained normal save chain now verifies all 150 recorded course
+actions from the entrance to About Face across 26 connected sections. A missing
+14-16 prefix was replayed through its frozen verifier and actual saved boundary,
+closing the hash connection to the remaining route. Funhouse similarly verifies
+20 connected sections, 156 recorded course actions, actual boss defeat, the
+original ending and both players arriving in Hatter1. Rechecking its individual
+edges confirms 18,637 matching state samples and two exact ordinary revivals.
+
+Every outgoing checkpoint matches the next section's input byte-for-byte,
+and native resume receipts confirm restoration before simulation. These
+historical build-specific routes satisfy the playable save-chain criterion;
+they are not new uninterrupted runs on the latest executable. Three Clockwork
+receipts with missing or mismatched observation hashes were excluded from the
+selected chain. This adds two normal-route credits: `61.5 + 20 * 13 / 39 = 68.17`.
+
+Current component checks on `42139c0` pass all 41 Clockwork scene groups and
+all 150 Funhouse combat/world/scene groups. The Clockwork movement check exposed
+a regression in diagnostic gap steering: the stricter full-footprint check
+intended for discarding a planned jump also changed direct steering's damping.
+`40d06c0` separates those decisions while retaining the stricter planner handoff.
+The existing actual-map gap probe passes all six delays, and the complete
+Clockwork movement check now passes all 72 groups. Normal player controls are
+unchanged. All 944 active Rust tests, the locked release build, seven package
+checks and the source audit pass. These focused checks do not claim fresh
+full routes or complete the remaining 26 visits.
 
 ## Playable route consolidation
 
@@ -183,7 +211,7 @@ Campaign status from `COOP_CAMPAIGN.md`:
   currently have components or checkpoint segments only.
 - **No visit remains without paired component evidence.** Heart of Darkness's
   adapter is integrated. Component coverage does not complete the full campaign
-  playability pass: 11 normal paired routes are credited, with 28 remaining.
+  playability pass: 13 normal paired routes are credited, with 26 remaining.
 
 See the [full campaign matrix](COOP_CAMPAIGN.md). Future updates should separate
 working features, partial route milestones and completed verification visits.

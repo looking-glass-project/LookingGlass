@@ -167,10 +167,13 @@ pub(crate) fn straight_wish(delta: Vec2, velocity: Vec2, lead: f32, run: bool, l
 pub(crate) fn direct_goal_wish(world:&World,player:&Player,goal:Vec3,lead:f32,run:bool,limit:Option<f32>)->Vec2 {
     let delta=(goal-player.feet).truncate();let velocity=player.velocity.truncate();
     if !player.grounded && !player.swimming && player.ledge.is_none() && player.updraft_time<=0.
-        && landing_control(world,player,goal,lead,8.).is_none() {
+        && landing_control_with_support(world,player,goal,lead,8.,false).is_none() {
         // Grounded arrival damping spends too much of a long jump moving
         // slowly. Over a gap, use the ordinary air acceleration's stopping
         // distance; resume the damped approach above supported landing ground.
+        // Choosing damping does not finish a planned jump. Physical body
+        // support is enough here; the planner handoff below additionally needs
+        // a fully supported footprint before discarding its movement plan.
         let steering=delta-velocity*lead;
         let full=if run {320.} else {crate::movement::WALK_SPEED};
         let wish=steering.normalize_or_zero()*((2.*420.*steering.length()).sqrt().min(full)*0.95/full);
@@ -817,6 +820,11 @@ fn supported_goal_walk(world: &World, player: &Player, goal: Vec3) -> bool {
 }
 
 pub(crate) fn landing_control(world: &World, player: &Player, goal: Vec3, lead: f32, radius: f32) -> Option<(Vec2, bool)> {
+    landing_control_with_support(world,player,goal,lead,radius,true)
+}
+
+fn landing_control_with_support(world: &World, player: &Player, goal: Vec3, lead: f32, radius: f32,
+    full_footprint: bool) -> Option<(Vec2, bool)> {
     let delta = goal-player.feet;
     // Waiting for a delayed grounded snapshot is too late on a small pad.
     // Brake on the final descent, once above and near the destination, with
@@ -841,7 +849,7 @@ pub(crate) fn landing_control(world: &World, player: &Player, goal: Vec3, lead: 
                 let floor=at.lerp(down,support.fraction);
                 !support.start_solid && support.fraction<1. && support.normal.z>=0.65
                     && (floor.z-goal.z).abs()<height_tolerance
-                    && crate::route::supported_footing(world,floor)
+                    && (!full_footprint || crate::route::supported_footing(world,floor))
             };
             // A box edge over the ledge is not sufficient footing. A delayed
             // guest can already have crossed onto the pad, however: allow its
@@ -850,7 +858,7 @@ pub(crate) fn landing_control(world: &World, player: &Player, goal: Vec3, lead: 
             let anticipated=player.feet+player.velocity.truncate().extend(0.)*lead.clamp(0.,1.5);
             let approach=world.body_trace(player.feet,anticipated);
             !hit.start_solid && hit.fraction>=1. && (supported_at(player.feet)
-                || lead>0. && !approach.start_solid && approach.fraction>=1. && supported_at(anticipated))
+                || full_footprint && lead>0. && !approach.start_solid && approach.fraction>=1. && supported_at(anticipated))
         };
     // Approximate waypoint heights can put a short ordinary walk outside the
     // spherical planner handoff. A 32-unit-high marker over a flat floor can

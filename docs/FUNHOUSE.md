@@ -16,6 +16,15 @@ Visit 22; one controller owns machinery, clock progression, Tweedles and scene c
 
 ## Verification and publication
 
+The co-op playable audit on 7 November connects 20 ordinary save/resume
+sections from the entrance through 156 recorded course actions, the actual
+Tweedles defeat, original ending and both players' Hatter1 arrival. Rechecking
+the captured movement/combat/scene assertions yields 18,637 matching state
+samples and two verified ordinary revivals. Checkpoint hashes and native
+exact-resume receipts connect every section. This credits historical
+build-specific playability, not a fresh uninterrupted latest-build run;
+the older single-player candidate below retains its original scope.
+
 Playtest candidate **6C9850B5**, based on Labyrinthine Revenge **D654E222** and retaining its earlier releases. Root `Launch.cmd` selects this candidate; `tools/launchers/Launch-Mirror-Image.cmd` opens a fresh visit with separate saves. This is a restored-systems playtest, **not a completed full-route certification**.
 
 - Headless contracts pass: idempotent clock mask, real arena-floor traces, pause, machinery restoration, knife-frame damage, miniature caps, defeat/exit transactions, both door flags/directions, Easy rescue versus Normal fatal-fall volumes, weighted fulcrum carry/jump, a complete pendulum period and native radial-damage falloff.

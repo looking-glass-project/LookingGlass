@@ -17,6 +17,14 @@ Arrival restores resources once, as the original map does. Save data includes le
 
 ## Verification
 
+The co-op playable audit on 7 November connects 26 ordinary save/resume
+sections from the entrance through all 150 course actions to both players'
+actual About Face arrival. Every selected handoff matches the checkpoint bytes
+and the native exact-resume receipt. A previously unchecked 14–16 prefix now
+passes its frozen verifier; disconnected receipts are excluded. This reuses
+historical build-specific gameplay, not a fresh uninterrupted latest-build run.
+See [playable acceptance](COOP_PLAYABLE.md) for the remaining campaign scope.
+
 The mirror's near-plane clipping accounts for its reversed horizontal projection.
 The reflected room remains visible at shallow angles beside the entrance pillar.
 Native mirror checks cover the normal approach, Cheshire's hint and two close

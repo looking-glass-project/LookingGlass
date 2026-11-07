@@ -2,6 +2,7 @@
 mod art;
 mod check;
 mod coop_check;
+mod route;
 mod data;
 mod guards;
 mod motion;
@@ -36,6 +37,8 @@ const EXIT: ExitSpec = ExitSpec {
 // Selection order is authored: club, diamond, spade. Correct portraits use the same order.
 const SUITS: [&str; 3] = ["club", "diamond", "spade"];
 const ANGLES: [f32; 3] = [60., 0., -60.];
+// Loot is scoped to this visit. Combat hit IDs still use BASE + entity.
+const LOOT_WAVE_STRIDE: usize = 1024;
 #[derive(Clone, Serialize, Deserialize)]
 struct Spawned {
     entity: usize,
@@ -77,6 +80,8 @@ struct Saved {
     head: crate::dismember::State,
     scene: Option<Scene>,
     spawned: Vec<Spawned>,
+    #[serde(default)]
+    spawn_generation: u16,
     exit: ExitState,
 }
 impl Default for Saved {
@@ -113,6 +118,7 @@ impl Default for Saved {
             head: Default::default(),
             scene: None,
             spawned: vec![],
+            spawn_generation: 0,
             exit: ExitState::default(),
         }
     }
@@ -192,6 +198,7 @@ impl state::State for Saved {
         ensure!(self.spawned.len() <= 5, "Unbounded Keep guard pool");
         let mut ids = std::collections::BTreeSet::new();
         for a in &self.spawned {
+            ensure!(a.entity < LOOT_WAVE_STRIDE, "Keep reward entity out of range");
             ensure!(ids.insert(a.entity), "Duplicate Keep guard");
             a.guard.validate()?;
             ensure!(
@@ -293,6 +300,7 @@ impl Keep {
         }
     }
     fn spawn_group(&mut self, group: &str) {
+        self.saved.spawn_generation = self.saved.spawn_generation.saturating_add(1);
         self.saved.spawned = self
             .data
             .spawns
@@ -626,7 +634,10 @@ impl LevelController for Keep {
         self.combat_guards(c)
     }
     fn loot_sources(&self) -> Vec<crate::loot::Source> {
-        self.saved.spawned.iter().map(|a|crate::loot::Source{id:BASE+a.entity,feet:a.guard.feet(),grade:if matches!(&a.guard,guards::Body::Card(g) if g.kind==crate::cards::Kind::Heart){crate::loot::Grade::Large}else{crate::loot::Grade::Medium},dead:a.guard.health()==0.}).collect()
+        // A later group contains new enemies even when it reuses the same
+        // map spawn points. Generation zero preserves existing saves' IDs.
+        let reward_base=BASE+usize::from(self.saved.spawn_generation)*LOOT_WAVE_STRIDE;
+        self.saved.spawned.iter().map(|a|crate::loot::Source{id:reward_base+a.entity,feet:a.guard.feet(),grade:if matches!(&a.guard,guards::Body::Card(g) if g.kind==crate::cards::Kind::Heart){crate::loot::Grade::Large}else{crate::loot::Grade::Medium},dead:a.guard.health()==0.}).collect()
     }
     fn scripted(&self) -> bool {
         self.saved.scene.is_some()
@@ -776,6 +787,8 @@ pub static REGISTRATION: Registration = Registration {
         ),
     ],
     checks: &[
+        Check {flag: "--keep-coop-route-check", help: "Walk the normal paired Keep puzzle and combat course.",
+            run: Run::Windowed(route::check)},
         Check {flag: "--keep-coop-check", help: "Verify paired castle progression and personal combat.",
             run: Run::Headless(coop_check::check)},
         Check {

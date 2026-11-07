@@ -2030,6 +2030,9 @@ ordinary steam steering, the shared lift waiting for its partner and actual Keep
 arrival. It extends the accelerated diagnostic command set without staging any
 climb, gate, lift or player state.
 
+`--keep-coop-route-check` reserves the ordinary paired Castle Keep course,
+including lever use, portrait shots, steam climbs and actual Queen arrival.
+
 `--wforest-coop-check` reserves staged co-op checks across both Caterpillar's
 Plot visits: shared machinery, individual healing, Staff arrival and original
 scene ownership/reunion. Full traversal and internet coverage remain separate.

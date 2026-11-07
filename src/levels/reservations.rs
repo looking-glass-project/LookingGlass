@@ -411,7 +411,7 @@ pub static RESERVATIONS: [Reservation; 39] = [
     }), ..visit(36, "facade") },
     Reservation { flags: Some(VisitFlags {
         contract: &["--keep-check", "--keep-coop-check"],
-        route: &["--keep-route-check"], skip: &["--keep-skip-route-check"],
+        route: &["--keep-route-check", "--keep-coop-route-check"], skip: &["--keep-skip-route-check"],
         render: &["--keep-render-check"],
     }), ..visit(37, "keep") },
     Reservation {

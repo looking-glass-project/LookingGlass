@@ -1,6 +1,6 @@
 # Co-op progress
 
-Updated 7 November 2026. Branch: `coop`. **Estimated overall completion: 70.7%.**
+Updated 7 November 2026. Branch: `coop`. **Estimated overall completion: 71.2%.**
 The target is now [100% playable co-op](COOP_PLAYABLE.md), followed by a
 separate polishing stage. Complete normal progression and core flows first;
 batch implementation and reuse passing evidence. The historical exhaustive
@@ -41,7 +41,7 @@ foundation point credited the missing import feature. The current additional
 Internet Host/Join point credits completed public core consolidation on `0b5bca3`;
 no additional campaign visit is credited.
 
-Eighteen of 39 visits now have credited normal paired route evidence. Six retain
+Nineteen of 39 visits now have credited normal paired route evidence. Six retain
 the historical combined designation; the broader matrix still labels 33 as
 partial because it includes polishing cases. The next priority is normal paired campaign
 pass, fixing progression blockers and checking core recovery at representative
@@ -55,8 +55,47 @@ remain in the polishing backlog.
 | Two players, movement and presentation | 11.75 | 15 |
 | Combat, individual resources and death | 13.5 | 20 |
 | Scenes, transport and progression | 16 | 20 |
-| Campaign playability | 9.23 | 20 |
-| **Total** | **70.73, rounded to 70.7** | **100** |
+| Campaign playability | 9.74 | 20 |
+| **Total** | **71.24, rounded to 71.2** | **100** |
+
+## Castle Keep playable route completed
+
+Frozen `b22c2b4` passes the default normal paired Castle Keep course through
+actual Queen arrival: **80,098 ticks and 668 exact compressed Arena replicas**.
+Ordinary controls activate all three mirror scenes, climb the steam column
+three times and shoot the three correct portraits. Both players reach each
+upper landing. Red later dies on a descent and revives beside Blue after
+exactly 1,200 ticks, with no team wipe, cheats or staged progression.
+
+This route exposed a real resource bug: fresh guard waves reused earlier
+enemies' reward IDs, preventing later healing essence from dropping. Each
+spawned group now has a saved reward generation; existing version-2 saves
+default to generation zero and retain their original IDs. The native fixture
+verifies three defeated waves, six fresh personal drops per player, duplicate
+suppression and world/loot reloads, including old saves without the new field.
+
+The first walker continues past the final gate to trigger the original
+single-Alice scene. The waiting partner stays frozen, then the game reunites
+both for the actual Queen arrival. Both arrive alive with all personal resources
+unchanged: approximately **64.47/53.47 health and 99/99 Will**. The test driver
+now supports ordinary lever use and portrait shots, single-file cornering and
+room for both bodies at a shared landing; gameplay movement is unchanged.
+
+Validation: **944 Rust tests passed**, locked release build, solo and paired
+Keep component checks, seven source-package tests and source audit. Tests,
+components and the repeated Ascension route use `fe24cb8`; only the Keep
+diagnostic's final corridor commands changed afterward. The final Battle Royale
+regression also passes again at 30,506 ticks, 255 replicas and actual Ascension
+arrival. Ascension repeats at 63,444 ticks and 529 replicas with its shared lift.
+
+Private evidence: `coop-keep-native-7-keep`, `coop-keep-native-7-grounds2`,
+`coop-keep-native-6-facade`, `coop-keep-contract-6` and
+`coop-playable-keep-route-verified.json`. This is normal production Arena and
+compressed-replica evidence, separate from unchanged public-invite/core tests.
+It does not establish rendered spectator cameras or independent internet
+clients for this route. Earlier failed/cancelled attempts receive no credit.
+
+This adds Castle Keep: `61.5 + 20 * 19 / 39 = 71.24`; **20 visits remain**.
 
 ## Ascension playable route completed
 

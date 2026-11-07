@@ -56,6 +56,17 @@ a normal-play blocker, data loss, or a missing requested core feature.
 Report playable readiness and the polishing backlog separately. Do not label
 the game 100% playable while a level or requested core flow remains blocked.
 
+## Castle Keep accepted
+
+`b22c2b4` passes the fresh default paired Castle Keep route: all three lever
+selections and portrait shots, three steam climbs, personal earned essence,
+the original final scene and actual Queen arrival. The 80,098-tick run includes
+one exact ten-second revival and no team wipe. A repeated-wave reward-ID bug
+is fixed with old-save compatibility. Both arrive alive with all personal
+resources preserved. Battle Royale and Ascension regressions also pass.
+This brings normal paired coverage to **19/39 visits**, with 20 remaining.
+See [current evidence](COOP_PROGRESS.md#castle-keep-playable-route-completed).
+
 ## Ascension accepted
 
 `4d8acf0` passes the fresh default paired route from Ascension's normal entrance
@@ -70,7 +81,7 @@ See [current evidence](COOP_PROGRESS.md#ascension-playable-route-completed).
 
 ## Normal-route acceptance, 7 November
 
-Eighteen of 39 visits now have credited normal paired route evidence. The six
+Nineteen of 39 visits now have credited normal paired route evidence. The six
 historically combined visits remain credited. The playable milestone also
 accepts complete ordinary-input routes in UTemple, Sanctum, Castling,
 Checkmate and About Face without requiring every polishing permutation.
@@ -137,13 +148,12 @@ linked to the exact native revival. Three such revivals/continuations pass a
 bounded audit. The subsequent full attempt still fails after both players die
 in the late encounter at step 154 and restore the initial checkpoint. A Garden
 full-route pass is still required; no team-wipe certification is inferred from
-that failed route. Twenty-one visits remain outside credited normal
+that failed route. Twenty visits remain outside credited normal
 route coverage; all have paired component evidence.
 
 Remaining normal-route coverage is first Skool, School Two, all three Pool
 visits, all four Garden visits, Centipede One, both Wood visits, Pale Realm,
-the six Maze/Tower
-visits, Castle Keep and the Queen finale.
+the six Maze/Tower visits and the Queen finale.
 
 Run the two fresh-entry route checks together in Anode:
 

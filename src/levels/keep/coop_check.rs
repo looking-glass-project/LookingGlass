@@ -103,10 +103,49 @@ fn combat(a: &mut Assets, map: &Bsp) -> Result<()> {
     Ok(())
 }
 
+fn rewards(a: &mut Assets, map: &Bsp) -> Result<()> {
+    let mut k=Keep::load(a,map)?;k.upgraded();k.saved.elapsed=5.;
+    let world=World::from_bsp(map)?;
+    let mut personal:[crate::loot::Loot;2]=Default::default();
+    let mut seen=std::collections::BTreeSet::new();
+    for wave in 1..=3 {
+        k.spawn_group("heart");
+        let before=k.loot_sources();
+        ensure!(before.len()==2 && before.iter().all(|s|!s.dead && seen.insert(s.id)),
+            "Keep reused an earlier wave's reward identity");
+        let saved=k.snapshot();k.restore(&saved,map)?;
+        ensure!(k.loot_sources().iter().map(|s|s.id).collect::<Vec<_>>()
+            ==before.iter().map(|s|s.id).collect::<Vec<_>>(),"Keep reward IDs changed on reload");
+        for target in k.targets() {
+            k.hit(Hit{id:target.id,damage:10000.,kind:crate::combat::DamageKind::Knife,knockback:Vec3::ZERO});
+        }
+        let after=k.loot_sources();
+        ensure!(after.iter().all(|s|s.dead),"Keep reward fixture did not defeat its guards");
+        for ledger in &mut personal {
+            ledger.defeated(&before,&after,&world);
+            ledger.defeated(&before,&after,&world);
+            *ledger=serde_json::from_value(serde_json::to_value(&*ledger)?)?;
+            ledger.validate()?;
+            ensure!(ledger.awarded.len()==wave*2 && ledger.drops.len()==wave*2,
+                "Keep lost or duplicated a personal wave reward");
+        }
+    }
+    // Version-2 saves written before generations retain their original IDs.
+    let mut legacy=k.snapshot();legacy.as_object_mut().unwrap().remove("spawn_generation");
+    k.restore(&legacy,map)?;
+    ensure!(k.saved.spawn_generation==0 && k.loot_sources().iter().zip(&k.saved.spawned)
+        .all(|(source,actor)|source.id==BASE+actor.entity),"Legacy Keep rewards changed identity");
+    let old=k.loot_sources().iter().map(|s|s.id).collect::<Vec<_>>();
+    k.spawn_group("heart");
+    ensure!(k.loot_sources().iter().all(|s|!old.contains(&s.id)),"Legacy Keep next wave reused old rewards");
+    println!("PASS paired Keep rewards: three waves, six fresh personal drops each, duplicate suppression, reload and legacy IDs");
+    Ok(())
+}
+
 pub(super) fn check(a: &mut Assets) -> Result<()> {
     let map = Bsp::parse(&a.read("maps/keep.bsp")?)?;
     let mut failed = Vec::new();
-    for (name, run) in [("progression", progression as fn(&mut Assets, &Bsp) -> Result<()>), ("combat", combat)] {
+    for (name, run) in [("progression", progression as fn(&mut Assets, &Bsp) -> Result<()>), ("combat", combat), ("rewards", rewards)] {
         if let Err(error) = run(a, &map) {
             println!("FAIL paired Keep {name}: {error:#}"); failed.push(name);
         }

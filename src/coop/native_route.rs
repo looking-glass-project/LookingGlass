@@ -13,6 +13,8 @@ pub(crate) enum Command {
     HighNode(usize), Walk([f32; 3]), Positions([Option<[f32; 3]>; 2]),
     Rise { center: [f32; 2], height: f32, landing: [f32; 3] },
     Board { thread: String, center: [f32; 2] },
+    /// Follow an authored point's footing in single file; stop if a scene starts.
+    Approach([f32; 3]), Interact([f32; 3]), Shoot(String),
 }
 pub(crate) struct Spec {
     pub map: &'static str,
@@ -118,6 +120,10 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
     let mut reunions = 0;
     let mut samples = 0;
     let mut arrival = None;
+    let mut shot_started = false;
+    let mut approach_lead = None;
+    let mut approach_stuck = 0;
+    let mut approach_yields = 0;
     let result: Result<()> = async {
         for tick in 0..120*1800 {
             let command = commands.get(step).context("Route commands ended before the actual exit")?;
@@ -126,7 +132,16 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
             let before = roster.players.each_ref().map(|b| b.player.feet);
             let alive = roster.players.each_ref().map(|b| b.stats.alive());
             let spawned = roster.players.each_ref().map(|b| b.spawned_at);
-            let all = targets(&arena);
+            let mut all = targets(&arena);
+            let switch=if let Command::Shoot(thread)=command {
+                let target=arena.stage.interactions.switch_target(thread);
+                if !busy && !shot_started {
+                    ensure!(target.is_some(),"Switch missing before ordinary shot: {thread}");
+                    shot_started=true;
+                }
+                all.extend(target);
+                target
+            } else {None};
             let context = crate::combat::Context { world: &world, targets: &all };
             let goal = match command {
                 Command::Node(id) | Command::HighNode(id) => {
@@ -142,11 +157,32 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
                 }
                 Command::Nav(v) => Some(Vec3::from_array(*v)), _ => None,
             };
+            let goal=if let Command::Approach(point)=command {
+                Some([0.,16.,32.,64.,128.,256.,512.].into_iter().find_map(|z|
+                    world.actor_footing(Vec3::from_array(*point)+Vec3::Z*z,PLAYER_CENTER,PLAYER_HALF,512.))
+                    .with_context(||format!("Unsupported approach {point:?}"))?)
+            } else {goal};
+            if matches!(command,Command::Approach(_)) && !busy {
+                if approach_lead.is_none_or(|i:usize|!roster.players[i].stats.alive()) {
+                    approach_lead=roster.players.iter().enumerate().filter(|(_,b)|b.stats.alive())
+                        .min_by(|(_,a),(_,b)|a.player.feet.distance_squared(goal.unwrap())
+                            .total_cmp(&b.player.feet.distance_squared(goal.unwrap()))).map(|(i,_)|i);
+                }
+            }
             let mut inputs = [(Controls::default(), Input::default()); 2];
             let mut planned = [false; 2];
             let mut work = false;
             let mut walk_touch = false;
             let mut nav_touch = false;
+            let mut used = false;
+            let user=if let Command::Interact(point)=command {
+                roster.players.iter().enumerate().filter(|(_,b)|b.stats.alive())
+                    .filter_map(|(i,b)| {
+                        let delta=Vec3::from_array(*point)-b.player.eye();
+                        arena.stage.interactions.prompt(&world,b.player.eye(),delta.normalize_or_zero())
+                            .map(|_|(i,delta.length_squared()))
+                    }).min_by(|a,b|a.1.total_cmp(&b.1)).map(|(i,_)|i)
+            } else {None};
             let board_ready = if let Command::Board{thread,..}=command {
                 roster.players.each_ref().map(|b| arena.stage.interactions.levels.iter()
                     .any(|s|s.ctl.coop_boarding_ready(thread,&[b.player.feet])==Some(true)))
@@ -160,7 +196,8 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
                 if busy || !body.stats.alive() { continue; }
                 trackers[i].observe(&all, FIXED_DT);
                 let radius = if let Command::Clear(radius) = command { *radius } else { 1000. };
-                let foes = all.iter().copied().filter(|t| t.center.distance(p.eye()) <= radius).collect::<Vec<_>>();
+                let foes = all.iter().copied().filter(|t|switch.is_none_or(|s|s.id!=t.id)
+                    && t.center.distance(p.eye()) <= radius).collect::<Vec<_>>();
                 let mut attack = fight::plan(&context, p.eye(), &foes, &trackers[i], false);
                 let visible = foes.iter().filter_map(|t| fight::aim_point(&context, p.eye(), t).map(|at|(t,at)))
                     .min_by(|(_,a),(_,b)| a.distance_squared(p.eye()).total_cmp(&b.distance_squared(p.eye())));
@@ -176,7 +213,13 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
                 }
                 let personal_goal = if let Command::Positions(goals)=command {goals[i].map(Vec3::from_array)} else {goal};
                 if let Some(goal) = personal_goal {
-                    inputs[i].0=walking[i].input(&world,p,goal,38.,require_landing)?; planned[i]=true;
+                    let follow=approach_lead.is_none_or(|lead|lead==i || {
+                        let leader=&roster.players[lead].player;
+                        leader.grounded && leader.feet.distance(goal)<38.
+                    });
+                    if follow {
+                        inputs[i].0=walking[i].input(&world,p,goal,38.,require_landing)?;planned[i]=true;
+                    }
                     // One body reaches the shared marker while the other keeps
                     // normal personal space nearby. Separate personal goals
                     // retain their own arrival bounds.
@@ -229,21 +272,50 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
                     }
                 } else if matches!(command,Command::Watch) {
                     inputs[i].1.weapon=Some(9);inputs[i].1.primary=true;inputs[i].1.alternate=false;
+                } else if let Command::Interact(point)=command {
+                    if user==Some(i) {
+                        let aim=(Vec3::from_array(*point)-p.eye()).normalize_or_zero();
+                        inputs[i].1.yaw=aim.y.atan2(aim.x);inputs[i].1.pitch=aim.z.asin();
+                        inputs[i].1.primary=false;inputs[i].1.alternate=false;
+                        inputs[i].0.use_pressed=true;used=true;
+                    }
+                    work=true;
+                } else if matches!(command,Command::Shoot(_)) {
+                    if let Some(target)=switch {
+                        if let Some(at)=fight::aim_point(&context,p.eye(),&target) {
+                            let aim=(at-p.eye()).normalize_or_zero();
+                            inputs[i].1.yaw=aim.y.atan2(aim.x);inputs[i].1.pitch=aim.z.asin();
+                            inputs[i].1.weapon=Some(0);inputs[i].1.primary=false;inputs[i].1.alternate=true;
+                        }
+                    }
+                    work=true;
                 }
             }
             if matches!(command,Command::Walk(_)) && !walk_touch {work=true;}
             if require_landing && goal.is_some() && !nav_touch {work=true;}
+            if let Command::Rise{landing,..}=command {
+                // Once one rider reaches the landing marker, the other can
+                // settle beside them. Requiring both capsules at the same
+                // point can leave a grounded partner blocked just outside it.
+                if rise_done.iter().any(|done|*done) && roster.players.iter().enumerate().all(|(i,b)|
+                    !b.stats.alive() || (rising[i] && b.player.grounded
+                        && b.player.feet.distance(Vec3::from_array(*landing))<80.)) {
+                    work=false;
+                }
+            }
             if !busy {
                 step_ticks += 1;
                 quiet = if work {0} else {quiet+1};
             }
             history.push_back(serde_json::json!({"tick":roster.tick,"step":step,"command":command,"feet":before,
                 "health":roster.players.each_ref().map(|b|b.stats.sanity()),"will":roster.players.each_ref().map(|b|b.stats.will()),
-                "movement":inputs.each_ref().map(|(c,_)|serde_json::json!({"wish":c.wish,"jump":c.jump,"run":c.run})),
+                "movement":inputs.each_ref().map(|(c,n)|serde_json::json!({"wish":c.wish,"jump":c.jump,"run":c.run,
+                    "use":c.use_pressed,"weapon":n.weapon,"primary":n.primary,"alternate":n.alternate})),
                 "steam":roster.players.each_ref().map(|b|b.player.steam),"grounded":roster.players.each_ref().map(|b|b.player.grounded)}));
             if history.len()>240 {history.pop_front();}
             arena.step(&mut roster,&map,&mut world,inputs)?;
-            if old_owner.is_none() && arena.stage.owner.is_some() {
+            let began_scene=old_owner.is_none() && arena.stage.owner.is_some();
+            if began_scene {
                 let boarding=if let Command::Board{thread,..}=command {
                     let ready=roster.players.each_ref().map(|b|arena.stage.interactions.levels.iter()
                         .any(|s|s.ctl.coop_boarding_ready(thread,&[b.player.feet])==Some(true)));
@@ -260,10 +332,27 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
                     walking[i]=Default::default();
                 }
             }
+            if !busy && matches!(command,Command::Approach(_)) {
+                if let Some(lead)=approach_lead {
+                    let player=&roster.players[lead];
+                    approach_stuck=if player.stats.alive() && inputs[lead].0.wish.length_squared()>0.01
+                        && player.player.feet.distance_squared(before[lead])<0.01 {approach_stuck+1} else {0};
+                    if approach_stuck>=120 && roster.players[1-lead].stats.alive() {
+                        // Euclidean distance can choose the wrong leader at a
+                        // corner. Let the blocking partner go first instead.
+                        approach_lead=Some(1-lead);approach_stuck=0;approach_yields+=1;
+                        walking=Default::default();
+                        println!("YIELD {} step{step}: player{lead} lets player{} pass",spec.map,1-lead);
+                    }
+                }
+            }
             if let Some(owner)=arena.stage.owner.filter(|id|Some(*id)==old_owner) {
                 ensure!(roster.players[owner.partner().index()].player.feet==before[owner.partner().index()],"Scene moved hidden partner");
             }
-            if old_owner.is_some() && arena.stage.owner.is_none() {reunions+=1;}
+            if old_owner.is_some() && arena.stage.owner.is_none() {
+                reunions+=1;walking=Default::default();approach_lead=None;approach_stuck=0;
+                home=roster.players.each_ref().map(|b|b.player.feet);
+            }
             ensure!(roster.checkpoint_generation==0,"Route team-wiped at step{step} tick{tick}");
             ensure!(roster.players.iter().all(|b|!b.stats.god && !b.stats.notarget),"Route enabled cheats");
             if tick%120==0 {
@@ -283,6 +372,9 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
                     Command::Node(_) | Command::HighNode(_) | Command::Nav(_) | Command::Walk(_)
                         | Command::Positions(_) | Command::Rise{..} => !work,
                     Command::Board{..} => false,
+                    Command::Approach(_) => !work || began_scene,
+                    Command::Interact(_) => used && began_scene,
+                    Command::Shoot(thread) => shot_started && arena.stage.interactions.switch_target(thread).is_none(),
                     Command::Clear(_) => quiet>=240,
                     Command::Wait(ticks) => step_ticks>=*ticks,
                     Command::Watch => step_ticks>=120,
@@ -293,7 +385,7 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
                     completed.push(serde_json::json!({"step":step,"command":command,"tick":roster.tick,"feet":roster.players.each_ref().map(|b|b.player.feet),
                         "steam_seen":steam_seen,"rise_done":rise_done}));
                     step+=1;step_ticks=0;quiet=0;walking=Default::default();
-                    rising=[false;2];steam_seen=[false;2];rise_done=[false;2];board_lead=None;
+                    rising=[false;2];steam_seen=[false;2];rise_done=[false;2];board_lead=None;shot_started=false;approach_lead=None;approach_stuck=0;
                     home=roster.players.each_ref().map(|b|b.player.feet);
                 }
             }
@@ -320,7 +412,7 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
     let report=serde_json::json!({"build":env!("LOOKING_GLASS_BUILD"),"full_route_passed":result.is_ok(),
         "error":result.as_ref().err().map(|e|format!("{e:#}")),"commands":commands,"completed":completed,"step":step,
         "replica_samples":samples,"reunions":reunions,"life_events":life_events,"scene_starts":scene_starts,
-        "board_wait_ticks":board_wait_ticks,"frame":roster.frame(1,0),
+        "board_wait_ticks":board_wait_ticks,"approach_yields":approach_yields,"frame":roster.frame(1,0),
         "world":arena.snapshot(),"arrival":arrival,"recent_inputs":history,
         "scope":"Fresh normal two-player production Arena route; compressed replicas, not internet transport"});
     std::fs::create_dir_all(crate::preferences::path(""))?;

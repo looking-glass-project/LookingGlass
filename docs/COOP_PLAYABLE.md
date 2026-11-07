@@ -56,6 +56,17 @@ a normal-play blocker, data loss, or a missing requested core feature.
 Report playable readiness and the polishing backlog separately. Do not label
 the game 100% playable while a level or requested core flow remains blocked.
 
+## Icy Reception accepted
+
+`cd89026` passes a fresh normal paired route into actual Fungiferous Flora:
+21,406 ticks, 35 exact Arena replicas, both personal Ice Wands, both vent rises
+for each player and two watched scene reunions. Blue dies and revives after
+exactly 1,200 active ticks, with 841 cutscene ticks correctly paused. Both arrive
+alive with unchanged personal resources; no wipe, cheats or world staging.
+The final automated controls handle planned landings and actual ledge pull-ups.
+This credits normal progression with recovery; existing internet/camera evidence
+remains separate. Coverage is **23/39 visits**, **16** remaining, **73.3%** overall.
+
 ## Rolling Stones accepted
 
 `7710f92` fixes the follower's repeated chase-gate activation and passes a fresh
@@ -115,7 +126,7 @@ See [current evidence](COOP_PROGRESS.md#ascension-playable-route-completed).
 
 ## Normal-route acceptance, 7 November
 
-Twenty-two of 39 visits now have credited normal paired route evidence. The six
+Twenty-three of 39 visits now have credited normal paired route evidence. The six
 historically combined visits remain credited. The playable milestone also
 accepts complete ordinary-input routes in UTemple, Sanctum, Castling,
 Checkmate and About Face without requiring every polishing permutation.
@@ -183,11 +194,11 @@ bounded audit. The subsequent full attempt still fails after both players die
 in the late encounter at step 154 and restore the initial checkpoint. A Garden
 full-route pass was still required at that point; no team-wipe certification is
 inferred from that failed route. The later Red-led native pass above now meets
-normal-route acceptance, followed by Herbaceous Border and Rolling Stones above. Seventeen visits remain outside credited normal route
+normal-route acceptance, followed by Herbaceous Border, Rolling Stones and Icy Reception above. Sixteen visits remain outside credited normal route
 coverage; all have paired component evidence.
 
 Remaining normal-route coverage is first Skool, School Two, all three Pool
-visits, Icy Reception, Centipede One, both Wood visits, Pale Realm,
+visits, Centipede One, both Wood visits, Pale Realm,
 the six Maze/Tower visits and the Queen finale.
 
 Run the two fresh-entry route checks together in Anode:

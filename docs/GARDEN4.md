@@ -109,4 +109,38 @@ resources and transition into Fungiferous Flora. Evidence:
 `private/coop-garden4-route-b7ba057.log` and
 `private/coop-garden4-skip-b7ba057.log`, compared with their matching
 `*-baseline-c6a4ddc.log` files. These are single-player regressions; paired
-entrance-to-exit traversal remains unverified.
+entrance-to-exit traversal was unverified at that checkpoint; the later normal paired pass is recorded below.
+
+
+## Normal paired route accepted, 7 November 2026
+
+`--garden4-coop-route-check` now runs ordinary paired movement/combat in the
+production Arena. It shares the solo route's 35 waypoints, completes planned
+landings, pulls up actual caught ledges, rides both vents and allows normal
+personal recovery. It never stages bodies or changes world progression.
+Run with `python tools/test_coop_garden_native.py --map garden4 --exe <frozen-exe>
+--data <base-directory> --profile <new-directory>` in Anode. This first course
+uses Blue's initial lead and watches the original scenes.
+
+Frozen `cd89026` passes **21,406 ticks** and **35 matching compressed Arena
+replicas** into actual Fungiferous Flora. Both players collect their own Ice Wand
+and complete each vent rise. Red activates the marble scene; Blue later
+activates the Caterpillar scene. Both reunions finish and the real portal opens.
+Both arrive alive at approximately 23.29/88 health, with every personal Stats
+field unchanged by the onward transition and safe, separate spawn positions.
+
+Blue's death at tick 2,348 recovers at 4,389 with 25 health: exactly 1,200 active
+countdown ticks plus 841 cutscene ticks, during which the countdown pauses.
+There is no team wipe, cheat, forced progression or gameplay rule change.
+The 2,204-row trace verifies safe revival and preserved resources. This is a
+normal route with recovery, not a flawless or new internet/camera pass.
+
+The initial `84b284a` batch passes 947 active Rust tests and both unchanged
+Normal/Easy solo routes. Later changes only refine the diagnostic controls;
+the final locked release and paired run pass. Earlier failed attempts are
+retained: premature grounded planning, a fallen player's immediate abort and
+a missing ledge pull-up input. Final evidence is under
+`private/coop-icy-playable-4/` and the source/executable/report/trace audit
+`private/coop-playable-icy-route-verified.json`. Existing co-op core/internet
+evidence is reused for unchanged systems. Broader per-visit permutations remain
+in the polishing backlog.

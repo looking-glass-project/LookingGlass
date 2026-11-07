@@ -1,6 +1,6 @@
 # Co-op progress
 
-Updated 7 November 2026. Branch: `coop`. **Estimated overall completion: 72.8%.**
+Updated 7 November 2026. Branch: `coop`. **Estimated overall completion: 73.3%.**
 The target is now [100% playable co-op](COOP_PLAYABLE.md), followed by a
 separate polishing stage. Complete normal progression and core flows first;
 batch implementation and reuse passing evidence. The historical exhaustive
@@ -41,7 +41,7 @@ foundation point credited the missing import feature. The current additional
 Internet Host/Join point credits completed public core consolidation on `0b5bca3`;
 no additional campaign visit is credited.
 
-Twenty-two of 39 visits now have credited normal paired route evidence. Six retain
+Twenty-three of 39 visits now have credited normal paired route evidence. Six retain
 the historical combined designation; the broader matrix still labels 33 as
 partial because it includes polishing cases. The next priority is normal paired campaign
 pass, fixing progression blockers and checking core recovery at representative
@@ -55,8 +55,38 @@ remain in the polishing backlog.
 | Two players, movement and presentation | 11.75 | 15 |
 | Combat, individual resources and death | 13.5 | 20 |
 | Scenes, transport and progression | 16 | 20 |
-| Campaign playability | 11.28 | 20 |
-| **Total** | **72.78, rounded to 72.8** | **100** |
+| Campaign playability | 11.79 | 20 |
+| **Total** | **73.29, rounded to 73.3** | **100** |
+
+## Icy Reception playable route completed
+
+Frozen `cd89026` passes the fresh paired normal route through the actual
+Fungiferous Flora arrival: **21,406 ticks**, **35 exact compressed Arena
+replicas**, both personal Ice Wands, both players' two vent rises and two
+original watched scene reunions. Red activates the marble scene first; Blue
+later activates the Caterpillar scene. Both arrive alive at about **23.29/88
+health**, with their complete personal resources preserved, without a team wipe,
+cheats, body staging or forced progression.
+
+Blue dies at tick 2,348 and revives at 4,389 with 25 health. The trace verifies
+exactly **1,200 active countdown ticks**, plus **841 paused cutscene ticks**,
+safe placement and unchanged personal resources. The test then continues from
+the survivor's observed waypoint. This credits normal progression with recovery,
+not a flawless run or new rendered-spectator/internet evidence.
+
+The new automated course reuses the solo waypoints and normal inputs. Earlier
+attempts exposed driver limitations: it cut planned landings short, stopped
+before a partner could reach a reunion, and omitted the pull-up input after a
+ledge grab. The final driver handles these normal states with bounded waits.
+Gameplay physics, hazards, combat and revival rules did not change.
+
+The batch passes **947 active Rust tests** on initial `84b284a`, followed by the
+diagnostic control refinements and the final locked release. That initial build
+also passes the existing Normal/Easy solo routes into Flora. Source/package
+checks pass. Evidence is pinned in `private/coop-icy-playable-4/` and
+`private/coop-playable-icy-route-verified.json`. Public-invite/core evidence is
+reused for unchanged systems. Coverage is **23/39 visits**, leaving **16**;
+estimated overall completion is **73.3%**.
 
 ## Rolling Stones playable route completed
 
@@ -448,7 +478,7 @@ yet verified across every level and failure condition.
 | Combat and resources | Nearest-visible targeting, individual damage, inventory and consumables; all explicit paired boss adapters integrated | Verify remaining full combat routes and fix normal-play blockers |
 | Death and saves | Exact ten-second countdown, moving spectator camera, safe 25-health revival; shared checkpoint wipes, solo import, earlier co-op resume, public save/leave/continue and storage-error/backup menu flow | Representative recovery during remaining routes; exhaustive per-visit matrices deferred to polishing |
 | Scenes and machinery | First-arrival ownership, original single-Alice scenes, hidden partner and safe reunion; public scene reconnects and all-living boarding; adapters through the ending | Verify remaining normal transports/exits and the final film/credits handoff; exhaustive owner/skip permutations deferred |
-| Regression checks | 947 active Rust tests on `7710f92`; existing native registry/component checks and build-specific source guards, weapon-effect/audio and solo baselines | Missing normal campaign routes and focused checks for subsequent fixes |
+| Regression checks | 947 active Rust tests on `84b284a`; existing native registry/component checks and build-specific source guards, weapon-effect/audio and solo baselines | Missing normal campaign routes and focused checks for subsequent fixes |
 
 Campaign status from `COOP_CAMPAIGN.md`:
 
@@ -462,7 +492,7 @@ Campaign status from `COOP_CAMPAIGN.md`:
   currently have components or checkpoint segments only.
 - **No visit remains without paired component evidence.** Heart of Darkness's
   adapter is integrated. Component coverage does not complete the full campaign
-  playability pass: 22 normal paired routes are credited, with 17 remaining.
+  playability pass: 23 normal paired routes are credited, with 16 remaining.
 
 See the [full campaign matrix](COOP_CAMPAIGN.md). Future updates should separate
 working features, partial route milestones and completed verification visits.

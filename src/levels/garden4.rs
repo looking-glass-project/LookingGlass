@@ -2,6 +2,7 @@
 mod art;
 mod check;
 mod coop_check;
+mod coop_route;
 mod course;
 mod course_check;
 mod data;
@@ -779,6 +780,11 @@ pub static REGISTRATION: Registration = Registration {
         BeatSpec::linear("garden4", END, "garden4_cinematics", END, 1),
     ],
     checks: &[
+        Check {
+            flag: "--garden4-coop-route-check",
+            help: "Walk paired Icy Reception through the original hazards, vents and Flora exit.",
+            run: Run::Windowed(coop_route::check),
+        },
         Check {
             flag: "--garden4-coop-check",
             help: "Verify paired ice hazards, shared clocks and original scene reunions.",

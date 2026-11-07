@@ -80,6 +80,13 @@ pub struct Roster {
     pub checkpoint_generation: u64,
     checkpoint: [Body; 2],
 }
+/// One world clock for machinery, enemies, particles and audio. Only living
+/// Watch owners can stop it. Overlapping freezes end at the later expiry;
+/// their durations must not be added when both expire within the same frame.
+pub fn world_dt(players: &[Body; 2], dt: f32) -> f32 {
+    players.iter().filter(|body| body.stats.alive())
+        .map(|body| body.stats.powers.world_dt(dt)).fold(dt, f32::min)
+}
 impl Roster {
     pub fn from_checkpoint(frame: &Frame, world: &World, safe: impl Fn(Vec3) -> bool) -> Result<Self> {
         frame.validate()?;
@@ -299,6 +306,28 @@ mod tests {
     use super::*;
     fn floor() -> World {
         World::fixture(&[(vec3(-1000., -1000., -100.), vec3(1000., 1000., 0.))])
+    }
+    #[test]
+    fn shared_watch_ignores_dead_owners_and_overlapping_expiries_are_not_added() {
+        let mut r = Roster::new(&floor(), Vec3::Z * EYE_HEIGHT, 0., Stats::default()).unwrap();
+        for owner in 0..2 {
+            r.players[owner].stats.powers.stopped = 20.;
+            r.players[owner].stats.powers.recharge = 360.;
+            assert_eq!(world_dt(&r.players, FIXED_DT), 0.);
+            r.players[owner].stats.damage(1000.);
+            assert_eq!(world_dt(&r.players, FIXED_DT), FIXED_DT);
+            r.players[owner].stats = Stats::default();
+        }
+        for body in &mut r.players {
+            body.stats.powers.stopped = FIXED_DT * 0.25;
+            body.stats.powers.recharge = 1.;
+        }
+        assert_eq!(world_dt(&r.players, FIXED_DT), FIXED_DT * 0.75);
+        r.players[1].stats.powers.stopped = FIXED_DT * 0.5;
+        assert_eq!(world_dt(&r.players, FIXED_DT), FIXED_DT * 0.5);
+        r.players[1].stats.damage(1000.);
+        assert_eq!(world_dt(&r.players, FIXED_DT), FIXED_DT * 0.75);
+        assert_eq!(world_dt(&r.players, 0.), 0.);
     }
     #[test]
     fn either_player_revives_on_a_partners_rope_after_ten_seconds_with_own_resources() {

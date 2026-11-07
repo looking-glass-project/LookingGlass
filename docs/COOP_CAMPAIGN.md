@@ -1,5 +1,14 @@
 # Co-op campaign verification matrix
 
+The user now prioritizes [100% playable coverage](COOP_PLAYABLE.md), with
+exhaustive polishing afterward. This historical matrix retains detailed
+verification gaps; those combinations do not all gate the playable build.
+
+Airborne Terror core update: `3e96892` passes 41 paired component cases
+and an unchanged ten-case solo baseline. Current status totals: six combined,
+twenty-six partial and seven not run. A normal paired campaign pass remains
+required for playable coverage beyond the established routes.
+
 Source: `campaign::route()` in `src/campaign.rs`. Return visits are separate requirements.
 The village, Pandemonium, both Fortress visits, Beyond and return school have the complete combined co-op evidence below.
 Existing single-player route tests do not supply evidence for two-player play.
@@ -15,7 +24,7 @@ Core Water Logged update, 6 November 2026: `d06ded3` adds shared machinery,
 personal current waits/fan hits and the original paired introduction. Sixty-six
 native cases pass, including both ordinary swimming orders, all six player/
 flusher activations and twelve Stage scene combinations. The solo 16-case log
-exactly matches `291af36`. Water Logged is Partial; current totals are six
+exactly matches `291af36`. At that checkpoint Water Logged became Partial; totals were six
 combined, twenty-five partial and eight not run. Full two-client combat and
 traversal, rendered effects and recovery/rejoin remain open. Follow-up `0e5f061`
 adds full fan-sweep placement exclusion and nine native checkpoint/revival
@@ -791,7 +800,7 @@ both original portals and the gated return, without cheats or recovery
 | 27 | `jlair2` | `Initial` | Partial: explicit paired combat, personal healing/reward, scenes and exit integration. On `ccd6cd1`, 58 combat, 21 world/reward and 34 Stage/scene cases pass across both encounters, including both post-battle bridge/gate/exit walks. Both owners, watched/skipped/paused/restored scenes, dead partners, safe reunion and personal collections are covered. Four solo check/route logs exactly match `7c3ca24`. Full two-client combat routes, rendered effects and per-encounter rejoin/death/wipe acceptance remain open; see `JABBERWOCK.md`. |
 | 28 | `wforest` | `wforest_start2` | Partial: shared Humpty secret-door, Staff-wall destruction and hedge-door clocks; individual alternating essence stations/cooldowns and native wall-warning ownership/reunion. Included in the 62 staged cases on source `2990c66`, with 30/60/144 Hz parity, personal pickup/save behavior, both watched/skipped warning owners and living/dead partners. Single-player return scene/route logs match baseline. Full paired traversal, actual optional reward pickup, combat, internet, rendered effects and death/wipe/rejoin remain open; see `WFOREST.md`. |
 | 29 | `hedge1` | `Initial` | Partial: `c6f580e` passes 12 native paired plate/gate cases and seven production-cast cases, covering either player, shared carry/clock, obstruction, dead-body exclusion, pause/restore, child-owned Hold, real NPC contacts, both escort trigger actors, replica state and automatic exit retry. The full solo route and all eleven checkpoints/reports exactly match the baseline. Full independent-client escort/traversal, combat/pickups and death/wipe/rejoin remain open; see HEDGE1.md. |
-| 30 | `tower1` | `Initial` | Not run |
+| 30 | `tower1` | `Initial` | Partial: `3e96892` adds the shared face-gust clock and living-owner Watch timing. All 41 native paired cases pass: clock parity, both players' trigger/push contacts, occupied repeats, saved continuation, original arrival variants and both actual exit-trigger owners. The ten-case solo log exactly matches `0e5f061`. A normal paired route remains required; exhaustive recovery/rejoin and presentation checks move to the polishing backlog. See `TOWER1.md`. |
 | 31 | `hedge2` | `Initial` | Not run |
 | 32 | `tower2` | `Initial` | Partial: source `d06ded3` adds shared water/machinery, atomic living-rider carry, personal current waits/fan hits and original scene integration. All 66 native paired cases pass, including both ordinary swimming orders with saved continuation, 12 Stage introduction variants and six physical flusher activations through native contacts. The original 16-case solo log is byte-identical to `291af36`. Follow-up `0e5f061` adds full fan-sweep placement exclusion and nine native checkpoint/timed-revival cases (75 paired cases total). Full two-client traversal/combat, rendered effects and per-visit rejoin/death/wipe acceptance remain open; see `TOWER2.md`. |
 | 33 | `hedge3` | `Initial` | Not run |

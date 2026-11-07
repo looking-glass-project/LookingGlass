@@ -1,5 +1,30 @@
 # Airborne Terror
 
+## Co-op playable integration
+
+Build `3e96892` adds the shared co-op face clock. Each gust advances once
+per world step and drives both players, enemy pushes and the existing face
+animation/effects state. Normal contacts can activate and repeat all four
+faces, including the overlapping middle triggers. Shared Watch time now
+uses only living owners and the latest overlapping expiry; machinery,
+combat, client particle clocks and audio use that same calculation.
+
+`--tower1-coop-check` passes 41 native cases: three clock/parity cases,
+twelve trigger/repeat cases, twelve ordinary player-push cases, twelve
+original arrival variants and both exit-trigger owners. Compressed state
+continuation is covered. The ten-case solo log is byte-identical to the
+pre-change `0e5f061` baseline. The production code passes 942 Rust tests;
+the final native run follows fixture-only corrections. Existing saves keep
+their format and shared face phases.
+
+These staged components establish core integration. A normal paired route
+through the level remains part of the playable campaign pass. Detailed
+per-visit recovery/rejoin, visual/audio comparison and difficulty/scene
+permutations belong to the later polishing stage unless they expose a
+normal-play blocker. See [playable milestone](COOP_PLAYABLE.md).
+
+## Existing single-player behavior
+
 `tower1$tower1_start1` has one registered controller for the Cheshire
 introduction and four blow faces. Existing native NPC ownership supplies the
 ten Boojum ambushes; no second combat cast is created. The sealed precache

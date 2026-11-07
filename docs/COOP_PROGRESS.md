@@ -1,6 +1,11 @@
 # Co-op progress
 
-Updated 6 November 2026. Branch: `coop`. **Estimated overall completion: 58.6%.**
+Updated 7 November 2026. Branch: `coop`. **Estimated overall completion: 58.8%.**
+The target is now [100% playable co-op](COOP_PLAYABLE.md), followed by a
+separate polishing stage. Complete normal progression and core flows first;
+batch implementation and reuse passing evidence. The historical exhaustive
+matrix below also tracks polishing work and does not all gate playability.
+
 The older 42% reports are historical. This percentage measures delivered and
 verified behavior against the full co-op scope; it is not a running test's progress.
 
@@ -19,7 +24,7 @@ paired scenes, personal Eye Staff reward, shared bridge and exit handling, with
 the bridge and through the actual castle exit. Water Logged now has its shared
 water machinery, personal currents/fan hits and original introduction on
 `d06ded3`, with 66 native paired cases. Follow-up `0e5f061` adds fan-safe
-checkpoint/revival placement and nine native recovery checks. Eight other late controllers
+checkpoint/revival placement and nine native recovery checks. Seven other late controllers
 still lack explicit co-op hooks. These are implementation gaps
 before full traversal testing. Campaign-specific
 verification, including the unfinished Burning Curiosity route, stays separate.
@@ -45,9 +50,9 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | Internet Host/Join | 10.75 | 15 |
 | Two players, movement and presentation | 11 | 15 |
 | Combat, individual resources and death | 11.25 | 20 |
-| Scenes, transport and progression | 13 | 20 |
-| Full campaign verification | 3.08 | 20 |
-| **Total** | **58.58, rounded to 58.6** | **100** |
+| Scenes, transport and progression | 13.25 | 20 |
+| Campaign playability | 3.08 | 20 |
+| **Total** | **58.83, rounded to 58.8** | **100** |
 
 ## Implemented features and remaining work
 
@@ -67,7 +72,7 @@ yet verified across every level and failure condition.
 | Combat and resources | Nearest-visible targeting, individual damage, inventory and consumables in integrated levels | Remaining enemies/bosses and level-specific rewards, with both players as the target/collector |
 | Death and saves | Exact ten-second countdown, moving spectator camera, safe 25-health revival; shared checkpoint wipes, public save/leave/continue and storage-error/backup menu flow, public save refusal/retry during deaths/scenes, public guest restart during either player's countdown | Each visit's recovery matrix and remaining transport/death combinations |
 | Scenes and machinery | First-arrival ownership, original single-Alice scenes, hidden partner and safe reunion; public intro/dialogue reconnects with either theatre owner; all-living boarding on integrated rides | Remaining level adapters, both scene owners, watched/skipped cases, transports and exits |
-| Regression checks | 941 active Rust tests; 450 Python guards; Maze and Jabberwock paired components and exact solo route logs, plus build-specific weapon-effect/audio and Curiosity baseline checks | Full campaign verification and required earlier contact-system repeats on the final build |
+| Regression checks | 942 active Rust tests; 450 Python guards; Maze and Jabberwock paired components and exact solo route logs, plus build-specific weapon-effect/audio and Curiosity baseline checks | Full campaign verification and required earlier contact-system repeats on the final build |
 
 Campaign status from `COOP_CAMPAIGN.md`:
 
@@ -75,18 +80,47 @@ Campaign status from `COOP_CAMPAIGN.md`:
   Pandemonium, Fortress of Doors (first visit), Beyond the Wall, Fortress of
   Doors (return visit), and Skool Daze (return visit). The first five retain
   historical build-specific passes and still require contact-system repeats.
-- **25 visits have partial evidence.** Some already have complete internet
+- **26 visits have partial evidence.** Some already have complete internet
   traversals, including Wholly Morel Ground, Castling and About Face, but still
   have outstanding reliability, recovery, reconnect or scene cases. Others
   currently have components or checkpoint segments only.
-- **8 visits are marked Not run for level-specific co-op verification:**
-  Airborne Terror, Mystifying Madness,
+- **7 visits are marked Not run for level-specific co-op verification:**
+  Mystifying Madness,
   Labyrinthine Revenge, Machinations, Battle Royale,
   Ascension, Castle Keep and Heart of Darkness. Broad entrance checks cover
-  all 39 visits; they do not complete these eight level checks.
+  all 39 visits; they do not complete these seven level checks.
 
 See the [full campaign matrix](COOP_CAMPAIGN.md). Future updates should separate
 working features, partial route milestones and completed verification visits.
+
+### Airborne Terror playable integration
+
+Build `3e96892` adds the shared co-op face clock. Each gust advances once
+per world step and drives both players, enemy pushes and the existing face
+animation/effects state. Normal contacts can activate and repeat all four
+faces, including the overlapping middle triggers. Shared Watch time now
+uses only living owners and the latest overlapping expiry; machinery,
+combat, client particle clocks and audio use that same calculation.
+
+`--tower1-coop-check` passes 41 native cases: three clock/parity cases,
+twelve trigger/repeat cases, twelve ordinary player-push cases, twelve
+original arrival variants and both exit-trigger owners. Compressed state
+continuation is covered. The ten-case solo log is byte-identical to the
+pre-change `0e5f061` baseline. The production code passes 942 Rust tests;
+the final native run follows fixture-only corrections. Existing saves keep
+their format and shared face phases.
+
+These staged components establish core integration. A normal paired route
+through the level remains part of the playable campaign pass. Detailed
+per-visit recovery/rejoin, visual/audio comparison and difficulty/scene
+permutations belong to the later polishing stage unless they expose a
+normal-play blocker. See [playable milestone](COOP_PLAYABLE.md).
+
+This adds 0.25 scene/progression points and changes Airborne Terror from
+Not run to Partial: six combined, twenty-six partial and seven not run.
+The estimate is 58.83 (58.8%). Remaining controller integration and a
+consolidated playable campaign pass take priority over expanding the
+already-passing component matrices.
 
 ### Water Logged safe placement checkpoint
 

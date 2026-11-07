@@ -1,5 +1,9 @@
 # Automated core save and recovery checks
 
+Priority: finish the [100% playable milestone](COOP_PLAYABLE.md) before
+exhaustive polishing. Reuse these passing focused receipts for unchanged
+systems; batch remaining controllers and run checks relevant to each batch.
+
 `tools/test_coop_core.py` runs thirteen focused save/recovery groups used by
 the core readiness checklist. It complements `tools/test_coop_regressions.py`
 and the main/ESC menu lifecycle tests. A passing selection does not certify
@@ -192,12 +196,18 @@ also pass the final six-line verifier; the original live fixtures remain frozen.
 ## Remaining controller integration
 
 The focused save/rejoin milestone does not mean every level's mechanics have
-co-op adapters. The source audit on 6 November found that the remaining late
-controllers (`tower1`, `hedge2`, `hedge3`, `tower3`,
+co-op adapters. The source audit on 7 November found that seven remaining late
+controllers (`hedge2`, `hedge3`, `tower3`,
 `grounds2`, `facade`, `keep`, `qlair`) still use the default paired
 hooks. Those hooks do not advance the single-player machinery or combat twice;
 they are intentionally empty until a controller has an explicit shared update.
 These are implementation gaps, not simply missing route-test receipts.
+
+Airborne Terror (`tower1`) now has explicit shared gust updates on `3e96892`.
+All 41 native component cases pass, covering both players' contacts/pushes,
+saved timing, original arrival and actual exit activation. Shared Watch
+time excludes dead owners and combines overlapping freezes by expiry. The
+solo check remains unchanged; a normal paired route is still required.
 
 Water Logged (`tower2`) now has explicit paired machinery and personal hazard
 state on `d06ded3`. `--tower2-coop-check` runs 66 headless cases: shared water,

@@ -31,7 +31,7 @@ impl Effects {
         if let Some(v) = &interactions.village { v.place_particles(&mut self.steam); }
         if let Some(p) = &interactions.pandemonium { p.gate_particles(&mut self.steam); }
         interactions.place_level_particles(&mut self.steam);
-        let world_dt = frame.players.iter().fold(dt,|dt,b|b.stats.powers.world_dt(dt));
+        let world_dt = super::world::world_dt(&frame.players, dt);
         self.steam.update_clocks(dt,world_dt,eye,world);
         Ok(())
     }

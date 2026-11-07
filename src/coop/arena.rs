@@ -156,7 +156,7 @@ impl Arena {
             roster.tick += 1;
             return self.finish(roster, map, world, true);
         }
-        let world_dt = roster.players.iter().fold(FIXED_DT, |dt, b| b.stats.powers.world_dt(dt));
+        let world_dt = super::world::world_dt(&roster.players, FIXED_DT);
         // Moving rocks can defeat a released pusher before the ordinary weapon
         // phase. Preserve that live identity for each player's earned reward.
         let environmental_loot_before = self.stage.interactions.pool.as_ref()
@@ -233,10 +233,7 @@ impl Arena {
         // One clock for the world. Either player's Watch can stop its enemies;
         // each player's own movement, weapon and resource clocks still run.
         let talking = self.stage.story.busy();
-        let world_dt = if talking { 0. } else { roster
-            .players
-            .iter()
-            .fold(FIXED_DT, |dt, b| b.stats.powers.world_dt(dt)) };
+        let world_dt = if talking { 0. } else { super::world::world_dt(&roster.players, FIXED_DT) };
         for index in 0..2 {
             let character = &mut self.characters[index];
             if talking {

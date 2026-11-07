@@ -99,7 +99,7 @@ impl Playback {
         self.audio.player_state(assets,body.stats.sanity(),body.player.swimming,
             body.player.immersion.level == 3, body.player.immersion.level == 3 && body.player.breath.remaining() <= 0.);
         self.audio.prepare(assets,world,eye,body.player.immersion.level == 3,dt);
-        let world_dt = frame.players.iter().fold(dt,|dt,b|b.stats.powers.world_dt(dt));
+        let world_dt = crate::coop::world::world_dt(&frame.players, dt);
         self.audio.update_clocks(dt,world_dt,eye,yaw,!playing,!playing || !arena.stage.voice_running);
         (self.report.output_frames,self.report.peak,self.report.resolved,self.report.missing) = self.audio.diagnostics();
         Ok(())

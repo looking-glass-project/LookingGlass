@@ -21,6 +21,10 @@ from test_coop_chess_resume import verify_resume_receipt, verify_resume_body
 SCENE = 'JLair1_Caterpillar_Cinema1'
 NAV_STEPS = tuple(range(77, 86)) + tuple(range(87, 91)) + tuple(range(98, 107))
 ARRIVAL_STEPS = NAV_STEPS + (86, 92, 97)
+# The live planner at 97 performs the ordinary jump/pull from the approach.
+# The strict course separately checks the optional pickup, Watch and exact
+# single-player setup marks; both bodies need not queue on that narrow mark.
+PLAYABLE_OMITTED = frozenset((86, 90, 91, 92, 93, 94, 95, 96))
 
 
 def verify_reunion_resources(before, after, ticks):
@@ -181,12 +185,17 @@ class EndingPair(CuriosityPair):
         super().__init__(args)
         self.markers = markers(args.data)
         self.evidence.update(scope='Resumed ending only; earlier continuous traversal and full visit remain unverified',
-                             markers=self.markers, watches=[], climbs=[], scene=[], exit=[])
+                             markers=self.markers, watches=[], climbs=[], climb_approaches=[], scene=[], exit=[])
         for name in ('test_coop_jlair1_ending.py',):
             raw = (Path(__file__).parent/name).read_bytes()
             (self.folder/'fixture-dependencies'/name).write_bytes(raw)
             self.evidence['fixture_sha256'][name] = hashlib.sha256(raw).hexdigest()
-        assert self.saved and not self.saved['frame']['combat']['stage']['world']['levels']['jlair1']['caterpillar'], 'Ending requires pre-Caterpillar checkpoint'
+        assert self.saved, 'Ending requires an ordinary checkpoint'
+        watched = self.saved['frame']['combat']['stage']['world']['levels']['jlair1']['caterpillar']
+        assert watched == (args.start_step > 77), 'Checkpoint scene state does not match requested ending segment'
+        self.evidence.update(start_step=args.start_step, optional_pickup_checked=not args.playable,
+                             watch_checked=not args.playable, climb_checked=args.start_step<=97,
+                             playable=args.playable)
         assert all(self.markers['jacks_key'] in p['stats']['collected'] and p['stats']['owned'][5] > 0
                    for p in self.saved['frame']['players']), 'Checkpoint lacks earned personal Jacks'
 
@@ -229,7 +238,24 @@ class EndingPair(CuriosityPair):
         # The live planner supplies ordinary jump/grab inputs from each actual
         # body; completion needs both the original landing and an observed climb.
         before={r:self.history[r][-1] for r in ROLES}
-        self.go(self.steps[97]['pos'])
+        if self.args.playable:
+            first = min(ROLES, key=lambda r: distance(self.body(r)['player']['feet'], self.steps[90]['pos']))
+            other = ROLES[1-ROLES.index(first)]
+            self.set(other, attack=False)
+            for role in (first, other):
+                # Keep the original approach, but let each player clear the
+                # narrow takeoff before bringing the other onto it.
+                for point in (90, 92):
+                    entry = self.move(role, self.steps[point]['pos'], navigate=True)
+                    self.evidence['climb_approaches'].append(dict(entry, point=point))
+                self.evidence['arrivals'].append(self.move(role, self.steps[97]['pos'], navigate=True))
+                if role == first:
+                    entry = self.move(role, self.steps[98]['pos'], navigate=True)
+                    self.evidence['climb_approaches'].append(dict(entry, point=98))
+                    self.set(role, self.steps[98]['pos'], run=True)
+            self.set(other)
+        else:
+            self.go(self.steps[97]['pos'])
         for role in ROLES:
             receipt=dict(role=role,before=before[role]['tick'],after=self.history[role][-1]['tick'],
                          strategy='Ordinary planned jump and ledge pull to original landing')
@@ -247,19 +273,38 @@ class EndingPair(CuriosityPair):
         print('PASS actual paired Jabberwock arrival',flush=True)
 
     def verify(self):
-        assert self.completed == list(range(77,108)), 'Incomplete requested ending'
-        assert {(r['step'],r['role']) for r in self.evidence['arrivals']} == {(step,role) for step in ARRIVAL_STEPS for role in ROLES}, 'Missing personal ending arrivals'
-        assert len(self.evidence['arrivals']) == 2*len(ARRIVAL_STEPS), 'Duplicated ending arrivals'
+        expected = [step for step in range(self.args.start_step,108) if not (self.args.playable and step in PLAYABLE_OMITTED)]
+        assert self.completed == expected, 'Incomplete requested ending'
+        arrival_steps = [step for step in ARRIVAL_STEPS if step in expected]
+        assert {(r['step'],r['role']) for r in self.evidence['arrivals']} == {(step,role) for step in arrival_steps for role in ROLES}, 'Missing personal ending arrivals'
+        assert len(self.evidence['arrivals']) == 2*len(arrival_steps), 'Duplicated ending arrivals'
         for entry in self.evidence['arrivals']:
             goal=self.markers['health_goal'] if entry['step']==86 else self.steps[entry['step']]['pos']
             assert entry['goal']==goal
             verify_arrival(entry,self.history)
-        self.evidence['scene']=verify_scene(self.history,self.args.first,self.markers['scene_endpoint'])
-        self.evidence['pickup']=verify_pickup(self.history,self.markers['health_key'],[p['stats'] for p in self.saved['frame']['players']])
-        assert {r['role'] for r in self.evidence['watches']}==set(ROLES) and len(self.evidence['watches'])==2
+        if self.args.start_step == 77:
+            self.evidence['scene']=verify_scene(self.history,self.args.first,self.markers['scene_endpoint'])
+        else:
+            assert self.evidence['scene'] == [], 'Resumed segment cannot claim a watched scene'
+        if not self.args.playable:
+            self.evidence['pickup']=verify_pickup(self.history,self.markers['health_key'],[p['stats'] for p in self.saved['frame']['players']])
+        if not self.args.playable:
+            assert {r['role'] for r in self.evidence['watches']}==set(ROLES) and len(self.evidence['watches'])==2
+        else:
+            assert self.evidence['watches']==[], 'Playable route cannot claim separate Watch coverage'
         for receipt in self.evidence['watches']:verify_watch(receipt,self.history)
-        assert {r['role'] for r in self.evidence['climbs']}==set(ROLES) and len(self.evidence['climbs'])==2
+        if self.args.start_step<=97:
+            assert {r['role'] for r in self.evidence['climbs']}==set(ROLES) and len(self.evidence['climbs'])==2
+        else:
+            assert self.evidence['climbs']==[] and self.evidence['climb_approaches']==[], 'Upper continuation cannot claim an earlier climb'
         for receipt in self.evidence['climbs']:verify_climb(receipt,self.history,self.evidence['arrivals'])
+        if self.args.playable and self.args.start_step<=97:
+            entries=self.evidence['climb_approaches']
+            assert len(entries)==5 and {(e['role'],e['point']) for e in entries if e['point']!=98}=={(r,p) for r in ROLES for p in (90,92)}
+            assert sum(e['point']==98 for e in entries)==1
+            for entry in entries:
+                assert entry['goal']==self.steps[entry['point']]['pos']
+                verify_arrival(entry,self.history)
         self.evidence['exit']=verify_exit(self.history,self.saved['frame']['players'])
         self.verify_navigation_evidence()
 
@@ -270,8 +315,10 @@ class EndingPair(CuriosityPair):
         for report in self.reports.values():
             for body,old in zip(report['frame']['players'],self.saved['frame']['players']):
                 verify_resume_body(body,old,report['frame']['tick']-self.saved['frame']['tick'])
-        self.step=77;self.scene()
-        for self.step in range(77,108):
+        self.step=self.args.start_step
+        if self.step == 77:self.scene()
+        for self.step in range(self.args.start_step,108):
+            if self.args.playable and self.step in PLAYABLE_OMITTED:continue
             if self.step in self.args.save_before:self.checkpoint(self.step)
             (self.folder/f'before-step-{self.step:03d}.json').write_text(json.dumps(self.reports))
             if self.step in NAV_STEPS:self.go(self.steps[self.step]['pos'])
@@ -283,7 +330,8 @@ class EndingPair(CuriosityPair):
             elif self.step==93:self.wait(.4)
             elif self.step in (94,95,96):continue  # Verified together by the native ledge replay at 97.
             elif self.step==97:
-                self.climb();self.completed.extend((94,95,96))
+                self.climb()
+                if not self.args.playable:self.completed.extend((94,95,96))
             elif self.step==107:self.ending_exit()
             self.completed.append(self.step)
             print('PASS ending step',self.step,flush=True)
@@ -301,10 +349,14 @@ def main():
     parser.add_argument('--exe',type=Path,required=True);parser.add_argument('--data',type=Path,required=True)
     parser.add_argument('--build',required=True);parser.add_argument('--checkpoint',type=Path,required=True)
     parser.add_argument('--first',choices=('blue','red'),default='blue');parser.add_argument('--local',action='store_true')
+    parser.add_argument('--start-step',type=int,choices=(77,78,83,86,90,98),default=77,
+                        help='Resume a normal checkpoint; post-scene segments do not claim watched-scene coverage')
+    parser.add_argument('--playable',action='store_true',help='Use ordinary planned climbs; omit optional healing and separate Watch choreography')
     parser.add_argument('--delay-ms',type=int,default=40);parser.add_argument('--jitter-ms',type=int,default=20)
     parser.add_argument('--navigation-timeout',type=int,default=240)
-    parser.add_argument('--save-before',type=int,nargs='*',default=[78,86,87,90,92,98,106])
-    args=parser.parse_args();args.start_step=77;args.last_step=107
+    parser.add_argument('--save-before',type=int,nargs='*',default=[78,83,86,87,90,92,98,106])
+    args=parser.parse_args();args.last_step=107
+    if args.start_step>=90 and not args.playable:parser.error('Upper continuation requires --playable; the earlier optional pickup is outside this segment')
     if not all(0<=v<=500 for v in (args.delay_ms,args.jitter_ms)):parser.error('Delay/jitter must be0..500ms')
     if not 30<=args.navigation_timeout<=600:parser.error('Navigation timeout must be30..600s')
     pair=EndingPair(args)

@@ -79,6 +79,13 @@ def hot_approach_target(row, slot, goal):
     return min(candidates, key=lambda p: distance(p, goal)) if candidates else None
 
 
+def replannable_intermediate(row, slot):
+    body = row['players'][slot]
+    return (row['owner'] is None and row['driver']['phase'] == 'settling intermediate landing'
+            and row['driver']['clear'][slot] and body['grounded']
+            and body['immersion']['kind'] == 'Dry' and body['health'] > 0)
+
+
 def verify_arrival(receipt, history):
     role = receipt['role']; slot = ROLES.index(role)
     row = next(r for r in history[role] if (r['epoch'], r['tick']) == (receipt['epoch'], receipt['tick']))
@@ -360,9 +367,30 @@ class CuriosityPair(Pair):
             return self.hot_crossing(role, goal)
         for _ in range(4):
             self.set(role, goal, navigate=navigate, run=True, radius=radius)
-            self.until(lambda: self.body(role)['player']['grounded'] and (self.reached(role)
-                or self.body(role)['player']['immersion']['kind'] in ('Lava', 'Slime')),
-                self.navigation_timeout if navigate else 90)
+            resting = None
+            def arrived():
+                nonlocal resting
+                body = self.body(role)['player']
+                if body['grounded'] and (self.reached(role) or body['immersion']['kind'] in ('Lava', 'Slime')):
+                    return True
+                row = self.history[role][-1]; slot = ROLES.index(role)
+                if navigate and replannable_intermediate(row, slot):
+                    at = row['players'][slot]['feet']
+                    if resting is None or distance(at, resting[1]) >= 2:
+                        resting = (row['tick'], list(at))
+                    elif row['tick'] - resting[0] >= 240:
+                        # An approximate intermediate point can lie just beyond
+                        # a slope's reachable resting position. Replan from the
+                        # actual grounded body; keep the final arrival unchanged.
+                        self.evidence.setdefault('navigation_replans', []).append(
+                            dict(step=self.step, role=role, start=resting[0], tick=row['tick'], feet=at))
+                        self.set(role, goal, navigate=True, run=True, radius=radius)
+                        print('REPLAN stationary intermediate', self.step, role, flush=True)
+                        resting = None
+                else:
+                    resting = None
+                return False
+            self.until(arrived, self.navigation_timeout if navigate else 90)
             if self.reached(role):
                 return self.receipt(role, goal)
             # A live jump can miss a ledge. Use a recently observed safe pad

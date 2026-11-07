@@ -771,3 +771,44 @@ their baselines; the existing cast-free point-54 failure remains a failure.
 No images were inspected, owned windows are closed and Anode is released.
 The separate core save/rejoin milestone remains on `0b5bca3`. No complete
 campaign visit or additional percentage credit is claimed.
+
+## Playable route continuation, 7 November 2026
+
+Seventeen retained ordinary save/resume sections now form a verified chain
+from the entrance through point 76 to the pre-Caterpillar checkpoint. Replaying
+their frozen assertions confirms 29,251 matching player/world/native samples;
+every input matches the preceding saved bytes and native exact-resume receipt.
+This reuses historical builds and does not complete the still-unverified ending.
+
+On `40d06c0`, a new public run verifies Blue's watched Caterpillar scene, safe
+reunion and both players' points 77–82, with 4,938 matching states. The run was
+stopped after reproducing the stationary diagnostic landing at point 83; its
+full attempt remains failed. No additional route credit is claimed.
+
+The Python controller now requests a fresh path when it observes two seconds
+of grounded, dry, stationary intermediate settling. It retains the original
+goal and arrival bounds, without changing any player or world state. The ending
+fixture accepts `--start-step 78`, `83`, `86`, `90` or `98` with an unchanged ordinary
+post-scene checkpoint. It checks that the saved scene is complete, verifies
+exact restoration and does not claim a freshly watched scene for those runs.
+It also saves before point 83, so later retries need not repeat earlier climbs.
+
+The playable mode (`--playable`) leaves the optional off-route Meta-essence and
+separate Watch choreography for polishing. The strict detour attempt died at
+86 and remains failed. The required route passes 83–85 and 87–89 in separately
+verified checkpoint segments (1,082 and 826 matching states). A first attempt
+to park both bodies at the narrow point-90 setup failed in the harness; a
+direct long search for the upper landing also failed. The final coordinated
+climb uses each player's original 90/92 approach in turn, ordinary jumping and
+ledge pulling to 97, and a waiting position at 98 for the leader. Both climbs
+and all five approach/waiting arrivals pass an offline checkpoint audit, with
+918 matching states and no revival. No health, positions or progression were
+written by the fixture, and the final arrival bounds remain unchanged.
+
+The full attempt later failed while finding a forward waiting position at 99.
+Both players' verified climb is retained in the ordinary checkpoint before 98;
+`--start-step 98 --playable` continues from it without claiming another climb.
+The upper route and actual exit are still unverified, so Burning Curiosity
+remains outside complete-route credit. All 37 Curiosity guards and seven
+package checks pass; native code is unchanged from the tested `40d06c0` build.
+Test windows are closed and Anode is released. No screenshots were inspected.

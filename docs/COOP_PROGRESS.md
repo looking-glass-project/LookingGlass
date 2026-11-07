@@ -86,6 +86,15 @@ unchanged. All 944 active Rust tests, the locked release build, seven package
 checks and the source audit pass. These focused checks do not claim fresh
 full routes or complete the remaining 26 visits.
 
+Burning Curiosity now has a verified historical checkpoint chain through its
+first 77 course actions (29,251 matching states), a fresh watched Caterpillar
+prefix, and subsequent normal segments through both players' final ledge
+climb. The playable test omits optional pickup/Watch choreography and uses
+separate takeoff turns at the narrow climb. Its latest run still fails in the
+upper-route test planner at 99; an ordinary checkpoint before 98 preserves
+both completed climbs. The actual exit remains required, so the overall
+estimate stays 68.2%. See [bounded continuation evidence](JLAIR1.md#playable-route-continuation-7-november-2026).
+
 ## Playable route consolidation
 
 UTemple now completes a fresh public-internet route to Garden with four verified

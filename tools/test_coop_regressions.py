@@ -75,6 +75,7 @@ def result_from_log(log):
     if timing.exists():
         metrics['timing_summary'] = json.loads(timing.read_text())
     return dict(build=result['build'], evidence=str(folder), scope=result['scope'],
+                full_route_passed=result.get('full_route_passed'), mode=result.get('mode'),
                 first=result.get('first'), metrics=metrics)
 
 
@@ -155,7 +156,8 @@ def main():
                                                    'dice-blue', 'dice-red', 'altar-blue', 'altar-red',
                                                    'gym-jump-blue', 'gym-jump-red', 'school2-resume',
                                                    'return-sp', 'return-chain', 'return-blue', 'return-red', 'return-resume',
-                                                   'return-recovery-blue', 'return-recovery-red'),
+                                                   'return-recovery-blue', 'return-recovery-red',
+                                                   'temple-playable', 'garden-playable'),
                         help='school and school2-resume resume checkpoints; school-blue/red and school2-blue/red are full routes; lift/stairs/altar/gym-jump are staged; dice is a partial School Two entrance route')
     parser.add_argument('--local', action='store_true')
     parser.add_argument('--delay-ms', type=int, default=40)
@@ -223,6 +225,10 @@ def main():
         'return-chain': ([str(args.exe), '--data', str(args.data), '--school-return-chain-check'], 600, False),
         'presence': ([sys.executable, str(ROOT / 'tools/test_coop_presence.py'), *common], 300, True),
         'host-stalls': ([sys.executable, str(ROOT / 'tools/test_coop_host_stalls.py'), *common], 300, True),
+        'temple-playable': ([sys.executable, str(ROOT / 'tools/test_coop_utemple.py'), *common,
+                             '--first', args.first, '--allow-revival'], 960, True),
+        'garden-playable': ([sys.executable, str(ROOT / 'tools/test_coop_garden.py'), *common,
+                             '--first', args.first, '--allow-revival'], 1260, True),
     }
     if args.rope_checkpoint:
         cases['rope-countdown'] = ([sys.executable, str(ROOT / 'tools/test_coop_rope_countdown.py'),
@@ -319,6 +325,8 @@ def main():
                 raise RuntimeError('Test failed; see its private log')
             if rendered:
                 case.update(result_from_log(log))
+                if name in ('temple-playable', 'garden-playable') and case['full_route_passed'] is not True:
+                    raise ValueError('Playable route stopped before a fresh-entry full traversal')
                 if build is not None and build != case['build']:
                     raise ValueError('Rendered tests used different game builds')
                 build = case['build']

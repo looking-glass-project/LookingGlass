@@ -1,8 +1,8 @@
 """Traverse Garden in independent clients using ordinary inputs over the internet.
 
 Each process runs the same authored course from its own received world. Reports
-and state hashes replace screenshots. Clean traversal does not establish the
-separate death, checkpoint and reconnect requirements.
+and state hashes replace screenshots. Optional individual revival is checked
+against the exact host countdown and both views; wipes/rejoins remain separate.
 """
 import argparse
 import hashlib
@@ -13,6 +13,7 @@ from pathlib import Path
 
 from test_coop_play import ROOT, distance
 from test_coop_village import Pair
+from coop_recovery import read_trace, verify_views
 
 
 class GardenPair(Pair):
@@ -23,6 +24,9 @@ class GardenPair(Pair):
     capture_scenes = False
 
     def __init__(self, args):
+        self.allow_revival = getattr(args, 'allow_revival', False)
+        self.course_starts = {role: args.start_step for role in ('host', 'guest')}
+        self.observed_spawns = {}
         self.minimum_lead = min(1.5, .05 + 2 * (args.delay_ms + args.jitter_ms) / 1000)
         self.guest_lead = self.minimum_lead
         self.lead_tick = None
@@ -50,9 +54,10 @@ class GardenPair(Pair):
         super().set(role, *args, **kwargs)
         self.commands[role].update(
             garden_follow=self.args.first.title() if follow else None,
-            garden_start=self.args.start_step if follow else None,
+            garden_start=self.course_starts[role] if follow else None,
             input_lead=self.guest_lead if role == 'guest' else 0,
             watch_dialogue=self.args.scenes == 'watched')
+        self.commands[role]['recovery_trace'] = self.allow_revival and role == 'host'
 
     def pump(self):
         if (self.folder / 'stop-test').exists():
@@ -80,10 +85,13 @@ class GardenPair(Pair):
                 (self.folder / 'course.json').write_bytes(course)
                 self.evidence['course_sha256'] = self.course_hashes[role]
             row = self.history[role][-1]
+            row['presentation'] = report.get('presentation')
             garden = report['combat']['stage']['world']['levels'].get('garden1')
             row['garden'] = {key: garden[key] for key in ('arrived', 'rabbit_done', 'shell')} if garden else None
             if garden:
                 row['garden']['rabbit_contact'] = garden['world']['rabbit']
+        if self.allow_revival:
+            self.follow_survivor_after_revival()
         if len(self.reports) == 2:
             courses = [self.reports[r]['route_driver']['garden_course'] for r in ('host', 'guest')]
             progress = tuple(None if c is None else c['step'] // 10 for c in courses)
@@ -92,6 +100,36 @@ class GardenPair(Pair):
                 print('Garden steps', [None if c is None else c['step'] for c in courses],
                       'health', [b['stats']['sanity'] for b in self.reports['host']['frame']['players']],
                       'tick', self.reports['host']['frame']['tick'], flush=True)
+
+    def follow_survivor_after_revival(self):
+        # A real revival puts Alice beside her partner, often beyond a one-way
+        # jump. Continue from the survivor's observed course position instead
+        # of steering back toward the launch point where the dead player was.
+        for role, report in self.reports.items():
+            if report['visit']['map'] != self.map_name:
+                continue
+            slot = 0 if role == 'host' else 1
+            body = report['frame']['players'][slot]
+            spawn = body['spawned_at']
+            old = self.observed_spawns.setdefault(role, spawn)
+            self.observed_spawns[role] = spawn
+            if spawn == old or not self.commands[role].get('garden_follow'):
+                continue
+            assert report['visit']['map'] == self.map_name and spawn > old, 'Unexpected Garden revival boundary'
+            partner = 'guest' if role == 'host' else 'host'
+            witnessed = [r for r in self.history[partner] if r['map'] == self.map_name
+                and r['epoch'] == report['frame']['epoch'] and r['tick'] <= spawn
+                and r['driver'].get('garden_course') is not None]
+            assert witnessed, 'No survivor course evidence before revival'
+            source = witnessed[-1]
+            step = source['driver']['garden_course']['step']
+            before = report['route_driver']['garden_course']['step']
+            self.course_starts[role] = step
+            self.set(role, follow=True)
+            event = dict(role=role, player=slot, epoch=report['frame']['epoch'], spawn_tick=spawn,
+                         from_step=before, to_step=step, survivor=partner, survivor_tick=source['tick'])
+            self.evidence.setdefault('revival_rejoins', []).append(event)
+            print('Garden verified-revival follow', role, before, '->', step, 'spawn', spawn, flush=True)
 
     def until(self, predicate, seconds=240):
         deadline = time.monotonic() + seconds
@@ -106,10 +144,14 @@ class GardenPair(Pair):
             self.pump()
 
     def validate_report(self, role, report):
-        super().validate_report(role, report)
+        if self.allow_revival:
+            assert report['frame']['checkpoint_generation'] == 0, 'Unexpected team wipe; separate checkpoint verification required'
+            assert report['route_driver'].get('recovery_trace_error') is None, 'Host recovery trace failed'
+        else:
+            super().validate_report(role, report)
         for body in report['frame']['players']:
-            assert body['spawned_at'] == 0, f'{role}: traversal respawned a player'
-            assert not body['stats']['god'], f'{role}: invulnerability enabled'
+            assert self.allow_revival or body['spawned_at'] == 0, f'{role}: traversal respawned a player'
+            assert not body['stats']['god'] and not body['stats']['notarget'], f'{role}: cheats enabled'
         players = [b['player'] for b in report['frame']['players']]
         if report['combat']['stage']['owner'] is None and any(p['rope'] for p in players):
             left, right = [p['feet'] for p in players]
@@ -208,12 +250,28 @@ class GardenPair(Pair):
             self.set(role, finish=True, epoch=1 if self.args.checkpoint else 2)
             self.until(lambda: self.processes[role].poll() is not None, 30)
             assert self.processes[role].returncode == 0
+        if self.allow_revival:
+            recovery = read_trace(self.folder / 'host' / 'recovery-trace.jsonl', self.build,
+                                  getattr(self.args, 'require_revival', False))
+            recovery['rendered_revivals'] = verify_views(recovery['revivals'], self.history)
+            for follow in self.evidence.get('revival_rejoins', []):
+                assert any(e['player'] == follow['player'] and e['epoch'] == follow['epoch']
+                           and e['spawn_tick'] == follow['spawn_tick'] for e in recovery['revivals']), \
+                    'Course continuation has no exact native revival'
+                witness = next(r for r in self.history[follow['survivor']]
+                               if r['epoch'] == follow['epoch'] and r['tick'] == follow['survivor_tick'])
+                assert witness['tick'] <= follow['spawn_tick'] and \
+                    witness['driver']['garden_course']['step'] == follow['to_step'], 'Continuation passed its survivor'
+            self.evidence['recovery'] = recovery
         (self.folder / 'result.json').write_text(json.dumps(dict(passed=True, build=self.build,
+            mode='verified-individual-revival' if self.allow_revival else 'strict-no-death',
             internet=not self.args.local, first=self.args.first, scenes=self.args.scenes,
             delay_ms=self.args.delay_ms, jitter_ms=self.args.jitter_ms, evidence=self.evidence,
             full_route_passed=not bool(self.args.checkpoint),
             scope='Captured Garden course segment; preceding traversal and later route excluded'
-                if self.args.checkpoint else 'Full independent two-client Garden traversal; recovery/rejoin remain separate'), indent=2))
+                if self.args.checkpoint else 'Full independent two-client Garden traversal; ' +
+                ('individual revivals verified, wipes/rejoin remain separate' if self.allow_revival
+                 else 'recovery/rejoin remain separate')), indent=2))
         print('PASS Garden checkpoint segment.' if self.args.checkpoint else
             'PASS Garden full two-client traversal, owned scenes, personal inventory and Garden2 arrival.', flush=True)
 
@@ -230,7 +288,11 @@ if __name__ == '__main__':
     parser.add_argument('--checkpoint', type=Path)
     parser.add_argument('--start-step', type=int)
     parser.add_argument('--end-step', type=int)
+    parser.add_argument('--allow-revival', action='store_true', help='Allow and verify ordinary individual revivals; team wipes remain separate')
+    parser.add_argument('--require-revival', action='store_true', help='Require an exact ten-second/25-health revival with spectator evidence')
     args = parser.parse_args()
+    if args.require_revival and not args.allow_revival:
+        parser.error('--require-revival requires --allow-revival')
     if not (0 <= args.delay_ms <= 500 and 0 <= args.jitter_ms <= 500):
         parser.error('Delay/jitter must be between 0 and 500 ms')
     if args.checkpoint:

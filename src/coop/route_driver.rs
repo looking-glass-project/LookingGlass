@@ -1502,6 +1502,9 @@ impl Driver {
             self.planning_hold=None; self.report.phase = "waiting for command"; return;
         };
         if !body.stats.alive() {
+            if let Some(course)=&mut self.garden_course {
+                course.spectate(frame.tick);self.report.garden_course=Some(course.report());
+            }
             if let Some(course)=&mut self.castling_course {
                 course.spectate(frame.tick);self.report.castling_course=Some(course.report());
             }

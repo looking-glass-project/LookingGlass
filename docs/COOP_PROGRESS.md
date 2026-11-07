@@ -1,6 +1,6 @@
 # Co-op progress
 
-Updated 7 November 2026. Branch: `coop`. **Estimated overall completion: 64.6%.**
+Updated 7 November 2026. Branch: `coop`. **Estimated overall completion: 67.1%.**
 The target is now [100% playable co-op](COOP_PLAYABLE.md), followed by a
 separate polishing stage. Complete normal progression and core flows first;
 batch implementation and reuse passing evidence. The historical exhaustive
@@ -41,8 +41,9 @@ foundation point credited the missing import feature. The current additional
 Internet Host/Join point credits completed public core consolidation on `0b5bca3`;
 no additional campaign visit is credited.
 
-Six of the 39 campaign visits have combined verification evidence; 33 have
-partial evidence. The next priority is a consolidated normal paired campaign
+Eleven of 39 visits now have credited normal paired route evidence. Six retain
+the historical combined designation; the broader matrix still labels 33 as
+partial because it includes polishing cases. The next priority is normal paired campaign
 pass, fixing progression blockers and checking core recovery at representative
 points. Exhaustive scene-owner, recovery, network and presentation permutations
 remain in the polishing backlog.
@@ -54,8 +55,28 @@ remain in the polishing backlog.
 | Two players, movement and presentation | 11.75 | 15 |
 | Combat, individual resources and death | 13.5 | 20 |
 | Scenes, transport and progression | 16 | 20 |
-| Campaign playability | 3.08 | 20 |
-| **Total** | **64.58, rounded to 64.6** | **100** |
+| Campaign playability | 5.64 | 20 |
+| **Total** | **67.14, rounded to 67.1** | **100** |
+
+## Playable route consolidation
+
+UTemple now completes a fresh public-internet route to Garden with four verified
+ordinary revivals and 2,813 matching state samples. Complete historical two-client
+routes for Sanctum, Castling, Checkmate and About Face were also audited and
+credited under the playable milestone. This adds five normal-route credits to
+the existing six: `61.5 + 20 * 11 / 39 = 67.14`. Four credits reuse earlier
+passes; this is not a claim that five levels were newly implemented or that
+those four were rerun on the latest build.
+
+Garden's strict test stopped at a normal combat death. Its automation now keeps
+time while spectating, and both Garden and UTemple offer verified-revival route
+checks in the batch runner. Build `42139c0` passes 944 active Rust tests; the
+fifteen recovery guards and seven source-package checks also pass. Garden's
+retry verifies three individual revivals and continued traversal beside the
+survivor, then fails at a late combat team wipe. Its full route remains
+uncredited; improving the automated combat route is separate from the already
+passing core recovery milestone. See [current route scope and
+commands](COOP_PLAYABLE.md#normal-route-acceptance-7-november).
 
 ## Latest finale batch
 
@@ -142,13 +163,13 @@ yet verified across every level and failure condition.
 
 | Area | Implemented and demonstrated | Remaining work |
 | --- | --- | --- |
-| One-PC setup | `coop` branch; independent game processes, profiles/saves and automated state/log checks | Finish reproducible campaign coverage and repeat it on the final build |
+| One-PC setup | `coop` branch; independent game processes, profiles/saves and automated state/log checks | Finish missing campaign routes; repeat affected checks when behavior changes |
 | Host / Join | Main/ESC controls, public internet menu flow, authenticated transport, prompt handshake cancellation, failure/retry recovery and countdown/cutscene/moving-lift/loading-barrier reconnect cases | Other transport/recovery cases and public provisioning/DNS availability |
 | Players and presentation | Blue/red Alice, separate input/cameras, body separation, replicated weapon effects | Broader contact/effect checks and reliable traversal through all swimming, leaves, ropes and moving supports |
-| Combat and resources | Nearest-visible targeting, individual damage, inventory and consumables in integrated levels | Remaining enemies/bosses and level-specific rewards, with both players as the target/collector |
-| Death and saves | Exact ten-second countdown, moving spectator camera, safe 25-health revival; shared checkpoint wipes, public save/leave/continue and storage-error/backup menu flow, public save refusal/retry during deaths/scenes, public guest restart during either player's countdown | Each visit's recovery matrix and remaining transport/death combinations |
-| Scenes and machinery | First-arrival ownership, original single-Alice scenes, hidden partner and safe reunion; public intro/dialogue reconnects with either theatre owner; all-living boarding on integrated rides | Remaining level adapters, both scene owners, watched/skipped cases, transports and exits |
-| Regression checks | 942 active Rust tests and native registry validation; 450 Python guards; Maze and Jabberwock paired components and exact solo route logs, plus build-specific weapon-effect/audio and Curiosity baseline checks | Full campaign verification and required earlier contact-system repeats on the final build |
+| Combat and resources | Nearest-visible targeting, individual damage, inventory and consumables; all explicit paired boss adapters integrated | Verify remaining full combat routes and fix normal-play blockers |
+| Death and saves | Exact ten-second countdown, moving spectator camera, safe 25-health revival; shared checkpoint wipes, solo import, earlier co-op resume, public save/leave/continue and storage-error/backup menu flow | Representative recovery during remaining routes; exhaustive per-visit matrices deferred to polishing |
+| Scenes and machinery | First-arrival ownership, original single-Alice scenes, hidden partner and safe reunion; public scene reconnects and all-living boarding; adapters through the ending | Verify remaining normal transports/exits and the final film/credits handoff; exhaustive owner/skip permutations deferred |
+| Regression checks | 944 active Rust tests on `42139c0`; existing native registry/component checks and build-specific source guards, weapon-effect/audio and solo baselines | Missing normal campaign routes and focused checks for subsequent fixes |
 
 Campaign status from `COOP_CAMPAIGN.md`:
 
@@ -156,13 +177,13 @@ Campaign status from `COOP_CAMPAIGN.md`:
   Pandemonium, Fortress of Doors (first visit), Beyond the Wall, Fortress of
   Doors (return visit), and Skool Daze (return visit). The first five retain
   historical build-specific passes and still require contact-system repeats.
-- **32 visits have partial evidence.** Some already have complete internet
+- **33 visits have partial evidence under the historical broader matrix.** Some already have complete internet
   traversals, including Wholly Morel Ground, Castling and About Face, but still
   have outstanding reliability, recovery, reconnect or scene cases. Others
   currently have components or checkpoint segments only.
-- **1 visit remains Not run for level-specific co-op verification:** Heart of
-  Darkness. Broad entrance checks cover all 39 visits; they do not complete
-  the final boss integration or the full campaign playability pass.
+- **No visit remains without paired component evidence.** Heart of Darkness's
+  adapter is integrated. Component coverage does not complete the full campaign
+  playability pass: 11 normal paired routes are credited, with 28 remaining.
 
 See the [full campaign matrix](COOP_CAMPAIGN.md). Future updates should separate
 working features, partial route milestones and completed verification visits.

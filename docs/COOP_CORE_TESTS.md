@@ -195,8 +195,7 @@ also pass the final six-line verifier; the original live fixtures remain frozen.
 
 ## Remaining controller integration
 
-The focused save/rejoin milestone does not mean every level's mechanics have
-co-op adapters. The [machinery](COOP_MACHINERY.md) and [castle](COOP_CASTLE.md)
+The focused save/rejoin milestone is complete. The [machinery](COOP_MACHINERY.md) and [castle](COOP_CASTLE.md)
 batches are now joined by the [Queen finale](COOP_QUEEN.md) on `c8a041e`.
 All visits have explicit paired component evidence. The next priority is normal
 paired campaign progression, with core saves/recovery sampled at representative

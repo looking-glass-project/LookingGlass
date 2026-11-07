@@ -353,6 +353,17 @@ fn rope_edge(mode: &str, keys: &mut Input) -> Result<()> {
     Ok(())
 }
 impl NetworkDriver {
+    /// Spectator time must not become a traversal input interval on revival.
+    pub(crate) fn spectate(&mut self, tick: u64) {
+        self.last_tick = Some(tick);
+        self.cached = Default::default();
+        self.driver.plan.clear();
+        self.driver.plan_tick = 0;
+        self.driver.ticks = 0;
+        self.driver.quiet = 0;
+        self.driver.fight = Default::default();
+    }
+
     pub(crate) fn new(start: usize) -> Result<Self> {
         let course = include_bytes!("coop_steps.json");
         std::fs::write(crate::preferences::path("garden1-coop-course.json"), course)?;
@@ -472,6 +483,22 @@ impl NetworkDriver {
 #[cfg(test)]
 mod clock_tests {
     use super::due;
+    #[test]
+    fn spectator_clock_retains_route_but_drops_predeath_inputs() {
+        use super::*;
+        let mut course = NetworkDriver {
+            steps: Vec::new(),
+            driver: Driver { index: 43, ticks: 336, quiet: 17, cards: true, ..Default::default() },
+            last_tick: Some(14212), free_ticks: 240, first_rope_cleared: true,
+            cached: (Controls { jump: true, ..Default::default() }, Input { primary: true, ..Default::default() }),
+        };
+        course.spectate(15425);
+        assert_eq!(course.last_tick, Some(15425));
+        assert_eq!(course.driver.index, 43);
+        assert!(course.driver.cards);
+        assert_eq!((course.driver.ticks, course.driver.quiet), (0, 0));
+        assert!(!course.cached.0.jump && !course.cached.1.primary);
+    }
     #[test]
     fn coalesced_observations_do_not_miss_periodic_control_edges() {
         for period in [4, 60, 120, 240, 600] {

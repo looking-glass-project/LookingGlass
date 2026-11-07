@@ -38,6 +38,12 @@ proven playable by having an adapter alone: its normal progression must work.
 The broader historical matrix in COOP_CAMPAIGN.md remains useful evidence, but
 its exhaustive combinations do not all gate the playable milestone.
 
+A continuous chain of normal save/resume segments can establish a playable
+route when unchanged checkpoint hashes connect the entrance to the actual exit
+and all progression is covered. Audit that continuity before crediting it;
+isolated staged tests or disconnected passing segments are insufficient. A
+second uninterrupted run of an already verified save chain belongs to polishing.
+
 ## Polishing stage
 
 Defer exhaustive frame-rate/difficulty combinations, every scene owner and skip
@@ -48,3 +54,55 @@ a normal-play blocker, data loss, or a missing requested core feature.
 
 Report playable readiness and the polishing backlog separately. Do not label
 the game 100% playable while a level or requested core flow remains blocked.
+
+## Normal-route acceptance, 7 November
+
+Eleven of 39 visits now have credited normal paired route evidence. The six
+historically combined visits remain credited. The playable milestone also
+accepts complete ordinary-input routes in UTemple, Sanctum, Castling,
+Checkmate and About Face without requiring every polishing permutation.
+
+UTemple now passes a fresh public-internet entrance-to-Garden run on `c8a041e`,
+with 40 ms injected delay and 20 ms jitter. Both clients agree on 2,813
+player/world/native state samples. Four actual deaths complete the exact
+ten-second countdown, survivor camera and safe 25-health revival; both players
+finish alive. This proves normal progress with recovery, not a flawless swim.
+
+The retained full-route histories for Sanctum (`bb4d83b`), Castling (`cc2388e`),
+Checkmate (`afe78ef`) and About Face (`3298768`) were re-audited for both clients'
+fresh entrances, actual next-map exits, no team-wipe resets and no cheats.
+Their original build-specific passes are reused, not described as fresh runs
+of the latest executable. Earlier route details and limitations remain in
+COOP_CAMPAIGN.md. Sanctum does not prove both players independently finish
+every climb; Checkmate includes verified revival past some partner waypoints.
+
+Garden's fresh strict run stopped at a normal combat death. The automated
+controller now keeps its observation clock current during spectating and
+discards pre-death movement plans. `42139c0` contains only that test-driver
+change relative to `c8a041e`; UTemple gameplay is unchanged. The next attempt
+exposed a test-controller backtrack after revival beyond a one-way jump. The
+Python harness now continues from the survivor's last witnessed course step,
+linked to the exact native revival. Three such revivals/continuations pass a
+bounded audit. The subsequent full attempt still fails after both players die
+in the late encounter at step 154 and restore the initial checkpoint. A Garden
+full-route pass is still required; no team-wipe certification is inferred from
+that failed route. Twenty-eight visits remain outside credited normal
+route coverage; all have paired component evidence.
+
+Remaining normal-route coverage is first Skool, School Two, all three Pool
+visits, all four Garden visits, Centipede One, both Wood visits, Pale Realm,
+Funhouse, Clockwork, Burning Curiosity, Jabberwock One, the six Maze/Tower
+visits, both Grounds visits, Ascension, Castle Keep and the Queen finale.
+
+Run the two fresh-entry route checks together in Anode:
+
+```powershell
+python tools/test_coop_regressions.py --exe <frozen-executable> --data <base-directory> --only temple-playable garden-playable
+```
+
+Public invites are the default. `--first red` selects Red's arrival order.
+The runner retains logs and JSON results, never opens screenshots, and stops
+on the first failure. `--allow-revival` in the underlying route scripts checks
+exact host recovery traces and both rendered views; it does not ignore deaths,
+enable cheats, accept team wipes or grant checkpoint segments full-route credit.
+The old strict no-death modes remain available for polishing.

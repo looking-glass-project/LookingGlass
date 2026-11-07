@@ -1,5 +1,27 @@
 # Duchess encounter — version 0.26
 
+## Duchess normal paired route accepted
+
+Frozen `a4f954c` passes the fresh Just Desserts route in **12,502 ticks**:
+actual Jackbomb pickup, original introduction, living boss combat, turtle
+rescue and the real temple departure. **105 exact compressed replicas** agree;
+both players finish alive at **100/25 health**, with no deaths, revivals, team
+wipes, health floors, cheats or forced progression. The watched introduction
+reunites the pair; the original outro carries both into the next visit.
+
+Temple arrival preserves personal resources and pickup history, grants the
+original breathing-shell flag and fills the partner's missing Jackbomb campaign
+milestone. The first attempt reached the exit but failed the diagnostic's
+missing shell-grant allowance; the corrected check passes without changing
+gameplay. The pilot now includes the legacy combat targets used by production.
+
+Evidence: `private/coop-playable-duchess-default-verified.json`. Repeat with
+`tools/test_coop_native_route.py --map potears3`, local data and a fresh profile.
+All **950 active Rust tests** pass on the preceding diagnostic build `148a733`;
+the final build changes only arrival expectations and flag registration.
+Normal coverage is **36/39 visits**, with **3 remaining**, or **80.0%** overall.
+This accelerated Arena check leaves internet/rendered-camera evidence separate.
+
 ## Jackbomb pickup camera repair (2026-10-01)
 
 The expansion camera previously retracted from the boss's final position while

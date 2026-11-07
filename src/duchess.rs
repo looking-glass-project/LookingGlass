@@ -15,6 +15,7 @@ use std::collections::BTreeMap;
 mod intro_check;
 mod coop;
 pub(crate) mod coop_check;
+pub(crate) mod coop_route;
 pub use intro_check::{check as check_intro, render as render_intro};
 pub const ID: usize = 4_000_000;
 pub const INTRO: &str = "potears3_dialog";

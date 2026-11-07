@@ -113,6 +113,10 @@ impl Walking {
 }
 fn targets(arena: &Arena) -> Vec<crate::combat::Target> {
     let mut targets = arena.npcs.targets();
+    if let Some(e) = &arena.stage.interactions.encounters { targets.extend(e.targets()); }
+    if let Some(s) = &arena.stage.interactions.school2 { targets.extend(s.targets()); }
+    if let Some(p) = &arena.stage.interactions.pool { targets.extend(p.targets()); }
+    targets.extend(arena.stage.interactions.duchess.as_ref().and_then(|d| d.target()));
     targets.extend(crate::level::targets(&arena.stage.interactions.levels));
     targets.retain(|t| crate::level::hit_owner(&arena.stage.interactions.levels, t.id)
         .is_none_or(|s| arena.stage.interactions.levels[s].ctl.hostile_target(t.id)));
@@ -490,6 +494,10 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
                     }
                     work=true;
                 } else if let Command::Clear(radius) = command {
+                    // A living Duchess can temporarily phase out of the target
+                    // list; that is not the end of the encounter.
+                    work |= arena.stage.interactions.duchess.as_ref().is_some_and(|d|
+                        d.state.stage == crate::duchess::Stage::Fighting);
                     let drop = (body.stats.sanity()<99. || body.stats.will()<99.).then(|| body.stats.loot.get(&arena.visit_key))
                         .flatten().and_then(|loot| loot.drops.iter()
                             .filter(|d| d.origin.truncate().distance(home[i].truncate())<*radius && (d.origin.z-p.feet.z).abs()<90.)
@@ -650,10 +658,11 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
                 Command::WatchReady=>120*400,Command::Course(_)|Command::CourseFile(_)=>120*600,_=>120*120};
             ensure!(step_ticks<limit,"Route stalled at step{step} {command:?}");
         }
-        ensure!(arena.stage.transition.as_ref().is_some_and(|e|spec.exit.matches(e))
+        let next_entry=(!spec.exit.entrance.is_empty()).then(||spec.exit.entrance.to_owned());
+        ensure!(arena.stage.transition.as_ref().is_some_and(|e|e.0==spec.exit.map && e.1==next_entry)
             && roster.players.iter().all(|b|b.stats.alive()),"Missing living pair's actual onward exit");
         (spec.verify)(&arena,&roster.players)?;
-        let next_visit=Visit{epoch:2,map:spec.exit.map.into(),entry:Some(spec.exit.entrance.into()),..visit.clone()};
+        let next_visit=Visit{epoch:2,map:spec.exit.map.into(),entry:next_entry,..visit.clone()};
         let next_map=Bsp::parse(&a.read(&format!("maps/{}.bsp",next_visit.map))?)?;
         let mut next_world=World::from_bsp(&next_map)?;
         let next_arena=Arena::load(a,&next_map,&mut next_world,&next_visit,false)?;
@@ -664,6 +673,9 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
             "health_floors":arrived.players.each_ref().map(|b|b.stats.minimum_sanity)}));
         for (old,new) in roster.players.iter().zip(&arrived.players) {
             let mut expected=serde_json::to_value(&old.stats)?;
+            // The temple grants the turtle's breathing shell on entry, as in
+            // the solo campaign. This is a story reward, not a resource refill.
+            if next_visit.map=="utemple" { expected["turtle_air"]=serde_json::json!(true); }
             // Normal campaign arrivals fill missing earlier weapon milestones.
             // Health, ammo, consumables and personal pickup history still carry exactly.
             if let Some(baseline)=crate::campaign::loadout(&next_visit.map,next_visit.entry.as_deref()) {

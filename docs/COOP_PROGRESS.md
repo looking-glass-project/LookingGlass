@@ -1,6 +1,6 @@
 # Co-op progress
 
-Updated 7 November 2026. Branch: `coop`. **Estimated overall completion: 79.4%.**
+Updated 7 November 2026. Branch: `coop`. **Estimated overall completion: 80.0%.**
 The target is now [100% playable co-op](COOP_PLAYABLE.md), followed by a
 separate polishing stage. Complete normal progression and core flows first;
 batch implementation and reuse passing evidence. The historical exhaustive
@@ -41,7 +41,7 @@ foundation point credited the missing import feature. The current additional
 Internet Host/Join point credits completed public core consolidation on `0b5bca3`;
 no additional campaign visit is credited.
 
-Thirty-five of 39 visits now have credited normal paired route evidence. Six retain
+Thirty-six of 39 visits now have credited normal paired route evidence. Six retain
 the historical combined designation; the broader matrix still labels 33 as
 partial because it includes polishing cases. The next priority is normal paired campaign
 pass, fixing progression blockers and checking core recovery at representative
@@ -55,8 +55,30 @@ remain in the polishing backlog.
 | Two players, movement and presentation | 11.75 | 15 |
 | Combat, individual resources and death | 13.5 | 20 |
 | Scenes, transport and progression | 16 | 20 |
-| Campaign playability | 17.95 | 20 |
-| **Total** | **79.4487, rounded to 79.4** | **100** |
+| Campaign playability | 18.46 | 20 |
+| **Total** | **79.9615, rounded to 80.0** | **100** |
+
+## Duchess normal paired route accepted
+
+Frozen `a4f954c` passes the fresh Just Desserts route in **12,502 ticks**:
+actual Jackbomb pickup, original introduction, living boss combat, turtle
+rescue and the real temple departure. **105 exact compressed replicas** agree;
+both players finish alive at **100/25 health**, with no deaths, revivals, team
+wipes, health floors, cheats or forced progression. The watched introduction
+reunites the pair; the original outro carries both into the next visit.
+
+Temple arrival preserves personal resources and pickup history, grants the
+original breathing-shell flag and fills the partner's missing Jackbomb campaign
+milestone. The first attempt reached the exit but failed the diagnostic's
+missing shell-grant allowance; the corrected check passes without changing
+gameplay. The pilot now includes the legacy combat targets used by production.
+
+Evidence: `private/coop-playable-duchess-default-verified.json`. Repeat with
+`tools/test_coop_native_route.py --map potears3`, local data and a fresh profile.
+All **950 active Rust tests** pass on the preceding diagnostic build `148a733`;
+the final build changes only arrival expectations and flag registration.
+Normal coverage is **36/39 visits**, with **3 remaining**, or **80.0%** overall.
+This accelerated Arena check leaves internet/rendered-camera evidence separate.
 
 ## Majestic Maze normal paired route accepted
 
@@ -755,7 +777,7 @@ Campaign status from `COOP_CAMPAIGN.md`:
   currently have components or checkpoint segments only.
 - **No visit remains without paired component evidence.** Heart of Darkness's
   adapter is integrated. Component coverage does not complete the full campaign
-  playability pass: 35 normal paired routes are credited, with 4 remaining.
+  playability pass: 36 normal paired routes are credited, with 3 remaining.
 
 See the [full campaign matrix](COOP_CAMPAIGN.md). Future updates should separate
 working features, partial route milestones and completed verification visits.

@@ -430,6 +430,7 @@ fn run() -> Result<()> {
             "--coop-pool-check" => mode = "coop-pool",
             "--coop-duchess-check" => mode = "coop-duchess",
             "--coop-duchess-arena-check" => mode = "coop-duchess-arena",
+            "--potears3-coop-route-check" => mode = "coop-duchess-route",
             "--coop-encounter-check" => mode = "coop-encounter",
             "--coop-import-check" => mode = "coop-import",
             "--coop-campaign-check" => mode = "coop-campaign",
@@ -1269,6 +1270,15 @@ fn run() -> Result<()> {
         macroquad::Window::from_config(viewer::config(), async move {
             if let Err(e) = coop::pandemonium_check::check(&mut assets).await {
                 eprintln!("Co-op Pandemonium check failed: {e:#}");
+                std::process::exit(1);
+            }
+        });
+        return Ok(());
+    }
+    if mode == "coop-duchess-route" {
+        macroquad::Window::from_config(viewer::config(), async move {
+            if let Err(e) = duchess::coop_route::check(&mut assets).await {
+                eprintln!("Co-op Duchess route failed: {e:#}");
                 std::process::exit(1);
             }
         });

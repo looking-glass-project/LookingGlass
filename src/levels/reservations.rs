@@ -258,7 +258,7 @@ pub static RESERVATIONS: [Reservation; 39] = [
         "potears3",
         VisitFlags {
             contract: &["--duchess-check"],
-            route: &["--duchess-check"],
+            route: &["--duchess-check", "--potears3-coop-route-check"],
             skip: &["--duchess-check"],
             render: &["--duchess-render"],
         },

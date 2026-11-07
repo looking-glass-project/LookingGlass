@@ -1,6 +1,6 @@
 # Co-op progress
 
-Updated 7 November 2026. Branch: `coop`. **Estimated overall completion: 74.8%.**
+Updated 7 November 2026. Branch: `coop`. **Estimated overall completion: 75.3%.**
 The target is now [100% playable co-op](COOP_PLAYABLE.md), followed by a
 separate polishing stage. Complete normal progression and core flows first;
 batch implementation and reuse passing evidence. The historical exhaustive
@@ -41,7 +41,7 @@ foundation point credited the missing import feature. The current additional
 Internet Host/Join point credits completed public core consolidation on `0b5bca3`;
 no additional campaign visit is credited.
 
-Twenty-six of 39 visits now have credited normal paired route evidence. Six retain
+Twenty-seven of 39 visits now have credited normal paired route evidence. Six retain
 the historical combined designation; the broader matrix still labels 33 as
 partial because it includes polishing cases. The next priority is normal paired campaign
 pass, fixing progression blockers and checking core recovery at representative
@@ -55,8 +55,28 @@ remain in the polishing backlog.
 | Two players, movement and presentation | 11.75 | 15 |
 | Combat, individual resources and death | 13.5 | 20 |
 | Scenes, transport and progression | 16 | 20 |
-| Campaign playability | 13.33 | 20 |
-| **Total** | **74.83, rounded to 74.8** | **100** |
+| Campaign playability | 13.85 | 20 |
+| **Total** | **75.35, rounded to 75.3** | **100** |
+
+## Pale Realm playable route completed
+
+The existing normal Blue-led, watched course passes on frozen `841dcd6`:
+**68,146 ticks**, **113 exact compressed replicas**, both chess puzzles, the
+shared lift, timed spikes, both levers and all five original scenes. Both
+players reach actual Castling arrival alive at **92/100 health**, with unchanged
+personal resources, no deaths, wipes, overlap or unscripted warps.
+
+No native code changed. A small public wrapper runs the existing course with a
+fresh profile and verifies its receipt. Native source, executable, course and
+report hashes are pinned in `private/coop-playable-pale-route-verified.json`;
+the run is in `private/coop-pale-playable-1/`. The earlier failed public-client
+routes remain failed evidence. This pass proves normal Arena progression and
+its native arrival assertions; internet, rendered presentation and recovery
+remain covered by separate core evidence and the polishing backlog.
+
+The existing locked release and Rust checks are reused for unchanged native
+source; Python compilation, seven package checks and the source audit pass.
+Coverage is **27/39 visits**, leaving **12**, or **75.3%** overall.
 
 ## Both Caterpillar's Plot routes completed
 

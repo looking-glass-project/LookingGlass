@@ -1118,3 +1118,14 @@ This also fails the full-route gate; it does not establish the remaining stair
 section or post-revival continuation.
 These segments and the captured physics regression do not complete the campaign
 row or increase its credit.
+
+## Pale Realm accepted
+
+The existing Blue-led watched course passes on `841dcd6`: 68,146 ticks, 113
+exact replicas, both chess puzzles, the shared lift, timed spikes, both levers
+and all five scenes through actual Castling arrival. Both players finish alive
+at 92/100 health, with exact personal resources and no deaths, wipes, overlap
+or unscripted warps. No native code changed. Repeat with
+`tools/test_coop_chess_native.py --exe <frozen-executable> --data <base-directory> --profile <new-directory>`
+in Anode. Internet and rendered-camera evidence remain separate. Coverage is
+**27/39 visits**, with **12** remaining and **75.3%** overall.

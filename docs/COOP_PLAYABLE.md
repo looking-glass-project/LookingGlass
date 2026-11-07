@@ -56,6 +56,17 @@ a normal-play blocker, data loss, or a missing requested core feature.
 Report playable readiness and the polishing backlog separately. Do not label
 the game 100% playable while a level or requested core flow remains blocked.
 
+## Pale Realm accepted
+
+The existing Blue-led watched course passes on `841dcd6`: 68,146 ticks, 113
+exact replicas, both chess puzzles, the shared lift, timed spikes, both levers
+and all five scenes through actual Castling arrival. Both players finish alive
+at 92/100 health, with exact personal resources and no deaths, wipes, overlap
+or unscripted warps. No native code changed. Repeat with
+`tools/test_coop_chess_native.py --exe <frozen-executable> --data <base-directory> --profile <new-directory>`
+in Anode. Internet and rendered-camera evidence remain separate. Coverage is
+**27/39 visits**, with **12** remaining and **75.3%** overall.
+
 ## Both Caterpillar's Plot visits accepted
 
 The first visit (`841dcd6`) reaches Pale Realm in 33,869 ticks with
@@ -221,11 +232,11 @@ bounded audit. The subsequent full attempt still fails after both players die
 in the late encounter at step 154 and restore the initial checkpoint. A Garden
 full-route pass was still required at that point; no team-wipe certification is
 inferred from that failed route. The later Red-led native pass above now meets
-normal-route acceptance, followed by Herbaceous Border, Rolling Stones, Icy Reception, Fungiferous Flora and both Caterpillar's Plot visits above. Thirteen visits remain outside credited normal route
+normal-route acceptance, followed by Herbaceous Border, Rolling Stones, Icy Reception, Fungiferous Flora and both Caterpillar's Plot visits above. Twelve visits remain outside credited normal route
 coverage; all have paired component evidence.
 
 Remaining normal-route coverage is first Skool, School Two, all three Pool
-visits, Pale Realm,
+visits,
 the six Maze/Tower visits and the Queen finale.
 
 Run the two fresh-entry route checks together in Anode:

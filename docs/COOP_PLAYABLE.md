@@ -56,6 +56,20 @@ a normal-play blocker, data loss, or a missing requested core feature.
 Report playable readiness and the polishing backlog separately. Do not label
 the game 100% playable while a level or requested core flow remains blocked.
 
+## Mystifying Madness accepted
+
+`f9d8893` passes the normal paired maze course through actual Water Logged
+arrival: 53,709 ticks, 448 exact replicas, both lever scenes and both breathing
+shells. Both finish alive at 80/70.59 health. Five ordinary revivals each count
+ten active seconds; the last also waits eight ticks for safe footing.
+A simultaneous low-climb lock is fixed, with a passing movement regression,
+949 active unit tests and an affected Airborne Terror route pass. The diagnostic
+uses ordinary swimming and single-file controls at the narrow exit bank.
+Use `tools/test_coop_native_route.py --map hedge2` with local data and a fresh
+profile. Coverage is **29/39 visits**, **10 remaining**, or **76.4%** overall.
+The final default course on `cfcb764` reproduces the calibrated result exactly.
+Internet and rendered-camera evidence remain separate.
+
 ## Airborne Terror accepted
 
 `fb8a476` passes the full normal paired wind course into Mystifying Madness:
@@ -244,12 +258,12 @@ bounded audit. The subsequent full attempt still fails after both players die
 in the late encounter at step 154 and restore the initial checkpoint. A Garden
 full-route pass was still required at that point; no team-wipe certification is
 inferred from that failed route. The later Red-led native pass above now meets
-normal-route acceptance, followed by Herbaceous Border, Rolling Stones, Icy Reception, Fungiferous Flora and both Caterpillar's Plot visits above. Twelve visits remain outside credited normal route
+normal-route acceptance, followed by Herbaceous Border, Rolling Stones, Icy Reception, Fungiferous Flora, both Caterpillar's Plot visits, Pale Realm, Airborne Terror and Mystifying Madness above. Ten visits remain outside credited normal route
 coverage; all have paired component evidence.
 
 Remaining normal-route coverage is first Skool, School Two, all three Pool
-visits,
-the six Maze/Tower visits and the Queen finale.
+visits, Majestic Maze, Water Logged, Labyrinthine Revenge, Machinations and
+the Queen finale.
 
 Run the two fresh-entry route checks together in Anode:
 

@@ -27,7 +27,7 @@ pub(super) fn check(a:&mut Assets)->super::super::BoxFuture<'_> {
             if [7,35,49].contains(&i) {commands.push(Command::Approach(s.pos));continue;}
             commands.push(match s.mode.as_str() {
                 "nav"=>Command::Nav(s.pos),
-                "precise"|"air"=>Command::Steer{at:s.pos,mode:s.mode.clone()},
+                "precise"|"air"=>Command::Steer{at:s.pos,mode:s.mode.clone(),single_file:false},
                 "phase"=>{
                     ensure!((1..=4).contains(&s.frames),"Unknown Tower face");
                     Command::Phase{controller:"tower1".into(),pointer:format!("/faces/{}",s.frames-1),

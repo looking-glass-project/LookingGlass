@@ -171,6 +171,7 @@ pub fn wait_for_climbers(world: &World, bodies: &mut [Body; 2], previous: &[crat
         let end = bodies.each_ref().map(|b| b.player.feet);
         let Some((_, normal)) = contact(start, end[0] - end[1]) else { break; };
         let mut changed = false;
+        let mut waited = [false; 2];
         for index in 0..2 {
             let p = &mut bodies[index].player;
             let old = &previous[index];
@@ -181,7 +182,15 @@ pub fn wait_for_climbers(world: &World, bodies: &mut [Body; 2], previous: &[crat
             let trace = world.body_trace(p.feet, old.feet);
             if trace.start_solid || trace.fraction < 1. || !world.body_clear(old.feet) { continue; }
             p.wait_at_climb_contact(old);
+            waited[index] = true;
             changed = true;
+        }
+        if waited == [true; 2] && bodies.iter().all(|b| b.player.climbing()) {
+            // Two converging low pull-ups otherwise pause each other's clocks
+            // forever, ignoring movement input. Release one at its checked
+            // current position so ordinary gravity, steering and separation
+            // can clear the bank. Do not displace either body or a waiting partner.
+            bodies[1].player.cancel_climb();
         }
         if !changed { break; }
     }
@@ -457,6 +466,46 @@ mod tests {
             assert!(waits>0,"Follower never waited");
             assert!(r.players.iter().all(|b|b.player.ledge.is_none() && b.player.climbs==1));
         }}
+    }
+    #[test]
+    fn simultaneous_converging_pull_ups_release_without_trapping_both_players() {
+        let world=World::fixture(&[
+            (vec3(-500.,-500.,-100.),vec3(500.,500.,0.)),
+            (vec3(50.,-100.,0.),vec3(500.,100.,64.)),
+        ]);
+        for reversed in [false,true] {
+            let mut r=pair(&floor(),[vec3(-80.,0.,0.04),vec3(80.,0.,0.04)]);
+            for (i,b) in r.players.iter_mut().enumerate() {
+                let side=if (i==0)^reversed {-1.}else{1.};
+                let start=vec3(34.,side*18.,0.03125);
+                let raised=start+Vec3::Z*66.;
+                let end=vec3(74.,side*8.,64.03125);
+                let elapsed=0.2583334_f32;
+                let feet=start.lerp(raised,elapsed/0.65/0.4);
+                let mut saved=serde_json::to_value(Player::new(feet)).unwrap();
+                saved["climb"]=serde_json::json!({"start":start,"raised":raised,"end":end,"elapsed":elapsed});
+                b.player=serde_json::from_value(saved).unwrap();
+            }
+            for tick in 0..600 {
+                let input=std::array::from_fn(|i| (Controls{run:true,
+                    // Step away from the wall after release, then make an
+                    // ordinary jump retry once the partner has cleared it.
+                    wish:if (120..180).contains(&tick) && r.players[i].player.feet.x<80. {-Vec2::X}
+                        else {(vec2(240.,0.)-r.players[i].player.feet.truncate()).normalize_or_zero()},
+                    jump:r.players[i].player.grounded && r.players[i].player.feet.x<80.,
+                    ..Default::default()},Default::default()));
+                r.move_players(&world,input);
+                assert!(separate(&r.players),"Converging pull-ups overlap");
+                for b in &r.players {
+                    assert!(world.body_clear(b.player.feet));
+                    b.player.validate_save().unwrap();
+                    assert_eq!(b.stats.sanity(),100.);
+                }
+                if r.players.iter().all(|b|!b.player.climbing() && b.player.grounded && b.player.feet.x>150.) {break;}
+            }
+            assert!(r.players.iter().all(|b|!b.player.climbing() && b.player.grounded && b.player.feet.x>150.),
+                "Converging pull-ups remained trapped: {:?}",r.players.each_ref().map(|b|&b.player));
+        }
     }
     #[test]
     fn low_climb_waits_without_shoving_then_resumes_when_partner_moves_or_dies() {

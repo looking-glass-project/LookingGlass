@@ -2,6 +2,7 @@
 mod art;
 mod check;
 mod coop_check;
+mod coop_route;
 mod route;
 mod saves;
 use super::{state, Check, Registration, Run};
@@ -608,6 +609,11 @@ pub static REGISTRATION: Registration = Registration {
     target_base: Some(9_000_000),
     story_beats: &[],
     checks: &[
+        Check {
+            flag: "--hedge2-coop-route-check",
+            help: "Traverse paired maze combat, levers and water passages with ordinary inputs.",
+            run: Run::Windowed(coop_route::check),
+        },
         Check {
             flag: "--hedge2-coop-check",
             help: "Verify paired machinery, personal contacts and saved continuation.",

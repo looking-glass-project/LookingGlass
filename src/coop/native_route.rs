@@ -6,6 +6,7 @@ use anyhow::{ensure, Context, Result};
 use macroquad::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
+mod swim;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) enum Command {
@@ -16,13 +17,15 @@ pub(crate) enum Command {
     /// Follow an authored point's footing in single file; stop if a scene starts.
     Approach([f32; 3]), Interact([f32; 3]), Shoot(String),
     /// Ordinary steering for authored jumps and airborne course corrections.
-    Steer { at: [f32; 3], mode: String },
+    Steer { at: [f32; 3], mode: String, #[serde(default)] single_file: bool },
     /// Each player follows continuous updraft waypoints without mid-air waits.
     Flight { takeoff: [f32; 3], via: Vec<[f32; 3]>, landing: [f32; 3] },
     /// Let an automated survivor leave transient goals to find revival footing.
     ContinueWithSurvivor(bool),
     /// Hold position until a live controller clock enters an authored interval.
     Phase { controller: String, pointer: String, start: f64, end: f64 },
+    Swim { at: [f32; 3], planned: bool },
+    WatchReady, WorldRunning,
 }
 pub(crate) struct Spec {
     pub map: &'static str,
@@ -110,6 +113,7 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
     let mut guest_world = World::from_bsp(&map)?;
     let mut guest = Arena::load(a, &map, &mut guest_world, &visit, false)?;
     let mut walking: [Walking; 2] = Default::default();
+    let mut swimming: [swim::Swimming; 2] = Default::default();
     let mut trackers: [fight::Tracker; 2] = Default::default();
     let mut step = 0;
     let mut step_ticks = 0;
@@ -192,6 +196,13 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
                             .total_cmp(&b.player.feet.distance_squared(goal.unwrap()))).map(|(i,_)|i);
                 }
             }
+            if let Command::Steer{at,single_file:true,..}=command {
+                if approach_lead.is_none_or(|i:usize|!roster.players[i].stats.alive()) {
+                    approach_lead=roster.players.iter().enumerate().filter(|(_,b)|b.stats.alive())
+                        .min_by(|(_,a),(_,b)|a.player.feet.distance_squared(Vec3::from_array(*at))
+                            .total_cmp(&b.player.feet.distance_squared(Vec3::from_array(*at)))).map(|(i,_)|i);
+                }
+            }
             let mut inputs = [(Controls::default(), Input::default()); 2];
             let mut planned = [false; 2];
             let mut work = false;
@@ -251,6 +262,15 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
                     nav_touch |= landed && p.feet.distance(goal)<38.;
                     let nearby=if matches!(command,Command::Positions(_)) || !require_landing {48.} else {80.};
                     work |= !landed || p.feet.distance(goal)>=nearby;
+                } else if let Command::Swim{at,planned}=command {
+                    let goal=Vec3::from_array(*at);
+                    let lead=roster.players.iter().enumerate().filter(|(_,b)|b.stats.alive())
+                        .min_by(|(_,a),(_,b)|a.player.feet.distance_squared(goal)
+                            .total_cmp(&b.player.feet.distance_squared(goal))).map(|(i,_)|i)
+                        .context("Swimming has no living player")?;
+                    let radius=if i==lead {10.}else{64.};
+                    inputs[i].0=swimming[i].input(&world,p,goal,*planned,radius)?;
+                    work |= p.feet.distance(goal)>=radius;
                 } else if let Command::Flight{takeoff,via,landing}=command {
                     let last=via.len()+1;
                     let point=|leg:usize|Vec3::from_array(if leg==0 {*takeoff}
@@ -275,15 +295,21 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
                             swim:delta.normalize_or_zero(),rise:delta.z.signum(),run:true,jump,..Default::default()};
                         work=true;
                     }
-                } else if let Command::Steer{at,mode}=command {
+                } else if let Command::Steer{at,mode,single_file}=command {
                     let delta=Vec3::from_array(*at)-p.feet;
-                    let lead=roster.players.iter().enumerate().filter(|(_,b)|b.stats.alive())
+                    let lead=approach_lead.or_else(||roster.players.iter().enumerate().filter(|(_,b)|b.stats.alive())
                         .min_by(|(_,a),(_,b)|a.player.feet.distance_squared(Vec3::from_array(*at))
-                            .total_cmp(&b.player.feet.distance_squared(Vec3::from_array(*at)))).map(|(i,_)|i)
+                            .total_cmp(&b.player.feet.distance_squared(Vec3::from_array(*at)))).map(|(i,_)|i))
                         .context("Steering has no living player")?;
                     let near=delta.truncate().length()<if i==lead {22.}else{70.}
                         && delta.z.abs()<64. && (mode=="air" || p.grounded || p.swimming);
                     if !near {
+                        work=true;
+                        // Narrow banks can only fit one pull-up at a time.
+                        // The other swimmer waits until the leader is ashore.
+                        let leader=&roster.players[lead].player;
+                        if *single_file && i!=lead && !(leader.grounded
+                            && leader.feet.distance(Vec3::from_array(*at))<38.) {continue;}
                         let jump=p.ledge.as_ref().is_some_and(|h|!h.pulling)
                             || p.grounded && (mode=="hop" || matches!(mode.as_str(),"jump"|"air"|"precise") && (!jumped[i] || delta.z>24.));
                         jumped[i]|=jump;
@@ -400,6 +426,7 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
                 if alive[i]!=roster.players[i].stats.alive() || spawned[i]!=roster.players[i].spawned_at {
                     life_events.push(serde_json::json!({"tick":roster.tick,"slot":i,"alive":roster.players[i].stats.alive(),"spawned_at":roster.players[i].spawned_at}));
                     walking[i]=Default::default();
+                    swimming[i]=Default::default();
                     jumped[i]=false;
                     if !alive[i] {flight[i]=flight[1-i];}
                 }
@@ -422,7 +449,7 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
                 ensure!(roster.players[owner.partner().index()].player.feet==before[owner.partner().index()],"Scene moved hidden partner");
             }
             if old_owner.is_some() && arena.stage.owner.is_none() {
-                reunions+=1;walking=Default::default();approach_lead=None;approach_stuck=0;
+                reunions+=1;walking=Default::default();swimming=Default::default();approach_lead=None;approach_stuck=0;
                 home=roster.players.each_ref().map(|b|b.player.feet);
             }
             ensure!(roster.checkpoint_generation==0,"Route team-wiped at step{step} tick{tick}");
@@ -445,7 +472,10 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
                 || continue_with_survivor && roster.players.iter().any(|b|b.stats.alive())) {
                 let done=match command {
                     Command::Node(_) | Command::HighNode(_) | Command::Nav(_) | Command::Walk(_)
-                        | Command::Positions(_) | Command::Rise{..} | Command::Steer{..} | Command::Flight{..} => !work,
+                        | Command::Positions(_) | Command::Rise{..} | Command::Steer{..} | Command::Flight{..}
+                        | Command::Swim{..} => !work,
+                    Command::WatchReady => roster.players.iter().filter(|b|b.stats.alive()).all(|b|b.stats.powers.recharge<=0.),
+                    Command::WorldRunning => super::world::world_dt(&roster.players,FIXED_DT)>0.,
                     Command::Phase{..} => phase_ready,
                     Command::Board{..} => false,
                     Command::Approach(_) => !work || began_scene,
@@ -462,12 +492,13 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
                     println!("DONE {} step{step} {command:?} tick{} feet{:?}",spec.map,roster.tick,roster.players.each_ref().map(|b|b.player.feet));
                     completed.push(serde_json::json!({"step":step,"command":command,"tick":roster.tick,"feet":roster.players.each_ref().map(|b|b.player.feet),
                         "steam_seen":steam_seen,"rise_done":rise_done}));
-                    step+=1;step_ticks=0;quiet=0;walking=Default::default();
+                    step+=1;step_ticks=0;quiet=0;walking=Default::default();swimming=Default::default();
                     rising=[false;2];steam_seen=[false;2];rise_done=[false;2];board_lead=None;shot_started=false;approach_lead=None;approach_stuck=0;jumped=[false;2];flight=[0;2];
                     home=roster.players.each_ref().map(|b|b.player.feet);
                 }
             }
-            let limit=if let Command::Wait(ticks)=command {ticks.saturating_add(120*120)} else {120*120};
+            let limit=match command {Command::Wait(ticks)=>ticks.saturating_add(120*120),
+                Command::WatchReady=>120*400,_=>120*120};
             ensure!(step_ticks<limit,"Route stalled at step{step} {command:?}");
         }
         ensure!(arena.stage.transition.as_ref().is_some_and(|e|spec.exit.matches(e))

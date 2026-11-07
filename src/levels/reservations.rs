@@ -373,14 +373,26 @@ pub static RESERVATIONS: [Reservation; 39] = [
         skip: &["--tower1-skip-route-check"],
         render: &["--tower1-render-check"],
     }), ..visit(29, "tower1") },
-    visit(30, "hedge2"),
+    Reservation { flags: Some(VisitFlags {
+        contract: &["--hedge2-check", "--hedge2-coop-check"],
+        route: &["--hedge2-route-check"], skip: &["--hedge2-skip-route-check"],
+        render: &["--hedge2-render-check"],
+    }), ..visit(30, "hedge2") },
     Reservation {flags:Some(VisitFlags {
         contract:&["--tower2-check", "--tower2-cast-check", "--tower2-coop-check"],
         route:&["--tower2-route-check"], skip:&["--tower2-skip-route-check"],
         render:&["--tower2-render-check"],
     }), ..visit(31, "tower2")},
-    visit(32, "hedge3"),
-    visit(33, "tower3"),
+    Reservation { flags: Some(VisitFlags {
+        contract: &["--hedge3-check", "--hedge3-coop-check"],
+        route: &["--hedge3-route-check"], skip: &["--hedge3-skip-route-check"],
+        render: &["--hedge3-render-check"],
+    }), ..visit(32, "hedge3") },
+    Reservation { flags: Some(VisitFlags {
+        contract: &["--tower3-check", "--tower3-coop-check"],
+        route: &["--tower3-route-check"], skip: &["--tower3-skip-route-check"],
+        render: &["--tower3-render-check"],
+    }), ..visit(33, "tower3") },
     visit(34, "grounds1"),
     Reservation { flags: Some(VisitFlags {
         contract: &["--grounds2-check", "--grounds2-save-check"],

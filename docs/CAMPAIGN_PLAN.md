@@ -1942,6 +1942,11 @@ implementation uses `--wchess1-route` for its route and `--wchess1-floor-survey`
 private collision calibration; both are explicitly reserved alongside the planned
 standard names.
 
+Mystifying Madness, Labyrinthine Revenge and Machinations additionally reserve
+`--hedge2-coop-check`, `--hedge3-coop-check` and `--tower3-coop-check` for focused
+paired machinery, personal contacts and saved continuation. These checks share
+the existing controllers and hit IDs; they do not certify full paired routes.
+
 Battle Royale also reserves `--grounds2-save-check` for its native save fixtures;
 it shares the existing grounds2 visit and hit-ID reservation.
 

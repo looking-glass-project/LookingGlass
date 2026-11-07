@@ -196,9 +196,8 @@ also pass the final six-line verifier; the original live fixtures remain frozen.
 ## Remaining controller integration
 
 The focused save/rejoin milestone does not mean every level's mechanics have
-co-op adapters. The source audit on 7 November found that seven remaining late
-controllers (`hedge2`, `hedge3`, `tower3`,
-`grounds2`, `facade`, `keep`, `qlair`) still use the default paired
+co-op adapters. After the [machinery batch](COOP_MACHINERY.md), four remaining
+late controllers (`grounds2`, `facade`, `keep`, `qlair`) still use the default paired
 hooks. Those hooks do not advance the single-player machinery or combat twice;
 they are intentionally empty until a controller has an explicit shared update.
 These are implementation gaps, not simply missing route-test receipts.

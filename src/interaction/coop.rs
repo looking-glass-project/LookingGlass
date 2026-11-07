@@ -370,6 +370,12 @@ impl Interactions {
         {
             return Ok(result);
         }
+        let personal_facts = PlayerId::ALL.map(|id| {
+            for slot in &mut self.levels { slot.ctl.coop_trigger_actor(Some(id.index())); }
+            let facts = self.event_facts();
+            for slot in &mut self.levels { slot.ctl.coop_trigger_actor(None); }
+            facts
+        });
         let mut arrivals = Vec::new();
         for index in 0..self.triggers.len() {
             if !self.contact_trigger(index) {
@@ -378,15 +384,15 @@ impl Interactions {
             }
             let trigger = &self.triggers[index];
             let personal = matches!(trigger.kind,
-                TriggerKind::Hurt(_) | TriggerKind::Fall | TriggerKind::Teleport(..));
-            let enabled = self.event_world.allowed(
-                &Event::Entity(trigger.id, Input::Activate),
-                &self.event_facts(),
-            );
+                TriggerKind::Hurt(_) | TriggerKind::Fall | TriggerKind::Teleport(..))
+                || matches!(&trigger.kind, TriggerKind::Script(thread)
+                    if self.levels.iter().any(|s| s.ctl.coop_personal_thread(thread)));
             let mut present = [false; 2];
             let mut blocked = Vec::new();
             let mut eligible = Vec::new();
             for id in PlayerId::ALL {
+                let enabled = self.event_world.allowed(&Event::Entity(trigger.id, Input::Activate),
+                    &personal_facts[id.index()]);
                 let deferred = contacts.triggers[index].deferred.contains(&id);
                 let contact = &mut contacts.triggers[index].players[id.index()];
                 let Some(path) = paths[id.index()] else {
@@ -447,13 +453,17 @@ impl Interactions {
             let personal = matches!(
                 trigger.kind,
                 TriggerKind::Hurt(_) | TriggerKind::Fall | TriggerKind::Teleport(..)
-            );
+            ) || matches!(&trigger.kind, TriggerKind::Script(thread)
+                if self.levels.iter().any(|s| s.ctl.coop_personal_thread(thread)));
             if !personal && shared_fired.contains(&index) {
                 continue;
             }
             let entity = trigger.id;
             let event = Event::Entity(entity, Input::Activate);
-            if !self.event_world.allowed(&event, &self.event_facts()) {
+            for slot in &mut self.levels { slot.ctl.coop_trigger_actor(Some(id.index())); }
+            let allowed = self.event_world.allowed(&event, &self.event_facts());
+            for slot in &mut self.levels { slot.ctl.coop_trigger_actor(None); }
+            if !allowed {
                 continue;
             }
             let feet = paths
@@ -489,7 +499,9 @@ impl Interactions {
             // single-body cooldown is copied to the triggering body's slot,
             // then restored so it cannot suppress the partner's contact.
             let old_cooldown = trigger.cooldown;
+            for slot in &mut self.levels { slot.ctl.coop_trigger_actor(Some(id.index())); }
             let events = self.dispatch(event);
+            for slot in &mut self.levels { slot.ctl.coop_trigger_actor(None); }
             contacts.triggers[index].players[id.index()].cooldown = self.triggers[index].cooldown;
             self.triggers[index].cooldown = old_cooldown;
             let takes_control =

@@ -222,17 +222,47 @@ pub(super) fn support(c: &Collider, p: &Player) -> bool {
     p.velocity.z <= 1. && !h.start_solid && h.fraction < 1. && h.normal.z >= 0.65
 }
 impl Tower {
-    pub(super) fn move_all(
+    pub(super) fn move_all(&mut self, dt: f32, w: &mut World,
+        p: &mut Player, fixed: &[Collider]) -> Result<()> {
+        let mut waits = [self.saved.hurt_wait];
+        let damage = self.move_players(dt, w, &mut [p], fixed, &mut waits)?[0];
+        self.saved.hurt_wait = waits[0];
+        self.saved.damage = self.saved.damage.max(damage);
+        Ok(())
+    }
+    pub(super) fn move_players(
         &mut self,
         dt: f32,
         w: &mut World,
-        p: &mut Player,
+        players: &mut [&mut Player],
         fixed: &[Collider],
-    ) -> Result<()> {
+        waits: &mut [f32],
+    ) -> Result<Vec<f32>> {
+        let mut hits = vec![0_f32; players.len()];
         for g in 0..self.roots.len() {
             let root = self.roots[g];
             let before = self.saved.clocks[g];
             let after = (before + dt as f64).min(1e8);
+            // Shared vertical lifts wait at either landing while a living
+            // partner boards. Empty lifts keep cycling so they can be called
+            // simply by waiting at a landing; rotating scenery never waits.
+            if players.len() > 1 {
+                let leg = match self.objects[root].name.as_str() {
+                    "gear03_bind" => Some(4.),
+                    "gear04_bind" | "gearup_02_bind" => Some(12.),
+                    "gear05_bind" | "gear06_bind" | "gear_plat_bind" | "gearup_01_bind" => Some(10.),
+                    _ => None,
+                };
+                if let Some(leg) = leg {
+                    let phase = before.rem_euclid(leg);
+                    if phase <= dt as f64 + 1e-6 || leg - phase <= dt as f64 + 1e-6 {
+                        let aboard = players.iter().filter(|p| self.objects.iter().enumerate()
+                            .any(|(i, o)| o.solid && self::root(&self.objects, i) == root
+                                && o.collider.as_ref().is_some_and(|c| support(c, p)))).count();
+                        if aboard > 0 && aboard < players.len() { continue; }
+                    }
+                }
+            }
             let old = poses(&self.objects, root, before);
             let end = poses(&self.objects, root, after);
             if old
@@ -243,9 +273,9 @@ impl Tower {
                 self.saved.clocks[g] = after;
                 continue;
             }
-            let original = p.clone();
+            let original = players.iter().map(|p| (**p).clone()).collect::<Vec<_>>();
             let mut blocked = false;
-            let mut damage = 0_f32;
+            let mut damage = vec![0_f32; players.len()];
             let n = old
                 .iter()
                 .zip(&end)
@@ -263,6 +293,10 @@ impl Tower {
                     root,
                     before + (after - before) * step as f64 / n as f64,
                 );
+                let current = old.iter().map(|(i, _)| (*i, self.objects[*i].pose)).collect::<Vec<_>>();
+                for (slot, p) in players.iter_mut().enumerate() {
+                // Each body is tested against the same previous group pose.
+                for (i, pose) in &current { self.objects[*i].set(*pose); }
                 // The child's ride surface takes priority where it overlaps its
                 // parent. Alternating between the bar's orbit and the wheel's
                 // spin changes the rider's local point and walks her off its rim.
@@ -360,7 +394,7 @@ impl Tower {
                             .collect(),
                     );
                     let tr = w.body_trace(p.feet, next);
-                    blocked = tr.start_solid
+                    let obstructed = tr.start_solid
                         || tr.fraction < 1.
                         || !w.body_clear(next)
                         || future.iter().any(|(j, _)| {
@@ -373,8 +407,9 @@ impl Tower {
                                     )
                                 })
                         });
-                    if blocked {
-                        damage = contacts
+                    if obstructed {
+                        blocked = true;
+                        damage[slot] = contacts
                             .iter()
                             .chain(carrier.iter())
                             .map(|j| self.objects[*j].damage)
@@ -385,7 +420,7 @@ impl Tower {
                                 self.objects[i].name, carrier, p.feet, next
                             )
                         });
-                        break;
+                        continue;
                     }
                     p.feet = next;
                     if carrier.is_some() {
@@ -393,26 +428,35 @@ impl Tower {
                         p.ground_normal = Vec3::Z;
                     }
                 } else {
-                    for (i, pose) in future {
-                        self.objects[i].set(pose);
+                    for (i, pose) in &future {
+                        self.objects[*i].set(*pose);
                     }
                 }
+                }
+                if players.len() == 2 {
+                    let delta = players[0].feet - players[1].feet;
+                    blocked |= delta.truncate().length() < crate::coop::separation::DISTANCE - 0.05
+                        && delta.z.abs() < PLAYER_HALF.z * 2. - 0.05;
+                }
+                if blocked { break; }
             }
             if blocked {
                 for (i, pose) in old {
                     self.objects[i].set(pose);
                 }
-                *p = original;
-                if self.saved.hurt_wait <= 0. && damage > 0. {
-                    self.saved.damage = self.saved.damage.max(damage);
-                    self.saved.hurt_wait = 0.5;
+                for (slot, (p, saved)) in players.iter_mut().zip(original).enumerate() {
+                    **p = saved;
+                    if waits[slot] <= 0. && damage[slot] > 0. {
+                        hits[slot] = hits[slot].max(damage[slot]);
+                        waits[slot] = 0.5;
+                    }
                 }
             } else {
                 self.saved.clocks[g] = after;
             }
         }
         w.set_dynamic(fixed.iter().cloned().chain(self.colliders()).collect());
-        Ok(())
+        Ok(hits)
     }
 }
 #[cfg(test)]

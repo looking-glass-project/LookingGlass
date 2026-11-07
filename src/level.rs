@@ -309,6 +309,11 @@ pub trait LevelController: Any {
     /// started single-Alice scene; the caller freezes the other player immediately.
     fn coop_contacts(&mut self, _dt: f32, _players: &mut [CoopPlayer<'_>; 2]) -> Option<usize> { None }
     fn coop_respawned(&mut self, _player: usize) {}
+    /// Scope authored trigger facts and outputs to one living contact. The
+    /// interaction dispatcher clears this transient selection after each query.
+    fn coop_trigger_actor(&mut self, _player: Option<usize>) {}
+    /// Repeatable script contacts that update personal state (e.g. fall rooms).
+    fn coop_personal_thread(&self, _thread: &str) -> bool { false }
     /// A personal boss hold must leave the other player's controls available.
     fn coop_controlled(&self, _player: usize) -> bool { false }
     /// A single-player interactive sequence, such as a chess disguise. The

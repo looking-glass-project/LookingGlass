@@ -327,23 +327,30 @@ impl Labyrinth {
     fn sync(&self, w: &mut World, fixed: &[Collider]) {
         w.set_dynamic(fixed.iter().cloned().chain(self.colliders()).collect());
     }
-    pub(super) fn move_all(
+    pub(super) fn move_all(&mut self, dt: f32, w: &mut World,
+        p: &mut Player, fixed: &[Collider]) -> Result<()> {
+        self.saved.crush |= self.move_players(dt, w, &mut [p], fixed)?[0];
+        Ok(())
+    }
+    pub(super) fn move_players(
         &mut self,
         dt: f32,
         w: &mut World,
-        p: &mut Player,
+        players: &mut [&mut Player],
         fixed: &[Collider],
-    ) -> Result<()> {
+    ) -> Result<Vec<bool>> {
+        let mut crush = vec![false; players.len()];
         for k in 0..self.objects.len() {
             let o = &self.objects[k];
             let before = self.saved.machines[k].clone();
             let old = o.pose;
-            let original = p.clone();
-            let ridden = support(&o.collider, p);
+            let original = players.iter().map(|p| (**p).clone()).collect::<Vec<_>>();
+            let riders = players.iter().map(|p| support(&o.collider, p)).collect::<Vec<_>>();
+            let ridden = riders.iter().any(|r| *r);
             let mut after = before.clone();
             after.time = (after.time + dt as f64).min(1e8);
             if o.door() {
-                let player = o.flags & 8 == 0 && o.contact(p.feet + PLAYER_CENTER, PLAYER_HALF);
+                let player = o.flags & 8 == 0 && players.iter().any(|p| o.contact(p.feet + PLAYER_CENTER, PLAYER_HALF));
                 let monster =
                     o.flags & 16 == 0 && self.actors.iter().any(|a| o.contact(a.center, a.half));
                 if o.flags & 64 != 0 && (player || monster) {
@@ -404,6 +411,8 @@ impl Labyrinth {
                 };
                 let prev = self.objects[k].pose;
                 let c = self.objects[k].shape.at(pose.translation, pose.rotation);
+                for (slot, p) in players.iter_mut().enumerate() {
+                let ridden = riders[slot];
                 let hit = c.touches(p.feet + PLAYER_CENTER, p.feet + PLAYER_CENTER, PLAYER_HALF);
                 if ridden || hit {
                     let local = prev.rotation.inverse() * (p.feet - prev.translation);
@@ -448,7 +457,8 @@ impl Labyrinth {
                             format!("Hedge blocked {} rider {ridden}, from {:?} to {next:?}; world solid {} fraction {}, own {}",self.objects[k].name,p.feet,tr.start_solid,tr.fraction,c.touches(next+PLAYER_CENTER,next+PLAYER_CENTER,PLAYER_HALF))
                         });
                         blocked = true;
-                        break;
+                        crush[slot] |= self.objects[k].crusher();
+                        continue;
                     }
                     p.feet = next;
                     if let Some((_, normal)) = landing {
@@ -456,19 +466,23 @@ impl Labyrinth {
                         p.ground_normal = normal;
                     }
                 }
+                }
+                if players.len() == 2 {
+                    let delta = players[0].feet - players[1].feet;
+                    blocked |= delta.truncate().length() < crate::coop::separation::DISTANCE - 0.05
+                        && delta.z.abs() < PLAYER_HALF.z * 2. - 0.05;
+                }
+                if blocked { break; }
                 self.objects[k].pose = pose;
                 self.objects[k].collider = c;
             }
             if blocked {
-                if self.objects[k].crusher() {
-                    self.saved.crush = true;
-                }
                 if self.objects[k].door() {
                     self.saved.machines[k].hold = self.objects[k].wait.max(3.);
                 }
                 self.objects[k].pose = old;
                 self.objects[k].collider = self.objects[k].shape.at(old.translation, old.rotation);
-                *p = original;
+                for (p, saved) in players.iter_mut().zip(original) { **p = saved; }
             } else {
                 self.saved.machines[k] = after;
             }
@@ -478,6 +492,6 @@ impl Labyrinth {
         // the whole list after every distant gear was redundant quadratic work.
         self.sync(w, fixed);
         self.traversal(&mut w.traversal);
-        Ok(())
+        Ok(crush)
     }
 }

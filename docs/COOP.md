@@ -6,19 +6,12 @@ For the concise current status, see [Co-op progress](COOP_PROGRESS.md).
 This is work in progress. A policy test or a connected pair of windows does not
 establish campaign support. Single-player behavior and saves must remain supported.
 
-Current milestone: **56.6% estimated overall; six campaign visits have combined
-verification evidence, 33 remain open.** Earlier contact-system repeats are still
-required as detailed in the campaign matrix. Pool of Tears has 38 passing native
-component cases plus public two-client opening and bank checkpoint segments.
-Hollow Hideaway now has 33 passing native cases for paired rides, boarding,
-personal fish deaths, guards and moving pickups. Full two-client traversal and
-recovery remain open for both visits. Report these smaller milestones alongside
-the total; a successful component or segment is not a completed campaign visit.
-
-Status checked on **5 November 2026**: the older approximately 42% figure is
-historical; the current weighted estimate is **55.6%**. Six of 39
-campaign visits have combined evidence, with earlier contact-system repeats
-still required. Repeated component tests do not increase this total.
+Current milestone: **60.1% estimated overall; six visits have combined
+verification evidence, 29 have partial evidence and four remain without
+level-specific co-op checks.** The [playable milestone](COOP_PLAYABLE.md)
+takes priority over exhaustive polishing. See [current progress](COOP_PROGRESS.md)
+and the [three-controller machinery batch](COOP_MACHINERY.md). Earlier
+percentages below describe historical checkpoints.
 
 Burning Curiosity now passes **26 staged native co-op cases plus one summary**
 on source `56160ff`: personal arrival and essence, both living riders boarding,

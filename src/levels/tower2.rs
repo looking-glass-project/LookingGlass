@@ -3,6 +3,7 @@ mod cast_check;
 mod check;
 mod coop;
 mod coop_check;
+mod coop_route;
 mod motion;
 mod route;
 mod safety;
@@ -481,6 +482,11 @@ pub static REGISTRATION: Registration = Registration {
         1,
     )],
     checks: &[
+        Check {
+            flag: "--tower2-coop-route-check",
+            help: "Traverse the full paired water course, three flushers and fan gaps into hedge3.",
+            run: Run::Windowed(coop_route::check),
+        },
         Check {
             flag: "--tower2-coop-check",
             help: "Verify paired water machinery, personal currents and fan hazards, saved scenes and swimming.",

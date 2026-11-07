@@ -4,6 +4,29 @@ use anyhow::{ensure, Context, Result};
 use macroquad::prelude::*;
 use std::collections::{BinaryHeap, HashMap, VecDeque};
 
+pub(super) fn fan_gap(map:&crate::bsp::Bsp, player:&crate::movement::Player,
+    name:&str, angle:f32, speed:f32)->Result<bool> {
+    // Like the solo route, look ahead through the live blade sweep before
+    // pressing upward swim. The fan and the real body are never altered.
+    let entity=map.entities.iter().find(|e|e.get("targetname").is_some_and(|n|n==name))
+        .context("Missing swim fan")?;
+    let model=entity.get("model").and_then(|s|s.strip_prefix('*')).context("Swim fan lacks model")?.parse()?;
+    let base=entity.get("origin").and_then(|s|crate::interaction::vector(s)).context("Swim fan lacks origin")?;
+    let mut feet=player.feet;
+    let mut velocity=player.velocity;
+    for n in 1..=110 {
+        velocity+=(Vec3::Z*220.-velocity).clamp_length_max(700.*crate::movement::FIXED_DT);
+        let next=feet+velocity*crate::movement::FIXED_DT;
+        let blade=crate::collision::Collider::model(map,model,base,
+            Quat::from_rotation_z((angle+speed*crate::movement::FIXED_DT*n as f32).to_radians()),true)?;
+        let hit=blade.trace(feet+crate::collision::PLAYER_CENTER,next+crate::collision::PLAYER_CENTER,
+            crate::collision::PLAYER_HALF);
+        if hit.start_solid || hit.fraction<1. {return Ok(false);}
+        feet=next;
+    }
+    Ok(true)
+}
+
 #[derive(Default)]
 pub(super) struct Swimming {
     path: Option<VecDeque<Vec3>>,

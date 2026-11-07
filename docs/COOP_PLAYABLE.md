@@ -56,6 +56,18 @@ a normal-play blocker, data loss, or a missing requested core feature.
 Report playable readiness and the polishing backlog separately. Do not label
 the game 100% playable while a level or requested core flow remains blocked.
 
+## Water Logged accepted
+
+`b278fdc` passes the normal paired water course, all three flushers, live fan
+passages and final drain into actual Labyrinthine Revenge. The 28,247-tick run
+checks 236 exact replicas and finishes with both players at 55 health. Three
+ordinary revivals each take exactly ten active seconds. The automated controls
+use the owned Watch, per-player fan-gap timing and a single-file final inlet;
+gameplay and combat rules are unchanged. All 949 active Rust tests pass.
+Repeat with `tools/test_coop_native_route.py --map tower2`, local data and a
+fresh profile. Coverage is **30/39 visits**, **9 remaining**, or **76.9%** overall.
+Internet and rendered-camera evidence remain separate.
+
 ## Mystifying Madness accepted
 
 `f9d8893` passes the normal paired maze course through actual Water Logged
@@ -258,11 +270,11 @@ bounded audit. The subsequent full attempt still fails after both players die
 in the late encounter at step 154 and restore the initial checkpoint. A Garden
 full-route pass was still required at that point; no team-wipe certification is
 inferred from that failed route. The later Red-led native pass above now meets
-normal-route acceptance, followed by Herbaceous Border, Rolling Stones, Icy Reception, Fungiferous Flora, both Caterpillar's Plot visits, Pale Realm, Airborne Terror and Mystifying Madness above. Ten visits remain outside credited normal route
+normal-route acceptance, followed by Herbaceous Border, Rolling Stones, Icy Reception, Fungiferous Flora, both Caterpillar's Plot visits, Pale Realm, Airborne Terror, Mystifying Madness and Water Logged above. Nine visits remain outside credited normal route
 coverage; all have paired component evidence.
 
 Remaining normal-route coverage is first Skool, School Two, all three Pool
-visits, Majestic Maze, Water Logged, Labyrinthine Revenge, Machinations and
+visits, Majestic Maze, Labyrinthine Revenge, Machinations and
 the Queen finale.
 
 Run the two fresh-entry route checks together in Anode:

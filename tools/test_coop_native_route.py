@@ -13,7 +13,8 @@ import subprocess
 from coop_recovery import read_trace
 
 EXITS = {'centipede1': 'centipede2', 'grounds2': 'facade', 'facade': 'keep', 'keep': 'qlair',
-         'wforest': 'wchess1', 'wforest-return': 'hedge1', 'tower1': 'hedge2', 'hedge2': 'tower2'}
+         'wforest': 'wchess1', 'wforest-return': 'hedge1', 'tower1': 'hedge2', 'hedge2': 'tower2',
+         'tower2': 'hedge3'}
 
 
 def verify(profile, map_name):

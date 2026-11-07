@@ -1,6 +1,6 @@
 # Co-op progress
 
-Updated 7 November 2026. Branch: `coop`. **Estimated overall completion: 76.4%.**
+Updated 7 November 2026. Branch: `coop`. **Estimated overall completion: 76.9%.**
 The target is now [100% playable co-op](COOP_PLAYABLE.md), followed by a
 separate polishing stage. Complete normal progression and core flows first;
 batch implementation and reuse passing evidence. The historical exhaustive
@@ -41,7 +41,7 @@ foundation point credited the missing import feature. The current additional
 Internet Host/Join point credits completed public core consolidation on `0b5bca3`;
 no additional campaign visit is credited.
 
-Twenty-nine of 39 visits now have credited normal paired route evidence. Six retain
+Thirty of 39 visits now have credited normal paired route evidence. Six retain
 the historical combined designation; the broader matrix still labels 33 as
 partial because it includes polishing cases. The next priority is normal paired campaign
 pass, fixing progression blockers and checking core recovery at representative
@@ -55,8 +55,33 @@ remain in the polishing backlog.
 | Two players, movement and presentation | 11.75 | 15 |
 | Combat, individual resources and death | 13.5 | 20 |
 | Scenes, transport and progression | 16 | 20 |
-| Campaign playability | 14.87 | 20 |
-| **Total** | **76.37, rounded to 76.4** | **100** |
+| Campaign playability | 15.38 | 20 |
+| **Total** | **76.88, rounded to 76.9** | **100** |
+
+## Water Logged playable route completed
+
+Frozen `b278fdc` passes the normal paired water course into actual Labyrinthine
+Revenge arrival: **28,247 ticks**, **236 exact compressed replicas**, the original
+arrival/reunion, all three flushers and the final drain. Both arrive alive at
+**55 health**, with personal resources carried exactly. Two Red revivals and
+one Blue revival each take exactly 1,200 active ticks and return at 25 health.
+There is no team wipe, progression staging or altered combat balance.
+
+The new diagnostic reuses the solo course with ordinary Blade/Cards, Watch,
+swimming and per-player fan-gap timing. It keeps the leader moving through
+stair landings and reads actual footing after the vacated tray springs back.
+The narrow final inlet uses a single-file swim sequence: one swimmer clears
+it while the partner waits on the broad platform, then the partner follows.
+No gameplay, save or network behavior changed in this batch.
+
+All **949 active Rust tests**, the locked release and source/package checks
+pass. The default route passes in about 54 seconds in Anode; its source,
+executable, arrival and exact recovery evidence are pinned in
+`private/coop-playable-waterlogged-default-verified.json`. Repeat with
+`tools/test_coop_native_route.py --map tower2`, local data and a fresh profile.
+The unchanged public save/rejoin and controller component evidence is reused;
+this Arena pass does not add internet or rendered-camera coverage.
+Coverage is **30/39 visits**, with **9 remaining**, or **76.9%** overall.
 
 ## Mystifying Madness playable route completed
 
@@ -599,7 +624,7 @@ yet verified across every level and failure condition.
 | Combat and resources | Nearest-visible targeting, individual damage, inventory and consumables; all explicit paired boss adapters integrated | Verify remaining full combat routes and fix normal-play blockers |
 | Death and saves | Exact ten-second countdown, moving spectator camera, safe 25-health revival; shared checkpoint wipes, solo import, earlier co-op resume, public save/leave/continue and storage-error/backup menu flow | Representative recovery during remaining routes; exhaustive per-visit matrices deferred to polishing |
 | Scenes and machinery | First-arrival ownership, original single-Alice scenes, hidden partner and safe reunion; public scene reconnects and all-living boarding; adapters through the ending | Verify remaining normal transports/exits and the final film/credits handoff; exhaustive owner/skip permutations deferred |
-| Regression checks | 949 active Rust tests on `f9d8893`; existing native registry/component checks and build-specific source guards, weapon-effect/audio and solo baselines | Missing normal campaign routes and focused checks for subsequent fixes |
+| Regression checks | 949 active Rust tests on `b278fdc`; existing native registry/component checks and build-specific source guards, weapon-effect/audio and solo baselines | Missing normal campaign routes and focused checks for subsequent fixes |
 
 Campaign status from `COOP_CAMPAIGN.md`:
 
@@ -613,7 +638,7 @@ Campaign status from `COOP_CAMPAIGN.md`:
   currently have components or checkpoint segments only.
 - **No visit remains without paired component evidence.** Heart of Darkness's
   adapter is integrated. Component coverage does not complete the full campaign
-  playability pass: 29 normal paired routes are credited, with 10 remaining.
+  playability pass: 30 normal paired routes are credited, with 9 remaining.
 
 See the [full campaign matrix](COOP_CAMPAIGN.md). Future updates should separate
 working features, partial route milestones and completed verification visits.

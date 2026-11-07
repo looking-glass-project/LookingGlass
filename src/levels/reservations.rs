@@ -385,7 +385,7 @@ pub static RESERVATIONS: [Reservation; 39] = [
     }), ..visit(30, "hedge2") },
     Reservation {flags:Some(VisitFlags {
         contract:&["--tower2-check", "--tower2-cast-check", "--tower2-coop-check"],
-        route:&["--tower2-route-check"], skip:&["--tower2-skip-route-check"],
+        route:&["--tower2-route-check", "--tower2-coop-route-check"], skip:&["--tower2-skip-route-check"],
         render:&["--tower2-render-check"],
     }), ..visit(31, "tower2")},
     Reservation { flags: Some(VisitFlags {

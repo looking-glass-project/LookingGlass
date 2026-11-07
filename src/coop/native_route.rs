@@ -9,6 +9,9 @@ use std::collections::VecDeque;
 mod swim;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub(crate) struct SwimStep { pub at: [f32; 3], pub planned: bool }
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) enum Command {
     Node(usize), Nav([f32; 3]), Clear(f32), Wait(u64), Watch, Staff(bool), Cards(bool),
     HighNode(usize), Walk([f32; 3]), Positions([Option<[f32; 3]>; 2]),
@@ -25,6 +28,12 @@ pub(crate) enum Command {
     /// Hold position until a live controller clock enters an authored interval.
     Phase { controller: String, pointer: String, start: f64, end: f64 },
     Swim { at: [f32; 3], planned: bool },
+    /// One swimmer clears a narrow sequence before the partner enters it.
+    SwimFile(Vec<SwimStep>),
+    /// Ordinary fixed-duration movement through a current.
+    Drive { direction: [f32; 3], ticks: u64 },
+    /// Wait for a gap in a fan rotating about Z, then swim above its blades.
+    SwimFan { entity: String, controller: String, angle: String, speed: f32, height: f32 },
     WatchReady, WorldRunning,
 }
 pub(crate) struct Spec {
@@ -140,6 +149,8 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
     let mut approach_yields = 0;
     let mut jumped = [false; 2];
     let mut flight = [0; 2];
+    let mut fan_started = [false; 2];
+    let mut swim_leg = [0; 2];
     std::fs::create_dir_all(crate::preferences::path(""))?;
     let recovery_name=format!("{}-recovery.jsonl",spec.map);
     let mut recovery=super::recovery_trace::Trace::new(crate::preferences::path(&recovery_name))?;
@@ -159,6 +170,12 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
                 let value=state.pointer(pointer).and_then(|v|v.as_f64()).context("Missing route phase clock")?;
                 value>=*start && value<*end
             } else {false};
+            let fan_angle=if let Command::SwimFan{controller,angle,..}=command {
+                let slot=arena.stage.interactions.levels.iter().find(|s|s.reg.id==controller)
+                    .context("Missing swim fan controller")?;
+                Some(slot.ctl.snapshot().pointer(angle).and_then(|v|v.as_f64())
+                    .context("Missing swim fan angle")? as f32)
+            } else {None};
             let mut all = targets(&arena);
             let switch=if let Command::Shoot(thread)=command {
                 let target=arena.stage.interactions.switch_target(thread);
@@ -201,6 +218,14 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
                     approach_lead=roster.players.iter().enumerate().filter(|(_,b)|b.stats.alive())
                         .min_by(|(_,a),(_,b)|a.player.feet.distance_squared(Vec3::from_array(*at))
                             .total_cmp(&b.player.feet.distance_squared(Vec3::from_array(*at)))).map(|(i,_)|i);
+                }
+            }
+            if let Command::SwimFile(steps)=command {
+                let first=steps.first().context("Empty single-file swim course")?;
+                if approach_lead.is_none_or(|i:usize|!roster.players[i].stats.alive()) {
+                    approach_lead=roster.players.iter().enumerate().filter(|(_,b)|b.stats.alive())
+                        .min_by(|(_,a),(_,b)|a.player.feet.distance_squared(Vec3::from_array(first.at))
+                            .total_cmp(&b.player.feet.distance_squared(Vec3::from_array(first.at)))).map(|(i,_)|i);
                 }
             }
             let mut inputs = [(Controls::default(), Input::default()); 2];
@@ -271,6 +296,31 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
                     let radius=if i==lead {10.}else{64.};
                     inputs[i].0=swimming[i].input(&world,p,goal,*planned,radius)?;
                     work |= p.feet.distance(goal)>=radius;
+                } else if let Command::SwimFile(steps)=command {
+                    let lead=approach_lead.context("Single-file swim has no living leader")?;
+                    if i!=lead && swim_leg[lead]<steps.len() {work=true;continue;}
+                    if let Some(target)=steps.get(swim_leg[i]) {
+                        let goal=Vec3::from_array(target.at);
+                        let radius=if i!=lead && swim_leg[i]+1==steps.len() {64.}else{10.};
+                        if p.feet.distance(goal)<radius {
+                            swim_leg[i]+=1;swimming[i]=Default::default();
+                        } else {
+                            inputs[i].0=swimming[i].input(&world,p,goal,target.planned,radius)?;
+                        }
+                        work |= swim_leg[i]<steps.len();
+                    }
+                } else if let Command::Drive{direction,..}=command {
+                    let direction=Vec3::from_array(*direction);
+                    inputs[i].0=Controls{wish:direction.truncate(),swim:direction,rise:direction.z,
+                        run:true,..Default::default()};
+                } else if let Command::SwimFan{entity,speed,height,..}=command {
+                    if p.feet.z<*height {
+                        work=true;
+                        if !fan_started[i] && step_ticks>=60 {
+                            fan_started[i]=swim::fan_gap(&map,p,entity,fan_angle.unwrap(),*speed)?;
+                        }
+                        if fan_started[i] {inputs[i].0=Controls{swim:Vec3::Z,run:true,..Default::default()};}
+                    }
                 } else if let Command::Flight{takeoff,via,landing}=command {
                     let last=via.len()+1;
                     let point=|leg:usize|Vec3::from_array(if leg==0 {*takeoff}
@@ -428,7 +478,8 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
                     walking[i]=Default::default();
                     swimming[i]=Default::default();
                     jumped[i]=false;
-                    if !alive[i] {flight[i]=flight[1-i];}
+                    if !alive[i] {flight[i]=flight[1-i];swim_leg[i]=swim_leg[1-i];}
+                    fan_started[i]=false;
                 }
             }
             if !busy && matches!(command,Command::Approach(_)) {
@@ -473,7 +524,7 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
                 let done=match command {
                     Command::Node(_) | Command::HighNode(_) | Command::Nav(_) | Command::Walk(_)
                         | Command::Positions(_) | Command::Rise{..} | Command::Steer{..} | Command::Flight{..}
-                        | Command::Swim{..} => !work,
+                        | Command::Swim{..} | Command::SwimFan{..} | Command::SwimFile(_) => !work,
                     Command::WatchReady => roster.players.iter().filter(|b|b.stats.alive()).all(|b|b.stats.powers.recharge<=0.),
                     Command::WorldRunning => super::world::world_dt(&roster.players,FIXED_DT)>0.,
                     Command::Phase{..} => phase_ready,
@@ -483,6 +534,7 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
                     Command::Shoot(thread) => shot_started && arena.stage.interactions.switch_target(thread).is_none(),
                     Command::Clear(_) => quiet>=240,
                     Command::Wait(ticks) => step_ticks>=*ticks,
+                    Command::Drive{ticks,..} => step_ticks>=*ticks,
                     Command::Watch => step_ticks>=120,
                     Command::Staff(enabled) => {staff=*enabled;true},
                     Command::Cards(enabled) => {cards=*enabled;true},
@@ -493,7 +545,7 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
                     completed.push(serde_json::json!({"step":step,"command":command,"tick":roster.tick,"feet":roster.players.each_ref().map(|b|b.player.feet),
                         "steam_seen":steam_seen,"rise_done":rise_done}));
                     step+=1;step_ticks=0;quiet=0;walking=Default::default();swimming=Default::default();
-                    rising=[false;2];steam_seen=[false;2];rise_done=[false;2];board_lead=None;shot_started=false;approach_lead=None;approach_stuck=0;jumped=[false;2];flight=[0;2];
+                    rising=[false;2];steam_seen=[false;2];rise_done=[false;2];board_lead=None;shot_started=false;approach_lead=None;approach_stuck=0;jumped=[false;2];flight=[0;2];fan_started=[false;2];swim_leg=[0;2];
                     home=roster.players.each_ref().map(|b|b.player.feet);
                 }
             }

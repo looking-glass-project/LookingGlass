@@ -1,5 +1,24 @@
 # Water Logged
 
+## Normal paired route (2026-11-07)
+
+Frozen `b278fdc` completes the ordinary co-op course through all three flushers,
+the underwater passages and actual Labyrinthine Revenge arrival. Both players
+finish at 55 health with their resources carried exactly. The run records
+28,247 ticks, 236 matching compressed replicas and the original arrival/reunion.
+Red revives twice and Blue once, each after exactly 1,200 active ticks at
+25 health. No team wipe, cheats or world-progression staging is used.
+
+Run `tools/test_coop_native_route.py --map tower2 --exe <frozen-executable>
+--data <base-folder> --profile <new-folder>` in Anode. The native entry point is
+`--tower2-coop-route-check`. The diagnostic uses normal Blade/Cards, the owned
+Watch, independent fan-gap timing and single-file swimming through the final
+narrow inlet. It follows actual footing after a vacated tray springs back.
+No gameplay or save behavior changes. The locked release, all 949 active Rust
+tests and source/package checks pass. Exact evidence is pinned privately in
+`coop-playable-waterlogged-default-verified.json`; public-invite, presentation
+and additional recovery permutations retain their separate evidence/backlog.
+
 ## Co-op core integration (2026-11-06)
 
 Build `d06ded3c2ec57c42176358b727ad37c3e9e4fa4b28ab710653bc3269d4f4d553`

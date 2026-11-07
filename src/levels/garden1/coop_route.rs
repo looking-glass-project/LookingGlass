@@ -590,7 +590,7 @@ fn record(
     )?;
     Ok(())
 }
-async fn route(a: &mut Assets, first: PlayerId, skip: bool) -> Result<()> {
+async fn route(a: &mut Assets, first: PlayerId, skip: bool, allow_revival: bool) -> Result<()> {
     let visit = Visit {
         epoch: 1,
         map: "garden1".into(),
@@ -618,7 +618,16 @@ async fn route(a: &mut Assets, first: PlayerId, skip: bool) -> Result<()> {
     } else {
         include_bytes!("coop_steps.json").to_vec()
     };
-    let steps: Vec<Step> = serde_json::from_slice(&course)?;
+    let mut steps: Vec<Step> = serde_json::from_slice(&course)?;
+    if allow_revival {
+        for step in &mut steps {
+            if let Some(point) = step.network_pos { step.pos = point; }
+        }
+    }
+    let steering_lead: f32 = std::env::var("LOOKING_GLASS_GARDEN_COOP_STEERING")
+        .ok().map(|s|s.parse()).transpose()?.unwrap_or(0.);
+    ensure!(steering_lead.is_finite() && (0. ..=0.5).contains(&steering_lead),
+        "Garden steering lookahead must be between zero and half a second");
     ensure!(
         !steps.is_empty()
             && steps.iter().all(|s| s.pos.iter().all(|v| v.is_finite())
@@ -642,6 +651,16 @@ async fn route(a: &mut Assets, first: PlayerId, skip: bool) -> Result<()> {
     let mut reunions = 0;
     let mut close_recorded = false;
     let mut flight_ticks = [0; 2];
+    let mut rejoins = Vec::new();
+    let mut scene_starts = Vec::new();
+    let rejoin_path = crate::preferences::path(&format!("garden1-{first:?}-{skip}-rejoins.json"));
+    std::fs::write(&rejoin_path, b"[]")?;
+    let mut recovery = allow_revival.then(|| crate::coop::recovery_trace::Trace::new(
+        crate::preferences::path(&format!("garden1-{first:?}-{skip}-recovery.jsonl")))).transpose()?;
+    if let Some(trace) = &mut recovery {
+        trace.record(&roster, &scene.world, visit.epoch, &visit.map, arena.stage.busy(),
+            arena.stage.interactive_actor().is_some(), |at| !arena.stage.interactions.hazardous(at))?;
+    }
     for tick in 0..120 * 1200 {
         let indices_before = drivers.each_ref().map(|d| d.index);
         let owner_before = arena.stage.owner;
@@ -650,17 +669,25 @@ async fn route(a: &mut Assets, first: PlayerId, skip: bool) -> Result<()> {
         let ropes_before = roster.players.each_ref().map(|b| b.player.rope.clone());
         let landings_before = roster.players.each_ref().map(|b| b.player.landings);
         let health_before = roster.players.each_ref().map(|b| b.stats.sanity());
+        let movement_before = roster.players.each_ref().map(|b| b.player.clone());
+        let spawns_before = roster.players.each_ref().map(|b| b.spawned_at);
         let inputs = (|| -> Result<_> {
             let mut out = std::array::from_fn(|_| (Controls::default(), Input::default()));
             if !arena.stage.busy() {
                 for id in PlayerId::ALL {
-                    let wait_before = (id != first && !rabbit_seen).then_some(
+                    if !roster.players[id.index()].stats.alive() { continue; }
+                    let wait_before = if allow_revival && !roster.players[id.partner().index()].stats.alive()
+                        && roster.players[id.index()].player.grounded {
+                        // Regroup on reached ground before attempting another
+                        // crossing alone. Combat remains available while waiting.
+                        Some(drivers[id.index()].index)
+                    } else {(id != first && !rabbit_seen).then_some(
                         if drivers[first.index()].index < 11 {
                             5
                         } else {
                             20
                         },
-                    );
+                    )};
                     if id == first || free_ticks >= 240 {
                         out[id.index()] = drivers[id.index()].sample(
                             &steps,
@@ -670,7 +697,7 @@ async fn route(a: &mut Assets, first: PlayerId, skip: bool) -> Result<()> {
                             id,
                             wait_before,
                             1,
-                            0.,
+                            steering_lead,
                         )?;
                     }
                 }
@@ -693,9 +720,46 @@ async fn route(a: &mut Assets, first: PlayerId, skip: bool) -> Result<()> {
                 return Err(e);
             }
         };
+        // Keep actual input progress separate from a later revival's cursor jump.
+        let sampled_indices = drivers.each_ref().map(|d| d.index);
+        let cinematic_before = arena.stage.busy();
         arena.step(&mut roster, &scene.map, &mut scene.world, inputs)?;
+        if let Some(trace) = &mut recovery {
+            trace.record(&roster, &scene.world, visit.epoch, &visit.map,
+                cinematic_before || arena.stage.busy(), arena.stage.interactive_actor().is_some(),
+                |at| !arena.stage.interactions.hazardous(at))?;
+        }
+        if owner_before.is_none() && arena.stage.owner.is_some() {
+            scene_starts.push(serde_json::json!({"tick":roster.tick,"owner":arena.stage.owner,
+                "feet":roster.players.each_ref().map(|b|b.player.feet)}));
+        }
+        if allow_revival && roster.checkpoint_generation == 0 {
+            for i in 0..2 {
+                let body = &roster.players[i];
+                if health_before[i] > 0. && !body.stats.alive() {
+                    drivers[i].plan.clear();
+                    drivers[i].plan_tick = 0;
+                    flight_ticks[i] = 0;
+                }
+                if body.spawned_at != spawns_before[i] {
+                    ensure!(health_before[i] == 0. && body.stats.sanity() == 25.
+                        && body.spawned_at == roster.tick && roster.players[1-i].stats.alive(),
+                        "Garden continuation has no ordinary revival");
+                    // Respawn has already placed Alice beside the survivor. Only
+                    // the test's input cursor moves; never rewind across a one-way jump.
+                    let next = drivers[1-i].index;
+                    let cards = drivers[1-i].cards;
+                    rejoins.push(serde_json::json!({"tick":roster.tick,"player":i,
+                        "from_step":drivers[i].index,"to_step":next,"survivor_step":drivers[1-i].index,
+                        "feet":body.player.feet,"survivor_feet":roster.players[1-i].player.feet}));
+                    drivers[i] = Driver {index:next,cards,last:body.player.feet,..Default::default()};
+                    std::fs::write(&rejoin_path, serde_json::to_vec(&rejoins)?)?;
+                    println!("Garden ordinary revival player{i} tick{} follows survivor step{next}",roster.tick);
+                }
+            }
+        }
         for id in PlayerId::ALL {
-            for step in indices_before[id.index()]..drivers[id.index()].index {
+            for step in indices_before[id.index()]..sampled_indices[id.index()] {
                 if let Some(s) = steps
                     .get(step)
                     .filter(|s| matches!(s.mode.as_str(), "launch" | "release"))
@@ -735,6 +799,15 @@ async fn route(a: &mut Assets, first: PlayerId, skip: bool) -> Result<()> {
             if body.player.landings != landings_before[id.index()]
                 && body.player.landing_speed > 550.
             {
+                if body.player.landing_speed > 800. {
+                    std::fs::write(crate::preferences::path(&format!(
+                        "garden1-{first:?}-{skip}-impact-{}-{id:?}.json",roster.tick)),
+                        serde_json::to_vec(&serde_json::json!({"build":env!("LOOKING_GLASS_BUILD"),
+                            "before":movement_before,"frame":roster.frame(1,0),"world":arena.snapshot(),
+                            "steps":drivers.each_ref().map(|d|d.index),"inputs":inputs.each_ref().map(|(c,n)|
+                                serde_json::json!({"wish":c.wish,"run":c.run,"jump":c.jump,"rise":c.rise,
+                                    "swim":c.swim,"use_pressed":c.use_pressed,"weapon":n.weapon}))}))?)?;
+                }
                 println!(
                     "Garden {id:?} hard landing tick{tick} step{} speed={} health={}->{} feet={:?}",
                     drivers[id.index()].index,
@@ -773,7 +846,7 @@ async fn route(a: &mut Assets, first: PlayerId, skip: bool) -> Result<()> {
         if garden(&arena).scene_id() == Some(RABBIT) {
             rabbit_seen = true;
             ensure!(
-                arena.stage.owner == Some(first),
+                allow_revival || arena.stage.owner == Some(first),
                 "Garden Rabbit scene had wrong first arrival"
             );
         }
@@ -806,7 +879,8 @@ async fn route(a: &mut Assets, first: PlayerId, skip: bool) -> Result<()> {
             && roster
                 .players
                 .iter()
-                .all(|b| b.stats.alive() && b.spawned_at == 0)
+                .all(|b| !b.stats.god && !b.stats.notarget
+                    && (allow_revival || b.stats.alive() && b.spawned_at == 0))
             && (owner_before.is_some()
                 || roster.players.each_ref().map(|b| b.warped_at) == warps_before);
         if !valid {
@@ -818,7 +892,8 @@ async fn route(a: &mut Assets, first: PlayerId, skip: bool) -> Result<()> {
                 roster.players.each_ref().map(|b| b.stats.sanity())
             );
         }
-        if !arena.stage.busy() && roster.players.iter().any(|b|b.player.rope.is_some()) {
+        if !arena.stage.busy() && roster.players.iter().all(|b|b.stats.alive())
+            && roster.players.iter().any(|b|b.player.rope.is_some()) {
             let spacing = roster.players[0].player.feet - roster.players[1].player.feet;
             if spacing.truncate().length() < crate::coop::separation::DISTANCE-0.05
                 && spacing.z.abs() < crate::collision::PLAYER_HALF.z*2.-0.05 {
@@ -909,6 +984,7 @@ async fn route(a: &mut Assets, first: PlayerId, skip: bool) -> Result<()> {
     ensure!(
         rabbit_seen
             && reunions == 2
+            && roster.players.iter().all(|b| b.stats.alive())
             && garden(&arena).saved.world.rabbit.is_some()
             && arena
                 .stage
@@ -952,6 +1028,17 @@ async fn route(a: &mut Assets, first: PlayerId, skip: bool) -> Result<()> {
             >= 36.,
         "Garden2 arrival overlapped players"
     );
+    let mut result = report(&arena, &roster, &drivers, first, skip, samples);
+    result["full_route_passed"] = true.into();
+    result["allow_revival"] = allow_revival.into();
+    result["steering_lead"] = steering_lead.into();
+    result["network_waypoints"] = allow_revival.into();
+    result["revival_rejoins"] = serde_json::to_value(&rejoins)?;
+    result["scene_starts"] = serde_json::to_value(&scene_starts)?;
+    result["reunions"] = reunions.into();
+    result["arrival"] = serde_json::json!({"visit":next_visit,"frame":arrived.frame(2,0)});
+    std::fs::write(crate::preferences::path(&format!("garden1-{first:?}-{skip}-route.json")),
+        serde_json::to_vec(&result)?)?;
     println!(
         "PASS full Garden co-op into Garden2 {first:?} skip={skip}: {} ticks, {samples} replicas, exact resources, health {:?}",
         roster.tick,
@@ -963,6 +1050,9 @@ pub(super) async fn check(a: &mut Assets) -> Result<()> {
     std::fs::create_dir_all(crate::preferences::path(""))?;
     let selected = std::env::var("LOOKING_GLASS_GARDEN_COOP_FIRST").ok();
     let scenes = std::env::var("LOOKING_GLASS_GARDEN_COOP_SCENES").ok();
+    let recovery = std::env::var("LOOKING_GLASS_GARDEN_COOP_RECOVERY").ok();
+    ensure!(recovery.as_deref().is_none_or(|s| matches!(s,"strict" | "allowed")),
+        "LOOKING_GLASS_GARDEN_COOP_RECOVERY must be strict or allowed");
     ensure!(
         selected
             .as_deref()
@@ -986,7 +1076,7 @@ pub(super) async fn check(a: &mut Assets) -> Result<()> {
             if scenes.as_deref().is_some_and(|s| (s == "skipped") != skip) {
                 continue;
             }
-            route(a, first, skip).await?;
+            route(a, first, skip, recovery.as_deref() == Some("allowed")).await?;
         }
     }
     Ok(())

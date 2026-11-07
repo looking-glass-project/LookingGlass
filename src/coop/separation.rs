@@ -640,6 +640,51 @@ mod tests {
         }
     }
     #[test]
+    fn repeated_diagonal_slope_contact_does_not_accumulate_fall_damage() {
+        let world = World::ramp_fixture();
+        for moving in 0..2 { for jumping in [false,true] {
+            let feet = [vec3(0.,0.,7.54),vec3(12.,34.,13.54)];
+            let mut r = pair(&world,if moving==1 {feet} else {[feet[1],feet[0]]});
+            for tick in 0..1200 {
+                let delta = vec2(3.,7.) - r.players[moving].player.feet.truncate();
+                let mut input = [(Controls::default(),Default::default());2];
+                input[moving].0 = Controls {wish:delta.normalize_or_zero(),run:true,
+                    jump:jumping && tick%120==119,..Default::default()};
+                r.move_players(&world,input);
+                assert_eq!(r.players[moving].stats.sanity(),100.,
+                    "False slope impact moving{moving} jumping{jumping} tick{tick}: feet{:?} velocity{:?} landing{}",
+                    r.players[moving].player.feet,r.players[moving].player.velocity,r.players[moving].player.landing_speed);
+            }
+        }}
+    }
+    #[test]
+    fn airborne_contact_on_a_slope_does_not_store_a_fatal_fall() {
+        let normal = vec3(0.,0.4166547,0.9090648);
+        let anchor = vec3(-2207.909,-1146.6525,-296.875);
+        let plane = crate::bsp::Plane {normal,
+            distance:normal.dot(anchor)-normal.abs().dot(vec3(15.,15.,0.))-crate::collision::SKIN};
+        let world = World::sloped_fixture(vec3(-2800.,-1600.,-1200.),vec3(-1800.,-700.,1000.),plane);
+        let floating = vec3(-2174.2693,-1159.9398,-280.88013);
+        for moving in 0..2 {
+            let mut r = pair(&world,[anchor,anchor+Vec3::X*80.]);
+            r.players[1-moving].player = Player::spawn(&world,anchor+Vec3::Z*EYE_HEIGHT).unwrap();
+            r.players[moving].player = Player::new(floating);
+            for tick in 0..480 {
+                let mut inputs = [(Controls::default(),Default::default());2];
+                inputs[moving].0 = Controls {run:true,
+                    wish:(vec2(-2200.,-1150.)-r.players[moving].player.feet.truncate()).normalize_or_zero(),
+                    ..Default::default()};
+                if tick>=420 {
+                    inputs[1-moving].0 = Controls {wish:vec2(-0.3711243,0.9285832),run:true,..Default::default()};
+                }
+                r.move_players(&world,inputs);
+                assert_eq!(r.players[moving].stats.sanity(),100.,
+                    "Contact stored a fall moving{moving} tick{tick}: feet{:?} velocity{:?} landing{}",
+                    r.players[moving].player.feet,r.players[moving].player.velocity,r.players[moving].player.landing_speed);
+            }
+        }
+    }
+    #[test]
     fn opposing_motion_and_fast_crossing_keep_the_original_sides() {
         let world = floor();
         let mut r = pair(&world,[vec3(-40.,0.,0.04),vec3(40.,0.,0.04)]);

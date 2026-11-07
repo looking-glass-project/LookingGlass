@@ -1,6 +1,6 @@
 # Co-op progress
 
-Updated 7 November 2026. Branch: `coop`. **Estimated overall completion: 71.2%.**
+Updated 7 November 2026. Branch: `coop`. **Estimated overall completion: 71.8%.**
 The target is now [100% playable co-op](COOP_PLAYABLE.md), followed by a
 separate polishing stage. Complete normal progression and core flows first;
 batch implementation and reuse passing evidence. The historical exhaustive
@@ -41,7 +41,7 @@ foundation point credited the missing import feature. The current additional
 Internet Host/Join point credits completed public core consolidation on `0b5bca3`;
 no additional campaign visit is credited.
 
-Nineteen of 39 visits now have credited normal paired route evidence. Six retain
+Twenty of 39 visits now have credited normal paired route evidence. Six retain
 the historical combined designation; the broader matrix still labels 33 as
 partial because it includes polishing cases. The next priority is normal paired campaign
 pass, fixing progression blockers and checking core recovery at representative
@@ -55,8 +55,32 @@ remain in the polishing backlog.
 | Two players, movement and presentation | 11.75 | 15 |
 | Combat, individual resources and death | 13.5 | 20 |
 | Scenes, transport and progression | 16 | 20 |
-| Campaign playability | 9.74 | 20 |
-| **Total** | **71.24, rounded to 71.2** | **100** |
+| Campaign playability | 10.26 | 20 |
+| **Total** | **71.76, rounded to 71.8** | **100** |
+
+## Dry Landing playable route completed
+
+Frozen `5c1b2dd` passes the fresh Red-led normal paired Garden route through
+actual Garden2 arrival: **29,719 ticks and 50 exact compressed Arena replicas**.
+Both players traverse the course, watch the original scenes and reunite twice.
+Both arrive alive at approximately 54.88/62.18 health with every personal
+resource preserved; this run has no deaths, revivals, team wipes or cheats.
+
+The native driver now supports ordinary revival, discards pre-death inputs and
+continues beside the actual survivor. Failed Blue-led runs exercise that path
+but do not establish a complete Blue-led route. The default public native runner
+selects the passing Red-led order. No gameplay movement or combat balance changed.
+The repeated Blue approach/slope impact and its later crossing failures remain
+follow-up investigations; the two new small slope fixtures pass but do not
+reproduce that native impact or establish a fix.
+
+Validation: 946 Rust tests and the locked release pass, alongside 15 recovery
+guards and seven source-package tests. Native evidence is in
+`private/coop-garden-revival-native-7/`; the pinned audit is
+`private/coop-playable-garden-route-verified.json`. This establishes the normal
+paired Arena route, not a new internet or rendered spectator-camera check.
+Existing independent-client core acceptance remains applicable. Coverage is now
+**20/39 visits**, leaving 19 normal routes.
 
 ## Castle Keep playable route completed
 

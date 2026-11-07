@@ -56,6 +56,18 @@ a normal-play blocker, data loss, or a missing requested core feature.
 Report playable readiness and the polishing backlog separately. Do not label
 the game 100% playable while a level or requested core flow remains blocked.
 
+## Dry Landing accepted
+
+`5c1b2dd` passes the fresh Red-led paired Garden course with both players alive
+through the actual Garden2 arrival. The 29,719-tick run covers both original
+scene reunions and 50 matching compressed Arena replicas, without deaths or
+team wipes, and preserves all personal resources at arrival. Run
+`tools/test_coop_garden_native.py --exe <frozen-executable> --data <base-directory> --profile <new-directory>`
+in Anode to repeat that order. The failed Blue-led attempts remain follow-up
+work; they do not invalidate the demonstrated playable route or count as passes.
+This brings normal paired coverage to **20/39 visits**, with 19 remaining.
+See [current evidence](COOP_PROGRESS.md#dry-landing-playable-route-completed).
+
 ## Castle Keep accepted
 
 `b22c2b4` passes the fresh default paired Castle Keep route: all three lever
@@ -81,7 +93,7 @@ See [current evidence](COOP_PROGRESS.md#ascension-playable-route-completed).
 
 ## Normal-route acceptance, 7 November
 
-Nineteen of 39 visits now have credited normal paired route evidence. The six
+Twenty of 39 visits now have credited normal paired route evidence. The six
 historically combined visits remain credited. The playable milestone also
 accepts complete ordinary-input routes in UTemple, Sanctum, Castling,
 Checkmate and About Face without requiring every polishing permutation.
@@ -138,7 +150,7 @@ of the latest executable. Earlier route details and limitations remain in
 COOP_CAMPAIGN.md. Sanctum does not prove both players independently finish
 every climb; Checkmate includes verified revival past some partner waypoints.
 
-Garden's fresh strict run stopped at a normal combat death. The automated
+Earlier Garden's fresh strict run stopped at a normal combat death. The automated
 controller now keeps its observation clock current during spectating and
 discards pre-death movement plans. `42139c0` contains only that test-driver
 change relative to `c8a041e`; UTemple gameplay is unchanged. The next attempt
@@ -147,12 +159,13 @@ Python harness now continues from the survivor's last witnessed course step,
 linked to the exact native revival. Three such revivals/continuations pass a
 bounded audit. The subsequent full attempt still fails after both players die
 in the late encounter at step 154 and restore the initial checkpoint. A Garden
-full-route pass is still required; no team-wipe certification is inferred from
-that failed route. Twenty visits remain outside credited normal
-route coverage; all have paired component evidence.
+full-route pass was still required at that point; no team-wipe certification is
+inferred from that failed route. The later Red-led native pass above now meets
+normal-route acceptance. Nineteen visits remain outside credited normal route
+coverage; all have paired component evidence.
 
 Remaining normal-route coverage is first Skool, School Two, all three Pool
-visits, all four Garden visits, Centipede One, both Wood visits, Pale Realm,
+visits, the other three Garden visits, Centipede One, both Wood visits, Pale Realm,
 the six Maze/Tower visits and the Queen finale.
 
 Run the two fresh-entry route checks together in Anode:

@@ -102,6 +102,9 @@ impl Store {
         Roster::from_checkpoint(&frame, world, |at| !arena.stage.interactions.hazardous(at))?;
         frame.combat = Some(Box::new(arena.snapshot()));
         self.write(&Checkpoint { visit: visit.clone(), frame, campaign: campaign.clone() })?;
+        // Only acknowledge level requests after durable disk commit. The wipe
+        // point must include the acknowledgement as well.
+        for slot in &mut arena.stage.interactions.levels { slot.ctl.checkpoint_written(); }
         arena.remember_checkpoint();
         roster.remember_checkpoint();
         Ok(())

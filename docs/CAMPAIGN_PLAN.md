@@ -1955,6 +1955,10 @@ share the existing controllers and hit IDs.
 Battle Royale also reserves `--grounds2-save-check` for its native save fixtures;
 it shares the existing grounds2 visit and hit-ID reservation.
 
+Heart of Darkness additionally reserves `--qlair-coop-check` for paired Queen
+targeting, personal resources/capture, shared phases and ending-state replication.
+It shares the existing finale controller and hit IDs.
+
 Hollow Hideaway additionally reserves `--potears2-transport-check` (headless moving supports and fish), `--potears2-coop-check` (paired supports, boarding, guards and personal fish recovery), `--potears2-route-native-check` (production resident cast), and `--potears2-store-write-check` / `--potears2-store-read-check` (separate native save processes). They share the existing potears2 owner and hit-ID reservation. `LOOKING_GLASS_HOLLOW_WATCH=1` selects the watched ending for the route checks.
 
 The underwater temple additionally reserves `--utemple-coop-check` for paired

@@ -1,6 +1,6 @@
 # Co-op progress
 
-Updated 7 November 2026. Branch: `coop`. **Estimated overall completion: 61.6%.**
+Updated 7 November 2026. Branch: `coop`. **Estimated overall completion: 64.6%.**
 The target is now [100% playable co-op](COOP_PLAYABLE.md), followed by a
 separate polishing stage. Complete normal progression and core flows first;
 batch implementation and reuse passing evidence. The historical exhaustive
@@ -26,9 +26,10 @@ water machinery, personal currents/fan hits and original introduction on
 `d06ded3`, with 66 native paired cases. Follow-up `0e5f061` adds fan-safe
 checkpoint/revival placement and nine native recovery checks. The [machinery batch](COOP_MACHINERY.md) now integrates Mystifying Madness,
 Labyrinthine Revenge and Machinations. The [castle batch](COOP_CASTLE.md) adds Battle Royale, Ascension and Castle
-Keep. Only Heart of Darkness (`qlair`) still lacks its explicit co-op adapter. These are implementation gaps
-before full traversal testing. Campaign-specific
-verification, including the unfinished Burning Curiosity route, stays separate.
+Keep. The [Queen finale](COOP_QUEEN.md) now closes the last missing explicit
+paired adapter on `fa8ddf1`. All 39 visits have component evidence; normal paired
+campaign progression remains required, including the unfinished Burning
+Curiosity route.
 
 The fresh pre-change checkpoint run on 5 November passed staged shared travel,
 guest reconnect, complete primary-save restoration and team-wipe restoration.
@@ -40,20 +41,38 @@ foundation point credited the missing import feature. The current additional
 Internet Host/Join point credits completed public core consolidation on `0b5bca3`;
 no additional campaign visit is credited.
 
-Six of the 39 campaign visits have combined verification evidence; 33 remain open.
-Earlier contact-system repeats are still required. Remaining work includes full
-paired traversal, both scene owners, deaths and checkpoint recovery, reconnects,
-shared transports, swimming/leaves and single-player regressions across the campaign.
+Six of the 39 campaign visits have combined verification evidence; 33 have
+partial evidence. The next priority is a consolidated normal paired campaign
+pass, fixing progression blockers and checking core recovery at representative
+points. Exhaustive scene-owner, recovery, network and presentation permutations
+remain in the polishing backlog.
 
 | Area | Credited points | Maximum |
 | --- | ---: | ---: |
 | Foundation and independent client diagnostics | 9.5 | 10 |
 | Internet Host/Join | 10.75 | 15 |
 | Two players, movement and presentation | 11.75 | 15 |
-| Combat, individual resources and death | 12 | 20 |
-| Scenes, transport and progression | 14.5 | 20 |
+| Combat, individual resources and death | 13.5 | 20 |
+| Scenes, transport and progression | 16 | 20 |
 | Campaign playability | 3.08 | 20 |
-| **Total** | **61.58, rounded to 61.6** | **100** |
+| **Total** | **64.58, rounded to 64.6** | **100** |
+
+## Latest finale batch
+
+Build `fa8ddf1` adds paired Queen combat, individual healing, personal grabs,
+shared phases and durable completion. Level-requested co-op checkpoints are now
+saved after the scene handoff; completion is sent to the guest before the host
+leaves for the original film/credits. The eleven focused native groups pass,
+including the real second-arena disk checkpoint and exact restore. Native solo
+finale, registry and movie decoding also pass. The initial batch passed 943 Rust
+tests; final focused native checks cover the subsequent impact-radius fix.
+450 Python guards and seven package checks pass.
+
+This closes the last explicit controller gap and adds 1.5 combat and 1.5
+scene/progression points, reaching 64.58 (reported as 64.6%). It does not credit
+a new full paired route. See [scope and evidence](COOP_QUEEN.md). The next work
+is normal paired campaign progression; film/credits visual review and exhaustive
+permutations are deferred to polishing.
 
 ## Latest castle batch
 

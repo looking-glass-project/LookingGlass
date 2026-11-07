@@ -265,7 +265,8 @@ pub async fn open(assets: &mut Assets, options: &Options, backdrop: &mut Menu, v
             if crate::ui_probe::enabled() { crate::ui_probe::note("coop-result", serde_json::json!({
                 "time":get_time(),"host":launch.host,"error":result.as_ref().err().map(|e|e.to_string())})); }
             message = match result {
-                Ok(()) => "Co-op closed. You can host or join again.".into(),
+                Ok(true) => return,
+                Ok(false) => "Co-op closed. You can host or join again.".into(),
                 Err(error) => {
                     eprintln!("Co-op session ended: {error}");
                     format!("Could not continue co-op: {error}")

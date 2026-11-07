@@ -63,11 +63,12 @@ mod tests {
     }
 }
 
-pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Result<()> {
+pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Result<bool> {
     let ui = crate::ui::Ui::load(assets)?;
     show_mouse(false);
     let _ = std::fs::remove_file(crate::preferences::path("coop-live.json"));
     let mut hosting = None;
+    let mut completed = false;
     let mut audio = super::audio::Playback::new(options);
     let result = async {
         let prefs = crate::preferences::Preferences::load();
@@ -236,6 +237,9 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
         // Route tests use isolated profiles and exercise production checkpoint
         // behavior. The older staged movement/combat fixtures still opt out.
         let automatic_checkpoints = !launch.drive || launch.route_driver.is_some();
+        let mut checkpoint_retry: Option<Instant> = None;
+        let mut finale_at: Option<Instant> = None;
+        let mut finale_sent: Option<u64> = None;
         let mut checkpoint_pending = (resumed.is_none() || importing) && launch.host && automatic_checkpoints && !visit.combat_preview;
         let mut checkpoint_message = resumed.as_ref().map(|s| (Instant::now(), if importing {
             "Your single-player progress is ready for two. Co-op saves separately.".to_owned()
@@ -273,7 +277,12 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
             }
             if let Some(guest) = &mut guest {
                 let polling = Instant::now();
-                guest.poll(now)?;
+                if let Err(error) = guest.poll(now) {
+                    if arena.stage.interactions.levels.iter().any(|s| s.ctl.ending_ready()) {
+                        completed = true; break;
+                    }
+                    return Err(error);
+                }
                 guest_poll_ms = polling.elapsed().as_secs_f32()*1000.;
                 if let Some(next) = guest.take_visit() { pending_visit = Some(next); }
                 if let Some(mut frame) = guest.take_frame() {
@@ -338,6 +347,15 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                 // Do not charge the synchronous asset-loading time to movement.
                 next_frame().await;
                 continue;
+            }
+            if arena.stage.interactions.levels.iter().any(|s| s.ctl.ending_ready()) {
+                let at = *finale_at.get_or_insert(now);
+                // The ordinary replicated world contains completion. Keep polling
+                // until the guest receipts that frame before closing the host.
+                if host.as_ref().is_some_and(|h| finale_sent.is_some_and(|tick| h.acknowledged_frame(tick)))
+                    || now.duration_since(at) >= Duration::from_secs(5) {
+                    completed = true; break;
+                }
             }
             let playing = host.as_ref().map_or_else(|| guest.as_ref().unwrap().phase() == Phase::Playing,
                 |h| h.phase() == Phase::Playing);
@@ -625,6 +643,9 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                         if host.send_frame(network)? {
                             if let Some(driver) = &mut route_driver { driver.record_state(&frame, &arena)?; }
                             last_sent = frame.tick;
+                            if arena.stage.interactions.levels.iter().any(|s| s.ctl.ending_ready()) {
+                                finale_sent.get_or_insert(frame.tick);
+                            }
                         }
                         send_ms=sending.elapsed().as_secs_f32()*1000.;
                     }
@@ -642,12 +663,15 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                             }
                         }
                     }
-                    if checkpoint_pending && !arena.stage.busy() && !arena.stage.story.busy()
+                    let requested = arena.stage.interactions.levels.iter().any(|s| s.ctl.checkpoint_requested());
+                    if automatic_checkpoints && (checkpoint_pending || requested)
+                        && checkpoint_retry.is_none_or(|at| now.duration_since(at) >= Duration::from_secs(5))
+                        && !arena.stage.busy() && !arena.stage.story.busy()
                         && roster.players.iter().all(|b| b.stats.alive()) {
-                        checkpoint_pending = false;
                         checkpoint_message = Some((now, match checkpoint_store.save(&visit, roster, &mut arena, &scene.world, &campaign) {
-                            Ok(()) => "Co-op checkpoint saved for both players.".into(),
-                            Err(error) => format!("Checkpoint was not saved: {error}"),
+                            Ok(()) => { checkpoint_pending = false; checkpoint_retry = None;
+                                "Co-op checkpoint saved for both players.".into() },
+                            Err(error) => { checkpoint_retry = Some(now); format!("Checkpoint was not saved: {error}") },
                         }));
                     }
                     // Explicit travel fixture: it requests normal load barriers
@@ -945,5 +969,22 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
     let _ = std::fs::remove_file(crate::preferences::path("coop-live.json"));
     show_mouse(true);
     let audio_result = audio.finish();
-    result.and(audio_result)
+    result.and(audio_result)?;
+    if completed {
+        println!("Co-op campaign complete; playing ending and credits");
+        // A completed world is never saved over the last playable checkpoint.
+        // Host/Resume therefore replays the final encounter, as in single player.
+        let prefs = crate::preferences::Preferences::load();
+        let mut input = crate::input::Input::default();
+        input.suppress();
+        let mut film_audio = crate::audio::Audio::new(options.no_audio, None);
+        let film = crate::movie::play(assets, &mut film_audio, &ui, &mut input, &prefs, "ending").await;
+        if let Err(error) = &film { eprintln!("Ending film failed: {error:#}"); }
+        film_audio.finish()?;
+        if !matches!(film, Ok(false)) {
+            let mut menu = crate::menu::Menu::load(assets)?;
+            menu.completion_credits(&prefs, &mut input).await;
+        }
+    }
+    Ok(completed)
 }

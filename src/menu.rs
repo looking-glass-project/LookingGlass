@@ -398,6 +398,37 @@ impl Menu {
             self.save_film.open(self.save_selected, get_time());
         }
     }
+    /// Finale-only credits return directly to the caller's main menu.
+    pub async fn completion_credits(&mut self, prefs: &Preferences, input: &mut crate::input::Input) {
+        self.open(Page::Credits, prefs, audio::Settings::default());
+        self.message = "Campaign complete / Host Resume replays your last co-op checkpoint".into();
+        input.suppress();
+        loop {
+            let focused = crate::look::window_focused();
+            input.update(prefs, focused);
+            if is_quit_requested() || focused && (input.ui(KeyCode::Escape) || input.ui(KeyCode::Enter)
+                || input.pad_pressed("Start") || input.pad_pressed("A")) { break; }
+            if focused {
+                let delta = i32::from(input.ui(KeyCode::Down)) - i32::from(input.ui(KeyCode::Up));
+                self.credit_offset = (self.credit_offset as i32 + delta * 14)
+                    .clamp(0, self.credits.len().saturating_sub(15) as i32) as usize;
+                if is_mouse_button_pressed(MouseButton::Left) {
+                    let pointer = Canvas::new(screen_width(), screen_height()).pointer(Vec2::from(mouse_position()));
+                    if let Some(button) = self.buttons(Page::Credits).iter().find(|b| b.rect.contains(pointer)) {
+                        match button.click {
+                            Click::Back => break,
+                            Click::CreditScroll(delta) => self.credit_offset = (self.credit_offset as i32 + delta * 14)
+                                .clamp(0, self.credits.len().saturating_sub(15) as i32) as usize,
+                            _ => (),
+                        }
+                    }
+                }
+            }
+            self.draw(Page::Credits, &self.buttons(Page::Credits));
+            next_frame().await;
+        }
+        self.close();
+    }
     pub fn close(&mut self) {
         self.page = None;
         self.save_film.stop();

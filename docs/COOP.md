@@ -6,9 +6,9 @@ For the concise current status, see [Co-op progress](COOP_PROGRESS.md).
 This is work in progress. A policy test or a connected pair of windows does not
 establish campaign support. Single-player behavior and saves must remain supported.
 
-Current milestone: **61.6% estimated overall; six visits have combined
-verification evidence, 32 have partial evidence and one remains without
-level-specific co-op checks.** The [playable milestone](COOP_PLAYABLE.md)
+Current milestone: **64.6% estimated overall; six visits have combined
+verification evidence and 33 have partial evidence.** The [Queen finale](COOP_QUEEN.md)
+closes the last missing explicit paired adapter. The [playable milestone](COOP_PLAYABLE.md)
 takes priority over exhaustive polishing. See [current progress](COOP_PROGRESS.md)
 and the [castle integration batch](COOP_CASTLE.md). Earlier
 percentages below describe historical checkpoints.
@@ -290,12 +290,12 @@ paired run failed. This adds no completed visit.
 Castling's earlier Blue-led and Red-led public internet runs pass all 203 legs.
 After the sloped-wall collision fix, Blue passes the full route again with 8,793
 matching player/world/native states and a 75/100-health Checkmate arrival. The
-first post-fix Red run passes 0–127 and both original scenes but **stalls at leg 128**;
+first post-fix Red run passes 0ï¿½127 and both original scenes but **stalls at leg 128**;
 it remains failed despite 9,378 matching states and passing presence samples.
 Its host has about one second of queued controls while the guest reports about
 206 ms round-trip time. Diagnosis traces the backlog onset to a 561 ms host
 pause followed by delayed old input batches. An ordered control reset now passes
-a real forced-pause internet replay through legs 124–129, with 145 matching
+a real forced-pause internet replay through legs 124ï¿½129, with 145 matching
 states and both players at 100 health. The subsequent fresh Red-led run on
 `cc2388e` passes all 203 legs, both original royal scenes and the Checkmate
 arrival at 100/100 health, with 6,519 matching player/world/native states.

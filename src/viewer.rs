@@ -536,7 +536,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
     // Release cursor/audio before Miniquad destroys its native request queue.
     prevent_quit();
     if let Some(launch) = &options.coop {
-        return crate::coop::preview::run(&mut assets, &options, launch).await;
+        return crate::coop::preview::run(&mut assets, &options, launch).await.map(|_| ());
     }
     let ui = crate::ui::Ui::load(&mut assets)?;
     // Explicit native layout diagnostic; never opens or modifies player saves.

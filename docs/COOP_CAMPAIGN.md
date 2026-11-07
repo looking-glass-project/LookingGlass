@@ -7,8 +7,8 @@ verification gaps; those combinations do not all gate the playable build.
 Airborne Terror core update: `3e96892` passes 41 paired component cases
 and an unchanged ten-case solo baseline. The machinery batch `11d47f8` adds
 paired component evidence for hedge2, hedge3 and tower3. Current status totals:
-six combined, thirty-two partial and one not run after the castle batch
-`073ed9f`. See [castle evidence](COOP_CASTLE.md). A normal paired campaign pass remains
+six combined and thirty-three partial after the finale batch
+`fa8ddf1`. See [finale evidence](COOP_QUEEN.md). A normal paired campaign pass remains
 required for playable coverage beyond the established routes.
 
 Source: `campaign::route()` in `src/campaign.rs`. Return visits are separate requirements.
@@ -811,4 +811,4 @@ both original portals and the gated return, without cheats or recovery
 | 36 | `grounds2` | `Initial` | Partial: focused paired progression/combat and existing solo components pass on `073ed9f`. Full paired route remains open. See [castle batch](COOP_CASTLE.md). |
 | 37 | `facade` | `Initial` | Partial: focused paired progression/combat and existing solo components pass on `073ed9f`. Full paired route remains open. See [castle batch](COOP_CASTLE.md). |
 | 38 | `keep` | `Initial` | Partial: focused paired progression/combat and existing solo components pass on `073ed9f`. Full paired route remains open. See [castle batch](COOP_CASTLE.md). |
-| 39 | `qlair` | `Initial` | Not run |
+| 39 | `qlair` | `Initial` | Partial: paired combat/resources, original scenes and real second-arena checkpoint/restore pass in eleven groups on `fa8ddf1`. Shared completion now hands off to the film/credits. Normal paired combat route and film/credits visual review remain open. See [finale evidence](COOP_QUEEN.md). |

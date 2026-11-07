@@ -125,6 +125,9 @@ impl Host {
         timing["awaiting_controls"] = self.awaiting_controls.into();
         timing
     }
+    pub fn acknowledged_frame(&self, tick: u64) -> bool {
+        self.frames.seen.is_some_and(|seen| seen >= tick)
+    }
     pub fn can_send_frame(&self) -> bool {
         self.phase == Phase::Playing && self.pending.is_empty()
             && self.frames.pending.len() < FRAMES_IN_FLIGHT
@@ -771,6 +774,19 @@ mod tests {
         let mut frame = roster.frame(epoch, 0);
         frame.tick = tick;
         frame
+    }
+
+    #[test]
+    fn finale_waits_for_the_guest_to_receipt_the_completed_world() {
+        let (mut host, mut guest, _) = pair();
+        play(&mut host, &mut guest);
+        assert!(!host.acknowledged_frame(120));
+        assert!(host.send_frame(snapshot(1, 120)).unwrap());
+        // Queuing a final frame is not proof that a remote game received it.
+        assert!(!host.acknowledged_frame(120));
+        until(&mut host, &mut guest, |h, _| h.acknowledged_frame(120));
+        assert_eq!(guest.take_frame().unwrap().tick, 120);
+        assert!(!host.acknowledged_frame(121));
     }
 
     #[test]

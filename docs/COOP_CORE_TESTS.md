@@ -197,10 +197,10 @@ also pass the final six-line verifier; the original live fixtures remain frozen.
 
 The focused save/rejoin milestone does not mean every level's mechanics have
 co-op adapters. The [machinery](COOP_MACHINERY.md) and [castle](COOP_CASTLE.md)
-batches leave only `qlair` without its explicit paired adapter. Its default
-hooks do not advance single-player combat twice; they remain empty until
-the finale has a shared update. This is an implementation gap, not simply
-a missing route-test receipt.
+batches are now joined by the [Queen finale](COOP_QUEEN.md) on `fa8ddf1`.
+All visits have explicit paired component evidence. The next priority is normal
+paired campaign progression, with core saves/recovery sampled at representative
+points; exhaustive per-visit permutations move to polishing.
 
 Airborne Terror (`tower1`) now has explicit shared gust updates on `3e96892`.
 All 41 native component cases pass, covering both players' contacts/pushes,

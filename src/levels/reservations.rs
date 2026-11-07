@@ -412,7 +412,7 @@ pub static RESERVATIONS: [Reservation; 39] = [
     }), ..visit(37, "keep") },
     Reservation {
         flags: Some(VisitFlags {
-            contract: &["--qlair-check", "--qlair-save-write", "--qlair-save-read"],
+            contract: &["--qlair-coop-check", "--qlair-check", "--qlair-save-write", "--qlair-save-read"],
             route: &["--qlair-route-check", "--qlair-second-route-check"],
             skip: &["--qlair-skip-route-check"],
             render: &["--qlair-render-check"],

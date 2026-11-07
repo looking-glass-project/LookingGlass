@@ -22,8 +22,8 @@ verification; the full campaign and requested gameplay features remain in scope.
 
 ## Work order
 
-1. Finish missing controller behavior in batches, starting with progression
-   blockers and shared machinery, then the remaining encounters and finale.
+1. Core controller adapters are integrated through the Queen finale on
+   `fa8ddf1`. Resolve normal-play blockers found by the consolidated campaign pass.
 2. Build once per coherent batch and run focused checks for the changed behavior.
    Reuse passing evidence for unchanged systems. Fix build errors and failures
    that prevent normal play before expanding test coverage.

@@ -1,6 +1,6 @@
 # Co-op progress
 
-Updated 7 November 2026. Branch: `coop`. **Estimated overall completion: 73.8%.**
+Updated 7 November 2026. Branch: `coop`. **Estimated overall completion: 74.8%.**
 The target is now [100% playable co-op](COOP_PLAYABLE.md), followed by a
 separate polishing stage. Complete normal progression and core flows first;
 batch implementation and reuse passing evidence. The historical exhaustive
@@ -41,7 +41,7 @@ foundation point credited the missing import feature. The current additional
 Internet Host/Join point credits completed public core consolidation on `0b5bca3`;
 no additional campaign visit is credited.
 
-Twenty-four of 39 visits now have credited normal paired route evidence. Six retain
+Twenty-six of 39 visits now have credited normal paired route evidence. Six retain
 the historical combined designation; the broader matrix still labels 33 as
 partial because it includes polishing cases. The next priority is normal paired campaign
 pass, fixing progression blockers and checking core recovery at representative
@@ -55,8 +55,35 @@ remain in the polishing backlog.
 | Two players, movement and presentation | 11.75 | 15 |
 | Combat, individual resources and death | 13.5 | 20 |
 | Scenes, transport and progression | 16 | 20 |
-| Campaign playability | 12.31 | 20 |
-| **Total** | **73.81, rounded to 73.8** | **100** |
+| Campaign playability | 13.33 | 20 |
+| **Total** | **74.83, rounded to 74.8** | **100** |
+
+## Both Caterpillar's Plot routes completed
+
+The first visit passes on `841dcd6`: **33,869 ticks**, **283
+exact replicas**, four watched scene reunions and actual Pale Realm arrival.
+Both arrive alive at **99.00/100.00 health**, with
+unchanged personal resources, the shared Staff component and no deaths or wipes.
+The return passes on `d199822`: **9,720 ticks**, **81 exact
+replicas, the original wall scene and paid Staff destruction, then actual maze
+arrival at **59/100 health**. Its optional Blunderbuss is supplied by the existing
+campaign arrival grant; other personal resources carry exactly.
+
+The automated first-visit controls now spend ordinary Will on ranged cards and
+approach the exit passage without projecting its marker onto the roof. An
+earlier knife-only run wiped, and the roof search was cancelled; neither is
+credited. A subsequent calibration reached the correct exit but exposed a
+verifier mistake: only the return uses the controller's timed exit flag. The
+final default run checks the first visit's actual gated transition and arrival.
+Gameplay, enemy damage and progression rules are unchanged.
+
+The batch passes 947 active Rust tests and the 39-visit deterministic registry
+check on initial `d199822`, followed by the diagnostic refinements, final locked
+release and native route. Source/package checks pass. Evidence is pinned in
+`private/coop-playable-forest-first-verified.json` and
+`private/coop-playable-forest-return-verified.json`. Existing internet/core and
+rendered-camera evidence remain separate. Coverage is **26/39 visits**, leaving
+**13**; estimated overall completion is **74.8%**.
 
 ## Fungiferous Flora playable route completed
 

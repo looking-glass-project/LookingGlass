@@ -3,6 +3,7 @@ mod art;
 mod check;
 mod coop;
 mod coop_check;
+mod coop_route;
 pub(crate) use check::drive as drive_route;
 mod data;
 mod motion;
@@ -724,6 +725,11 @@ pub static REGISTRATION: Registration = Registration {
     story_beats: BEATS,
     checks: &[
         Check {
+            flag: "--wforest-coop-route-check",
+            help: "Walk paired Caterpillar's Plot through the original chess departure.",
+            run: Run::Windowed(coop_route::first),
+        },
+        Check {
             flag: "--wforest-coop-check",
             help: "Verify both WForest visits with paired movers, personal pickups and scene owners.",
             run: Run::Headless(coop_check::check),
@@ -786,6 +792,11 @@ pub static RETURN_REGISTRATION: Registration = Registration {
             flag: "--wforest-return-check",
             help: "Verify return wall, secret and route gates.",
             run: Run::Headless(check::returning),
+        },
+        Check {
+            flag: "--wforest-return-coop-route-check",
+            help: "Walk paired return forest through the Staff wall and original maze departure.",
+            run: Run::Windowed(coop_route::returning),
         },
         Check {
             flag: "--wforest-return-route-check",

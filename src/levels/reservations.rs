@@ -308,7 +308,7 @@ pub static RESERVATIONS: [Reservation; 39] = [
     },
     Reservation { flags: Some(VisitFlags {
         contract: &["--wforest-check", "--wforest-coop-check"],
-        route: &["--wforest-route-check"], skip: &["--wforest-skip-route-check"],
+        route: &["--wforest-route-check", "--wforest-coop-route-check"], skip: &["--wforest-skip-route-check"],
         render: &["--wforest-render-check"],
     }), ..visit(18, "wforest") },
     Reservation {
@@ -360,7 +360,12 @@ pub static RESERVATIONS: [Reservation; 39] = [
         "wforest",
         "wforest_start2",
         false,
-        None,
+        Some(VisitFlags {
+            contract: &["--wforest-return-check"],
+            route: &["--wforest-return-route-check", "--wforest-return-coop-route-check"],
+            skip: &["--wforest-return-skip-route-check"],
+            render: &["--wforest-return-render-check"],
+        }),
     ),
     Reservation {flags:Some(VisitFlags {
         contract:&["--hedge1-check", "--hedge1-coop-check", "--hedge1-coop-cast-check", "--hedge1-save-write", "--hedge1-save-read"],
@@ -701,6 +706,7 @@ mod tests {
             [
                 "--wforest-return-check",
                 "--wforest-return-route-check",
+                "--wforest-return-coop-route-check",
                 "--wforest-return-skip-route-check",
                 "--wforest-return-render-check"
             ]

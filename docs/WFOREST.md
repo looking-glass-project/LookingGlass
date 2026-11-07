@@ -147,3 +147,18 @@ routes (including Humpty's optional reward), and the Centipede2, Garden4, Queen,
 swimming, world, loadout, event and heavy-weapon checks. The older all-map
 `--story-check` still stops at `garden2/Garden2_Cat_End`, identically to the prior
 published build. WForest's own voice and trigger checks pass independently.
+
+## Both Caterpillar's Plot visits accepted
+
+The first visit (`841dcd6`) reaches Pale Realm in 33,869 ticks with
+283 exact replicas and four watched scene reunions. The return
+(`d199822`) reaches the maze in 9,720 ticks with 81 replicas
+after its original wall scene and ordinary Staff destruction. Both courses
+finish with two living players, without deaths, wipes or progression staging.
+Personal resources carry correctly, including the return's normal optional
+weapon arrival grant. The automated controls changed; gameplay did not.
+Coverage is **26/39 visits**, with **13** remaining and **74.8%** overall.
+Use `tools/test_coop_native_route.py --map wforest` or `--map wforest-return`
+with the required frozen executable, local data and fresh-profile arguments.
+Internet/camera evidence is reused separately; optional pickup completion and
+exhaustive scene/recovery permutations remain polishing.

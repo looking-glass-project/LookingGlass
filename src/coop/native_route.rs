@@ -9,7 +9,7 @@ use std::collections::VecDeque;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) enum Command {
-    Node(usize), Nav([f32; 3]), Clear(f32), Wait(u64), Watch, Staff(bool),
+    Node(usize), Nav([f32; 3]), Clear(f32), Wait(u64), Watch, Staff(bool), Cards(bool),
     HighNode(usize), Walk([f32; 3]), Positions([Option<[f32; 3]>; 2]),
     Rise { center: [f32; 2], height: f32, landing: [f32; 3] },
     Board { thread: String, center: [f32; 2] },
@@ -108,6 +108,7 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
     let mut home = roster.players.each_ref().map(|b| b.player.feet);
     let mut quiet = 0;
     let mut staff = true;
+    let mut cards = false;
     let mut history = VecDeque::new();
     let mut completed = Vec::new();
     let mut life_events = Vec::new();
@@ -202,7 +203,8 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
                 let radius = if let Command::Clear(radius) = command { *radius } else { 1000. };
                 let foes = all.iter().copied().filter(|t|switch.is_none_or(|s|s.id!=t.id)
                     && t.center.distance(p.eye()) <= radius).collect::<Vec<_>>();
-                let mut attack = fight::plan(&context, p.eye(), &foes, &trackers[i], false);
+                let mut attack = fight::plan(&context, p.eye(), &foes, &trackers[i],
+                    cards && body.stats.copies(1)>0 && body.stats.will()>=fight::CARD_COST);
                 let visible = foes.iter().filter_map(|t| fight::aim_point(&context, p.eye(), t).map(|at|(t,at)))
                     .min_by(|(_,a),(_,b)| a.distance_squared(p.eye()).total_cmp(&b.distance_squared(p.eye())));
                 if staff && body.stats.copies(7)>0 && body.stats.will()>21. {
@@ -385,6 +387,7 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
                     Command::Wait(ticks) => step_ticks>=*ticks,
                     Command::Watch => step_ticks>=120,
                     Command::Staff(enabled) => {staff=*enabled;true},
+                    Command::Cards(enabled) => {cards=*enabled;true},
                 };
                 if done {
                     println!("DONE {} step{step} {command:?} tick{} feet{:?}",spec.map,roster.tick,roster.players.each_ref().map(|b|b.player.feet));
@@ -427,7 +430,7 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
         ensure!(arrived.players[0].player.feet.distance(arrived.players[1].player.feet)>=36.,"Onward arrival overlaps");
         Ok(())
     }.await;
-    let report=serde_json::json!({"build":env!("LOOKING_GLASS_BUILD"),"full_route_passed":result.is_ok(),
+    let report=serde_json::json!({"build":env!("LOOKING_GLASS_BUILD"),"visit":visit,"full_route_passed":result.is_ok(),
         "error":result.as_ref().err().map(|e|format!("{e:#}")),"commands":commands,"completed":completed,"step":step,
         "replica_samples":samples,"reunions":reunions,"life_events":life_events,"scene_starts":scene_starts,
         "board_wait_ticks":board_wait_ticks,"approach_yields":approach_yields,"frame":roster.frame(1,0),

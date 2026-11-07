@@ -12,11 +12,13 @@ import subprocess
 
 from coop_recovery import read_trace
 
-EXITS = {'centipede1': 'centipede2', 'grounds2': 'facade', 'facade': 'keep', 'keep': 'qlair'}
+EXITS = {'centipede1': 'centipede2', 'grounds2': 'facade', 'facade': 'keep', 'keep': 'qlair',
+         'wforest': 'wchess1', 'wforest-return': 'hedge1'}
 
 
 def verify(profile, map_name):
-    report = json.loads((profile / f'{map_name}-coop-route.json').read_text())
+    report_map = map_name.split('-')[0]
+    report = json.loads((profile / f'{report_map}-coop-route.json').read_text())
     assert report['full_route_passed'], report.get('error')
     assert report['replica_samples'] > 0 and report['frame']['checkpoint_generation'] == 0
     next_map = EXITS[map_name]
@@ -29,6 +31,9 @@ def verify(profile, map_name):
         if map_name == 'centipede1':
             # Sanctum supplies the campaign's second Die if a player missed it.
             expected['owned'][6] = max(expected['owned'][6], 2)
+        if map_name == 'wforest-return':
+            # The return's optional Blunderbuss is the next campaign milestone.
+            expected['owned'][8] = max(expected['owned'][8], 1)
         assert expected == new['stats'], 'Arrival changed resources beyond its campaign weapon grant'
         assert new['stats']['sanity'] > 0 and not old['stats']['god'] and not old['stats']['notarget']
     recovery = read_trace(profile / report['recovery_log'], report['build'])
@@ -44,6 +49,9 @@ def verify(profile, map_name):
         assert len(report['scene_starts']) == 2
         assert report['scene_starts'][-1]['tick'] == report['frame']['tick'] - 1
         assert report['health_floors'] == [10, 10]
+    if report_map == 'wforest':
+        entry = 'wforest_start2' if map_name.endswith('-return') else 'wforest_start1'
+        assert report['visit']['map'] == 'wforest' and report['visit']['entry'] == entry
     return dict(build=report['build'], ticks=report['frame']['tick'], replicas=report['replica_samples'],
         reunions=report['reunions'], health=[p['stats']['sanity'] for p in report['frame']['players']],
         personal_second_die=dice, recovery=recovery,
@@ -63,6 +71,7 @@ def main():
     env = os.environ.copy()
     env.pop('LOOKING_GLASS_COOP_NATIVE_ROUTE', None)
     env.pop('LOOKING_GLASS_CENTIPEDE1_ROUTE', None)
+    env.pop('LOOKING_GLASS_WFOREST_ROUTE', None)
     result = dict(passed=False, map=args.map, executable_sha256=hashlib.sha256(exe.read_bytes()).hexdigest())
     try:
         with (profile / 'output.log').open('w', encoding='utf-8') as log:

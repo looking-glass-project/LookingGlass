@@ -56,6 +56,21 @@ a normal-play blocker, data loss, or a missing requested core feature.
 Report playable readiness and the polishing backlog separately. Do not label
 the game 100% playable while a level or requested core flow remains blocked.
 
+## Both Caterpillar's Plot visits accepted
+
+The first visit (`841dcd6`) reaches Pale Realm in 33,869 ticks with
+283 exact replicas and four watched scene reunions. The return
+(`d199822`) reaches the maze in 9,720 ticks with 81 replicas
+after its original wall scene and ordinary Staff destruction. Both courses
+finish with two living players, without deaths, wipes or progression staging.
+Personal resources carry correctly, including the return's normal optional
+weapon arrival grant. The automated controls changed; gameplay did not.
+Coverage is **26/39 visits**, with **13** remaining and **74.8%** overall.
+Use `tools/test_coop_native_route.py --map wforest` or `--map wforest-return`
+with the required frozen executable, local data and fresh-profile arguments.
+Internet/camera evidence is reused separately; optional pickup completion and
+exhaustive scene/recovery permutations remain polishing.
+
 ## Fungiferous Flora accepted
 
 `906f8c7` passes the fresh paired course into actual Sanctum arrival: 12,471
@@ -206,11 +221,11 @@ bounded audit. The subsequent full attempt still fails after both players die
 in the late encounter at step 154 and restore the initial checkpoint. A Garden
 full-route pass was still required at that point; no team-wipe certification is
 inferred from that failed route. The later Red-led native pass above now meets
-normal-route acceptance, followed by Herbaceous Border, Rolling Stones and Icy Reception above. Sixteen visits remain outside credited normal route
+normal-route acceptance, followed by Herbaceous Border, Rolling Stones, Icy Reception, Fungiferous Flora and both Caterpillar's Plot visits above. Thirteen visits remain outside credited normal route
 coverage; all have paired component evidence.
 
 Remaining normal-route coverage is first Skool, School Two, all three Pool
-visits, Centipede One, both Wood visits, Pale Realm,
+visits, Pale Realm,
 the six Maze/Tower visits and the Queen finale.
 
 Run the two fresh-entry route checks together in Anode:

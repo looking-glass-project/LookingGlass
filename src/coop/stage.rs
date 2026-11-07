@@ -735,6 +735,7 @@ fn apply(
     }
     let mut flow = ContactFlow::Continue;
     if let Some((feet, yaw)) = events.teleport {
+        flow = ContactFlow::RetryPlayer;
         if occupied {
             // Movement separation ran before contacts. Do not publish an
             // overlapping teleport frame and rely on a later tick to fix it.
@@ -748,6 +749,7 @@ fn apply(
             body.yaw = yaw;
             body.pitch = 0.;
             body.warped_at = tick;
+            flow = ContactFlow::StopPlayer;
             if notices[id.index()].as_ref().is_some_and(|n| matches!(n.text.as_str(),
                 "Waiting for your partner to move clear" | "Teleport destination is obstructed")) {
                 notices[id.index()]=None;
@@ -758,7 +760,6 @@ fn apply(
                 until: tick + 360,
             });
         }
-        flow = ContactFlow::StopPlayer;
     }
     for event in &events.story {
         story.trigger(event);
@@ -790,7 +791,7 @@ mod teleport_tests {
             let before=serde_json::to_value(&roster.players).unwrap();
             let mut story=Story::default();let mut transition=None;let mut notices=[None,None];
             let event=Events {teleport:Some((destination,1.2)),..Default::default()};
-            assert!(apply(&event,id,&mut roster.players,&world,20,&mut story,&mut transition,&mut notices)==ContactFlow::StopPlayer);
+            assert!(apply(&event,id,&mut roster.players,&world,20,&mut story,&mut transition,&mut notices)==ContactFlow::RetryPlayer);
             assert_eq!(serde_json::to_value(&roster.players).unwrap(),before,"An occupied portal must not overlap players or change personal state");
             assert!(notices[id.index()].as_ref().is_some_and(|n|n.text.contains("partner")));
             roster.players[id.partner().index()].player=Player::spawn(&world,vec3(80.,0.,EYE_HEIGHT+0.03125)).unwrap();

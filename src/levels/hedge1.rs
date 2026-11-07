@@ -1,6 +1,7 @@
 //! Majestic Maze: the live child cast holds the authored plate and sliding gates.
 mod check;
 mod coop_check;
+mod coop_route;
 mod data;
 mod route;
 mod save_check;
@@ -302,6 +303,11 @@ pub static REGISTRATION: Registration = Registration {
     target_base: None,
     story_beats: &[],
     checks: &[
+        Check {
+            flag: "--hedge1-coop-route-check",
+            help: "Escort the Maze child with two players through the actual tower exit.",
+            run: Run::Windowed(coop_route::check),
+        },
         Check {
             flag: "--hedge1-coop-check",
             help: "Verify paired maze plate, gates, child contacts and saved continuation.",

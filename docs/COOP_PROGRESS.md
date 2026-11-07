@@ -1,6 +1,6 @@
 # Co-op progress
 
-Updated 7 November 2026. Branch: `coop`. **Estimated overall completion: 78.4%.**
+Updated 7 November 2026. Branch: `coop`. **Estimated overall completion: 79.4%.**
 The target is now [100% playable co-op](COOP_PLAYABLE.md), followed by a
 separate polishing stage. Complete normal progression and core flows first;
 batch implementation and reuse passing evidence. The historical exhaustive
@@ -41,7 +41,7 @@ foundation point credited the missing import feature. The current additional
 Internet Host/Join point credits completed public core consolidation on `0b5bca3`;
 no additional campaign visit is credited.
 
-Thirty-three of 39 visits now have credited normal paired route evidence. Six retain
+Thirty-five of 39 visits now have credited normal paired route evidence. Six retain
 the historical combined designation; the broader matrix still labels 33 as
 partial because it includes polishing cases. The next priority is normal paired campaign
 pass, fixing progression blockers and checking core recovery at representative
@@ -55,8 +55,65 @@ remain in the polishing backlog.
 | Two players, movement and presentation | 11.75 | 15 |
 | Combat, individual resources and death | 13.5 | 20 |
 | Scenes, transport and progression | 16 | 20 |
-| Campaign playability | 16.92 | 20 |
-| **Total** | **78.42, rounded to 78.4** | **100** |
+| Campaign playability | 17.95 | 20 |
+| **Total** | **79.4487, rounded to 79.4** | **100** |
+
+## Majestic Maze normal paired route accepted
+
+Frozen `845bb52` passes the complete normal paired Maze course: **33,270 ticks**,
+**278 exact compressed replicas**, both personal portal arrivals, the real
+child's escort and plate hold, and actual Mystifying Madness arrival. Both
+players finish alive at **98/100 health**, with their personal resources carried
+exactly. There are no deaths, revivals, team wipes, cheats or forced quest state.
+
+The automated inputs use Cards/Ice, single-file narrow legs, ordinary walks to
+regain sight of the child, and close spacing beyond the final plate. The real
+gate must open before departure. The run also exposed and fixed the blocked
+portal retry described below. The passing course and exact source/executable
+are pinned in `private/coop-playable-majestic-maze-default-verified.json`.
+Repeat with `tools/test_coop_native_route.py --map hedge1`, local game data
+and a fresh profile. The default check exactly matches the accepted course
+inputs, final players, shared world and onward arrival.
+
+This accelerated Arena run proves normal paired progression and replicated
+world state. Internet and rendered-camera evidence remains separate; broader
+per-visit recovery permutations belong to polishing. Normal coverage is now
+**35/39 visits**, **4 remaining**, or **79.4%** overall.
+
+## Blocked portal retry fixed
+
+A normal Maze run exposed a shared-portal failure: when the first player stood
+at the destination, the second player's attempt was rejected safely, but the
+contact became latched during its cooldown and stopped retrying. Blocked
+personal portals now retain a pending contact until the destination clears or
+the player leaves. The cooldown still applies, successful arrivals clear the
+pending contact, and pending retries survive save/restore using the existing
+contact field. Solo contacts are unchanged.
+
+Frozen `1774b6a` passes all **950 active Rust tests**, including both-player
+cooldown, restored retry, successful completion and cancellation coverage.
+The complete normal paired Maze route now passes on `845bb52`, including
+both portal arrivals. The portal fix itself adds no separate campaign credit.
+
+## First school normal save chain accepted
+
+The first Skool Daze visit now has verified normal entrance-to-exit coverage
+through four connected public-invite segments on `59cc04b`, `d4869cd` and
+`ced2c8c`. The unchanged theatre, balcony and spiral saves connect each segment
+by exact file hash. Recorded starting and ending positions/resources agree
+with those checkpoints; both clients retain ordinary gameplay throughout.
+
+The chain covers all six scenes, personal Mallets, both lifts, the flying-book
+bridge, recipe handoff and actual School Two arrival. Both players finish alive
+at **12/77 health**, with **15,852 matching network states** and **309 matching
+full school reports**. The recorded histories pass the full route assertions
+without deaths, respawns or checkpoint rollbacks. This is connected normal
+save/resume evidence, not a new uninterrupted run on the latest build.
+
+The private audit is `private/coop-playable-school-chain-audit.json` and can be
+rechecked with `private/audit-school-playable-chain.py`. Broader owner/recovery
+permutations remain polishing work. Coverage is **34/39 visits**, **5 remaining**,
+or **78.9%** overall.
 
 ## Queen normal paired finale completed
 
@@ -698,7 +755,7 @@ Campaign status from `COOP_CAMPAIGN.md`:
   currently have components or checkpoint segments only.
 - **No visit remains without paired component evidence.** Heart of Darkness's
   adapter is integrated. Component coverage does not complete the full campaign
-  playability pass: 33 normal paired routes are credited, with 6 remaining.
+  playability pass: 35 normal paired routes are credited, with 4 remaining.
 
 See the [full campaign matrix](COOP_CAMPAIGN.md). Future updates should separate
 working features, partial route milestones and completed verification visits.

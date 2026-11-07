@@ -56,6 +56,63 @@ a normal-play blocker, data loss, or a missing requested core feature.
 Report playable readiness and the polishing backlog separately. Do not label
 the game 100% playable while a level or requested core flow remains blocked.
 
+## Majestic Maze normal paired route accepted
+
+Frozen `845bb52` passes the complete normal paired Maze course: **33,270 ticks**,
+**278 exact compressed replicas**, both personal portal arrivals, the real
+child's escort and plate hold, and actual Mystifying Madness arrival. Both
+players finish alive at **98/100 health**, with their personal resources carried
+exactly. There are no deaths, revivals, team wipes, cheats or forced quest state.
+
+The automated inputs use Cards/Ice, single-file narrow legs, ordinary walks to
+regain sight of the child, and close spacing beyond the final plate. The real
+gate must open before departure. The run also exposed and fixed the blocked
+portal retry described below. The passing course and exact source/executable
+are pinned in `private/coop-playable-majestic-maze-default-verified.json`.
+Repeat with `tools/test_coop_native_route.py --map hedge1`, local game data
+and a fresh profile. The default check exactly matches the accepted course
+inputs, final players, shared world and onward arrival.
+
+This accelerated Arena run proves normal paired progression and replicated
+world state. Internet and rendered-camera evidence remains separate; broader
+per-visit recovery permutations belong to polishing. Normal coverage is now
+**35/39 visits**, **4 remaining**, or **79.4%** overall.
+
+## Blocked portal retry fixed
+
+A normal Maze run exposed a shared-portal failure: when the first player stood
+at the destination, the second player's attempt was rejected safely, but the
+contact became latched during its cooldown and stopped retrying. Blocked
+personal portals now retain a pending contact until the destination clears or
+the player leaves. The cooldown still applies, successful arrivals clear the
+pending contact, and pending retries survive save/restore using the existing
+contact field. Solo contacts are unchanged.
+
+Frozen `1774b6a` passes all **950 active Rust tests**, including both-player
+cooldown, restored retry, successful completion and cancellation coverage.
+The complete normal paired Maze route now passes on `845bb52`, including
+both portal arrivals. The portal fix itself adds no separate campaign credit.
+
+## First school normal save chain accepted
+
+The first Skool Daze visit now has verified normal entrance-to-exit coverage
+through four connected public-invite segments on `59cc04b`, `d4869cd` and
+`ced2c8c`. The unchanged theatre, balcony and spiral saves connect each segment
+by exact file hash. Recorded starting and ending positions/resources agree
+with those checkpoints; both clients retain ordinary gameplay throughout.
+
+The chain covers all six scenes, personal Mallets, both lifts, the flying-book
+bridge, recipe handoff and actual School Two arrival. Both players finish alive
+at **12/77 health**, with **15,852 matching network states** and **309 matching
+full school reports**. The recorded histories pass the full route assertions
+without deaths, respawns or checkpoint rollbacks. This is connected normal
+save/resume evidence, not a new uninterrupted run on the latest build.
+
+The private audit is `private/coop-playable-school-chain-audit.json` and can be
+rechecked with `private/audit-school-playable-chain.py`. Broader owner/recovery
+permutations remain polishing work. Coverage is **34/39 visits**, **5 remaining**,
+or **78.9%** overall.
+
 ## Queen normal paired route accepted
 
 Frozen `ef316ac` passes a fresh normal paired Heart of Darkness run:
@@ -330,11 +387,10 @@ bounded audit. The subsequent full attempt still fails after both players die
 in the late encounter at step 154 and restore the initial checkpoint. A Garden
 full-route pass was still required at that point; no team-wipe certification is
 inferred from that failed route. The later Red-led native pass above now meets
-normal-route acceptance, followed by Herbaceous Border, Rolling Stones, Icy Reception, Fungiferous Flora, both Caterpillar's Plot visits, Pale Realm, Airborne Terror, Mystifying Madness, Water Logged, Labyrinthine Revenge, Machinations and the Queen finale above. Six visits remain outside credited normal route
+normal-route acceptance, followed by Herbaceous Border, Rolling Stones, Icy Reception, Fungiferous Flora, both Caterpillar's Plot visits, Pale Realm, Airborne Terror, Mystifying Madness, Water Logged, Labyrinthine Revenge, Machinations and the Queen finale, connected first-school chain and Majestic Maze above. Four visits remain outside credited normal route
 coverage; all have paired component evidence.
 
-Remaining normal-route coverage is first Skool, School Two, all three Pool
-visits and Majestic Maze. The rendered finale film/credits handoff is also
+Remaining normal-route coverage is School Two and all three Pool visits. The rendered finale film/credits handoff is also
 still required for the playable milestone.
 
 Run the two fresh-entry route checks together in Anode:

@@ -67,3 +67,40 @@ Verified on 2026-10-01:
 - All 637 unit tests pass, including saved corner navigation, recovery after doubling back, and the narrowly scoped precache identity upgrade. All targets compile. Supplied-map gate/companion checks pass at 30/60/144 Hz.
 - Real save files for the demonstration, moving leaves, handoff, following and holding restore exactly in a fresh process and continue identically for 240 ticks. A pre-controller save fixture retains compatible live actors and resources, deactivates the seven precache actors and recovers an old player position inside a newly solid leaf at the entrance.
 - Native closed-gate and held-plate captures were visually inspected; the scene reports zero fallback images. Audio was disabled during these runs, so this is not an audio-fidelity result.
+
+## Blocked portal retry fixed
+
+A normal Maze run exposed a shared-portal failure: when the first player stood
+at the destination, the second player's attempt was rejected safely, but the
+contact became latched during its cooldown and stopped retrying. Blocked
+personal portals now retain a pending contact until the destination clears or
+the player leaves. The cooldown still applies, successful arrivals clear the
+pending contact, and pending retries survive save/restore using the existing
+contact field. Solo contacts are unchanged.
+
+Frozen `1774b6a` passes all **950 active Rust tests**, including both-player
+cooldown, restored retry, successful completion and cancellation coverage.
+The complete normal paired Maze route now passes on `845bb52`, including
+both portal arrivals. The portal fix itself adds no separate campaign credit.
+
+## Majestic Maze normal paired route accepted
+
+Frozen `845bb52` passes the complete normal paired Maze course: **33,270 ticks**,
+**278 exact compressed replicas**, both personal portal arrivals, the real
+child's escort and plate hold, and actual Mystifying Madness arrival. Both
+players finish alive at **98/100 health**, with their personal resources carried
+exactly. There are no deaths, revivals, team wipes, cheats or forced quest state.
+
+The automated inputs use Cards/Ice, single-file narrow legs, ordinary walks to
+regain sight of the child, and close spacing beyond the final plate. The real
+gate must open before departure. The run also exposed and fixed the blocked
+portal retry described below. The passing course and exact source/executable
+are pinned in `private/coop-playable-majestic-maze-default-verified.json`.
+Repeat with `tools/test_coop_native_route.py --map hedge1`, local game data
+and a fresh profile. The default check exactly matches the accepted course
+inputs, final players, shared world and onward arrival.
+
+This accelerated Arena run proves normal paired progression and replicated
+world state. Internet and rendered-camera evidence remains separate; broader
+per-visit recovery permutations belong to polishing. Normal coverage is now
+**35/39 visits**, **4 remaining**, or **79.4%** overall.

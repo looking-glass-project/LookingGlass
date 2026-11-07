@@ -19,8 +19,8 @@ struct TriggerContacts {
     id: Id,
     players: [Contact; 2],
     waiting: Option<PlayerId>,
-    /// Arrival order while a shared rule's prerequisites are still closed.
-    /// These bodies must remain at the trigger; this never queues personal hits.
+    /// Arrival order while a shared rule is closed, or a personal portal is
+    /// obstructed. Bodies must remain at the trigger; never queues damage.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     deferred: Vec<PlayerId>,
 }
@@ -87,7 +87,7 @@ impl Contacts {
                     && saved.deferred.len() <= 2
                     && saved.deferred.iter().collect::<BTreeSet<_>>().len() == saved.deferred.len()
                     && (saved.deferred.is_empty() || !matches!(trigger.kind,
-                        TriggerKind::Hurt(_) | TriggerKind::Fall | TriggerKind::Teleport(..)))
+                        TriggerKind::Hurt(_) | TriggerKind::Fall))
                     && saved
                         .players
                         .iter()
@@ -116,6 +116,8 @@ pub struct Activation {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ContactFlow {
     Continue,
+    /// A blocked personal portal retries after its cooldown while still touched.
+    RetryPlayer,
     /// Death or relocation invalidated the rest of this body's old sweep.
     StopPlayer,
     /// A shared scene/transition took control of both players.
@@ -518,11 +520,14 @@ impl Interactions {
             };
             let flow = resolve(&activation);
             result.activations.push(activation);
-            if relocated || flow == ContactFlow::StopPlayer {
+            if relocated || matches!(flow,ContactFlow::StopPlayer|ContactFlow::RetryPlayer) {
                 stopped[id.index()] = true;
                 // Keep portal cooldowns: clearing them can create a teleport
                 // loop when an authored destination overlaps its own volume.
                 contacts.relocate_player(id);
+                if flow==ContactFlow::RetryPlayer && relocated {
+                    contacts.triggers[index].deferred.push(id);
+                }
             }
             if takes_control || flow == ContactFlow::StopWorld {
                 break;
@@ -818,6 +823,41 @@ mod tests {
             .unwrap();
         assert_eq!(both.activations.len(), 2);
         assert!(both.activations.iter().all(|e| e.events.damage == 10.));
+    }
+
+    #[test]
+    fn blocked_personal_portal_retries_after_cooldown_and_restore_until_clear() {
+        for id in PlayerId::ALL {
+            let (_,mut world,mut contacts)=trigger("trigger_teleport");
+            let paths=std::array::from_fn(|i|if i==id.index(){motion(40.,100.)}else{None});
+            let first=world.triggers_pair_resolve(0.1,&mut contacts,paths,|_|ContactFlow::RetryPlayer).unwrap();
+            assert_eq!(first.activations.len(),1);
+            // The pending retry is part of the existing saved contact state.
+            contacts=serde_json::from_value(serde_json::to_value(contacts).unwrap()).unwrap();
+            contacts.validate(&world).unwrap();
+            let standing=std::array::from_fn(|i|if i==id.index(){motion(100.,100.)}else{None});
+            let mut attempts=0;
+            for tick in 0..21 {
+                let events=world.triggers_pair_resolve(0.1,&mut contacts,standing,|_|ContactFlow::RetryPlayer).unwrap();
+                if tick<9 {assert!(events.activations.is_empty(),"Portal ignored its cooldown");}
+                attempts+=events.activations.len();
+            }
+            assert_eq!(attempts,2,"Stationary blocked player lost the retry");
+            let mut accepted=0;
+            for _ in 0..11 {
+                accepted+=world.triggers_pair_resolve(0.1,&mut contacts,standing,|_|ContactFlow::StopPlayer).unwrap().activations.len();
+            }
+            assert_eq!(accepted,1);
+            for _ in 0..20 {
+                assert!(world.triggers_pair(0.1,&mut contacts,standing).unwrap().activations.is_empty(),
+                    "A successful portal retained a pending retry");
+            }
+            contacts.reset_player(id);
+            world.triggers_pair_resolve(0.1,&mut contacts,paths,|_|ContactFlow::RetryPlayer).unwrap();
+            let outside=std::array::from_fn(|i|if i==id.index(){motion(0.,0.)}else{None});
+            for _ in 0..15 {assert!(world.triggers_pair(0.1,&mut contacts,outside).unwrap().activations.is_empty());}
+            assert!(contacts.triggers.iter().all(|t|!t.deferred.contains(&id)));
+        }
     }
 
     #[test]

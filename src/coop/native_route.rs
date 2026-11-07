@@ -9,6 +9,7 @@ use std::collections::VecDeque;
 mod swim;
 mod machine;
 mod course;
+mod trail;
 pub(crate) use course::{Step as CourseStep,Clock as CourseClock};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -48,6 +49,9 @@ pub(crate) enum Command {
     Course(Vec<CourseStep>),
     /// Complete a narrow approach, jump and landing before the partner follows.
     CourseFile(Vec<CourseStep>),
+    /// Follow supported map pathnodes, waiting for a visible companion when requested.
+    Trail {at:[f32;3], #[serde(default)] escort:Option<String>, #[serde(default)] portal:bool,
+        #[serde(default)] direct:bool, #[serde(default)] escort_player:Option<super::PlayerId>},
 }
 pub(crate) struct Spec {
     pub map: &'static str,
@@ -148,6 +152,7 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
     let mut ride_done = [false; 2];
     let mut course: [course::Walker; 2] = Default::default();
     let mut course_machines: [machine::Machine; 2] = Default::default();
+    let mut trails:[trail::Walker;2]=Default::default();
     let mut continue_with_survivor = false;
     let mut history = VecDeque::new();
     let mut completed = Vec::new();
@@ -329,6 +334,17 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
                     nav_touch |= landed && p.feet.distance(goal)<38.;
                     let nearby=if matches!(command,Command::Positions(_)) || !require_landing {48.} else {80.};
                     work |= !landed || p.feet.distance(goal)>=nearby;
+                } else if let Command::Trail{at,escort,portal,direct,escort_player}=command {
+                    // A narrow portal takes one body at a time. Keep the
+                    // following player outside until the first actually warps.
+                    if *portal && i==1 && !trails[0].done {work=true;continue;}
+                    let companion=escort.as_ref().filter(|_|escort_player.is_none_or(|id|id.index()==i))
+                        .and_then(|name|arena.npcs.companions().into_iter()
+                        .find(|c|&c.name==name && c.visible));
+                    let partner_done=trails[1-i].done;
+                    let exit=commands.get(step+1).and_then(|next|if let Command::Trail{at,..}=next {Some(Vec3::from_array(*at))}else{None});
+                    inputs[i].0=trails[i].input(&map,&world,body,Vec3::from_array(*at),companion.as_ref(),*portal,*direct,partner_done,exit)?;
+                    work|=!trails[i].done;
                 } else if let Command::Course(steps)|Command::CourseFile(steps)=command {
                     if let Some(lead)=approach_lead.filter(|_|matches!(command,Command::CourseFile(_))) {
                         if i!=lead && course[lead].cursor<steps.len() {work=true;continue;}
@@ -551,6 +567,7 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
                     life_events.push(serde_json::json!({"tick":roster.tick,"slot":i,"alive":roster.players[i].stats.alive(),"spawned_at":roster.players[i].spawned_at}));
                     walking[i]=Default::default();
                     swimming[i]=Default::default();
+                    trails[i]=Default::default();
                     jumped[i]=false;
                     if !alive[i] {flight[i]=flight[1-i];swim_leg[i]=swim_leg[1-i];let partner=course[1-i];course[i].rejoin(partner);}
                     fan_started[i]=false;
@@ -600,7 +617,7 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
                         | Command::Positions(_) | Command::Rise{..} | Command::Steer{..} | Command::Flight{..}
                         | Command::Swim{..} | Command::SwimFan{..} | Command::SwimFile(_)
                         | Command::MachineBoard{..} | Command::MachineRide{..} | Command::RideHeight(_)
-                        | Command::Course(_) | Command::CourseFile(_) => !work,
+                        | Command::Course(_) | Command::CourseFile(_) | Command::Trail{..} => !work,
                     Command::WatchReady => roster.players.iter().filter(|b|b.stats.alive()).all(|b|b.stats.powers.recharge<=0.),
                     Command::WorldRunning => super::world::world_dt(&roster.players,FIXED_DT)>0.,
                     Command::Phase{..} | Command::Cycle{..} => phase_ready,
@@ -624,6 +641,7 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
                     step+=1;step_ticks=0;quiet=0;walking=Default::default();swimming=Default::default();
                     ride_done=[false;2];
                     course=Default::default();
+                    trails=Default::default();
                     rising=[false;2];steam_seen=[false;2];rise_done=[false;2];board_lead=None;shot_started=false;approach_lead=None;approach_stuck=0;jumped=[false;2];flight=[0;2];fan_started=[false;2];swim_leg=[0;2];
                     home=roster.players.each_ref().map(|b|b.player.feet);
                 }

@@ -1,7 +1,7 @@
 use super::*;
 use crate::route::Route;
 pub(super) fn coop_check(a: &mut Assets) -> super::super::BoxFuture<'_> {
-    use crate::coop::native_route::{Command, Spec};
+    use crate::coop::native_route::{Command, Navigation, Spec};
     let mut commands=Vec::new();
     // Both bodies can follow the next marker directly around this turn. The
     // intermediate solo marker makes two parallel approach plans block each other.
@@ -16,7 +16,7 @@ pub(super) fn coop_check(a: &mut Assets) -> super::super::BoxFuture<'_> {
         }
     }
     crate::coop::native_route::check(a,Spec{map:"grounds2",entry:"grounds2_start1",
-        exit:crate::level::spec::ExitSpec{map:"facade",entrance:"facade_start1"},commands,
+        exit:crate::level::spec::ExitSpec{map:"facade",entrance:"facade_start1"},commands,navigation:Navigation::Nearby,
         verify:|arena| {
             let o=arena.stage.interactions.levels.iter().find_map(|s|s.ctl.downcast_ref::<Royale>()).context("Missing Royale")?;
             ensure!(o.saved.done,"Battle Royale arrival incomplete");

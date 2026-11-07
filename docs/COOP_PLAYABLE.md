@@ -56,9 +56,21 @@ a normal-play blocker, data loss, or a missing requested core feature.
 Report playable readiness and the polishing backlog separately. Do not label
 the game 100% playable while a level or requested core flow remains blocked.
 
+## Ascension accepted
+
+`4d8acf0` passes the fresh default paired route from Ascension's normal entrance
+through its steam climbs, upper crossing, shared lift and actual Castle Keep
+arrival. The 63,444-tick run includes five exact ten-second Red revivals and no
+team wipe. Both enter each steam column; the second climb uses ordinary revival
+recovery for Red, so independent flawless climbs are not claimed. The lift waits
+for both riders, and both arrive alive with all personal resources preserved.
+The final shared-helper regression repeats the earlier Battle Royale pass.
+This brings normal paired coverage to **18/39 visits**, with 21 remaining.
+See [current evidence](COOP_PROGRESS.md#ascension-playable-route-completed).
+
 ## Normal-route acceptance, 7 November
 
-Seventeen of 39 visits now have credited normal paired route evidence. The six
+Eighteen of 39 visits now have credited normal paired route evidence. The six
 historically combined visits remain credited. The playable milestone also
 accepts complete ordinary-input routes in UTemple, Sanctum, Castling,
 Checkmate and About Face without requiring every polishing permutation.
@@ -125,13 +137,13 @@ linked to the exact native revival. Three such revivals/continuations pass a
 bounded audit. The subsequent full attempt still fails after both players die
 in the late encounter at step 154 and restore the initial checkpoint. A Garden
 full-route pass is still required; no team-wipe certification is inferred from
-that failed route. Twenty-two visits remain outside credited normal
+that failed route. Twenty-one visits remain outside credited normal
 route coverage; all have paired component evidence.
 
 Remaining normal-route coverage is first Skool, School Two, all three Pool
 visits, all four Garden visits, Centipede One, both Wood visits, Pale Realm,
 the six Maze/Tower
-visits, Ascension, Castle Keep and the Queen finale.
+visits, Castle Keep and the Queen finale.
 
 Run the two fresh-entry route checks together in Anode:
 

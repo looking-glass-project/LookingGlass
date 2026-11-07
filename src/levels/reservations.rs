@@ -405,7 +405,7 @@ pub static RESERVATIONS: [Reservation; 39] = [
     }), ..visit(35, "grounds2") },
     Reservation { flags: Some(VisitFlags {
         contract: &["--facade-check", "--facade-coop-check"],
-        route: &["--facade-route-check", "--facade-route-native-check"],
+        route: &["--facade-route-check", "--facade-route-native-check", "--facade-coop-route-check"],
         skip: &["--facade-skip-route-check"],
         render: &["--facade-render-check"],
     }), ..visit(36, "facade") },

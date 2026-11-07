@@ -10,30 +10,54 @@ use std::collections::VecDeque;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) enum Command {
     Node(usize), Nav([f32; 3]), Clear(f32), Wait(u64), Watch, Staff(bool),
+    HighNode(usize), Walk([f32; 3]), Positions([Option<[f32; 3]>; 2]),
+    Rise { center: [f32; 2], height: f32, landing: [f32; 3] },
+    Board { thread: String, center: [f32; 2] },
 }
 pub(crate) struct Spec {
     pub map: &'static str,
     pub entry: &'static str,
     pub exit: crate::level::spec::ExitSpec,
     pub commands: Vec<Command>,
+    pub navigation: Navigation,
     pub verify: fn(&Arena) -> Result<()>,
+}
+pub(crate) enum Navigation {
+    /// Preserve the battlefield course's nearby-waypoint handoff.
+    Nearby,
+    /// Finish jumps before turning; leave room for a partner on narrow landings.
+    LandedPair,
 }
 #[derive(Default)]
 struct Walking {
     goal: Option<Vec3>,
     steps: VecDeque<(Controls, Vec3)>,
     age: u32,
+    settling: u32,
 }
 impl Walking {
-    fn input(&mut self, world: &World, player: &crate::movement::Player, goal: Vec3, close: f32) -> Result<Controls> {
+    fn input(&mut self, world: &World, player: &crate::movement::Player, goal: Vec3, close: f32, require_landing: bool) -> Result<Controls> {
         if self.goal.is_none_or(|old| old.distance(goal) > 1.) {
             *self = Self { goal: Some(goal), ..Default::default() };
         }
-        if player.feet.distance(goal) < close { self.steps.clear(); return Ok(Controls::default()); }
+        if (!require_landing || player.grounded) && player.feet.distance(goal) < close { self.steps.clear(); return Ok(Controls::default()); }
+        if self.settling>0 && !player.grounded {
+            self.settling-=1;
+            return Ok(Controls{jump:player.ledge.as_ref().is_some_and(|h|!h.pulling),..Default::default()});
+        }
+        self.settling=0;
         if self.steps.is_empty() {
-            self.steps = Route::plan(world, player, goal, close * 0.7)
-                .or_else(|_| Route::plan(world, player, goal, close * 0.9))
-                .map_err(|n| anyhow::anyhow!("Path exhausted {n} states from {:?} to {goal:?}", player.feet))?.into();
+            println!("PLAN {:?} to {goal:?} grounded={} ledge={}",player.feet,player.grounded,player.ledge.is_some());
+            let plan=Route::plan(world, player, goal, close * 0.7)
+                .or_else(|_| Route::plan(world, player, goal, close * 0.9));
+            self.steps=match plan {
+                Ok(plan)=>plan.into(),
+                Err(_) if !player.grounded=>{
+                    self.settling=24;
+                    return Ok(Controls{jump:player.ledge.as_ref().is_some_and(|h|!h.pulling),..Default::default()});
+                }
+                Err(n)=>anyhow::bail!("Path exhausted {n} states from {:?} to {goal:?}",player.feet),
+            };
             self.age = 0;
         }
         Ok(self.steps.front().map_or(Controls::default(), |(c,_)|
@@ -59,6 +83,7 @@ pub(crate) fn check(a: &mut Assets, spec: Spec) -> crate::levels::BoxFuture<'_> 
     Box::pin(async move { run(a, spec).await })
 }
 async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
+    let require_landing=matches!(spec.navigation,Navigation::LandedPair);
     let commands = if let Some(path) = std::env::var_os("LOOKING_GLASS_COOP_NATIVE_ROUTE") {
         serde_json::from_slice::<Vec<Command>>(&std::fs::read(path)?)?
     } else { spec.commands };
@@ -84,6 +109,12 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
     let mut history = VecDeque::new();
     let mut completed = Vec::new();
     let mut life_events = Vec::new();
+    let mut scene_starts = Vec::new();
+    let mut rising = [false; 2];
+    let mut steam_seen = [false; 2];
+    let mut rise_done = [false; 2];
+    let mut board_lead = None;
+    let mut board_wait_ticks = 0;
     let mut reunions = 0;
     let mut samples = 0;
     let mut arrival = None;
@@ -98,11 +129,15 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
             let all = targets(&arena);
             let context = crate::combat::Context { world: &world, targets: &all };
             let goal = match command {
-                Command::Node(id) => {
+                Command::Node(id) | Command::HighNode(id) => {
                     let e = map.entities.get(*id).context("Missing route entity")?;
                     let raw = crate::interaction::vector(e.get("origin").context("Route entity has no origin")?)
                         .context("Invalid route entity origin")?;
-                    Some(world.actor_footing(raw, PLAYER_CENTER, PLAYER_HALF, 180.)
+                    let at = if matches!(command,Command::HighNode(_)) {
+                        [32.,64.,128.].into_iter().find_map(|h|
+                            world.actor_footing(raw+Vec3::Z*h,PLAYER_CENTER,PLAYER_HALF,256.))
+                    } else {world.actor_footing(raw,PLAYER_CENTER,PLAYER_HALF,180.)};
+                    Some(at
                         .with_context(|| format!("Unsupported route entity {id}"))?)
                 }
                 Command::Nav(v) => Some(Vec3::from_array(*v)), _ => None,
@@ -110,6 +145,14 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
             let mut inputs = [(Controls::default(), Input::default()); 2];
             let mut planned = [false; 2];
             let mut work = false;
+            let mut walk_touch = false;
+            let mut nav_touch = false;
+            let board_ready = if let Command::Board{thread,..}=command {
+                roster.players.each_ref().map(|b| arena.stage.interactions.levels.iter()
+                    .any(|s|s.ctl.coop_boarding_ready(thread,&[b.player.feet])==Some(true)))
+            } else {[false;2]};
+            if board_ready[0] {board_lead.get_or_insert(roster.tick);}
+            if !busy && board_ready[0] && !board_ready[1] {board_wait_ticks+=1;}
             for i in 0..2 {
                 let body = &roster.players[i];
                 let p = &body.player;
@@ -131,9 +174,45 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
                     inputs[i].1.primary=!attack.alternate; inputs[i].1.alternate=attack.alternate;
                     inputs[i].1.yaw=attack.aim.y.atan2(attack.aim.x); inputs[i].1.pitch=attack.aim.z.asin().clamp(-1.56,1.56);
                 }
-                if let Some(goal) = goal {
-                    inputs[i].0=walking[i].input(&world,p,goal,38.)?; planned[i]=true;
-                    work |= p.feet.distance(goal)>=48.;
+                let personal_goal = if let Command::Positions(goals)=command {goals[i].map(Vec3::from_array)} else {goal};
+                if let Some(goal) = personal_goal {
+                    inputs[i].0=walking[i].input(&world,p,goal,38.,require_landing)?; planned[i]=true;
+                    // One body reaches the shared marker while the other keeps
+                    // normal personal space nearby. Separate personal goals
+                    // retain their own arrival bounds.
+                    let landed=!require_landing || p.grounded;
+                    nav_touch |= landed && p.feet.distance(goal)<38.;
+                    let nearby=if matches!(command,Command::Positions(_)) || !require_landing {48.} else {80.};
+                    work |= !landed || p.feet.distance(goal)>=nearby;
+                } else if let Command::Walk(at)=command {
+                    let delta=Vec3::from_array(*at)-p.feet;
+                    if delta.truncate().length()>=8. || delta.z.abs()>=35. {
+                        inputs[i].0=Controls{wish:super::route_driver::straight_wish(delta.truncate(),p.velocity.truncate(),0.,false,None),..Default::default()};
+                    }
+                    walk_touch |= p.grounded && delta.truncate().length()<8. && delta.z.abs()<35.;
+                    work |= !p.grounded || delta.truncate().length()>=48. || delta.z.abs()>=35.;
+                } else if let Command::Rise{center,height,landing}=command {
+                    rising[i] |= p.feet.z>=*height;
+                    steam_seen[i] |= p.steam;
+                    let landing=Vec3::from_array(*landing);
+                    rise_done[i] |= rising[i] && p.grounded && p.feet.distance(landing)<45.;
+                    if !rise_done[i] {
+                        let center=Vec2::from_array(*center);
+                        let angle=step_ticks as f32/120.*3.+i as f32*std::f32::consts::PI;
+                        let aim=if rising[i] {landing.truncate()} else if p.steam {center+vec2(angle.cos(),angle.sin())*36.} else {center};
+                        inputs[i].0=Controls{wish:((aim-p.feet.truncate())*0.06-p.velocity.truncate()*0.015).clamp_length_max(1.),
+                            jump:!rising[i] && step_ticks%150==0,..Default::default()};
+                    }
+                    work |= !rise_done[i];
+                } else if let Command::Board{center,..}=command {
+                    // Hold the first rider on the actual deck for one second
+                    // before the partner approaches, using ordinary steering.
+                    if i==0 || board_lead.is_some_and(|at|roster.tick>=at+120) {
+                        let at=Vec2::from_array(*center)+vec2(if i==0 {-24.} else {24.},0.);
+                        inputs[i].0=Controls{wish:((at-p.feet.truncate())*0.06-p.velocity.truncate()*0.015).clamp_length_max(1.),
+                            jump:!board_ready[i] && p.grounded,..Default::default()};
+                    }
+                    work=true;
                 } else if let Command::Clear(radius) = command {
                     let drop = (body.stats.sanity()<99. || body.stats.will()<99.).then(|| body.stats.loot.get(&arena.visit_key))
                         .flatten().and_then(|loot| loot.drops.iter()
@@ -142,7 +221,7 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
                     if let Some(drop)=drop {
                         let at=world.actor_footing(drop.origin+Vec3::Z*16.,PLAYER_CENTER,PLAYER_HALF,180.)
                             .context("Unsupported personal essence")?;
-                        inputs[i].0=walking[i].input(&world,p,at,22.)?; planned[i]=true; work=true;
+                        inputs[i].0=walking[i].input(&world,p,at,22.,require_landing)?; planned[i]=true; work=true;
                     } else if let Some((target,_))=visible {
                         inputs[i].0=Controls{wish:super::route_driver::combat_dodge(&world,p,home[i],target.center,roster.tick,0.,
                             Some(roster.players[1-i].player.feet),false,|at| !arena.stage.interactions.hazardous(at)),run:true,..Default::default()};
@@ -152,14 +231,28 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
                     inputs[i].1.weapon=Some(9);inputs[i].1.primary=true;inputs[i].1.alternate=false;
                 }
             }
+            if matches!(command,Command::Walk(_)) && !walk_touch {work=true;}
+            if require_landing && goal.is_some() && !nav_touch {work=true;}
             if !busy {
                 step_ticks += 1;
                 quiet = if work {0} else {quiet+1};
             }
             history.push_back(serde_json::json!({"tick":roster.tick,"step":step,"command":command,"feet":before,
-                "health":roster.players.each_ref().map(|b|b.stats.sanity()),"will":roster.players.each_ref().map(|b|b.stats.will())}));
+                "health":roster.players.each_ref().map(|b|b.stats.sanity()),"will":roster.players.each_ref().map(|b|b.stats.will()),
+                "movement":inputs.each_ref().map(|(c,_)|serde_json::json!({"wish":c.wish,"jump":c.jump,"run":c.run})),
+                "steam":roster.players.each_ref().map(|b|b.player.steam),"grounded":roster.players.each_ref().map(|b|b.player.grounded)}));
             if history.len()>240 {history.pop_front();}
             arena.step(&mut roster,&map,&mut world,inputs)?;
+            if old_owner.is_none() && arena.stage.owner.is_some() {
+                let boarding=if let Command::Board{thread,..}=command {
+                    let ready=roster.players.each_ref().map(|b|arena.stage.interactions.levels.iter()
+                        .any(|s|s.ctl.coop_boarding_ready(thread,&[b.player.feet])==Some(true)));
+                    ensure!(ready==[true,true],"Lift started before both players boarded");
+                    Some(ready)
+                } else {None};
+                scene_starts.push(serde_json::json!({"tick":roster.tick,"step":step,"owner":arena.stage.owner,
+                    "feet":roster.players.each_ref().map(|b|b.player.feet),"boarding":boarding}));
+            }
             for i in 0..2 {
                 if planned[i] {walking[i].advanced(&roster.players[i].player);}
                 if alive[i]!=roster.players[i].stats.alive() || spawned[i]!=roster.players[i].spawned_at {
@@ -187,20 +280,25 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
             if arena.stage.transition.is_some() {break;}
             if !busy && roster.players.iter().all(|b|b.stats.alive()) {
                 let done=match command {
-                    Command::Node(_) | Command::Nav(_) => !work,
+                    Command::Node(_) | Command::HighNode(_) | Command::Nav(_) | Command::Walk(_)
+                        | Command::Positions(_) | Command::Rise{..} => !work,
+                    Command::Board{..} => false,
                     Command::Clear(_) => quiet>=240,
                     Command::Wait(ticks) => step_ticks>=*ticks,
                     Command::Watch => step_ticks>=120,
                     Command::Staff(enabled) => {staff=*enabled;true},
                 };
                 if done {
-                    println!("DONE {} step{step} {command:?} tick{}",spec.map,roster.tick);
-                    completed.push(serde_json::json!({"step":step,"command":command,"tick":roster.tick,"feet":roster.players.each_ref().map(|b|b.player.feet)}));
+                    println!("DONE {} step{step} {command:?} tick{} feet{:?}",spec.map,roster.tick,roster.players.each_ref().map(|b|b.player.feet));
+                    completed.push(serde_json::json!({"step":step,"command":command,"tick":roster.tick,"feet":roster.players.each_ref().map(|b|b.player.feet),
+                        "steam_seen":steam_seen,"rise_done":rise_done}));
                     step+=1;step_ticks=0;quiet=0;walking=Default::default();
+                    rising=[false;2];steam_seen=[false;2];rise_done=[false;2];board_lead=None;
                     home=roster.players.each_ref().map(|b|b.player.feet);
                 }
             }
-            ensure!(step_ticks<120*120,"Route stalled at step{step} {command:?}");
+            let limit=if let Command::Wait(ticks)=command {ticks.saturating_add(120*120)} else {120*120};
+            ensure!(step_ticks<limit,"Route stalled at step{step} {command:?}");
         }
         ensure!(arena.stage.transition.as_ref().is_some_and(|e|spec.exit.matches(e))
             && roster.players.iter().all(|b|b.stats.alive()),"Missing living pair's actual onward exit");
@@ -221,7 +319,8 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
     }.await;
     let report=serde_json::json!({"build":env!("LOOKING_GLASS_BUILD"),"full_route_passed":result.is_ok(),
         "error":result.as_ref().err().map(|e|format!("{e:#}")),"commands":commands,"completed":completed,"step":step,
-        "replica_samples":samples,"reunions":reunions,"life_events":life_events,"frame":roster.frame(1,0),
+        "replica_samples":samples,"reunions":reunions,"life_events":life_events,"scene_starts":scene_starts,
+        "board_wait_ticks":board_wait_ticks,"frame":roster.frame(1,0),
         "world":arena.snapshot(),"arrival":arrival,"recent_inputs":history,
         "scope":"Fresh normal two-player production Arena route; compressed replicas, not internet transport"});
     std::fs::create_dir_all(crate::preferences::path(""))?;

@@ -6,8 +6,9 @@ For the concise current status, see [Co-op progress](COOP_PROGRESS.md).
 This is work in progress. A policy test or a connected pair of windows does not
 establish campaign support. Single-player behavior and saves must remain supported.
 
-Current milestone: **64.6% estimated overall; six visits have combined
-verification evidence and 33 have partial evidence.** The [Queen finale](COOP_QUEEN.md)
+Current milestone: **70.7% estimated overall; 18/39 normal paired routes are
+credited.** The historical exhaustive matrix retains six combined visits and
+33 partial visits because it includes deferred polishing cases. The [Queen finale](COOP_QUEEN.md)
 closes the last missing explicit paired adapter. The [playable milestone](COOP_PLAYABLE.md)
 takes priority over exhaustive polishing. See [current progress](COOP_PROGRESS.md)
 and the [castle integration batch](COOP_CASTLE.md). Earlier

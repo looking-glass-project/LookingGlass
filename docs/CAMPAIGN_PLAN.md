@@ -2025,6 +2025,11 @@ route, with ordinary weapon controls, personal loot and actual Ascension arrival
 An optional `LOOKING_GLASS_COOP_NATIVE_ROUTE` file supplies navigation/combat
 commands only; it cannot supply world state, health, rewards or progression.
 
+`--facade-coop-route-check` reserves the normal paired Ascension course, including
+ordinary steam steering, the shared lift waiting for its partner and actual Keep
+arrival. It extends the accelerated diagnostic command set without staging any
+climb, gate, lift or player state.
+
 `--wforest-coop-check` reserves staged co-op checks across both Caterpillar's
 Plot visits: shared machinery, individual healing, Staff arrival and original
 scene ownership/reunion. Full traversal and internet coverage remain separate.

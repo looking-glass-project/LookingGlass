@@ -544,6 +544,8 @@ pub static REGISTRATION: Registration = Registration {
     target_base: None,
     story_beats: &[],
     checks: &[
+        Check {flag: "--facade-coop-route-check", help: "Play an accelerated paired Ascension course, steam climbs and shared lift.",
+            run: Run::Windowed(route::coop_check)},
         Check {flag: "--facade-coop-check", help: "Verify paired castle progression and personal combat.",
             run: Run::Headless(coop_check::check)},
         Check {

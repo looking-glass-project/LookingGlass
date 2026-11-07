@@ -41,6 +41,8 @@ pub(crate) enum Command {
     /// Normal jump/run boarding of a live rotating brush, then passive riding.
     MachineBoard { entity: usize, local: [f32; 3] },
     MachineRide { entity: usize, angle: f32, tolerance: f32 },
+    /// Stay aboard until each living rider reaches a supported lift height.
+    RideHeight(f32),
     Cycle { controller: String, pointer: String, phase: f64, period: f64, #[serde(default)] hold: bool },
     Ice(bool),
     Course(Vec<CourseStep>),
@@ -145,6 +147,7 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
     let mut machine = machine::Machine::default();
     let mut ride_done = [false; 2];
     let mut course: [course::Walker; 2] = Default::default();
+    let mut course_machines: [machine::Machine; 2] = Default::default();
     let mut continue_with_survivor = false;
     let mut history = VecDeque::new();
     let mut completed = Vec::new();
@@ -333,8 +336,13 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
                     let partner_done=course[1-i].cursor>=steps.len();
                     let clock=steps.get(course[i].cursor).and_then(|s|s.clock.as_ref())
                         .map(|clock|clock.ready(&arena)).transpose()?;
-                    inputs[i].0=course[i].input(p,steps,partner_done,clock);
+                    let boarding=steps.get(course[i].cursor).filter(|s|s.mode=="board")
+                        .map(|s|course_machines[i].sample(&map,&arena,s.ticks as usize)).transpose()?;
+                    inputs[i].0=course[i].input(p,steps,partner_done,clock,boarding.as_ref());
                     work|=course[i].cursor<steps.len();
+                } else if let Command::RideHeight(height)=command {
+                    ride_done[i]|=p.grounded && p.feet.z>=*height;
+                    work|=!ride_done[i];
                 } else if let Command::MachineBoard{local,..}=command {
                     let pose=machine_pose.as_ref().unwrap();
                     if !pose.supports(p) {
@@ -591,7 +599,7 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
                     Command::Node(_) | Command::HighNode(_) | Command::Nav(_) | Command::Walk(_)
                         | Command::Positions(_) | Command::Rise{..} | Command::Steer{..} | Command::Flight{..}
                         | Command::Swim{..} | Command::SwimFan{..} | Command::SwimFile(_)
-                        | Command::MachineBoard{..} | Command::MachineRide{..}
+                        | Command::MachineBoard{..} | Command::MachineRide{..} | Command::RideHeight(_)
                         | Command::Course(_) | Command::CourseFile(_) => !work,
                     Command::WatchReady => roster.players.iter().filter(|b|b.stats.alive()).all(|b|b.stats.powers.recharge<=0.),
                     Command::WorldRunning => super::world::world_dt(&roster.players,FIXED_DT)>0.,

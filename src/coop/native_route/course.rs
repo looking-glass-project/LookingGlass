@@ -23,21 +23,29 @@ impl Clock {
 #[derive(Clone, Copy, Default)]
 pub(super) struct Walker { pub cursor: usize, age: u64, jumped: bool }
 impl Walker {
-    pub(super) fn input(&mut self, player:&crate::movement::Player, steps:&[Step], partner_done:bool, clock:Option<bool>)->Controls {
+    pub(super) fn input(&mut self, player:&crate::movement::Player, steps:&[Step], partner_done:bool,
+        clock:Option<bool>, boarding:Option<&machine::Pose>)->Controls {
         let Some(step)=steps.get(self.cursor) else {return Controls::default()};
-        let delta=Vec3::from_array(step.at)-player.feet;
+        let goal=Vec3::from_array(step.at);
+        let delta=boarding.map_or(goal,|pose|pose.center+pose.rotation*goal)-player.feet;
         let close=if self.cursor+1==steps.len() && partner_done {70.}else{22.};
-        let done=if let Some(ready)=clock {ready} else if step.mode=="wait" {self.age>=step.ticks} else {
+        let done=if let Some(ready)=clock {ready}
+        else if let Some(pose)=boarding {pose.supports(player)}
+        else if step.mode=="rise" {player.grounded && player.feet.z>=goal.z}
+        else if step.mode=="wait" {self.age>=step.ticks} else {
             delta.truncate().length()<close && delta.z.abs()<64.
                 && (step.mode=="air" || player.grounded || player.swimming)
         };
         if done {self.cursor+=1;self.age=0;self.jumped=false;return Controls::default();}
         self.age+=1;
-        if clock.is_some() || step.mode=="wait" {return Controls::default();}
+        if clock.is_some() || matches!(step.mode.as_str(),"wait"|"rise") {return Controls::default();}
         let jump=player.ledge.as_ref().is_some_and(|h|!h.pulling) || player.grounded
-            && (step.mode=="hop" || matches!(step.mode.as_str(),"jump"|"air") && (!self.jumped || delta.z>24.));
+            && (boarding.is_some() && !self.jumped || step.mode=="hop"
+                || matches!(step.mode.as_str(),"jump"|"air"|"precise") && (!self.jumped || delta.z>24.));
         self.jumped|=jump;
-        Controls{wish:if step.mode=="air" && delta.truncate().length()<30. {
+        Controls{wish:if boarding.is_some() && delta.truncate().length()<60. {
+            (delta.truncate()*4.-player.velocity.truncate()*0.5).clamp_length_max(320.)/320.
+        } else if step.mode=="precise" || step.mode=="air" && delta.truncate().length()<30. {
             (delta.truncate()*3.-player.velocity.truncate()*0.7).clamp_length_max(320.)/320.
         } else {delta.truncate().normalize_or_zero()},swim:delta.normalize_or_zero(),
             rise:delta.z.signum(),run:true,jump,..Default::default()}

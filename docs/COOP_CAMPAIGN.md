@@ -4,10 +4,10 @@ The user now prioritizes [100% playable coverage](COOP_PLAYABLE.md), with
 exhaustive polishing afterward. This historical matrix retains detailed
 verification gaps; those combinations do not all gate the playable build.
 
-Labyrinthine Revenge normal route (`714bd1f`) now passes through actual
-Machinations arrival with both players alive, 1,158 exact replicas and eight
-exact ten-second revivals. Normal paired coverage is **31/39 visits**, with
-**8 remaining**; overall readiness is **77.4%**. The broader historical statuses below also
+Machinations normal route (`fcf4979`) now passes through actual Royal Rage
+arrival with both players alive, 301 exact replicas and five exact ten-second
+revivals. Normal paired coverage is **32/39 visits**, with **7 remaining**;
+overall readiness is **77.9%**. The broader historical statuses below also
 include deferred polishing cases.
 
 Airborne Terror core update: `3e96892` passes 41 paired component cases
@@ -812,7 +812,7 @@ both original portals and the gated return, without cheats or recovery
 | 31 | `hedge2` | `Initial` | Normal paired route passes on `f9d8893`: both lever scenes, personal shells, five exact ten-second revivals and actual Water Logged arrival, 53,709 ticks/448 replicas. Broader recovery, internet and presentation permutations remain partial. See [current progress](COOP_PROGRESS.md#mystifying-madness-playable-route-completed). |
 | 32 | `tower2` | `Initial` | Partial: source `d06ded3` adds shared water/machinery, atomic living-rider carry, personal current waits/fan hits and original scene integration. All 66 native paired cases pass, including both ordinary swimming orders with saved continuation, 12 Stage introduction variants and six physical flusher activations through native contacts. The original 16-case solo log is byte-identical to `291af36`. Follow-up `0e5f061` adds full fan-sweep placement exclusion and nine native checkpoint/timed-revival cases (75 paired cases total). Normal paired route `b278fdc` passes all three flushers, fan passages and actual Hedge3 arrival: 28,247 ticks, 236 exact replicas, three exact ten-second revivals and both alive at 55 health. Broader per-visit internet, presentation and recovery permutations remain polishing; see `TOWER2.md`. |
 | 33 | `hedge3` | `Initial` | Partial: paired machinery/personal-contact components and existing solo component check pass on `11d47f8`. Full paired route remains open. See [machinery batch](COOP_MACHINERY.md). |
-| 34 | `tower3` | `Initial` | Partial: paired machinery/personal-contact components and existing solo component check pass on `11d47f8`. Full paired route remains open. See [machinery batch](COOP_MACHINERY.md). |
+| 34 | `tower3` | `Initial` | Partial in the broader matrix; normal paired route passes on `fcf4979` through actual Royal Rage arrival, with 301 exact replicas, both alive and five ten-second revivals. Per-visit network/presentation permutations remain polishing. See [playable evidence](COOP_PLAYABLE.md). |
 | 35 | `grounds1` | `Initial` | Partial: explicit paired combat, personal healing/reward, scenes and exit integration. On `ccd6cd1`, 58 combat, 21 world/reward and 34 Stage/scene cases pass across both encounters, including both post-battle bridge/gate/exit walks. Both owners, watched/skipped/paused/restored scenes, dead partners, safe reunion and personal collections are covered. Four solo check/route logs exactly match `7c3ca24`. Full two-client combat routes, rendered effects and per-encounter rejoin/death/wipe acceptance remain open; see `JABBERWOCK.md`. |
 | 36 | `grounds2` | `Initial` | Partial: focused paired progression/combat and existing solo components pass on `073ed9f`. Full paired route remains open. See [castle batch](COOP_CASTLE.md). |
 | 37 | `facade` | `Initial` | Partial: focused paired progression/combat and existing solo components pass on `073ed9f`. Full paired route remains open. See [castle batch](COOP_CASTLE.md). |

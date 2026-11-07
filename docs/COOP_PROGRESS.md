@@ -1,6 +1,6 @@
 # Co-op progress
 
-Updated 7 November 2026. Branch: `coop`. **Estimated overall completion: 77.4%.**
+Updated 7 November 2026. Branch: `coop`. **Estimated overall completion: 77.9%.**
 The target is now [100% playable co-op](COOP_PLAYABLE.md), followed by a
 separate polishing stage. Complete normal progression and core flows first;
 batch implementation and reuse passing evidence. The historical exhaustive
@@ -41,7 +41,7 @@ foundation point credited the missing import feature. The current additional
 Internet Host/Join point credits completed public core consolidation on `0b5bca3`;
 no additional campaign visit is credited.
 
-Thirty-one of 39 visits now have credited normal paired route evidence. Six retain
+Thirty-two of 39 visits now have credited normal paired route evidence. Six retain
 the historical combined designation; the broader matrix still labels 33 as
 partial because it includes polishing cases. The next priority is normal paired campaign
 pass, fixing progression blockers and checking core recovery at representative
@@ -55,8 +55,27 @@ remain in the polishing backlog.
 | Two players, movement and presentation | 11.75 | 15 |
 | Combat, individual resources and death | 13.5 | 20 |
 | Scenes, transport and progression | 16 | 20 |
-| Campaign playability | 15.90 | 20 |
-| **Total** | **77.40, rounded to 77.4** | **100** |
+| Campaign playability | 16.41 | 20 |
+| **Total** | **77.91, rounded to 77.9** | **100** |
+
+## Machinations playable route completed
+
+Frozen `fcf4979` passes the normal paired course through actual Royal Rage
+arrival: **36,116 ticks**, **301 exact compressed replicas**, and both players
+alive at **22/25 health**, with personal resources carried exactly. Five normal
+revivals each take exactly ten active seconds and return at 25 health. There is
+no team wipe, progression staging, cheat state or changed gameplay balance.
+
+The diagnostic uses live lift/pedal phases, precise pillar landings, single-file
+wheel boarding and independent movement off the final climbing gear. It omits
+the solo route's deliberate fall demonstrations; normal recovery remains active.
+Gameplay, saves and networking are unchanged. All 949 active Rust tests and
+source/package checks pass. Frozen source, executable, arrival and recovery
+evidence is pinned in `private/coop-playable-machinations-default-verified.json`.
+
+Repeat with `tools/test_coop_native_route.py --map tower3`, local data and a
+fresh profile. Internet and rendered-camera evidence remains separate.
+Coverage is **32/39 visits**, **7 remaining**, or **77.9%** overall.
 
 ## Labyrinthine Revenge playable route completed
 
@@ -657,7 +676,7 @@ Campaign status from `COOP_CAMPAIGN.md`:
   currently have components or checkpoint segments only.
 - **No visit remains without paired component evidence.** Heart of Darkness's
   adapter is integrated. Component coverage does not complete the full campaign
-  playability pass: 31 normal paired routes are credited, with 8 remaining.
+  playability pass: 32 normal paired routes are credited, with 7 remaining.
 
 See the [full campaign matrix](COOP_CAMPAIGN.md). Future updates should separate
 working features, partial route milestones and completed verification visits.

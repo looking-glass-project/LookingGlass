@@ -1,6 +1,7 @@
 //! Machinations: bound lifts and ride machinery, room fall returns and arrival scene.
 mod check;
 mod coop;
+mod coop_route;
 mod coop_check;
 mod motion;
 mod route;
@@ -370,6 +371,11 @@ pub static REGISTRATION: Registration = Registration {
         1,
     )],
     checks: &[
+        Check {
+            flag: "--tower3-coop-route-check",
+            help: "Traverse paired Machinations lifts and gears into Royal Rage.",
+            run: Run::Windowed(coop_route::check),
+        },
         Check {
             flag: "--tower3-coop-check",
             help: "Verify paired machinery, personal contacts and saved continuation.",

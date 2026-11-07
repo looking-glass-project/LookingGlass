@@ -56,6 +56,25 @@ a normal-play blocker, data loss, or a missing requested core feature.
 Report playable readiness and the polishing backlog separately. Do not label
 the game 100% playable while a level or requested core flow remains blocked.
 
+## Machinations accepted
+
+Frozen `fcf4979` passes the normal paired course through actual Royal Rage
+arrival: **36,116 ticks**, **301 exact compressed replicas**, and both players
+alive at **22/25 health**, with personal resources carried exactly. Five normal
+revivals each take exactly ten active seconds and return at 25 health. There is
+no team wipe, progression staging, cheat state or changed gameplay balance.
+
+The diagnostic uses live lift/pedal phases, precise pillar landings, single-file
+wheel boarding and independent movement off the final climbing gear. It omits
+the solo route's deliberate fall demonstrations; normal recovery remains active.
+Gameplay, saves and networking are unchanged. All 949 active Rust tests and
+source/package checks pass. Frozen source, executable, arrival and recovery
+evidence is pinned in `private/coop-playable-machinations-default-verified.json`.
+
+Repeat with `tools/test_coop_native_route.py --map tower3`, local data and a
+fresh profile. Internet and rendered-camera evidence remains separate.
+Coverage is **32/39 visits**, **7 remaining**, or **77.9%** overall.
+
 ## Labyrinthine Revenge accepted
 
 Frozen `714bd1f` passes the normal paired course through actual Machinations
@@ -289,12 +308,11 @@ bounded audit. The subsequent full attempt still fails after both players die
 in the late encounter at step 154 and restore the initial checkpoint. A Garden
 full-route pass was still required at that point; no team-wipe certification is
 inferred from that failed route. The later Red-led native pass above now meets
-normal-route acceptance, followed by Herbaceous Border, Rolling Stones, Icy Reception, Fungiferous Flora, both Caterpillar's Plot visits, Pale Realm, Airborne Terror, Mystifying Madness and Water Logged above. Nine visits remain outside credited normal route
+normal-route acceptance, followed by Herbaceous Border, Rolling Stones, Icy Reception, Fungiferous Flora, both Caterpillar's Plot visits, Pale Realm, Airborne Terror, Mystifying Madness, Water Logged, Labyrinthine Revenge and Machinations above. Seven visits remain outside credited normal route
 coverage; all have paired component evidence.
 
 Remaining normal-route coverage is first Skool, School Two, all three Pool
-visits, Majestic Maze, Labyrinthine Revenge, Machinations and
-the Queen finale.
+visits, Majestic Maze and the Queen finale.
 
 Run the two fresh-entry route checks together in Anode:
 

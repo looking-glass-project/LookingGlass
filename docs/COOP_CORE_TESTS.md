@@ -196,11 +196,11 @@ also pass the final six-line verifier; the original live fixtures remain frozen.
 ## Remaining controller integration
 
 The focused save/rejoin milestone does not mean every level's mechanics have
-co-op adapters. After the [machinery batch](COOP_MACHINERY.md), four remaining
-late controllers (`grounds2`, `facade`, `keep`, `qlair`) still use the default paired
-hooks. Those hooks do not advance the single-player machinery or combat twice;
-they are intentionally empty until a controller has an explicit shared update.
-These are implementation gaps, not simply missing route-test receipts.
+co-op adapters. The [machinery](COOP_MACHINERY.md) and [castle](COOP_CASTLE.md)
+batches leave only `qlair` without its explicit paired adapter. Its default
+hooks do not advance single-player combat twice; they remain empty until
+the finale has a shared update. This is an implementation gap, not simply
+a missing route-test receipt.
 
 Airborne Terror (`tower1`) now has explicit shared gust updates on `3e96892`.
 All 41 native component cases pass, covering both players' contacts/pushes,

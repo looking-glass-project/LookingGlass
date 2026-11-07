@@ -1947,6 +1947,11 @@ Mystifying Madness, Labyrinthine Revenge and Machinations additionally reserve
 paired machinery, personal contacts and saved continuation. These checks share
 the existing controllers and hit IDs; they do not certify full paired routes.
 
+Battle Royale, Ascension and Castle Keep additionally reserve
+`--grounds2-coop-check`, `--facade-coop-check` and `--keep-coop-check` for focused
+paired waves/combat, lift boarding, puzzle scenes and saved progression. They
+share the existing controllers and hit IDs.
+
 Battle Royale also reserves `--grounds2-save-check` for its native save fixtures;
 it shares the existing grounds2 visit and hit-ID reservation.
 

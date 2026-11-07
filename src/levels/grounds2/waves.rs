@@ -95,16 +95,18 @@ impl Actor {
     }
 }
 impl Royale {
-    pub(super) fn step_waves(
-        &mut self,
-        c: &mut crate::level::Combat<'_>,
-    ) -> crate::combat::Feedback {
+    pub(super) fn step_waves(&mut self, c: &mut crate::level::Combat<'_>) -> crate::combat::Feedback {
+        self.step_waves_with(c.dt, c.world, c.player.eye(), c.notarget, c.summon, None)
+    }
+    pub(super) fn step_waves_with(&mut self, dt: f32, world: &World, eye: Vec3,
+        notarget: bool, summon: Option<Target>, players: Option<[crate::combat::PlayerTarget; 2]>)
+        -> crate::combat::Feedback {
         let mut out = crate::combat::Feedback::default();
-        if self.scripted() || c.dt <= 0. {
+        if self.scripted() || !dt.is_finite() || dt <= 0. {
             return out;
         }
-        self.data.arena.copy_dynamic_from(c.world);
-        self.saved.accumulator += c.dt.min(0.1) as f64;
+        self.data.arena.copy_dynamic_from(world);
+        self.saved.accumulator += dt.min(0.1) as f64;
         while self.saved.accumulator >= crate::cards::STEP as f64 {
             self.saved.accumulator -= crate::cards::STEP as f64;
             let dt = crate::cards::STEP;
@@ -135,18 +137,21 @@ impl Royale {
                     continue;
                 }
                 a.electric = (a.electric - dt).max(0.);
-                a.body.notarget = c.notarget;
-                a.body.opponents.summon = c.summon;
+                a.body.notarget = notarget;
+                a.body.opponents.summon = summon;
+                a.body.opponents.players = players;
                 if a.flight.is_some() {
                     a.fly(&self.data.arena);
                     a.hazards(&self.data.arena);
                     continue;
                 }
-                if !c.notarget {
-                    a.body.attack_player(c.player.eye());
+                // Solo script orders retain their original pursuit. Paired
+                // guards acquire the nearest visible living body in step().
+                if players.is_none() && !notarget {
+                    a.body.attack_player(eye);
                 }
                 self.rig
-                    .step(&mut a.body, &self.data.arena, c.player.eye(), &mut out);
+                    .step(&mut a.body, &self.data.arena, eye, &mut out);
                 a.hazards(&self.data.arena);
             }
         }

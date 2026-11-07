@@ -43,25 +43,28 @@ impl Body {
     }
 }
 impl Keep {
-    pub(super) fn combat_guards(
-        &mut self,
-        c: &mut crate::level::Combat<'_>,
-    ) -> crate::combat::Feedback {
+    pub(super) fn combat_guards(&mut self, c: &mut crate::level::Combat<'_>) -> crate::combat::Feedback {
+        self.combat_guards_with(c.dt, c.world, c.player.eye(), c.notarget, c.summon, None)
+    }
+    pub(super) fn combat_guards_with(&mut self, dt: f32, world: &World, eye: Vec3,
+        notarget: bool, summon: Option<Target>, players: Option<[crate::combat::PlayerTarget; 2]>)
+        -> crate::combat::Feedback {
         let mut out = crate::combat::Feedback::default();
-        if self.scripted() || c.dt <= 0. {
+        if self.scripted() || !dt.is_finite() || dt <= 0. {
             return out;
         }
         for a in &mut self.saved.spawned {
-            a.electric = (a.electric - c.dt).max(0.);
+            a.electric = (a.electric - dt).max(0.);
             let mut f = crate::combat::Feedback::default();
             match &mut a.guard {
                 Body::Basic(g) => {
-                    g.notarget = c.notarget;
-                    g.opponents.summon = c.summon;
+                    g.notarget = notarget;
+                    g.opponents.summon = summon;
+                    g.opponents.players = players;
                     f = g.advance(
-                        c.dt,
-                        c.world,
-                        c.player.eye(),
+                        dt,
+                        world,
+                        eye,
                         if g.ranged {
                             self.data.diamond
                         } else {
@@ -70,28 +73,23 @@ impl Keep {
                     );
                 }
                 Body::Card(g) => {
-                    g.notarget = c.notarget;
-                    g.opponents.summon = c.summon;
-                    a.accumulator += c.dt.min(0.1) as f64;
+                    g.notarget = notarget;
+                    g.opponents.summon = summon;
+                    g.opponents.players = players;
+                    a.accumulator += dt.min(0.1) as f64;
                     while a.accumulator >= crate::cards::STEP as f64 {
                         a.accumulator -= crate::cards::STEP as f64;
                         self.data.cards[usize::from(g.kind == crate::cards::Kind::Spade)].step(
                             g,
-                            c.world,
-                            c.player.eye(),
+                            world,
+                            eye,
                             &mut f,
                         );
                     }
                 }
             }
-            out.will_drain += f.will_drain;
-            out.cue_sounds.extend(f.cue_sounds);
-            out.damage += f.damage;
-            out.impulse += f.impulse;
-            out.summon_hits.extend(f.summon_hits);
-            out.spatial_sounds.extend(f.spatial_sounds);
-            out.spatial_sounds
-                .extend(f.sounds.into_iter().map(|s| (s, a.guard.feet())));
+            f.spatial_sounds.extend(f.sounds.drain(..).map(|sound| (sound, a.guard.feet())));
+            out.append(f);
         }
         out
     }

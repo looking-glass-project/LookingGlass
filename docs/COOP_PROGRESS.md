@@ -1,6 +1,6 @@
 # Co-op progress
 
-Updated 7 November 2026. Branch: `coop`. **Estimated overall completion: 60.1%.**
+Updated 7 November 2026. Branch: `coop`. **Estimated overall completion: 61.6%.**
 The target is now [100% playable co-op](COOP_PLAYABLE.md), followed by a
 separate polishing stage. Complete normal progression and core flows first;
 batch implementation and reuse passing evidence. The historical exhaustive
@@ -25,8 +25,8 @@ the bridge and through the actual castle exit. Water Logged now has its shared
 water machinery, personal currents/fan hits and original introduction on
 `d06ded3`, with 66 native paired cases. Follow-up `0e5f061` adds fan-safe
 checkpoint/revival placement and nine native recovery checks. The [machinery batch](COOP_MACHINERY.md) now integrates Mystifying Madness,
-Labyrinthine Revenge and Machinations. Four late controllers (`grounds2`,
-`facade`, `keep`, `qlair`) still lack explicit co-op hooks. These are implementation gaps
+Labyrinthine Revenge and Machinations. The [castle batch](COOP_CASTLE.md) adds Battle Royale, Ascension and Castle
+Keep. Only Heart of Darkness (`qlair`) still lacks its explicit co-op adapter. These are implementation gaps
 before full traversal testing. Campaign-specific
 verification, including the unfinished Burning Curiosity route, stays separate.
 
@@ -49,11 +49,41 @@ shared transports, swimming/leaves and single-player regressions across the camp
 | --- | ---: | ---: |
 | Foundation and independent client diagnostics | 9.5 | 10 |
 | Internet Host/Join | 10.75 | 15 |
-| Two players, movement and presentation | 11.5 | 15 |
-| Combat, individual resources and death | 11.5 | 20 |
-| Scenes, transport and progression | 13.75 | 20 |
+| Two players, movement and presentation | 11.75 | 15 |
+| Combat, individual resources and death | 12 | 20 |
+| Scenes, transport and progression | 14.5 | 20 |
 | Campaign playability | 3.08 | 20 |
-| **Total** | **60.08, rounded to 60.1** | **100** |
+| **Total** | **61.58, rounded to 61.6** | **100** |
+
+## Latest castle batch
+
+Build `073ed9f` adds Battle Royale, Ascension and Castle Keep's core co-op
+adapters. Reinforcements spawn on one shared clock and use the existing
+nearest-visible living-player targeting. Spawned castle guards now preserve
+each player's damage and impulses. Ascension waits for all living players on
+the lift, remembers the first arrival and delivers one shared Keep transition.
+Castle Keep advances its puzzle and hallway clocks once, accepts either player's
+lever input, checks both bodies during movement and delivers its final exit.
+
+The three focused native paired checks pass, covering the original Battle Royale
+arrival/reunion, wave cadence/caps/landings and both damage victims; both lift
+boarding orders, saved ride/departure and both gate blockers; and Keep's arrival,
+Red-owned mirror scene, all three correct portraits, saved progression, heart
+gate, final Queen departure and all four guard groups targeting either player.
+The three existing solo component checks and the native registry check pass.
+The gameplay code passes all 942 active Rust tests, 450 Python co-op guards and
+seven package checks. The final Keep fixture uses normal entry-story setup;
+the original fixture disabled that setup and failed before the arrival. Only
+that fixture changed after the first build, so the unchanged paired, solo and
+registry passes are reused after verifying the source-file hashes.
+
+These are staged components, not full normal-input paired traversals. Earlier
+public save/import/rejoin evidence is reused for unchanged systems. Full paired
+campaign progression remains required; exhaustive permutations and rendered
+comparisons belong to the polishing stage unless they reveal a play blocker.
+
+This adds 0.25 movement, 0.5 combat and 0.75 scene/progression points:
+61.58, reported as 61.6%. No full campaign visit is newly credited.
 
 ## Latest machinery batch
 
@@ -99,7 +129,7 @@ yet verified across every level and failure condition.
 | Combat and resources | Nearest-visible targeting, individual damage, inventory and consumables in integrated levels | Remaining enemies/bosses and level-specific rewards, with both players as the target/collector |
 | Death and saves | Exact ten-second countdown, moving spectator camera, safe 25-health revival; shared checkpoint wipes, public save/leave/continue and storage-error/backup menu flow, public save refusal/retry during deaths/scenes, public guest restart during either player's countdown | Each visit's recovery matrix and remaining transport/death combinations |
 | Scenes and machinery | First-arrival ownership, original single-Alice scenes, hidden partner and safe reunion; public intro/dialogue reconnects with either theatre owner; all-living boarding on integrated rides | Remaining level adapters, both scene owners, watched/skipped cases, transports and exits |
-| Regression checks | Machinery batch: 941 Rust unit passes and corrected native registry validation; 450 Python guards; Maze and Jabberwock paired components and exact solo route logs, plus build-specific weapon-effect/audio and Curiosity baseline checks | Full campaign verification and required earlier contact-system repeats on the final build |
+| Regression checks | 942 active Rust tests and native registry validation; 450 Python guards; Maze and Jabberwock paired components and exact solo route logs, plus build-specific weapon-effect/audio and Curiosity baseline checks | Full campaign verification and required earlier contact-system repeats on the final build |
 
 Campaign status from `COOP_CAMPAIGN.md`:
 
@@ -107,14 +137,13 @@ Campaign status from `COOP_CAMPAIGN.md`:
   Pandemonium, Fortress of Doors (first visit), Beyond the Wall, Fortress of
   Doors (return visit), and Skool Daze (return visit). The first five retain
   historical build-specific passes and still require contact-system repeats.
-- **29 visits have partial evidence.** Some already have complete internet
+- **32 visits have partial evidence.** Some already have complete internet
   traversals, including Wholly Morel Ground, Castling and About Face, but still
   have outstanding reliability, recovery, reconnect or scene cases. Others
   currently have components or checkpoint segments only.
-- **4 visits are marked Not run for level-specific co-op verification:**
-  Battle Royale,
-  Ascension, Castle Keep and Heart of Darkness. Broad entrance checks cover
-  all 39 visits; they do not complete these four level checks.
+- **1 visit remains Not run for level-specific co-op verification:** Heart of
+  Darkness. Broad entrance checks cover all 39 visits; they do not complete
+  the final boss integration or the full campaign playability pass.
 
 See the [full campaign matrix](COOP_CAMPAIGN.md). Future updates should separate
 working features, partial route milestones and completed verification visits.

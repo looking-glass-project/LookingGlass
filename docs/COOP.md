@@ -6,11 +6,11 @@ For the concise current status, see [Co-op progress](COOP_PROGRESS.md).
 This is work in progress. A policy test or a connected pair of windows does not
 establish campaign support. Single-player behavior and saves must remain supported.
 
-Current milestone: **60.1% estimated overall; six visits have combined
-verification evidence, 29 have partial evidence and four remain without
+Current milestone: **61.6% estimated overall; six visits have combined
+verification evidence, 32 have partial evidence and one remains without
 level-specific co-op checks.** The [playable milestone](COOP_PLAYABLE.md)
 takes priority over exhaustive polishing. See [current progress](COOP_PROGRESS.md)
-and the [three-controller machinery batch](COOP_MACHINERY.md). Earlier
+and the [castle integration batch](COOP_CASTLE.md). Earlier
 percentages below describe historical checkpoints.
 
 Burning Curiosity now passes **26 staged native co-op cases plus one summary**

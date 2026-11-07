@@ -395,17 +395,21 @@ pub static RESERVATIONS: [Reservation; 39] = [
     }), ..visit(33, "tower3") },
     visit(34, "grounds1"),
     Reservation { flags: Some(VisitFlags {
-        contract: &["--grounds2-check", "--grounds2-save-check"],
+        contract: &["--grounds2-check", "--grounds2-save-check", "--grounds2-coop-check"],
         route: &["--grounds2-route-check"], skip: &["--grounds2-skip-route-check"],
         render: &["--grounds2-render-check"],
     }), ..visit(35, "grounds2") },
     Reservation { flags: Some(VisitFlags {
-        contract: &["--facade-check"],
+        contract: &["--facade-check", "--facade-coop-check"],
         route: &["--facade-route-check", "--facade-route-native-check"],
         skip: &["--facade-skip-route-check"],
         render: &["--facade-render-check"],
     }), ..visit(36, "facade") },
-    visit(37, "keep"),
+    Reservation { flags: Some(VisitFlags {
+        contract: &["--keep-check", "--keep-coop-check"],
+        route: &["--keep-route-check"], skip: &["--keep-skip-route-check"],
+        render: &["--keep-render-check"],
+    }), ..visit(37, "keep") },
     Reservation {
         flags: Some(VisitFlags {
             contract: &["--qlair-check", "--qlair-save-write", "--qlair-save-read"],

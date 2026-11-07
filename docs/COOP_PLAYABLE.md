@@ -56,6 +56,25 @@ a normal-play blocker, data loss, or a missing requested core feature.
 Report playable readiness and the polishing backlog separately. Do not label
 the game 100% playable while a level or requested core flow remains blocked.
 
+## Labyrinthine Revenge accepted
+
+Frozen `714bd1f` passes the normal paired course through actual Machinations
+arrival: **138,944 ticks**, **1,158 exact compressed replicas**, and both
+players alive at **95/25 health** with their personal resources carried exactly.
+Eight normal revivals each take exactly ten active seconds and return at
+25 health. There is no team wipe, progression staging or altered combat balance.
+
+The diagnostic follows live gear poses, individual waypoint and hammer clocks,
+ordinary Watch/Staff/Ice controls, and safe regrouping before the exit. Its
+combat wait uses normal Will regeneration. Gameplay, saves and networking are
+unchanged. All 949 active Rust tests and source/package checks pass. Exact
+source, executable, arrival and recovery evidence is pinned in
+`private/coop-playable-labyrinth-default-verified.json`.
+
+Repeat with `tools/test_coop_native_route.py --map hedge3`, local data and a
+fresh profile. Internet and rendered-camera evidence remains separate.
+Coverage is **31/39 visits**, **8 remaining**, or **77.4%** overall.
+
 ## Water Logged accepted
 
 `b278fdc` passes the normal paired water course, all three flushers, live fan

@@ -4,10 +4,10 @@ The user now prioritizes [100% playable coverage](COOP_PLAYABLE.md), with
 exhaustive polishing afterward. This historical matrix retains detailed
 verification gaps; those combinations do not all gate the playable build.
 
-Water Logged normal route (`b278fdc`) now passes through actual Hedge3
-arrival with both players alive, 236 exact replicas and three exact ten-second
-revivals. Normal paired coverage is **30/39 visits**, with **9 remaining**;
-overall readiness is **76.9%**. The broader historical statuses below also
+Labyrinthine Revenge normal route (`714bd1f`) now passes through actual
+Machinations arrival with both players alive, 1,158 exact replicas and eight
+exact ten-second revivals. Normal paired coverage is **31/39 visits**, with
+**8 remaining**; overall readiness is **77.4%**. The broader historical statuses below also
 include deferred polishing cases.
 
 Airborne Terror core update: `3e96892` passes 41 paired component cases

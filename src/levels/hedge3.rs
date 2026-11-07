@@ -1,6 +1,7 @@
 //! Labyrinthine Revenge: saved machine phases, automatic doors and bellows.
 mod check;
 mod coop;
+mod coop_route;
 mod coop_check;
 mod motion;
 mod route;
@@ -313,6 +314,11 @@ pub static REGISTRATION: Registration = Registration {
     target_base: None,
     story_beats: &[],
     checks: &[
+        Check {
+            flag: "--hedge3-coop-route-check",
+            help: "Traverse the full paired Labyrinth and rotating machinery into tower3.",
+            run: Run::Windowed(coop_route::check),
+        },
         Check {
             flag: "--hedge3-coop-check",
             help: "Verify paired machinery, personal contacts and saved continuation.",

@@ -104,7 +104,9 @@ impl Store {
         self.write(&Checkpoint { visit: visit.clone(), frame, campaign: campaign.clone() })?;
         // Only acknowledge level requests after durable disk commit. The wipe
         // point must include the acknowledgement as well.
-        for slot in &mut arena.stage.interactions.levels { slot.ctl.checkpoint_written(); }
+        for slot in &mut arena.stage.interactions.levels {
+            if slot.ctl.checkpoint_requested() { slot.ctl.checkpoint_written(); }
+        }
         arena.remember_checkpoint();
         roster.remember_checkpoint();
         Ok(())

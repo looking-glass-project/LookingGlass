@@ -19,6 +19,23 @@ fn scene(s: &mut Stage, r: &mut Roster, map: &Bsp, w: &mut World, ending: bool) 
     }
     anyhow::bail!("Paired Queen scene stalled at {:?}", owner(s).saved.phase)
 }
+fn checkpoint(a: &mut Assets, map: &Bsp, w: &mut World, visit: &Visit,
+    s: Stage, mut r: Roster) -> Result<(Stage,Roster)> {
+    let mut arena = crate::coop::arena::Arena::load(a,map,w,visit,false)?;
+    arena.stage=s;
+    arena.stage.interactions.sync_coop(w);
+    arena.reset_characters(&r.players);
+    let store=crate::coop::checkpoint::Store::current(a.fingerprint()?);
+    store.save(visit,&mut r,&mut arena,w,&Default::default())?;
+    ensure!(!owner(&mut arena.stage).checkpoint_requested(),"Successful save did not acknowledge Queen request");
+    let saved=store.load()?.checkpoint;
+    // The live world must equal the file even when there was no level request.
+    crate::coop::checkpoint::verify_restored(&saved,&r,&arena)?;
+    arena.restore_checkpoint(saved.frame.combat.as_ref().unwrap(),map,w)?;
+    r=Roster::from_checkpoint(&saved.frame,w,|at|!arena.stage.interactions.hazardous(at))?;
+    crate::coop::checkpoint::verify_restored(&saved,&r,&arena)?;
+    Ok((arena.stage,r))
+}
 fn progression(a: &mut Assets, map: &Bsp) -> Result<()> {
     let mut w = World::from_bsp(map)?;
     let visit = Visit {epoch:1,map:"qlair".into(),entry:None,difficulty:map.difficulty,combat_preview:false};
@@ -26,6 +43,9 @@ fn progression(a: &mut Assets, map: &Bsp) -> Result<()> {
     let (eye,yaw) = crate::interaction::spawn(map, None);
     let mut r = Roster::new_with(&w, eye, yaw, Stats::for_level("qlair",None), |_| true)?;
     s.before_move(&mut r,map,&mut w,&Default::default(),FIXED_DT)?;
+    (s,r)=checkpoint(a,map,&mut w,&visit,s,r)?;
+    ensure!(!owner(&mut s).saved.checkpoint_saved,"Ordinary save acknowledged an unrequested Queen checkpoint");
+    println!("PASS paired Queen: initial-area autosave and exact disk restore without a level checkpoint request");
     let e = owner(&mut s).event(INTRO).unwrap();
     s.accept(e,PlayerId::Red,&mut r,&w);
     ensure!(s.owner == Some(PlayerId::Red), "Queen intro lost Red owner");
@@ -44,18 +64,7 @@ fn progression(a: &mut Assets, map: &Bsp) -> Result<()> {
             ensure!(owner(&mut s).saved.phase == Phase::Queen2 && owner(&mut s).checkpoint_requested()
                 && r.players.iter().all(|p| p.stats.sanity() == 100. && w.body_clear(p.player.feet)),
                 "Second arena/refill/checkpoint handoff failed");
-            let mut arena = crate::coop::arena::Arena::load(a,map,&mut w,&visit,false)?;
-            arena.stage=s;
-            arena.stage.interactions.sync_coop(&mut w);
-            arena.reset_characters(&r.players);
-            let store=crate::coop::checkpoint::Store::current(a.fingerprint()?);
-            store.save(&visit,&mut r,&mut arena,&w,&Default::default())?;
-            ensure!(!owner(&mut arena.stage).checkpoint_requested(),"Successful save did not acknowledge Queen request");
-            let saved=store.load()?.checkpoint;
-            arena.restore_checkpoint(saved.frame.combat.as_ref().unwrap(),map,&mut w)?;
-            r=Roster::from_checkpoint(&saved.frame,&w,|at|!arena.stage.interactions.hazardous(at))?;
-            crate::coop::checkpoint::verify_restored(&saved,&r,&arena)?;
-            s=arena.stage;
+            (s,r)=checkpoint(a,map,&mut w,&visit,s,r)?;
             ensure!(!owner(&mut s).checkpoint_requested(),"Queen checkpoint repeated after restore");
             println!("PASS paired Queen: original birth, personal refill, second-arena reunion and restored checkpoint request");
         }

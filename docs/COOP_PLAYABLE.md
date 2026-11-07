@@ -23,7 +23,7 @@ verification; the full campaign and requested gameplay features remain in scope.
 ## Work order
 
 1. Core controller adapters are integrated through the Queen finale on
-   `fa8ddf1`. Resolve normal-play blockers found by the consolidated campaign pass.
+   `c8a041e`. Resolve normal-play blockers found by the consolidated campaign pass.
 2. Build once per coherent batch and run focused checks for the changed behavior.
    Reuse passing evidence for unchanged systems. Fix build errors and failures
    that prevent normal play before expanding test coverage.

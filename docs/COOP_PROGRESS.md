@@ -27,7 +27,7 @@ water machinery, personal currents/fan hits and original introduction on
 checkpoint/revival placement and nine native recovery checks. The [machinery batch](COOP_MACHINERY.md) now integrates Mystifying Madness,
 Labyrinthine Revenge and Machinations. The [castle batch](COOP_CASTLE.md) adds Battle Royale, Ascension and Castle
 Keep. The [Queen finale](COOP_QUEEN.md) now closes the last missing explicit
-paired adapter on `fa8ddf1`. All 39 visits have component evidence; normal paired
+paired adapter on `c8a041e`. All 39 visits have component evidence; normal paired
 campaign progression remains required, including the unfinished Burning
 Curiosity route.
 
@@ -59,13 +59,13 @@ remain in the polishing backlog.
 
 ## Latest finale batch
 
-Build `fa8ddf1` adds paired Queen combat, individual healing, personal grabs,
+Build `c8a041e` adds paired Queen combat, individual healing, personal grabs,
 shared phases and durable completion. Level-requested co-op checkpoints are now
 saved after the scene handoff; completion is sent to the guest before the host
-leaves for the original film/credits. The eleven focused native groups pass,
-including the real second-arena disk checkpoint and exact restore. Native solo
+leaves for the original film/credits. The twelve focused native groups pass,
+including ordinary initial-area and requested second-arena disk saves and exact restore. Native solo
 finale, registry and movie decoding also pass. The initial batch passed 943 Rust
-tests; final focused native checks cover the subsequent impact-radius fix.
+tests; final focused native checks cover the subsequent impact-radius and checkpoint-acknowledgement fixes.
 450 Python guards and seven package checks pass.
 
 This closes the last explicit controller gap and adds 1.5 combat and 1.5

@@ -1,6 +1,6 @@
 # Queen finale co-op
 
-Build `fa8ddf1` integrates Heart of Darkness, the last campaign controller
+Build `c8a041e` integrates Heart of Darkness, the last campaign controller
 without an explicit paired update. The normal paired campaign pass remains open.
 
 Both Queen forms advance once and select a visible living opponent through the
@@ -30,32 +30,35 @@ still needs a hands-on review.
 
 ## Verification
 
-`--qlair-coop-check` passes eleven component groups on `fa8ddf1` in Anode
-(session 4, exit 0, 2.73 seconds). It requires a graphics context to construct
+`--qlair-coop-check` passes twelve component groups on `c8a041e` in Anode
+(session 4, exit 0, 2.86 seconds). It requires a graphics context to construct
 real character save state, but takes no screenshots and requires no input.
 It covers personal healing and saved cooldowns, both grab victims and survivor
 retargeting, both projectile recipients and splash, individual platform contacts,
 native projectile animation events in both forms, the original Red-owned
-introduction, birth/reunion/refill, an actual co-op disk checkpoint and exact
+introduction, birth/reunion/refill, ordinary initial-area and level-requested co-op disk checkpoints with exact
 restoration, and the shared death/ending lifecycle.
 
 The existing solo finale check and movie decode check pass on `2a75c26`;
-the only later differences are the paired fixture's graphics-context wrapper
-and command registration. Their passing evidence is reused. The native registry
-passes on `fa8ddf1`, building all 39 visits twice deterministically; no historical
+later differences are the paired fixture's graphics-context wrapper,
+command registration and a co-op-only checkpoint-acknowledgement guard. Their passing evidence is reused. The native registry
+passes on `c8a041e`, building all 39 visits twice deterministically; no historical
 fingerprint baseline was supplied.
 
 The initial gameplay batch `c9b0b9f` passed 943 Rust tests, including the real
 transport receipt check, plus 450 Python co-op guards and seven package checks.
-The final bounded impact-validation correction is covered by the native checks;
-the full Rust run predates that correction. Python guards and package checks
+The final impact-validation and checkpoint-acknowledgement corrections are
+covered by the native checks; the full Rust run predates those corrections. Python guards and package checks
 also pass after the correction.
 
 The first paired run found an existing save/replication bug: native comet/jack
 impact marks can have radius 300, above the old validation limit of 256. The
 bounded limit now permits those authored effects. A subsequent test-only panic
 came from constructing GPU-backed character state without a graphics context;
-the final fixture runs in Anode and passes. Failed receipts remain private.
+the final fixture runs in Anode and passes. Final review also caught an
+unrequested checkpoint acknowledgement during ordinary saves. The writer now
+acknowledges only pending requests; both initial-area and between-phase saves
+match their live state and restore exactly. Failed receipts remain private.
 
 This is component evidence, not a complete two-client Queen combat route,
 rendered film/credits acceptance or an internet finale-disconnect test. Earlier

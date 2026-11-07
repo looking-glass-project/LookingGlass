@@ -362,7 +362,7 @@ class CuriosityPair(Pair):
         verify_arrival(entry, self.history)
         return entry
 
-    def move(self, role, goal, navigate=False, radius=8):
+    def move(self, role, goal, navigate=False, radius=8, recover_liquid=True):
         if navigate and goal == self.steps[38]['pos']:
             return self.hot_crossing(role, goal)
         for _ in range(4):
@@ -371,7 +371,7 @@ class CuriosityPair(Pair):
             def arrived():
                 nonlocal resting
                 body = self.body(role)['player']
-                if body['grounded'] and (self.reached(role) or body['immersion']['kind'] in ('Lava', 'Slime')):
+                if body['grounded'] and (self.reached(role) or recover_liquid and body['immersion']['kind'] in ('Lava', 'Slime')):
                     return True
                 row = self.history[role][-1]; slot = ROLES.index(role)
                 if navigate and replannable_intermediate(row, slot):

@@ -812,3 +812,33 @@ The upper route and actual exit are still unverified, so Burning Curiosity
 remains outside complete-route credit. All 37 Curiosity guards and seven
 package checks pass; native code is unchanged from the tested `40d06c0` build.
 Test windows are closed and Anode is released. No screenshots were inspected.
+
+## Complete playable save chain, 7 November 2026
+
+The upper-route test now sends the leader through the original points 98–105
+and to the exit approach at 106, then follows with the partner. Both perform
+an ordinary jump from the original point-99 approach toward flat ground beyond
+the sloped lip. Continuing through incidental liquid contact keeps actual
+damage and death checks active. This avoids the earlier parking/search failure
+and the delayed braking that sent the guest back down the slope.
+
+The recorded upper prefix verifies 17 personal original-point arrivals, both
+jumps, 2,559 matching states and the actual checkpoint before 107. Its whole
+attempt still failed because the exit validator required Alice to be grounded
+at the first frame after the original arrival scene. That scene releases her
+above the floor. The corrected validator requires an observed clear, living,
+grounded pair within 120 ticks of scene release; a regression guard rejects
+late, blocked or still-airborne arrivals. `--start-step 107 --playable` resumes
+the untouched exit checkpoint without claiming another upper traversal.
+
+The final public-invite exit run passes on `40d06c0`, with 1,383 matching states
+and both players safely in `jlair2`. Joining its exact saved input to the
+verified upper prefix and earlier sections completes a 24-section normal route
+chain, with 43,586 matching states across its retained evidence. The private
+`coop-playable-curiosity-complete-chain-audit.json` records the hash connections.
+This earns one complete playable route; it is not a fresh uninterrupted run.
+Optional pickup/Watch choreography and exhaustive repeats remain polishing.
+
+All 38 focused Curiosity guards and seven package checks pass. Native code is
+unchanged from the frozen build with 944 passing active Rust tests. No images
+were inspected during this continuation.

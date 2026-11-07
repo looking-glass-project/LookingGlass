@@ -1,6 +1,6 @@
 # Co-op progress
 
-Updated 7 November 2026. Branch: `coop`. **Estimated overall completion: 68.2%.**
+Updated 7 November 2026. Branch: `coop`. **Estimated overall completion: 68.7%.**
 The target is now [100% playable co-op](COOP_PLAYABLE.md), followed by a
 separate polishing stage. Complete normal progression and core flows first;
 batch implementation and reuse passing evidence. The historical exhaustive
@@ -28,8 +28,8 @@ checkpoint/revival placement and nine native recovery checks. The [machinery bat
 Labyrinthine Revenge and Machinations. The [castle batch](COOP_CASTLE.md) adds Battle Royale, Ascension and Castle
 Keep. The [Queen finale](COOP_QUEEN.md) now closes the last missing explicit
 paired adapter on `c8a041e`. All 39 visits have component evidence; normal paired
-campaign progression remains required, including the unfinished Burning
-Curiosity route.
+campaign progression remains required for the remaining visits. Burning
+Curiosity now has a complete verified normal save chain.
 
 The fresh pre-change checkpoint run on 5 November passed staged shared travel,
 guest reconnect, complete primary-save restoration and team-wipe restoration.
@@ -41,7 +41,7 @@ foundation point credited the missing import feature. The current additional
 Internet Host/Join point credits completed public core consolidation on `0b5bca3`;
 no additional campaign visit is credited.
 
-Thirteen of 39 visits now have credited normal paired route evidence. Six retain
+Fourteen of 39 visits now have credited normal paired route evidence. Six retain
 the historical combined designation; the broader matrix still labels 33 as
 partial because it includes polishing cases. The next priority is normal paired campaign
 pass, fixing progression blockers and checking core recovery at representative
@@ -55,8 +55,31 @@ remain in the polishing backlog.
 | Two players, movement and presentation | 11.75 | 15 |
 | Combat, individual resources and death | 13.5 | 20 |
 | Scenes, transport and progression | 16 | 20 |
-| Campaign playability | 6.67 | 20 |
-| **Total** | **68.17, rounded to 68.2** | **100** |
+| Campaign playability | 7.18 | 20 |
+| **Total** | **68.68, rounded to 68.7** | **100** |
+
+## Burning Curiosity playable route completed
+
+Twenty-four connected ordinary save/resume sections now cover the entrance,
+original watched Caterpillar scene, both players' climbs and actual paired
+Jabberwock arrival. Their unchanged saved bytes and native resume receipts
+connect the historical approach to the new upper route and exit on `40d06c0`.
+The retained sections contain 43,586 matching player/world/native state samples.
+This is a verified save chain, not a new uninterrupted run of the entire level.
+
+The upper test now lets one player finish the narrow ledges before the partner
+follows. Each uses an ordinary continuous jump beyond the sloped lip; actual
+damage remains active during the short upper crossing. The original next-level
+scene releases Alice above the floor, so the arrival check now observes her
+normal landing within one second rather than requiring immediate grounding.
+Both clients pass the final exit check, with 1,383 matching states. Earlier
+failed attempts remain recorded as failures; only their separately verified
+prefixes contribute to the connected chain.
+
+All 38 focused Curiosity guards and seven package checks pass. Native code is
+unchanged from the already tested build. Optional pickup/Watch choreography,
+extra scene-owner permutations and repeated full traversals remain polishing.
+This adds one normal-route credit: `61.5 + 20 * 14 / 39 = 68.68`; 25 visits remain.
 
 ## Connected Clockwork and Funhouse routes
 
@@ -84,16 +107,11 @@ The existing actual-map gap probe passes all six delays, and the complete
 Clockwork movement check now passes all 72 groups. Normal player controls are
 unchanged. All 944 active Rust tests, the locked release build, seven package
 checks and the source audit pass. These focused checks do not claim fresh
-full routes or complete the remaining 26 visits.
+full routes for the other visits.
 
-Burning Curiosity now has a verified historical checkpoint chain through its
-first 77 course actions (29,251 matching states), a fresh watched Caterpillar
-prefix, and subsequent normal segments through both players' final ledge
-climb. The playable test omits optional pickup/Watch choreography and uses
-separate takeoff turns at the narrow climb. Its latest run still fails in the
-upper-route test planner at 99; an ordinary checkpoint before 98 preserves
-both completed climbs. The actual exit remains required, so the overall
-estimate stays 68.2%. See [bounded continuation evidence](JLAIR1.md#playable-route-continuation-7-november-2026).
+Burning Curiosity's earlier approach and climb segments are now connected to
+the completed upper route and actual exit described above. See the
+[continuation evidence](JLAIR1.md#playable-route-continuation-7-november-2026).
 
 ## Playable route consolidation
 

@@ -15,7 +15,7 @@ from pathlib import Path
 
 from test_coop_play import ROOT, distance
 from test_coop_village import verify_rejoin_stats
-from test_coop_jlair1 import CuriosityPair, ROLES, verify_arrival
+from test_coop_jlair1 import CuriosityPair, ROLES, verify_arrival, verify_jump_flight
 from test_coop_chess_resume import verify_resume_receipt, verify_resume_body
 
 SCENE = 'JLair1_Caterpillar_Cinema1'
@@ -25,6 +25,7 @@ ARRIVAL_STEPS = NAV_STEPS + (86, 92, 97)
 # The strict course separately checks the optional pickup, Watch and exact
 # single-player setup marks; both bodies need not queue on that narrow mark.
 PLAYABLE_OMITTED = frozenset((86, 90, 91, 92, 93, 94, 95, 96))
+UPPER_LEDGE = [-2784., 3980., 2960.03125]
 
 
 def verify_reunion_resources(before, after, ticks):
@@ -154,7 +155,10 @@ def verify_exit(history, saved):
     for role, rows in history.items():
         before = [r for r in rows if r['map'] == 'jlair1'][-1]
         entered = next((r for r in rows if r['map'] == 'jlair2' and r['epoch'] == 2), None)
-        ready = next((r for r in rows if r['map'] == 'jlair2' and r['epoch'] == 2 and r['owner'] is None), None)
+        released = next((r for r in rows if r['map'] == 'jlair2' and r['epoch'] == 2 and r['owner'] is None), None)
+        ready = next((r for r in rows if released and r['map'] == 'jlair2' and r['epoch'] == 2
+                      and r['owner'] is None and 0 <= r['tick']-released['tick'] <= 120
+                      and all(r['driver']['clear']) and all(p['grounded'] and p['health'] > 0 for p in r['players'])), None)
         assert before['curiosity']['caterpillar'] and entered and ready, 'Missing real onward travel'
         assert all(ready['driver']['clear']) and all(p['grounded'] and p['health'] > 0 for p in ready['players']), 'Unsafe onward pair'
         for slot, p in enumerate(entered['players']):
@@ -264,20 +268,78 @@ class EndingPair(CuriosityPair):
 
     def ending_exit(self):
         for role in ROLES:self.set(role,attack=False)
-        first='host' if self.args.first=='blue' else 'guest'
+        first=(min(ROLES,key=lambda r:distance(self.body(r)['player']['feet'],self.steps[106]['pos']))
+               if self.args.playable else ('host' if self.args.first=='blue' else 'guest'))
         self.set(first,self.steps[107]['pos'],run=True,attack=False)
         self.until(self.arrived,45)
         for role in ROLES:self.set(role,epoch=2,attack=False)
-        self.until(lambda: all(r['combat']['stage']['owner'] is None for r in self.reports.values()),180)
+        # The original arrival scene releases Alice above the floor. Observe
+        # her ordinary short fall before checking the shared playable arrival.
+        self.until(lambda: all(r['combat']['stage']['owner'] is None and all(r['route_driver']['clear'])
+                   and all(p['player']['grounded'] for p in r['frame']['players']) for r in self.reports.values()),180)
         self.evidence['exit']=verify_exit(self.history,self.saved['frame']['players'])
         print('PASS actual paired Jabberwock arrival',flush=True)
+
+    def upper_route(self):
+        # Parking beside each narrow takeoff can put the leader under a lip.
+        # Follow the original consecutive approaches, then wait by the exit
+        # while the partner follows. These are static ledges, not a shared lift.
+        first=min(ROLES,key=lambda r:distance(self.body(r)['player']['feet'],self.steps[98]['pos']))
+        other=ROLES[1-ROLES.index(first)]
+        self.evidence['upper_leader']=first
+        self.set(other)
+        for role in (first,other):
+            for self.step in range(98,106):
+                (self.folder/f'before-upper-{role}-{self.step:03d}.json').write_text(json.dumps(self.reports))
+                if self.step==100:
+                    # The original path jumps onto the sloped lip before
+                    # walking up to 100. Its grounded planner can miss this
+                    # short approach; use the same ordinary jump explicitly.
+                    approach=self.move(role,self.steps[99]['pos'],radius=2)
+                    before=self.history[role][-1];slot=ROLES.index(role)
+                    self.set(role,UPPER_LEDGE,run=True,jump=True)
+                    command=self.commands[role]['id']
+                    self.until(lambda:self.body(role)['player']['jumps']==before['players'][slot]['jumps']+1
+                               and not self.body(role)['player']['grounded'],15)
+                    flight=self.history[role][-1]
+                    # Aim beyond the sloped lip so normal forward input
+                    # continues uphill without a delayed mid-jump handoff.
+                    self.until(lambda:self.reached(role) and self.body(role)['player']['grounded'],30)
+                    arrival=self.receipt(role,UPPER_LEDGE)
+                    verify_jump_flight(before,flight,self.history[role][-1],slot,command)
+                    self.evidence.setdefault('upper_jumps',[]).append(dict(role=role,approach=approach,
+                        before=before['tick'],flight=flight['tick'],arrival=arrival))
+                # Keep following this short upper crossing through incidental
+                # liquid contact; actual damage and deaths remain validated.
+                self.evidence['arrivals'].append(self.move(role,self.steps[self.step]['pos'],
+                    navigate=self.step!=100,recover_liquid=False))
+                print('PASS upper approach',role,self.step,flush=True)
+            if role==first:
+                self.step=106
+                self.evidence['arrivals'].append(self.move(role,self.steps[106]['pos'],navigate=True))
+                self.set(role,self.steps[106]['pos'],run=True)
+            else:self.set(role)
+        self.completed.extend(range(98,107))
+        self.checkpoint(107)
 
     def verify(self):
         expected = [step for step in range(self.args.start_step,108) if not (self.args.playable and step in PLAYABLE_OMITTED)]
         assert self.completed == expected, 'Incomplete requested ending'
         arrival_steps = [step for step in ARRIVAL_STEPS if step in expected]
-        assert {(r['step'],r['role']) for r in self.evidence['arrivals']} == {(step,role) for step in arrival_steps for role in ROLES}, 'Missing personal ending arrivals'
-        assert len(self.evidence['arrivals']) == 2*len(arrival_steps), 'Duplicated ending arrivals'
+        pairs={(step,role) for step in arrival_steps for role in ROLES
+               if not (self.args.playable and step==106 and role!=self.evidence.get('upper_leader'))}
+        assert {(r['step'],r['role']) for r in self.evidence['arrivals']} == pairs, 'Missing personal ending arrivals'
+        assert len(self.evidence['arrivals']) == len(pairs), 'Duplicated ending arrivals'
+        if self.args.playable and self.args.start_step<=98:
+            assert self.evidence.get('upper_leader') in ROLES, 'Missing observed upper-route leader'
+            jumps=self.evidence.get('upper_jumps',[])
+            assert len(jumps)==2 and {r['role'] for r in jumps}==set(ROLES), 'Missing upper ledge jumps'
+            for entry in jumps:
+                assert entry['approach']['goal']==self.steps[99]['pos'] and entry['arrival']['goal']==UPPER_LEDGE
+                verify_arrival(entry['approach'],self.history);verify_arrival(entry['arrival'],self.history)
+                rows={r['tick']:r for r in self.history[entry['role']]}
+                verify_jump_flight(rows[entry['before']],rows[entry['flight']],rows[entry['arrival']['tick']],
+                                   ROLES.index(entry['role']),entry['arrival']['command'])
         for entry in self.evidence['arrivals']:
             goal=self.markers['health_goal'] if entry['step']==86 else self.steps[entry['step']]['pos']
             assert entry['goal']==goal
@@ -319,9 +381,12 @@ class EndingPair(CuriosityPair):
         if self.step == 77:self.scene()
         for self.step in range(self.args.start_step,108):
             if self.args.playable and self.step in PLAYABLE_OMITTED:continue
+            if self.args.playable and 98<self.step<=106:continue
             if self.step in self.args.save_before:self.checkpoint(self.step)
             (self.folder/f'before-step-{self.step:03d}.json').write_text(json.dumps(self.reports))
-            if self.step in NAV_STEPS:self.go(self.steps[self.step]['pos'])
+            if self.args.playable and self.step==98:
+                self.upper_route();continue
+            elif self.step in NAV_STEPS:self.go(self.steps[self.step]['pos'])
             elif self.step==86:
                 self.go(self.markers['health_goal'])
                 self.evidence['pickup']=verify_pickup(self.history,self.markers['health_key'],[p['stats'] for p in self.saved['frame']['players']])
@@ -349,7 +414,7 @@ def main():
     parser.add_argument('--exe',type=Path,required=True);parser.add_argument('--data',type=Path,required=True)
     parser.add_argument('--build',required=True);parser.add_argument('--checkpoint',type=Path,required=True)
     parser.add_argument('--first',choices=('blue','red'),default='blue');parser.add_argument('--local',action='store_true')
-    parser.add_argument('--start-step',type=int,choices=(77,78,83,86,90,98),default=77,
+    parser.add_argument('--start-step',type=int,choices=(77,78,83,86,90,98,107),default=77,
                         help='Resume a normal checkpoint; post-scene segments do not claim watched-scene coverage')
     parser.add_argument('--playable',action='store_true',help='Use ordinary planned climbs; omit optional healing and separate Watch choreography')
     parser.add_argument('--delay-ms',type=int,default=40);parser.add_argument('--jitter-ms',type=int,default=20)

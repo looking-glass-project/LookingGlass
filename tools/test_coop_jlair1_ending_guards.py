@@ -149,5 +149,20 @@ class EndingGuards(unittest.TestCase):
         mid['players'][0]['ledge']=None
         with self.assertRaisesRegex(AssertionError,'ledge catch'):verify_climb(receipt,h,[arrival])
 
+    def test_exit_allows_only_bounded_observed_settling_after_scene(self):
+        h=scene_rows();saved=[dict(stats=copy.deepcopy(p['stats'])) for p in h['host'][-1]['players']]
+        for rows in h.values():
+            released=copy.deepcopy(rows[-1]);released.update(map='jlair2',epoch=2,tick=30)
+            released['players'][0]['grounded']=False
+            landed=copy.deepcopy(released);landed['tick']=60;landed['players'][0]['grounded']=True
+            rows.extend((released,landed))
+        self.assertTrue(all(r['ready']==60 for r in verify_exit(h,saved)))
+        for invalid in ('late','blocked','airborne'):
+            broken=copy.deepcopy(h);row=broken['guest'][-1]
+            if invalid=='late':row['tick']=151
+            elif invalid=='blocked':row['driver']['clear'][0]=False
+            else:row['players'][0]['grounded']=False
+            with self.assertRaises(AssertionError):verify_exit(broken,saved)
+
 
 if __name__=='__main__':unittest.main()

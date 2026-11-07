@@ -57,7 +57,7 @@ the game 100% playable while a level or requested core flow remains blocked.
 
 ## Normal-route acceptance, 7 November
 
-Thirteen of 39 visits now have credited normal paired route evidence. The six
+Fourteen of 39 visits now have credited normal paired route evidence. The six
 historically combined visits remain credited. The playable milestone also
 accepts complete ordinary-input routes in UTemple, Sanctum, Castling,
 Checkmate and About Face without requiring every polishing permutation.
@@ -70,6 +70,13 @@ Funhouse's edges were rechecked against their frozen movement/combat/scene
 assertions, with 18,637 matching state samples and two verified revivals.
 These are historical build-specific routes, not fresh uninterrupted runs on
 the latest executable. Disconnected or unverifiable receipts were excluded.
+
+Burning Curiosity is also credited through 24 connected normal save/resume
+sections, including the original Caterpillar scene, both players' climbs and
+actual paired Jabberwock arrival. There are 43,586 matching state samples across
+the retained sections. The new upper route and exit use `40d06c0`; earlier
+approach evidence remains tied to its historical builds. Optional pickup/Watch
+choreography and another uninterrupted full run are deferred to polishing.
 
 UTemple now passes a fresh public-internet entrance-to-Garden run on `c8a041e`,
 with 40 ms injected delay and 20 ms jitter. Both clients agree on 2,813
@@ -95,12 +102,12 @@ linked to the exact native revival. Three such revivals/continuations pass a
 bounded audit. The subsequent full attempt still fails after both players die
 in the late encounter at step 154 and restore the initial checkpoint. A Garden
 full-route pass is still required; no team-wipe certification is inferred from
-that failed route. Twenty-six visits remain outside credited normal
+that failed route. Twenty-five visits remain outside credited normal
 route coverage; all have paired component evidence.
 
 Remaining normal-route coverage is first Skool, School Two, all three Pool
 visits, all four Garden visits, Centipede One, both Wood visits, Pale Realm,
-Burning Curiosity, Jabberwock One, the six Maze/Tower
+Jabberwock One, the six Maze/Tower
 visits, both Grounds visits, Ascension, Castle Keep and the Queen finale.
 
 Run the two fresh-entry route checks together in Anode:

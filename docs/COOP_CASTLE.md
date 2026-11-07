@@ -31,3 +31,33 @@ Reproduce headlessly with `--grounds2-coop-check`, `--facade-coop-check`,
 `--registry-check`, with original data supplied through `--data`. Private
 receipts retain executable/source/log hashes and command results. Existing
 save versions are retained, including Castle Keep controller version 2.
+
+## Battle Royale normal paired route, 7 November 2026
+
+Run `--grounds2-coop-route-check --no-audio` in Anode with an isolated profile.
+Build `57aa72b` passes the default fresh entrance-to-Ascension route in about
+19 seconds: 30,506 simulation ticks, 255 matching compressed Arena replicas,
+the original introduction/reunion and all eight recurring guard companies
+completed at counts `[2, 2, 3, 3, 4, 4, 6, 6]`, with all 30 guards defeated.
+Both players use ordinary movement, weapons, Watch and personal loot. No scene,
+boss/enemy outcome, health, inventory or progression is seeded.
+
+Each player dies once and revives exactly 1,200 ticks later. The team never
+wipes, and both reach `facade_start1` alive with the same personal resources
+they carried at departure: 17.76/100 health and 81.20/100 Will. The profile's
+`grounds2-coop-route.json` records the actual world, both players, life events,
+completed commands, replica count, destination and recent inputs. This is
+native paired progression evidence; internet and spectator presentation are
+covered separately by the core checks.
+
+The first run's two automated paths blocked each other at a redundant solo
+turn marker. Both can take the normal path directly to the next marker. That
+successful input sequence is the final default; game collision and combat
+remain unchanged. `LOOKING_GLASS_COOP_NATIVE_ROUTE` can optionally select a JSON
+array of `Node`, `Nav`, `Clear`, `Wait`, `Watch` and `Staff` commands. These emit
+ordinary player inputs and cannot supply authoritative game state.
+
+All 944 active Rust tests passed on the initial runner build. Only its default
+diagnostic waypoint list changed afterward; the final release and fresh default
+route pass. Seven package checks and source audit also pass. Ascension and
+Castle Keep still need their own normal paired route evidence.

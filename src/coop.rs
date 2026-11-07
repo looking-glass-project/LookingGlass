@@ -30,6 +30,7 @@ pub mod village_check;
 pub mod pandemonium_check;
 pub mod pandemonium_route;
 pub mod route_driver;
+pub(crate) mod native_route;
 mod recovery_trace;
 pub mod encounter_check;
 mod school2_pickup_check;

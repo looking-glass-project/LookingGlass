@@ -400,7 +400,7 @@ pub static RESERVATIONS: [Reservation; 39] = [
     }), ..visit(34, "grounds1") },
     Reservation { flags: Some(VisitFlags {
         contract: &["--grounds2-check", "--grounds2-save-check", "--grounds2-coop-check"],
-        route: &["--grounds2-route-check"], skip: &["--grounds2-skip-route-check"],
+        route: &["--grounds2-route-check", "--grounds2-coop-route-check"], skip: &["--grounds2-skip-route-check"],
         render: &["--grounds2-render-check"],
     }), ..visit(35, "grounds2") },
     Reservation { flags: Some(VisitFlags {

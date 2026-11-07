@@ -1105,7 +1105,7 @@ impl CombatAim {
     }
 }
 
-fn combat_dodge(world:&World, player:&Player, home:Vec3, enemy:Vec3, tick:u64, lead:f32,
+pub(crate) fn combat_dodge(world:&World, player:&Player, home:Vec3, enemy:Vec3, tick:u64, lead:f32,
     other:Option<Vec3>, melee:bool, safe:impl Fn(Vec3)->bool)->Vec2 {
     if !player.grounded || player.swimming || player.rope.is_some() {return Vec2::ZERO;}
     let delta=(enemy-player.eye()).truncate();let toward=delta.normalize_or_zero();

@@ -2020,6 +2020,11 @@ This route check is separate from independent-process internet verification.
 Royal Rage: ordinary flight/ground combat, original scenes, both bridge walkers,
 the opened gate and actual Battle Royale arrival. It does not stage boss defeat.
 
+`--grounds2-coop-route-check` reserves the accelerated normal paired Battle Royale
+route, with ordinary weapon controls, personal loot and actual Ascension arrival.
+An optional `LOOKING_GLASS_COOP_NATIVE_ROUTE` file supplies navigation/combat
+commands only; it cannot supply world state, health, rewards or progression.
+
 `--wforest-coop-check` reserves staged co-op checks across both Caterpillar's
 Plot visits: shared machinery, individual healing, Staff arrival and original
 scene ownership/reunion. Full traversal and internet coverage remain separate.

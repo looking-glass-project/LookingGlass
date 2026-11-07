@@ -1,6 +1,6 @@
 # Co-op progress
 
-Updated 7 November 2026. Branch: `coop`. **Estimated overall completion: 69.7%.**
+Updated 7 November 2026. Branch: `coop`. **Estimated overall completion: 70.2%.**
 The target is now [100% playable co-op](COOP_PLAYABLE.md), followed by a
 separate polishing stage. Complete normal progression and core flows first;
 batch implementation and reuse passing evidence. The historical exhaustive
@@ -41,7 +41,7 @@ foundation point credited the missing import feature. The current additional
 Internet Host/Join point credits completed public core consolidation on `0b5bca3`;
 no additional campaign visit is credited.
 
-Sixteen of 39 visits now have credited normal paired route evidence. Six retain
+Seventeen of 39 visits now have credited normal paired route evidence. Six retain
 the historical combined designation; the broader matrix still labels 33 as
 partial because it includes polishing cases. The next priority is normal paired campaign
 pass, fixing progression blockers and checking core recovery at representative
@@ -55,8 +55,35 @@ remain in the polishing backlog.
 | Two players, movement and presentation | 11.75 | 15 |
 | Combat, individual resources and death | 13.5 | 20 |
 | Scenes, transport and progression | 16 | 20 |
-| Campaign playability | 8.21 | 20 |
-| **Total** | **69.71, rounded to 69.7** | **100** |
+| Campaign playability | 8.72 | 20 |
+| **Total** | **70.22, rounded to 70.2** | **100** |
+
+## Battle Royale playable route completed
+
+`57aa72b` passes the default accelerated paired Battle Royale route from its
+normal entrance to actual Ascension arrival. The production Arena runs both
+players' ordinary navigation, weapons, Watch, damage, personal loot and revival.
+All eight recurring companies reach their normal counts, totaling 30 defeated
+guards. The original introduction reunites both players. No world progression,
+health, damage outcome or reward is staged.
+
+The fresh default run takes about 19 seconds for 30,506 simulation ticks and
+255 matching compressed arena replicas. Blue dies at tick 4,433 and revives at
+5,633; Red dies at 10,746 and revives at 11,946. Both countdowns are exactly ten
+seconds, without a team wipe. Both arrive alive with unchanged personal stats:
+17.76/100 health and 81.20/100 Will. Internet transport and spectator rendering
+remain covered by their separate core evidence, rather than this native run.
+
+The first attempt stopped when two automated approach paths blocked each other
+at a redundant solo turn marker. The normal path to the following marker works
+for both. That tested sequence is now the default; no game collision, enemy or
+damage rules changed. The reusable runner accepts optional ordinary-input
+command files, allowing later route adjustments without recompilation.
+
+All 944 active Rust tests passed on the initial runner build; only the default
+diagnostic waypoints changed afterward. The final locked release and fresh
+default native route pass, as do seven package checks and the source audit.
+This credits one normal route: `61.5 + 20 * 17 / 39 = 70.22`; 22 remain.
 
 ## Royal Rage playable route completed
 
@@ -283,7 +310,7 @@ Campaign status from `COOP_CAMPAIGN.md`:
   currently have components or checkpoint segments only.
 - **No visit remains without paired component evidence.** Heart of Darkness's
   adapter is integrated. Component coverage does not complete the full campaign
-  playability pass: 16 normal paired routes are credited, with 23 remaining.
+  playability pass: 17 normal paired routes are credited, with 22 remaining.
 
 See the [full campaign matrix](COOP_CAMPAIGN.md). Future updates should separate
 working features, partial route milestones and completed verification visits.

@@ -455,6 +455,8 @@ pub static REGISTRATION: Registration = Registration {
     target_base: Some(BASE),
     story_beats: &[],
     checks: &[
+        Check {flag: "--grounds2-coop-route-check", help: "Play an accelerated normal paired Battle Royale route to Ascension.",
+            run: Run::Windowed(route::coop_check)},
         Check {flag: "--grounds2-coop-check", help: "Verify paired castle progression and personal combat.",
             run: Run::Headless(coop_check::check)},
         Check {

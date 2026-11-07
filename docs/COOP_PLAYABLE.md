@@ -56,6 +56,18 @@ a normal-play blocker, data loss, or a missing requested core feature.
 Report playable readiness and the polishing backlog separately. Do not label
 the game 100% playable while a level or requested core flow remains blocked.
 
+## Airborne Terror accepted
+
+`fb8a476` passes the full normal paired wind course into Mystifying Madness:
+17,513 ticks, 146 exact replicas, one watched reunion and both players alive
+at 21/62 health. Two Blue revivals each count exactly ten active seconds and
+then wait for safe footing. A real airborne wall-contact freeze is fixed;
+its regression and the affected Battle Royale route pass. The final updraft
+controls advance each player's own waypoints without mid-air waiting.
+Use `tools/test_coop_native_route.py --map tower1` with the frozen executable,
+local data and a new profile. Coverage is **28/39 visits**, **11 remaining**,
+or **75.9%** overall. Internet/camera evidence remains separate.
+
 ## Pale Realm accepted
 
 The existing Blue-led watched course passes on `841dcd6`: 68,146 ticks, 113

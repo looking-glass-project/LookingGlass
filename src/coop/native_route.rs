@@ -15,6 +15,14 @@ pub(crate) enum Command {
     Board { thread: String, center: [f32; 2] },
     /// Follow an authored point's footing in single file; stop if a scene starts.
     Approach([f32; 3]), Interact([f32; 3]), Shoot(String),
+    /// Ordinary steering for authored jumps and airborne course corrections.
+    Steer { at: [f32; 3], mode: String },
+    /// Each player follows continuous updraft waypoints without mid-air waits.
+    Flight { takeoff: [f32; 3], via: Vec<[f32; 3]>, landing: [f32; 3] },
+    /// Let an automated survivor leave transient goals to find revival footing.
+    ContinueWithSurvivor(bool),
+    /// Hold position until a live controller clock enters an authored interval.
+    Phase { controller: String, pointer: String, start: f64, end: f64 },
 }
 pub(crate) struct Spec {
     pub map: &'static str,
@@ -109,6 +117,7 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
     let mut quiet = 0;
     let mut staff = true;
     let mut cards = false;
+    let mut continue_with_survivor = false;
     let mut history = VecDeque::new();
     let mut completed = Vec::new();
     let mut life_events = Vec::new();
@@ -125,6 +134,8 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
     let mut approach_lead = None;
     let mut approach_stuck = 0;
     let mut approach_yields = 0;
+    let mut jumped = [false; 2];
+    let mut flight = [0; 2];
     std::fs::create_dir_all(crate::preferences::path(""))?;
     let recovery_name=format!("{}-recovery.jsonl",spec.map);
     let mut recovery=super::recovery_trace::Trace::new(crate::preferences::path(&recovery_name))?;
@@ -137,6 +148,13 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
             let before = roster.players.each_ref().map(|b| b.player.feet);
             let alive = roster.players.each_ref().map(|b| b.stats.alive());
             let spawned = roster.players.each_ref().map(|b| b.spawned_at);
+            let phase_ready=if let Command::Phase{controller,pointer,start,end}=command {
+                let slot=arena.stage.interactions.levels.iter().find(|s|s.reg.id==controller)
+                    .context("Missing route phase controller")?;
+                let state=slot.ctl.snapshot();
+                let value=state.pointer(pointer).and_then(|v|v.as_f64()).context("Missing route phase clock")?;
+                value>=*start && value<*end
+            } else {false};
             let mut all = targets(&arena);
             let switch=if let Command::Shoot(thread)=command {
                 let target=arena.stage.interactions.switch_target(thread);
@@ -233,6 +251,50 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
                     nav_touch |= landed && p.feet.distance(goal)<38.;
                     let nearby=if matches!(command,Command::Positions(_)) || !require_landing {48.} else {80.};
                     work |= !landed || p.feet.distance(goal)>=nearby;
+                } else if let Command::Flight{takeoff,via,landing}=command {
+                    let last=via.len()+1;
+                    let point=|leg:usize|Vec3::from_array(if leg==0 {*takeoff}
+                        else if leg==last {*landing} else {via[leg-1]});
+                    let mut delta=point(flight[i])-p.feet;
+                    let near=|d:Vec3,leg:usize|d.truncate().length()<22.
+                        && d.z.abs()<64. && (leg>0 && leg<last || p.grounded || p.swimming);
+                    if flight[i]<last && near(delta,flight[i]) {
+                        flight[i]+=1;jumped[i]=false;delta=point(flight[i])-p.feet;
+                    }
+                    // Require one actual landing at the shared destination;
+                    // the partner can settle beside it with ordinary spacing.
+                    let partner=&roster.players[1-i].player;
+                    let radius=if flight[i]==last && partner.grounded
+                        && partner.feet.distance(point(last))<30. {70.}else{22.};
+                    let done=flight[i]==last && p.grounded && delta.truncate().length()<radius && delta.z.abs()<64.;
+                    if !done {
+                        let jump=p.ledge.as_ref().is_some_and(|h|!h.pulling)
+                            || p.grounded && (delta.z>24. || flight[i]>0 && !jumped[i]);
+                        jumped[i]|=jump;
+                        inputs[i].0=Controls{wish:(delta.truncate()*3.-p.velocity.truncate()*0.7).clamp_length_max(320.)/320.,
+                            swim:delta.normalize_or_zero(),rise:delta.z.signum(),run:true,jump,..Default::default()};
+                        work=true;
+                    }
+                } else if let Command::Steer{at,mode}=command {
+                    let delta=Vec3::from_array(*at)-p.feet;
+                    let lead=roster.players.iter().enumerate().filter(|(_,b)|b.stats.alive())
+                        .min_by(|(_,a),(_,b)|a.player.feet.distance_squared(Vec3::from_array(*at))
+                            .total_cmp(&b.player.feet.distance_squared(Vec3::from_array(*at)))).map(|(i,_)|i)
+                        .context("Steering has no living player")?;
+                    let near=delta.truncate().length()<if i==lead {22.}else{70.}
+                        && delta.z.abs()<64. && (mode=="air" || p.grounded || p.swimming);
+                    if !near {
+                        let jump=p.ledge.as_ref().is_some_and(|h|!h.pulling)
+                            || p.grounded && (mode=="hop" || matches!(mode.as_str(),"jump"|"air"|"precise") && (!jumped[i] || delta.z>24.));
+                        jumped[i]|=jump;
+                        inputs[i].0=Controls{wish:if matches!(mode.as_str(),"precise"|"air") {
+                            (delta.truncate()*3.-p.velocity.truncate()*0.7).clamp_length_max(320.)/320.
+                        } else {delta.truncate().normalize_or_zero()},swim:delta.normalize_or_zero(),rise:delta.z.signum(),run:true,jump,..Default::default()};
+                        work=true;
+                    }
+                } else if matches!(command,Command::Phase{..}) {
+                    inputs[i].0=Controls{wish:((home[i]-p.feet).truncate()*3.-p.velocity.truncate()*0.7)
+                        .clamp_length_max(320.)/320.,run:true,..Default::default()};
                 } else if let Command::Walk(at)=command {
                     let delta=Vec3::from_array(*at)-p.feet;
                     if delta.truncate().length()>=8. || delta.z.abs()>=35. {
@@ -313,7 +375,7 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
                 step_ticks += 1;
                 quiet = if work {0} else {quiet+1};
             }
-            history.push_back(serde_json::json!({"tick":roster.tick,"step":step,"command":command,"feet":before,
+            history.push_back(serde_json::json!({"tick":roster.tick,"step":step,"command":command,"feet":before,"flight":flight,
                 "health":roster.players.each_ref().map(|b|b.stats.sanity()),"will":roster.players.each_ref().map(|b|b.stats.will()),
                 "movement":inputs.each_ref().map(|(c,n)|serde_json::json!({"wish":c.wish,"jump":c.jump,"run":c.run,
                     "use":c.use_pressed,"weapon":n.weapon,"primary":n.primary,"alternate":n.alternate})),
@@ -338,6 +400,8 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
                 if alive[i]!=roster.players[i].stats.alive() || spawned[i]!=roster.players[i].spawned_at {
                     life_events.push(serde_json::json!({"tick":roster.tick,"slot":i,"alive":roster.players[i].stats.alive(),"spawned_at":roster.players[i].spawned_at}));
                     walking[i]=Default::default();
+                    jumped[i]=false;
+                    if !alive[i] {flight[i]=flight[1-i];}
                 }
             }
             if !busy && matches!(command,Command::Approach(_)) {
@@ -375,10 +439,14 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
                 clear_background(BLACK); next_frame().await;
             }
             if arena.stage.transition.is_some() {break;}
-            if !busy && roster.players.iter().all(|b|b.stats.alive()) {
+            // A survivor must be able to leave an airborne waypoint and reach
+            // safe footing while the partner's ordinary revival remains pending.
+            if !busy && (roster.players.iter().all(|b|b.stats.alive())
+                || continue_with_survivor && roster.players.iter().any(|b|b.stats.alive())) {
                 let done=match command {
                     Command::Node(_) | Command::HighNode(_) | Command::Nav(_) | Command::Walk(_)
-                        | Command::Positions(_) | Command::Rise{..} => !work,
+                        | Command::Positions(_) | Command::Rise{..} | Command::Steer{..} | Command::Flight{..} => !work,
+                    Command::Phase{..} => phase_ready,
                     Command::Board{..} => false,
                     Command::Approach(_) => !work || began_scene,
                     Command::Interact(_) => used && began_scene,
@@ -388,13 +456,14 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
                     Command::Watch => step_ticks>=120,
                     Command::Staff(enabled) => {staff=*enabled;true},
                     Command::Cards(enabled) => {cards=*enabled;true},
+                    Command::ContinueWithSurvivor(enabled) => {continue_with_survivor=*enabled;true},
                 };
                 if done {
                     println!("DONE {} step{step} {command:?} tick{} feet{:?}",spec.map,roster.tick,roster.players.each_ref().map(|b|b.player.feet));
                     completed.push(serde_json::json!({"step":step,"command":command,"tick":roster.tick,"feet":roster.players.each_ref().map(|b|b.player.feet),
                         "steam_seen":steam_seen,"rise_done":rise_done}));
                     step+=1;step_ticks=0;quiet=0;walking=Default::default();
-                    rising=[false;2];steam_seen=[false;2];rise_done=[false;2];board_lead=None;shot_started=false;approach_lead=None;approach_stuck=0;
+                    rising=[false;2];steam_seen=[false;2];rise_done=[false;2];board_lead=None;shot_started=false;approach_lead=None;approach_stuck=0;jumped=[false;2];flight=[0;2];
                     home=roster.players.each_ref().map(|b|b.player.feet);
                 }
             }

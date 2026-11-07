@@ -248,7 +248,14 @@ pub fn resolve(world: &World, bodies: &mut [Body; 2], previous: [Vec3; 2]) {
             if approach[i]<=0. {continue;}
             if !movable(&bodies[i]) {valid=false;break;}
             let to=previous[i].lerp(end[i],fraction);
-            let position=contact_position(world,&bodies[i],to).or_else(|| {
+            // Side contact only blocks horizontal approach. Rewinding an
+            // airborne body's height every tick can suspend it beside a wall
+            // while gravity keeps accumulating. Preserve its vertical travel
+            // when the swept world and final pair clearance allow it.
+            let p=&bodies[i].player;
+            let position=(contact_normal.z==0. && !p.grounded && !p.swimming)
+                .then(||contact_position(world,&bodies[i],vec3(to.x,to.y,p.feet.z))).flatten()
+                .or_else(||contact_position(world,&bodies[i],to)).or_else(|| {
                 let p=&bodies[i].player;
                 // A just-landed body can have an airborne previous position.
                 // Keep its landing height when retreating horizontally: the
@@ -529,6 +536,28 @@ mod tests {
             for _ in 0..60 {r.move_players(&world,input);}
             assert!(r.players[moving].player.feet.y < -50.);
         }
+    }
+    #[test]
+    fn airborne_wall_contact_preserves_free_vertical_motion() {
+        let world=World::fixture(&[(vec3(-500.,-500.,-500.),vec3(-15.,500.,500.))]);
+        for moving in 0..2 { for dz in [-10.,10.] {
+            let mut bodies=std::array::from_fn(|_|Body{player:Player::new(Vec3::ZERO),
+                stats:Stats::default(),yaw:0.,pitch:0.,running:false,spawned_at:0,warped_at:0});
+            bodies[moving].player.feet=vec3(0.03125,-10.,100.);
+            bodies[1-moving].player.feet=vec3(35.03125,0.,104.);
+            let previous=bodies.each_ref().map(|b|b.player.feet);
+            bodies[moving].player.feet+=vec3(0.,8.,dz);
+            bodies[moving].player.velocity=vec3(0.,200.,dz/FIXED_DT);
+            bodies[1-moving].player.feet.z+=dz;
+            let partner=serde_json::to_value(&bodies[1-moving]).unwrap();
+            resolve(&world,&mut bodies,previous);
+            assert!(separate(&bodies));
+            assert_eq!(bodies[moving].player.feet.z,100.+dz,
+                "Side contact must not suspend a falling or rising player");
+            assert_eq!(bodies[moving].player.velocity.z,dz/FIXED_DT);
+            assert_eq!(serde_json::to_value(&bodies[1-moving]).unwrap(),partner);
+            for b in &bodies { assert!(world.body_clear(b.player.feet)); }
+        }}
     }
     #[test]
     fn landing_beside_a_wall_retreats_at_floor_height_without_shoving() {

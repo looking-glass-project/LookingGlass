@@ -1,6 +1,7 @@
 //! Airborne Terror: saved arrival performance and four contact-driven face gusts.
 mod check;
 mod coop_check;
+mod coop_route;
 mod faces;
 mod route;
 mod scene;
@@ -279,6 +280,11 @@ pub static REGISTRATION: Registration = Registration {
         1,
     )],
     checks: &[
+        Check {
+            flag: "--tower1-coop-route-check",
+            help: "Traverse paired Airborne Terror with ordinary inputs and the live face clocks.",
+            run: Run::Windowed(coop_route::check),
+        },
         Check {
             flag: "--tower1-check",
             help: "Verify Tower arrival, timed face gusts and saved phases.",

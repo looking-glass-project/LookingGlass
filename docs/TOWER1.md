@@ -81,6 +81,24 @@ saved owner/world/player futures; they are distinct from the full combat routes.
 Staged renders cover Cat appearance/smile and face close/hold/blow/open/idle.
 Private logs and release hashes are under `private/tower1-work/`.
 
+## Normal paired route
+
+`--tower1-coop-route-check` on `fb8a476` passes the original watched arrival,
+face gauntlet and upper updrafts into actual Hedge2 arrival. It uses ordinary
+movement and funded combat, with no progress or resource writes. Each player
+follows the final flight waypoints independently; three narrow approaches use
+single-file path planning. The survivor can continue toward safe revival ground.
+The run takes 17,513 ticks with 146 exact replicas and finishes at 21/62 health.
+Blue's two deaths each count 1,200 active ticks before safe 25-health revival,
+with 966 and 68 additional ticks waiting for suitable footing. No team wipe.
+
+The route also exposed and fixed horizontal contact rewinding airborne height.
+The asset-free regression covers rising/falling bodies in either slot without
+moving the partner or crossing a wall. Battle Royale still completes with the
+same collision fix. Repeat through `tools/test_coop_native_route.py --map tower1`
+using an isolated profile in Anode. Public internet and rendered cameras are
+covered by separate core checks; exhaustive per-visit combinations are deferred.
+
 ## Limits
 
 Actor post-contact velocity uses the existing recoil decay, rather than a newly

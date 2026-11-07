@@ -1,6 +1,6 @@
 # Co-op progress
 
-Updated 7 November 2026. Branch: `coop`. **Estimated overall completion: 75.3%.**
+Updated 7 November 2026. Branch: `coop`. **Estimated overall completion: 75.9%.**
 The target is now [100% playable co-op](COOP_PLAYABLE.md), followed by a
 separate polishing stage. Complete normal progression and core flows first;
 batch implementation and reuse passing evidence. The historical exhaustive
@@ -41,7 +41,7 @@ foundation point credited the missing import feature. The current additional
 Internet Host/Join point credits completed public core consolidation on `0b5bca3`;
 no additional campaign visit is credited.
 
-Twenty-seven of 39 visits now have credited normal paired route evidence. Six retain
+Twenty-eight of 39 visits now have credited normal paired route evidence. Six retain
 the historical combined designation; the broader matrix still labels 33 as
 partial because it includes polishing cases. The next priority is normal paired campaign
 pass, fixing progression blockers and checking core recovery at representative
@@ -55,8 +55,31 @@ remain in the polishing backlog.
 | Two players, movement and presentation | 11.75 | 15 |
 | Combat, individual resources and death | 13.5 | 20 |
 | Scenes, transport and progression | 16 | 20 |
-| Campaign playability | 13.85 | 20 |
-| **Total** | **75.35, rounded to 75.3** | **100** |
+| Campaign playability | 14.36 | 20 |
+| **Total** | **75.86, rounded to 75.9** | **100** |
+
+## Airborne Terror playable route completed
+
+Frozen `fb8a476` passes the normal paired route into actual Mystifying Madness
+arrival: **17,513 ticks**, **146 exact compressed replicas**, the original
+arrival scene, all four face phases and the upper updraft course. Both arrive
+alive at **21/62 health**, with personal resources carried exactly and no wipe
+or progression staging. Blue revives twice at 25 health after exactly 1,200
+active ticks, followed by 966 and 68 ticks waiting for safe survivor footing.
+
+The route exposed a real wall-contact bug: horizontal retreat could rewind
+airborne height while gravity continued accumulating. The fix preserves clear
+vertical travel. An asset-free regression fails before the fix and passes for
+both player slots, rising and falling. The changed collision code also passes
+Battle Royale on `5c28c48` (30,447 ticks, three exact ten-second revivals).
+The test controls now take turns at three narrow landings and use independent
+waypoint sequences for the final updrafts. No combat or recovery rules changed.
+
+Repeat with `tools/test_coop_native_route.py --map tower1` and the frozen
+executable, local data and a fresh profile in Anode. Exact source, executable
+and report hashes are pinned in `private/coop-playable-tower1-route-verified.json`.
+Internet and rendered-camera evidence remain separate. Coverage is **28/39
+visits**, with **11 remaining**, or **75.9%** overall.
 
 ## Pale Realm playable route completed
 
@@ -549,7 +572,7 @@ yet verified across every level and failure condition.
 | Combat and resources | Nearest-visible targeting, individual damage, inventory and consumables; all explicit paired boss adapters integrated | Verify remaining full combat routes and fix normal-play blockers |
 | Death and saves | Exact ten-second countdown, moving spectator camera, safe 25-health revival; shared checkpoint wipes, solo import, earlier co-op resume, public save/leave/continue and storage-error/backup menu flow | Representative recovery during remaining routes; exhaustive per-visit matrices deferred to polishing |
 | Scenes and machinery | First-arrival ownership, original single-Alice scenes, hidden partner and safe reunion; public scene reconnects and all-living boarding; adapters through the ending | Verify remaining normal transports/exits and the final film/credits handoff; exhaustive owner/skip permutations deferred |
-| Regression checks | 947 active Rust tests on `84b284a`; existing native registry/component checks and build-specific source guards, weapon-effect/audio and solo baselines | Missing normal campaign routes and focused checks for subsequent fixes |
+| Regression checks | 948 active Rust tests on `fb8a476`; existing native registry/component checks and build-specific source guards, weapon-effect/audio and solo baselines | Missing normal campaign routes and focused checks for subsequent fixes |
 
 Campaign status from `COOP_CAMPAIGN.md`:
 
@@ -563,7 +586,7 @@ Campaign status from `COOP_CAMPAIGN.md`:
   currently have components or checkpoint segments only.
 - **No visit remains without paired component evidence.** Heart of Darkness's
   adapter is integrated. Component coverage does not complete the full campaign
-  playability pass: 23 normal paired routes are credited, with 16 remaining.
+  playability pass: 28 normal paired routes are credited, with 11 remaining.
 
 See the [full campaign matrix](COOP_CAMPAIGN.md). Future updates should separate
 working features, partial route milestones and completed verification visits.

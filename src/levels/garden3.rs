@@ -2,6 +2,7 @@
 mod art;
 mod check;
 mod coop_check;
+mod coop_route;
 mod data;
 mod motion;
 mod route;
@@ -633,6 +634,11 @@ pub static REGISTRATION: Registration = Registration {
     target_base: Some(BASE),
     story_beats: &[],
     checks: &[
+        Check {
+            flag: "--garden3-coop-route-check",
+            help: "Run both players through the normal Rolling Stones chase and Icy Reception arrival.",
+            run: Run::Windowed(coop_route::check),
+        },
         Check {
             flag: "--garden3-coop-check",
             help: "Verify paired Rolling Stones clocks, personal marble damage and scene reunion.",

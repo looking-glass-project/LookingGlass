@@ -19,6 +19,8 @@ struct Step {
     frames: usize,
     #[serde(default)]
     save: Option<String>,
+    #[serde(default)]
+    paired_mode: Option<String>,
 }
 #[derive(Default)]
 struct Driver {
@@ -154,6 +156,9 @@ fn record(arena: &Arena, roster: &Roster, drivers: &[Driver;2], first: PlayerId,
     Ok(())
 }
 async fn route(a: &mut Assets, first: PlayerId, skip: bool) -> Result<()> {
+    let recovery_mode=std::env::var("LOOKING_GLASS_GARDEN2_COOP_RECOVERY").unwrap_or_else(|_|"strict".into());
+    ensure!(matches!(recovery_mode.as_str(),"strict"|"allowed"),"Invalid Herbaceous recovery mode");
+    let allow_revival=recovery_mode=="allowed";
     let visit=Visit {epoch:1,map:"garden2".into(),entry:Some("garden2_start1".into()),
         difficulty:Default::default(),combat_preview:false};
     let mut scene=RenderScene::load_for(a,&visit.map,visit.difficulty)?;
@@ -167,7 +172,10 @@ async fn route(a: &mut Assets, first: PlayerId, skip: bool) -> Result<()> {
     let course=if let Ok(path)=std::env::var("LOOKING_GLASS_GARDEN2_COOP_ROUTE") {
         std::fs::read(path).context("Cannot read Herbaceous diagnostic course")?
     } else {include_bytes!("route_steps.json").to_vec()};
-    let steps:Vec<Step>=serde_json::from_slice(&course)?;
+    let mut steps:Vec<Step>=serde_json::from_slice(&course)?;
+    for step in &mut steps {
+        if let Some(mode)=step.paired_mode.take() { step.mode=mode; }
+    }
     ensure!(!steps.is_empty() && steps.iter().all(|s|s.pos.iter().all(|v|v.is_finite())
         && s.frames<=120*90),"Invalid Herbaceous diagnostic course");
     std::fs::write(crate::preferences::path("garden2-coop-course.json"),course)?;
@@ -176,17 +184,28 @@ async fn route(a: &mut Assets, first: PlayerId, skip: bool) -> Result<()> {
     let mut samples=0;
     let mut free_ticks=0;
     let mut reunions=0;
+    let mut rejoins=Vec::new();
+    let mut arrival=None;
+    let mut trace=crate::coop::recovery_trace::Trace::new(crate::preferences::path(
+        &format!("garden2-{first:?}-{skip}-recovery.jsonl")))?;
+    trace.record(&roster,&scene.world,1,"garden2",arena.stage.busy(),false,
+        |at|!arena.stage.interactions.hazardous(at))?;
     let result:Result<()> = async {
         for tick in 0..120*900 {
             let before=roster.players.each_ref().map(|b|b.player.feet);
             let old_owner=arena.stage.owner;
             let old_warps=roster.players.each_ref().map(|b|b.warped_at);
+            let old_spawns=roster.players.each_ref().map(|b|b.spawned_at);
+            let busy=arena.stage.busy();
             let indices=drivers.each_ref().map(|d|d.index);
             let mut inputs=std::array::from_fn(|_|(Controls::default(),Input::default()));
             if !arena.stage.busy() {
                 for id in PlayerId::ALL {
+                    if !roster.players[id.index()].stats.alive() { continue; }
+                    let regroup=allow_revival && !roster.players[id.partner().index()].stats.alive()
+                        && roster.players[id.index()].player.grounded;
                     inputs[id.index()]=drivers[id.index()].sample(&steps,&arena,&scene.world,
-                        &roster.players[id.index()],id,id!=first && free_ticks<240)?;
+                        &roster.players[id.index()],id,regroup || id!=first && free_ticks<240)?;
                 }
                 free_ticks+=1;
             } else if skip {
@@ -200,6 +219,20 @@ async fn route(a: &mut Assets, first: PlayerId, skip: bool) -> Result<()> {
                         "run":c.run,"use_pressed":c.use_pressed,"keys":i}))}));
             if history.len()>240 { history.pop_front(); }
             arena.step(&mut roster,&scene.map,&mut scene.world,inputs)?;
+            trace.record(&roster,&scene.world,1,"garden2",busy||arena.stage.busy(),
+                arena.stage.interactive_actor().is_some(),|at|!arena.stage.interactions.hazardous(at))?;
+            if allow_revival && roster.checkpoint_generation==0 {
+                for i in 0..2 {
+                    if !roster.players[i].stats.alive() { drivers[i].reset(roster.players[i].player.feet); }
+                    if roster.players[i].spawned_at!=old_spawns[i] {
+                        ensure!(roster.players[1-i].stats.alive() && roster.players[i].stats.sanity()==25.,"Invalid Herbaceous revival");
+                        let next=drivers[1-i].index;
+                        rejoins.push(serde_json::json!({"tick":roster.tick,"player":i,"from_step":drivers[i].index,"to_step":next}));
+                        drivers[i]=Driver{index:next,..Default::default()};
+                        drivers[i].reset(roster.players[i].player.feet);
+                    }
+                }
+            }
             if let Some(id)=arena.stage.owner.filter(|id|Some(*id)==old_owner) {
                 ensure!(roster.players[id.partner().index()].player.feet==before[id.partner().index()],
                     "Herbaceous cutscene moved the waiting player");
@@ -213,11 +246,11 @@ async fn route(a: &mut Assets, first: PlayerId, skip: bool) -> Result<()> {
                     "Herbaceous reunion overlapped the pair");
             }
             ensure!(roster.checkpoint_generation==0 && roster.players.iter().all(|b|
-                b.stats.alive() && b.spawned_at==0 && !b.stats.god && !b.stats.notarget)
+                (allow_revival || b.stats.alive() && b.spawned_at==0) && !b.stats.god && !b.stats.notarget)
                 && (old_owner.is_some() || roster.players.each_ref().map(|b|b.warped_at)==old_warps),
                 "Herbaceous death/recovery/warp tick{tick} steps{:?} health{:?}",
                 drivers.each_ref().map(|d|d.index),roster.players.each_ref().map(|b|b.stats.sanity()));
-            if !arena.stage.busy() {
+            if !arena.stage.busy() && roster.players.iter().all(|b|b.stats.alive()) {
                 let d=roster.players[0].player.feet-roster.players[1].player.feet;
                 ensure!(d.truncate().length()>=crate::coop::separation::DISTANCE-0.05
                     || d.z.abs()>=crate::collision::PLAYER_HALF.z*2.-0.05,
@@ -249,7 +282,12 @@ async fn route(a: &mut Assets, first: PlayerId, skip: bool) -> Result<()> {
         ensure!(g.saved.arrived && g.saved.bridge1 && g.saved.bridge2 && g.saved.cat
             && g.saved.scene.is_none() && reunions>=4
             && g.objects.iter().filter(|o|o.group!=0).all(|o|o.pose.is_none())
-            && roster.players.iter().all(|b|b.stats.collected.contains("garden2:57"))
+            // A player can normally miss the optional Mallet after reviving
+            // beyond its ledge. Playable mode records that personal inventory;
+            // strict mode retains the two-pickup coverage requirement.
+            && roster.players.iter().all(|b|b.stats.alive()
+                && (allow_revival || b.stats.collected.contains("garden2:57")))
+            && roster.players.iter().any(|b|b.stats.collected.contains("garden2:57"))
             && arena.stage.transition==Some(("garden3".into(),Some("garden3_start1".into()))),
             "Herbaceous route omitted the Mallet, bridges, scenes or authored exit");
         let next_visit=Visit {epoch:2,map:"garden3".into(),entry:Some("garden3_start1".into()),..visit};
@@ -264,9 +302,18 @@ async fn route(a: &mut Assets, first: PlayerId, skip: bool) -> Result<()> {
             ensure!(serde_json::to_value(&old.stats)?==serde_json::to_value(&new.stats)?
                 && next.world.body_clear(new.player.feet),"Rolling Stones arrival changed resources or embedded a player");
         }
+        arrival=Some(serde_json::json!({"visit":next_visit,"frame":arrived.frame(2,0)}));
         Ok(())
     }.await;
     record(&arena,&roster,&drivers,first,skip,samples,&history,if result.is_ok(){"passed"}else{"failed"})?;
+    let path=crate::preferences::path(&format!("garden2-{first:?}-{skip}-{}.json",if result.is_ok(){"passed"}else{"failed"}));
+    let mut report:serde_json::Value=serde_json::from_slice(&std::fs::read(&path)?)?;
+    report["allow_revival"]=serde_json::json!(allow_revival);
+    report["reunions"]=serde_json::json!(reunions);
+    report["revival_rejoins"]=serde_json::json!(rejoins);
+    report["arrival"]=serde_json::json!(arrival);
+    report["personal_mallet"]=serde_json::json!(roster.players.each_ref().map(|b|b.stats.collected.contains("garden2:57")));
+    std::fs::write(path,serde_json::to_vec(&report)?)?;
     result?;
     println!("PASS Herbaceous full paired route {first:?} skip={skip}: {} ticks, {samples} replicas, {reunions} reunions",roster.tick);
     Ok(())

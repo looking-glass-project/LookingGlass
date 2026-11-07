@@ -144,3 +144,20 @@ complete logs are text-identical to the pre-adapter executable `3c996ca`:
 `private/coop-garden3-baseline-skip-3c996ca.log`.
 The older walking-pace fixture assumptions still need correction; no passing
 whole-suite result is claimed for those commands.
+
+
+## Paired normal-route diagnostic, 7 November 2026
+
+`--garden3-coop-route-check` now runs ordinary paired controls in the production
+Arena, using the same 59 authored test waypoints as the solo driver. It records
+exact recovery, guest replicas, original scene reunion and next-map resources.
+Its two current attempts fail: both players stall near waypoint 16 before the
+marble catches them. Reducing corner-cutting and delaying the follower's start
+did not resolve that failure. No paired route credit is claimed.
+
+The current frozen `4bb7dac` solo fast route passes through Icy Reception and
+its five saved-continuation comparisons. The subsequent paced run fails earlier
+at waypoint 3, so the combined solo command exits 1. Evidence is retained in
+`private/coop-rolling-solo-4bb7dac.log`. The fast solo route exits while the
+marble is at node 44 and its ice callback has not fired; the new paired driver's
+final callback requirements need reviewing against this legitimate fast exit.

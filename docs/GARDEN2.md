@@ -191,3 +191,22 @@ replica comparisons pass before that failure. Its final frame is tick 5,113;
 `private/coop-bank-contact-route-c6a4ddc.log` and
 `private/garden2-coop-bank-contact-c6a4ddc/`. This fixes the captured bank contact;
 it does not fix the thermal traversal or complete the visit.
+
+
+## Playable paired route, 7 November 2026
+
+Frozen `4bb7dac` passes the normal Blue-led watched route into Rolling Stones
+with both players alive: 33,190 ticks, 56 matching Arena replicas, four scene
+reunions and five exact 1,200-active-tick revivals at 25 health. All personal
+resources carry unchanged into the next map; final health is 25/46.
+
+The native test chooses a planned route around the blocked approach at
+[800,-180,-1120]. No movement, combat or progression behavior changes.
+`LOOKING_GLASS_GARDEN2_COOP_RECOVERY=allowed` accepts ordinary revival and
+records personal weapon ownership. Blue collects the Mallet; Red misses it
+after revival. This proves playable progression with recovery, not both
+optional pickups; strict mode retains the original two-pickup requirement.
+Repeat with `tools/test_coop_garden_native.py --map garden2` and isolated
+`--exe`, `--data` and `--profile` paths. Native simulation is separate from
+independent-process internet and rendered spectator-camera acceptance.
+See COOP_PROGRESS.md for tests, evidence and remaining scope.

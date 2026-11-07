@@ -1984,6 +1984,9 @@ and recent controls; adding the driver alone does not establish a passing route.
 Rolling Stones additionally reserves `--garden3-coop-check` for staged paired
 marble contacts, shared gate/collapse clocks and original scene reunion. It
 shares the existing controller and hit IDs, with no full-route credit implied.
+`--garden3-coop-route-check` reserves the windowed ordinary-input paired chase,
+including live marble progression, exact recovery records and the actual
+Icy Reception arrival. Registering the check does not establish a passing run.
 
 Icy Reception additionally reserves `--garden4-coop-check` for staged paired
 rock damage, shared ice/wall clocks, Easy altar contacts, original scene reunion

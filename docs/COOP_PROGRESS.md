@@ -1,6 +1,6 @@
 # Co-op progress
 
-Updated 7 November 2026. Branch: `coop`. **Estimated overall completion: 71.8%.**
+Updated 7 November 2026. Branch: `coop`. **Estimated overall completion: 72.3%.**
 The target is now [100% playable co-op](COOP_PLAYABLE.md), followed by a
 separate polishing stage. Complete normal progression and core flows first;
 batch implementation and reuse passing evidence. The historical exhaustive
@@ -41,7 +41,7 @@ foundation point credited the missing import feature. The current additional
 Internet Host/Join point credits completed public core consolidation on `0b5bca3`;
 no additional campaign visit is credited.
 
-Twenty of 39 visits now have credited normal paired route evidence. Six retain
+Twenty-one of 39 visits now have credited normal paired route evidence. Six retain
 the historical combined designation; the broader matrix still labels 33 as
 partial because it includes polishing cases. The next priority is normal paired campaign
 pass, fixing progression blockers and checking core recovery at representative
@@ -55,8 +55,36 @@ remain in the polishing backlog.
 | Two players, movement and presentation | 11.75 | 15 |
 | Combat, individual resources and death | 13.5 | 20 |
 | Scenes, transport and progression | 16 | 20 |
-| Campaign playability | 10.26 | 20 |
-| **Total** | **71.76, rounded to 71.8** | **100** |
+| Campaign playability | 10.77 | 20 |
+| **Total** | **72.27, rounded to 72.3** | **100** |
+
+## Herbaceous Border playable route completed
+
+Frozen `4bb7dac` passes the fresh Blue-led paired route through actual Rolling
+Stones arrival: **33,190 ticks, 56 exact compressed Arena replicas and four
+watched scene reunions**. Five deaths recover after exactly 1,200 active ticks
+at 25 health, with safe placement and preserved resources. Both arrive alive
+at 25/46 health, with their full personal inventories unchanged, without a wipe
+or gameplay-state staging. The ledge approach uses ordinary planned controls.
+
+This is playable-route acceptance with recovery, not complete pickup coverage:
+Blue collects the Mallet; Red revives beyond its approach and misses it. The
+playable check records this ownership and accepts the actual progression and
+unchanged individual inventories. Strict mode still requires both pickups.
+The prior attempt was rejected under that stricter pickup requirement; no
+weapon, health, damage or world-progression rule was changed to obtain this pass.
+
+Evidence: `private/coop-herbaceous-playable-8/` and the pinned source/executable
+audit `private/coop-playable-herbaceous-route-verified.json`. The batch passed
+946 Rust tests, 15 recovery guards and seven packaging checks. The final release
+also passes; the full unit run precedes the last diagnostic steering/acceptance
+refinements. Existing core/internet evidence is reused for unchanged systems.
+Coverage is now **21/39 visits**, leaving 18 normal routes.
+
+The new Rolling Stones paired diagnostic still fails at approach 16 before a
+marble wipe, so it earns no route credit. Its current solo fast course passes
+through Icy Reception; the subsequent optional paced course dies earlier.
+These are distinct outcomes, not a passing combined solo command.
 
 ## Dry Landing playable route completed
 

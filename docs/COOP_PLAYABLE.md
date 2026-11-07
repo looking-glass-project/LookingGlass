@@ -56,6 +56,17 @@ a normal-play blocker, data loss, or a missing requested core feature.
 Report playable readiness and the polishing backlog separately. Do not label
 the game 100% playable while a level or requested core flow remains blocked.
 
+## Herbaceous Border accepted
+
+`4bb7dac` passes the fresh Blue-led route through actual Rolling Stones arrival:
+33,190 ticks, 56 matching Arena replicas, four original scene reunions and five
+exact ten-second revivals. Both arrive alive with unchanged personal resources.
+Red misses the optional Mallet after revival; the playable gate records that
+personal inventory, while strict mode still requires both weapon pickups. This
+does not change gameplay rewards or progression. Complete optional pickup
+coverage belongs to polish. Repeat with the native runner's `--map garden2`.
+Normal paired coverage is **21/39 visits**, with 18 remaining.
+
 ## Dry Landing accepted
 
 `5c1b2dd` passes the fresh Red-led paired Garden course with both players alive
@@ -93,7 +104,7 @@ See [current evidence](COOP_PROGRESS.md#ascension-playable-route-completed).
 
 ## Normal-route acceptance, 7 November
 
-Twenty of 39 visits now have credited normal paired route evidence. The six
+Twenty-one of 39 visits now have credited normal paired route evidence. The six
 historically combined visits remain credited. The playable milestone also
 accepts complete ordinary-input routes in UTemple, Sanctum, Castling,
 Checkmate and About Face without requiring every polishing permutation.
@@ -161,11 +172,11 @@ bounded audit. The subsequent full attempt still fails after both players die
 in the late encounter at step 154 and restore the initial checkpoint. A Garden
 full-route pass was still required at that point; no team-wipe certification is
 inferred from that failed route. The later Red-led native pass above now meets
-normal-route acceptance. Nineteen visits remain outside credited normal route
+normal-route acceptance, followed by Herbaceous Border above. Eighteen visits remain outside credited normal route
 coverage; all have paired component evidence.
 
 Remaining normal-route coverage is first Skool, School Two, all three Pool
-visits, the other three Garden visits, Centipede One, both Wood visits, Pale Realm,
+visits, Rolling Stones and Icy Reception, Centipede One, both Wood visits, Pale Realm,
 the six Maze/Tower visits and the Queen finale.
 
 Run the two fresh-entry route checks together in Anode:

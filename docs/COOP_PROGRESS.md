@@ -1,6 +1,6 @@
 # Co-op progress
 
-Updated 7 November 2026. Branch: `coop`. **Estimated overall completion: 73.3%.**
+Updated 7 November 2026. Branch: `coop`. **Estimated overall completion: 73.8%.**
 The target is now [100% playable co-op](COOP_PLAYABLE.md), followed by a
 separate polishing stage. Complete normal progression and core flows first;
 batch implementation and reuse passing evidence. The historical exhaustive
@@ -41,7 +41,7 @@ foundation point credited the missing import feature. The current additional
 Internet Host/Join point credits completed public core consolidation on `0b5bca3`;
 no additional campaign visit is credited.
 
-Twenty-three of 39 visits now have credited normal paired route evidence. Six retain
+Twenty-four of 39 visits now have credited normal paired route evidence. Six retain
 the historical combined designation; the broader matrix still labels 33 as
 partial because it includes polishing cases. The next priority is normal paired campaign
 pass, fixing progression blockers and checking core recovery at representative
@@ -55,8 +55,32 @@ remain in the polishing backlog.
 | Two players, movement and presentation | 11.75 | 15 |
 | Combat, individual resources and death | 13.5 | 20 |
 | Scenes, transport and progression | 16 | 20 |
-| Campaign playability | 11.79 | 20 |
-| **Total** | **73.29, rounded to 73.3** | **100** |
+| Campaign playability | 12.31 | 20 |
+| **Total** | **73.81, rounded to 73.8** | **100** |
+
+## Fungiferous Flora playable route completed
+
+Frozen `906f8c7` reaches actual Sanctum arrival through the normal paired course:
+**12,471 ticks, 104 exact compressed replicas**, one watched ambush reunion,
+and both players alive at **10/47.57 health**, without deaths, wipes or staging.
+Personal health, consumables and pickup history carry exactly. Blue collects
+the optional second Die; Red receives the existing campaign weapon grant on
+arrival. Both temporary countdown health floors clear at the new visit.
+
+The new course reuses the solo waypoints and the existing native paired driver.
+Gameplay is unchanged. Its verifier now accounts for the normal arrival grant
+and the final scripted departure taking ownership after the watched reunion.
+The final native run exits successfully; the corrected verifier accepts that
+saved evidence without rerunning the unchanged simulation. The initial failed
+checks remain recorded. Evidence: `private/coop-flora-playable-2/` and
+`private/coop-playable-flora-route-verified.json`.
+
+The same frozen build repeats Battle Royale successfully: 30,506 ticks, 255
+exact replicas and both ten-second revivals, now checked against 2,637 exact
+recovery trace rows. It preserves the previous outcome and onward resources.
+Validation includes 947 active Rust tests, the final locked release and source/
+package checks. Internet and rendered-camera evidence remain separate and are
+reused for unchanged systems. Coverage is **24/39 visits**, leaving **15**.
 
 ## Icy Reception playable route completed
 

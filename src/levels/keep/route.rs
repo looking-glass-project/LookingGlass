@@ -65,7 +65,7 @@ pub(super) fn check(a: &mut Assets) -> super::super::BoxFuture<'_> {
             C::Positions([Some([512.,4600.,256.]),None])]);
         commands.push(C::Wait(1200));
         crate::coop::native_route::check(a,Spec{map:"keep",entry:"keep_start1",exit:EXIT,commands,
-            navigation:Navigation::LandedPair,verify:|arena| {
+            navigation:Navigation::LandedPair,verify:|arena,_| {
                 let k=arena.stage.interactions.levels.iter().find_map(|s|s.ctl.downcast_ref::<Keep>())
                     .context("Missing normal Keep controller")?;
                 ensure!(k.saved.won==[true;3] && k.saved.heart_open && k.saved.death_done && k.saved.exit.committed,

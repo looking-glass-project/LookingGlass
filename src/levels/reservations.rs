@@ -291,7 +291,7 @@ pub static RESERVATIONS: [Reservation; 39] = [
     Reservation {
         flags: Some(VisitFlags {
             contract: &["--centipede1-check", "--centipede1-coop-check", "--centipede1-save-write", "--centipede1-save-read"],
-            route: &["--centipede1-route-check"],
+            route: &["--centipede1-route-check", "--centipede1-coop-route-check"],
             skip: &["--centipede1-skip-route-check"],
             render: &["--centipede1-render-check"],
         }),

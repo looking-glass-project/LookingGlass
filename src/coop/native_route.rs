@@ -22,7 +22,7 @@ pub(crate) struct Spec {
     pub exit: crate::level::spec::ExitSpec,
     pub commands: Vec<Command>,
     pub navigation: Navigation,
-    pub verify: fn(&Arena) -> Result<()>,
+    pub verify: fn(&Arena, &[super::world::Body; 2]) -> Result<()>,
 }
 pub(crate) enum Navigation {
     /// Preserve the battlefield course's nearby-waypoint handoff.
@@ -124,6 +124,10 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
     let mut approach_lead = None;
     let mut approach_stuck = 0;
     let mut approach_yields = 0;
+    std::fs::create_dir_all(crate::preferences::path(""))?;
+    let recovery_name=format!("{}-recovery.jsonl",spec.map);
+    let mut recovery=super::recovery_trace::Trace::new(crate::preferences::path(&recovery_name))?;
+    recovery.record(&roster,&world,1,spec.map,arena.stage.busy(),false,|at|!arena.stage.interactions.hazardous(at))?;
     let result: Result<()> = async {
         for tick in 0..120*1800 {
             let command = commands.get(step).context("Route commands ended before the actual exit")?;
@@ -314,6 +318,8 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
                 "steam":roster.players.each_ref().map(|b|b.player.steam),"grounded":roster.players.each_ref().map(|b|b.player.grounded)}));
             if history.len()>240 {history.pop_front();}
             arena.step(&mut roster,&map,&mut world,inputs)?;
+            recovery.record(&roster,&world,1,spec.map,busy||arena.stage.busy(),arena.stage.interactive_actor().is_some(),
+                |at|!arena.stage.interactions.hazardous(at))?;
             let began_scene=old_owner.is_none() && arena.stage.owner.is_some();
             if began_scene {
                 let boarding=if let Command::Board{thread,..}=command {
@@ -394,7 +400,7 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
         }
         ensure!(arena.stage.transition.as_ref().is_some_and(|e|spec.exit.matches(e))
             && roster.players.iter().all(|b|b.stats.alive()),"Missing living pair's actual onward exit");
-        (spec.verify)(&arena)?;
+        (spec.verify)(&arena,&roster.players)?;
         let next_visit=Visit{epoch:2,map:spec.exit.map.into(),entry:Some(spec.exit.entrance.into()),..visit.clone()};
         let next_map=Bsp::parse(&a.read(&format!("maps/{}.bsp",next_visit.map))?)?;
         let mut next_world=World::from_bsp(&next_map)?;
@@ -402,18 +408,31 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
         let (eye,yaw)=crate::interaction::spawn(&next_map,next_visit.entry.as_deref());
         let arrived=roster.arrive_with(&next_world,eye,yaw,&next_visit.map,next_visit.entry.as_deref(),
             |at|!next_arena.stage.interactions.hazardous(at))?;
+        arrival=Some(serde_json::json!({"visit":next_visit,"frame":arrived.frame(2,0),
+            "health_floors":arrived.players.each_ref().map(|b|b.stats.minimum_sanity)}));
         for (old,new) in roster.players.iter().zip(&arrived.players) {
-            ensure!(serde_json::to_value(&old.stats)?==serde_json::to_value(&new.stats)? && next_world.body_clear(new.player.feet),
+            let mut expected=serde_json::to_value(&old.stats)?;
+            // Normal campaign arrivals fill missing earlier weapon milestones.
+            // Health, ammo, consumables and personal pickup history still carry exactly.
+            if let Some(baseline)=crate::campaign::loadout(&next_visit.map,next_visit.entry.as_deref()) {
+                for (owned,minimum) in expected["owned"].as_array_mut().context("Missing weapon inventory")?.iter_mut().zip(baseline) {
+                    *owned=serde_json::json!(owned.as_u64().context("Invalid weapon count")?.max(minimum as u64));
+                }
+            }
+            // The health floor is deliberately absent from serialized Stats.
+            ensure!(expected==serde_json::to_value(&new.stats)?
+                && new.stats.minimum_sanity==0. && next_world.body_clear(new.player.feet),
                 "Onward arrival changed resources or obstructed a player");
         }
-        arrival=Some(serde_json::json!({"visit":next_visit,"frame":arrived.frame(2,0)}));
+        ensure!(arrived.players[0].player.feet.distance(arrived.players[1].player.feet)>=36.,"Onward arrival overlaps");
         Ok(())
     }.await;
     let report=serde_json::json!({"build":env!("LOOKING_GLASS_BUILD"),"full_route_passed":result.is_ok(),
         "error":result.as_ref().err().map(|e|format!("{e:#}")),"commands":commands,"completed":completed,"step":step,
         "replica_samples":samples,"reunions":reunions,"life_events":life_events,"scene_starts":scene_starts,
         "board_wait_ticks":board_wait_ticks,"approach_yields":approach_yields,"frame":roster.frame(1,0),
-        "world":arena.snapshot(),"arrival":arrival,"recent_inputs":history,
+        "world":arena.snapshot(),"arrival":arrival,"recent_inputs":history,"recovery_log":recovery_name,
+        "health_floors":roster.players.each_ref().map(|b|b.stats.minimum_sanity),
         "scope":"Fresh normal two-player production Arena route; compressed replicas, not internet transport"});
     std::fs::create_dir_all(crate::preferences::path(""))?;
     std::fs::write(crate::preferences::path(&format!("{}-coop-route.json",spec.map)),serde_json::to_vec(&report)?)?;

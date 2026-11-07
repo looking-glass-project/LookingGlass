@@ -101,3 +101,20 @@ also pass on Normal and Hard through the Sanctum intro, with complete logs
 identical to baseline (`private/coop-centipede1-route-e3d0555.log` and
 `private/coop-centipede1-skip-e3d0555.log`). No images were viewed. These results
 do not complete the campaign row.
+
+## Normal paired playable route
+
+Frozen `906f8c7` passes `--centipede1-coop-route-check` through actual Sanctum
+arrival in 12,471 ticks with 104 exact replicas and one watched ambush reunion.
+Both players arrive alive at 10/47.57 health, without deaths or wipes. Blue
+collects the second Die; Red receives the existing campaign weapon grant on
+arrival. All other personal stats carry exactly, and both temporary health
+floors clear. Normal gameplay was unchanged.
+
+The final native run succeeds; the corrected Python verifier accepts its saved
+report, including the final scripted departure taking ownership on the exit
+tick. The earlier failed verifier result remains preserved. Evidence is pinned
+in `private/coop-playable-flora-route-verified.json`. Repeat with
+`tools/test_coop_native_route.py --map centipede1` and its required executable,
+data and fresh-profile arguments. Internet and rendered presentation are
+covered separately.

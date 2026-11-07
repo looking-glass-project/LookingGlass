@@ -2,6 +2,7 @@
 mod art;
 mod check;
 mod coop_check;
+mod coop_route;
 pub(crate) use check::drive as drive_route;
 mod data;
 mod saves;
@@ -655,6 +656,11 @@ pub static REGISTRATION: super::Registration = super::Registration {
         BeatSpec::linear("centipede1", BEAT, "centipede1_cinematics", AMBUSH, 1),
     ],
     checks: &[
+        super::Check {
+            flag: "--centipede1-coop-route-check",
+            help: "Walk paired Flora through its ant ambush and original Sanctum departure.",
+            run: super::Run::Windowed(coop_route::check),
+        },
         super::Check {
             flag: "--centipede1-coop-check",
             help: "Verify paired Flora Ants, shared waves/countdown and scene ownership.",

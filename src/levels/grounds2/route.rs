@@ -17,7 +17,7 @@ pub(super) fn coop_check(a: &mut Assets) -> super::super::BoxFuture<'_> {
     }
     crate::coop::native_route::check(a,Spec{map:"grounds2",entry:"grounds2_start1",
         exit:crate::level::spec::ExitSpec{map:"facade",entrance:"facade_start1"},commands,navigation:Navigation::Nearby,
-        verify:|arena| {
+        verify:|arena,_| {
             let o=arena.stage.interactions.levels.iter().find_map(|s|s.ctl.downcast_ref::<Royale>()).context("Missing Royale")?;
             ensure!(o.saved.done,"Battle Royale arrival incomplete");
             println!("Battle Royale paired company counts {:?}",o.saved.groups.each_ref().map(|g|g.count));

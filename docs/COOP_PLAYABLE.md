@@ -56,6 +56,18 @@ a normal-play blocker, data loss, or a missing requested core feature.
 Report playable readiness and the polishing backlog separately. Do not label
 the game 100% playable while a level or requested core flow remains blocked.
 
+## Fungiferous Flora accepted
+
+`906f8c7` passes the fresh paired course into actual Sanctum arrival: 12,471
+ticks, 104 exact replicas, one watched ambush reunion and no deaths or wipes.
+Both arrive alive with preserved personal resources, allowing the existing
+second-Die campaign grant for Red, who missed that optional pickup. The old
+visit's temporary health floors clear. The saved native evidence passes the
+corrected verifier; gameplay was unchanged. Coverage is **24/39 visits**, with
+**15** remaining and **73.8%** overall. Repeat with
+`tools/test_coop_native_route.py --map centipede1 --exe <frozen-executable> --data <base-directory> --profile <new-directory>`
+in Anode. Separate internet/camera evidence is reused.
+
 ## Icy Reception accepted
 
 `cd89026` passes a fresh normal paired route into actual Fungiferous Flora:

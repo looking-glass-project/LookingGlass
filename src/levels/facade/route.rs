@@ -10,7 +10,7 @@ pub(super) fn coop_check(a: &mut Assets) -> super::super::BoxFuture<'_> {
         let commands=serde_json::from_str(include_str!("coop_route_steps.json"))?;
         crate::coop::native_route::check(a,Spec{map:"facade",entry:"facade_start1",exit:EXIT,commands,
             navigation:Navigation::LandedPair,
-            verify:|arena| {
+            verify:|arena,_| {
                 let f=arena.stage.interactions.levels.iter().find_map(|s|s.ctl.downcast_ref::<Facade>()).context("Missing Ascension")?;
                 ensure!(f.saved.ride.as_ref().is_some_and(|r|r.time==DEPART) && f.saved.exit.committed,
                     "Ascension lift did not complete its normal ride");

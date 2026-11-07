@@ -14,7 +14,7 @@ from coop_recovery import read_trace
 
 EXITS = {'centipede1': 'centipede2', 'grounds2': 'facade', 'facade': 'keep', 'keep': 'qlair',
          'wforest': 'wchess1', 'wforest-return': 'hedge1', 'tower1': 'hedge2', 'hedge2': 'tower2',
-         'tower2': 'hedge3', 'hedge3': 'tower3', 'tower3': 'grounds1'}
+         'tower2': 'hedge3', 'hedge3': 'tower3', 'tower3': 'grounds1', 'qlair': None}
 
 
 def verify(profile, map_name):
@@ -22,21 +22,32 @@ def verify(profile, map_name):
     report = json.loads((profile / f'{report_map}-coop-route.json').read_text())
     assert report['full_route_passed'], report.get('error')
     assert report['replica_samples'] > 0 and report['frame']['checkpoint_generation'] == 0
-    next_map = EXITS[map_name]
-    assert report['world']['stage']['transition'] == [next_map, f'{next_map}_start1']
-    arrival = report['arrival']
-    assert arrival['visit']['map'] == next_map and arrival['visit']['entry'] == f'{next_map}_start1'
-    assert arrival['health_floors'] == [0, 0], 'Arrival retained the previous visit health floor'
-    for old, new in zip(report['frame']['players'], arrival['frame']['players']):
-        expected = dict(old['stats'], owned=list(old['stats']['owned']))
-        if map_name == 'centipede1':
-            # Sanctum supplies the campaign's second Die if a player missed it.
-            expected['owned'][6] = max(expected['owned'][6], 2)
-        if map_name == 'wforest-return':
-            # The return's optional Blunderbuss is the next campaign milestone.
-            expected['owned'][8] = max(expected['owned'][8], 1)
-        assert expected == new['stats'], 'Arrival changed resources beyond its campaign weapon grant'
-        assert new['stats']['sanity'] > 0 and not old['stats']['god'] and not old['stats']['notarget']
+    if map_name == 'qlair':
+        assert report['ending_ready'] and report['arrival'] is None
+        assert report['world']['stage']['transition'] is None
+        queen = report['world']['stage']['world']['levels']['qlair']
+        assert queen['phase'] == 'Done' and queen['queen1'] <= 0 and queen['queen2'] < 1000
+        assert [p['phase'] for p in report['phases']] == ['Intro', 'Queen1', 'Birth', 'Queen2', 'Death', 'Ending', 'Done']
+        assert report['checkpoint']['phase'] == 'Queen2' and report['checkpoint']['exact_restore']
+        assert report['health_floors'] == [0, 0]
+        assert all(p['stats']['sanity'] > 0 and not p['stats']['god'] and not p['stats']['notarget']
+                   for p in report['frame']['players'])
+    else:
+        next_map = EXITS[map_name]
+        assert report['world']['stage']['transition'] == [next_map, f'{next_map}_start1']
+        arrival = report['arrival']
+        assert arrival['visit']['map'] == next_map and arrival['visit']['entry'] == f'{next_map}_start1'
+        assert arrival['health_floors'] == [0, 0], 'Arrival retained the previous visit health floor'
+        for old, new in zip(report['frame']['players'], arrival['frame']['players']):
+            expected = dict(old['stats'], owned=list(old['stats']['owned']))
+            if map_name == 'centipede1':
+                # Sanctum supplies the campaign's second Die if a player missed it.
+                expected['owned'][6] = max(expected['owned'][6], 2)
+            if map_name == 'wforest-return':
+                # The return's optional Blunderbuss is the next campaign milestone.
+                expected['owned'][8] = max(expected['owned'][8], 1)
+            assert expected == new['stats'], 'Arrival changed resources beyond its campaign weapon grant'
+            assert new['stats']['sanity'] > 0 and not old['stats']['god'] and not old['stats']['notarget']
     recovery = read_trace(profile / report['recovery_log'], report['build'])
     revivals = {(r['player'], r['spawn_tick']) for r in recovery['revivals']}
     recorded = {(r['slot'], r['tick']) for r in report['life_events'] if r['alive'] and r['spawned_at'] == r['tick']}

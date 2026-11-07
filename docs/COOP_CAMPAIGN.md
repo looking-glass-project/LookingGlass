@@ -4,11 +4,12 @@ The user now prioritizes [100% playable coverage](COOP_PLAYABLE.md), with
 exhaustive polishing afterward. This historical matrix retains detailed
 verification gaps; those combinations do not all gate the playable build.
 
-Machinations normal route (`fcf4979`) now passes through actual Royal Rage
-arrival with both players alive, 301 exact replicas and five exact ten-second
-revivals. Normal paired coverage is **32/39 visits**, with **7 remaining**;
-overall readiness is **77.9%**. The broader historical statuses below also
-include deferred polishing cases.
+Heart of Darkness normal paired combat and ending state (`ef316ac`) now pass
+with both players alive, 291 exact replicas and exact restoration of the real
+second-arena checkpoint. Normal paired coverage is **33/39 visits**, with
+**6 remaining**; overall readiness is **78.4%**. Rendered finale film/credits
+handoff remains a separate acceptance item. The broader historical statuses
+below also include deferred polishing cases.
 
 Airborne Terror core update: `3e96892` passes 41 paired component cases
 and an unchanged ten-case solo baseline. The machinery batch `11d47f8` adds
@@ -817,4 +818,4 @@ both original portals and the gated return, without cheats or recovery
 | 36 | `grounds2` | `Initial` | Partial: focused paired progression/combat and existing solo components pass on `073ed9f`. Full paired route remains open. See [castle batch](COOP_CASTLE.md). |
 | 37 | `facade` | `Initial` | Partial: focused paired progression/combat and existing solo components pass on `073ed9f`. Full paired route remains open. See [castle batch](COOP_CASTLE.md). |
 | 38 | `keep` | `Initial` | Partial: focused paired progression/combat and existing solo components pass on `073ed9f`. Full paired route remains open. See [castle batch](COOP_CASTLE.md). |
-| 39 | `qlair` | `Initial` | Partial: paired combat/resources, original scenes and real second-arena checkpoint/restore pass in twelve groups on `c8a041e`. Shared completion now hands off to the film/credits. Normal paired combat route and film/credits visual review remain open. See [finale evidence](COOP_QUEEN.md). |
+| 39 | `qlair` | `Initial` | Normal paired combat/ending route passes on `ef316ac`: both forms, original scenes, real second-arena checkpoint and exact restore, 291 exact replicas and both alive at the durable ending. Rendered film/credits and broader per-visit recovery/rejoin permutations remain open. See [Queen evidence](COOP_QUEEN.md). |

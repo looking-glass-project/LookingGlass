@@ -1,7 +1,7 @@
 # Queen finale co-op
 
 Build `c8a041e` integrates Heart of Darkness, the last campaign controller
-without an explicit paired update. The normal paired campaign pass remains open.
+without an explicit paired update. The normal paired route now passes as below.
 
 Both Queen forms advance once and select a visible living opponent through the
 shared targeting policy. Native attack events, projectile collisions, splash,
@@ -63,3 +63,25 @@ match their live state and restore exactly. Failed receipts remain private.
 This is component evidence, not a complete two-client Queen combat route,
 rendered film/credits acceptance or an internet finale-disconnect test. Earlier
 core import/resume/rejoin evidence remains applicable to unchanged paths.
+
+## Normal paired route
+
+Frozen `ef316ac` passes a fresh normal paired Heart of Darkness run:
+**34,711 ticks**, **291 exact compressed replicas**, both Queen forms defeated,
+the original introduction/birth/death/ending sequence, and both players alive
+at **100 health**. The first battle ends at about 74/71 health; the original
+second-arena refill restores both players. No death, team wipe, cheats, forced
+boss damage or progression staging is used.
+
+At tick 18,660 the real second-arena checkpoint is written and restored into a
+separate Arena/roster, with exact player and shared-world state. Both replicas
+reach the actual durable ending state, with no map transition. The normal
+weapons, enemy attacks and production scene/recovery pipeline remain active.
+All 949 active Rust tests and source/package checks pass. Evidence is pinned in
+`private/coop-playable-queen-default-verified.json`.
+
+Repeat with `tools/test_coop_native_route.py --map qlair`, local data and a fresh
+profile. This proves normal paired combat, scenes, checkpoint restoration and
+ending state. The rendered two-client film/credits handoff remains a separate
+acceptance item; it is not claimed by this accelerated Arena check.
+Coverage is **33/39 visits**, **6 remaining**, or **78.4%** overall.

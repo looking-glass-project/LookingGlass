@@ -5,6 +5,7 @@ mod battle;
 mod check;
 mod coop;
 mod coop_check;
+mod coop_route;
 mod data;
 mod effects;
 mod projectile;
@@ -805,6 +806,11 @@ pub static REGISTRATION: super::Registration = super::Registration {
         BeatSpec::linear("qlair", TALK, "../qlair", TALK, 3),
     ],
     checks: &[
+        super::Check {
+            flag: "--qlair-coop-route-check",
+            help: "Fight both Queen forms with two players through the original ending.",
+            run: super::Run::Windowed(coop_route::check),
+        },
         super::Check {
             flag: "--qlair-coop-check",
             help: "Verify paired Queen targeting, resources, captures and finale progression.",

@@ -64,14 +64,14 @@ pub(crate) enum Navigation {
     LandedPair,
 }
 #[derive(Default)]
-struct Walking {
+pub(crate) struct Walking {
     goal: Option<Vec3>,
     steps: VecDeque<(Controls, Vec3)>,
     age: u32,
     settling: u32,
 }
 impl Walking {
-    fn input(&mut self, world: &World, player: &crate::movement::Player, goal: Vec3, close: f32, require_landing: bool) -> Result<Controls> {
+    pub(crate) fn input(&mut self, world: &World, player: &crate::movement::Player, goal: Vec3, close: f32, require_landing: bool) -> Result<Controls> {
         if self.goal.is_none_or(|old| old.distance(goal) > 1.) {
             *self = Self { goal: Some(goal), ..Default::default() };
         }
@@ -98,7 +98,7 @@ impl Walking {
         Ok(self.steps.front().map_or(Controls::default(), |(c,_)|
             Controls { jump: c.jump && self.age == 0, ..*c }))
     }
-    fn advanced(&mut self, player: &crate::movement::Player) {
+    pub(crate) fn advanced(&mut self, player: &crate::movement::Player) {
         if self.steps.is_empty() { return; }
         self.age += 1;
         if self.age == 24 {

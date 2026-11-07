@@ -1,6 +1,6 @@
 # Co-op progress
 
-Updated 7 November 2026. Branch: `coop`. **Estimated overall completion: 77.9%.**
+Updated 7 November 2026. Branch: `coop`. **Estimated overall completion: 78.4%.**
 The target is now [100% playable co-op](COOP_PLAYABLE.md), followed by a
 separate polishing stage. Complete normal progression and core flows first;
 batch implementation and reuse passing evidence. The historical exhaustive
@@ -41,7 +41,7 @@ foundation point credited the missing import feature. The current additional
 Internet Host/Join point credits completed public core consolidation on `0b5bca3`;
 no additional campaign visit is credited.
 
-Thirty-two of 39 visits now have credited normal paired route evidence. Six retain
+Thirty-three of 39 visits now have credited normal paired route evidence. Six retain
 the historical combined designation; the broader matrix still labels 33 as
 partial because it includes polishing cases. The next priority is normal paired campaign
 pass, fixing progression blockers and checking core recovery at representative
@@ -55,8 +55,30 @@ remain in the polishing backlog.
 | Two players, movement and presentation | 11.75 | 15 |
 | Combat, individual resources and death | 13.5 | 20 |
 | Scenes, transport and progression | 16 | 20 |
-| Campaign playability | 16.41 | 20 |
-| **Total** | **77.91, rounded to 77.9** | **100** |
+| Campaign playability | 16.92 | 20 |
+| **Total** | **78.42, rounded to 78.4** | **100** |
+
+## Queen normal paired finale completed
+
+Frozen `ef316ac` passes a fresh normal paired Heart of Darkness run:
+**34,711 ticks**, **291 exact compressed replicas**, both Queen forms defeated,
+the original introduction/birth/death/ending sequence, and both players alive
+at **100 health**. The first battle ends at about 74/71 health; the original
+second-arena refill restores both players. No death, team wipe, cheats, forced
+boss damage or progression staging is used.
+
+At tick 18,660 the real second-arena checkpoint is written and restored into a
+separate Arena/roster, with exact player and shared-world state. Both replicas
+reach the actual durable ending state, with no map transition. The normal
+weapons, enemy attacks and production scene/recovery pipeline remain active.
+All 949 active Rust tests and source/package checks pass. Evidence is pinned in
+`private/coop-playable-queen-default-verified.json`.
+
+Repeat with `tools/test_coop_native_route.py --map qlair`, local data and a fresh
+profile. This proves normal paired combat, scenes, checkpoint restoration and
+ending state. The rendered two-client film/credits handoff remains a separate
+acceptance item; it is not claimed by this accelerated Arena check.
+Coverage is **33/39 visits**, **6 remaining**, or **78.4%** overall.
 
 ## Machinations playable route completed
 
@@ -676,7 +698,7 @@ Campaign status from `COOP_CAMPAIGN.md`:
   currently have components or checkpoint segments only.
 - **No visit remains without paired component evidence.** Heart of Darkness's
   adapter is integrated. Component coverage does not complete the full campaign
-  playability pass: 32 normal paired routes are credited, with 7 remaining.
+  playability pass: 33 normal paired routes are credited, with 6 remaining.
 
 See the [full campaign matrix](COOP_CAMPAIGN.md). Future updates should separate
 working features, partial route milestones and completed verification visits.

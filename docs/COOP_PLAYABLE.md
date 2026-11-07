@@ -56,6 +56,28 @@ a normal-play blocker, data loss, or a missing requested core feature.
 Report playable readiness and the polishing backlog separately. Do not label
 the game 100% playable while a level or requested core flow remains blocked.
 
+## Queen normal paired route accepted
+
+Frozen `ef316ac` passes a fresh normal paired Heart of Darkness run:
+**34,711 ticks**, **291 exact compressed replicas**, both Queen forms defeated,
+the original introduction/birth/death/ending sequence, and both players alive
+at **100 health**. The first battle ends at about 74/71 health; the original
+second-arena refill restores both players. No death, team wipe, cheats, forced
+boss damage or progression staging is used.
+
+At tick 18,660 the real second-arena checkpoint is written and restored into a
+separate Arena/roster, with exact player and shared-world state. Both replicas
+reach the actual durable ending state, with no map transition. The normal
+weapons, enemy attacks and production scene/recovery pipeline remain active.
+All 949 active Rust tests and source/package checks pass. Evidence is pinned in
+`private/coop-playable-queen-default-verified.json`.
+
+Repeat with `tools/test_coop_native_route.py --map qlair`, local data and a fresh
+profile. This proves normal paired combat, scenes, checkpoint restoration and
+ending state. The rendered two-client film/credits handoff remains a separate
+acceptance item; it is not claimed by this accelerated Arena check.
+Coverage is **33/39 visits**, **6 remaining**, or **78.4%** overall.
+
 ## Machinations accepted
 
 Frozen `fcf4979` passes the normal paired course through actual Royal Rage
@@ -308,11 +330,12 @@ bounded audit. The subsequent full attempt still fails after both players die
 in the late encounter at step 154 and restore the initial checkpoint. A Garden
 full-route pass was still required at that point; no team-wipe certification is
 inferred from that failed route. The later Red-led native pass above now meets
-normal-route acceptance, followed by Herbaceous Border, Rolling Stones, Icy Reception, Fungiferous Flora, both Caterpillar's Plot visits, Pale Realm, Airborne Terror, Mystifying Madness, Water Logged, Labyrinthine Revenge and Machinations above. Seven visits remain outside credited normal route
+normal-route acceptance, followed by Herbaceous Border, Rolling Stones, Icy Reception, Fungiferous Flora, both Caterpillar's Plot visits, Pale Realm, Airborne Terror, Mystifying Madness, Water Logged, Labyrinthine Revenge, Machinations and the Queen finale above. Six visits remain outside credited normal route
 coverage; all have paired component evidence.
 
 Remaining normal-route coverage is first Skool, School Two, all three Pool
-visits, Majestic Maze and the Queen finale.
+visits and Majestic Maze. The rendered finale film/credits handoff is also
+still required for the playable milestone.
 
 Run the two fresh-entry route checks together in Anode:
 

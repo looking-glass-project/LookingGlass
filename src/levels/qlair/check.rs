@@ -15,7 +15,7 @@ pub(super) fn skip_route(a: &mut Assets) -> Result<()> {
 pub(super) fn second_route(a: &mut Assets) -> Result<()> {
     fight_route(a, true, true)
 }
-fn arena_camp(world: &World, origin: Vec3, axis: Vec2) -> Result<Vec3> {
+pub(super) fn arena_camp(world: &World, origin: Vec3, axis: Vec2) -> Result<Vec3> {
     let floor = |at: Vec3| {
         let high = vec3(at.x, at.y, 1200.);
         let low = vec3(at.x, at.y, 800.);
@@ -49,7 +49,10 @@ fn arena_camp(world: &World, origin: Vec3, axis: Vec2) -> Result<Vec3> {
         .context("No broad fighting platform near essence")
 }
 fn dodge(r: &crate::route::Route, camp: Vec3, axis: Vec2, preferred: Vec2, jump: bool) -> Vec2 {
-    let q = owner(&r.interactions);
+    dodge_player(owner(&r.interactions), &r.world, &r.player, camp, axis, preferred, jump)
+}
+pub(super) fn dodge_player(q: &Queen, world: &World, player: &Player,
+    camp: Vec3, axis: Vec2, preferred: Vec2, jump: bool) -> Vec2 {
     let normal = vec2(-axis.y, axis.x);
     let choices = [
         preferred,
@@ -66,7 +69,7 @@ fn dodge(r: &crate::route::Route, camp: Vec3, axis: Vec2, preferred: Vec2, jump:
     choices
         .into_iter()
         .map(|wish| {
-            let mut p = r.player.clone();
+            let mut p = player.clone();
             let mut predicted = q
                 .saved
                 .projectiles
@@ -76,7 +79,7 @@ fn dodge(r: &crate::route::Route, camp: Vec3, axis: Vec2, preferred: Vec2, jump:
             let mut cost = (wish - preferred).length_squared() * 2.;
             for tick in 0..84 {
                 p.tick(
-                    &r.world,
+                    world,
                     Controls {
                         wish,
                         jump: jump && tick == 0,

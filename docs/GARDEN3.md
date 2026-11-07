@@ -151,13 +151,40 @@ whole-suite result is claimed for those commands.
 `--garden3-coop-route-check` now runs ordinary paired controls in the production
 Arena, using the same 59 authored test waypoints as the solo driver. It records
 exact recovery, guest replicas, original scene reunion and next-map resources.
-Its two current attempts fail: both players stall near waypoint 16 before the
+Its first two attempts failed: both players stall near waypoint 16 before the
 marble catches them. Reducing corner-cutting and delaying the follower's start
-did not resolve that failure. No paired route credit is claimed.
+did not resolve that failure. Those attempts earned no route credit; the fix below now passes.
 
 The current frozen `4bb7dac` solo fast route passes through Icy Reception and
 its five saved-continuation comparisons. The subsequent paced run fails earlier
 at waypoint 3, so the combined solo command exits 1. Evidence is retained in
 `private/coop-rolling-solo-4bb7dac.log`. The fast solo route exits while the
 marble is at node 44 and its ice callback has not fired; the new paired driver's
-final callback requirements need reviewing against this legitimate fast exit.
+original final callback requirements were stricter than this legitimate fast exit.
+
+
+## Shared gate fix and normal paired pass, 7 November 2026
+
+Build `7710f92` fixes repeated co-op activation of chase triggers 41, 47, 48 and
+73. Contacts had been deduplicated only within a single simulation tick, so the
+follower could toggle the next gate closed on a later tick. The co-op dispatcher
+now consults existing committed event usage for these four one-way markers.
+Save restore, a fresh guest and respawn contacts retain that history. Other
+repeatable contacts and single-player toggle behavior remain unchanged.
+
+The fresh normal paired run reaches actual Icy Reception arrival in 10,699
+ticks, with 89 exact compressed Arena replicas, one watched scene reunion,
+both mushroom launches, no deaths or wipes and both players at 86 health.
+Personal resources survive the onward transition exactly. Fast completion can
+precede the marble's late ice callback and gate latches, which remain covered
+by the shared-clock component check; these are not required before a real exit.
+
+Eight new real-map cases cross every gate marker with each player first, then
+restore the world and cross with fresh partner contacts. Each records exactly
+one activation. Solo double-toggle behavior also passes. All 947 active Rust
+tests and the locked release pass; the full Herbaceous route repeats with five
+exact ten-second revivals. Evidence is pinned under
+`private/coop-rolling-playable-3/` and
+`private/coop-playable-rolling-route-verified.json`. This credits normal paired
+progression; exhaustive per-visit internet, presentation and recovery checks
+remain polishing work, and no new rendered-camera proof is claimed.

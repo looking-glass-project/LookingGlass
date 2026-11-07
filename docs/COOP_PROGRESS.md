@@ -1,6 +1,6 @@
 # Co-op progress
 
-Updated 7 November 2026. Branch: `coop`. **Estimated overall completion: 72.3%.**
+Updated 7 November 2026. Branch: `coop`. **Estimated overall completion: 72.8%.**
 The target is now [100% playable co-op](COOP_PLAYABLE.md), followed by a
 separate polishing stage. Complete normal progression and core flows first;
 batch implementation and reuse passing evidence. The historical exhaustive
@@ -41,7 +41,7 @@ foundation point credited the missing import feature. The current additional
 Internet Host/Join point credits completed public core consolidation on `0b5bca3`;
 no additional campaign visit is credited.
 
-Twenty-one of 39 visits now have credited normal paired route evidence. Six retain
+Twenty-two of 39 visits now have credited normal paired route evidence. Six retain
 the historical combined designation; the broader matrix still labels 33 as
 partial because it includes polishing cases. The next priority is normal paired campaign
 pass, fixing progression blockers and checking core recovery at representative
@@ -55,8 +55,35 @@ remain in the polishing backlog.
 | Two players, movement and presentation | 11.75 | 15 |
 | Combat, individual resources and death | 13.5 | 20 |
 | Scenes, transport and progression | 16 | 20 |
-| Campaign playability | 10.77 | 20 |
-| **Total** | **72.27, rounded to 72.3** | **100** |
+| Campaign playability | 11.28 | 20 |
+| **Total** | **72.78, rounded to 72.8** | **100** |
+
+## Rolling Stones playable route completed
+
+Frozen `7710f92` fixes a normal co-op blocker: the follower could toggle a shared
+chase gate back, trapping both players before the marble arrived. The four
+one-way chase markers now consult existing saved dispatch history and fire once
+for the shared co-op world. Solo repeatability, save format and rule identities
+are unchanged. Rejected contacts do not consume the shared event.
+
+The fresh paired route now reaches actual Icy Reception arrival in **10,699
+ticks**, with **89 matching compressed Arena replicas**, the original watched
+arrival/reunion, both mushroom launches and unchanged personal resources.
+Both players finish at **86 health**, with no deaths, revivals, wipes or cheats.
+Fast exit need not wait for the marble's later ice callback or every gate latch;
+the separate shared-clock component checks retain that coverage.
+
+Validation: **947 active Rust tests**, locked release, the existing 11 native
+chase component cases plus eight leader/trigger restore cases and a solo toggle
+check. The full Herbaceous route also repeats successfully on this build:
+33,190 ticks, 56 replicas and five exact ten-second revivals. Source/package
+checks pass. These are production-Arena routes; existing public-invite and
+rendered-camera evidence remains separate and is reused for unchanged systems.
+
+Evidence: `private/coop-rolling-playable-3/`,
+`private/coop-playable-rolling-route-verified.json`, and
+`private/coop-herbaceous-gates-regression-1/`. Normal paired coverage is now
+**22/39 visits**, leaving **17**. Overall estimate: **72.8%**.
 
 ## Herbaceous Border playable route completed
 
@@ -81,8 +108,8 @@ also passes; the full unit run precedes the last diagnostic steering/acceptance
 refinements. Existing core/internet evidence is reused for unchanged systems.
 Coverage is now **21/39 visits**, leaving 18 normal routes.
 
-The new Rolling Stones paired diagnostic still fails at approach 16 before a
-marble wipe, so it earns no route credit. Its current solo fast course passes
+Earlier Rolling Stones paired attempts failed at approach 16 before a
+marble wipe. The later shared-gate fix above resolves that blocker. Its current solo fast course passes
 through Icy Reception; the subsequent optional paced course dies earlier.
 These are distinct outcomes, not a passing combined solo command.
 
@@ -421,7 +448,7 @@ yet verified across every level and failure condition.
 | Combat and resources | Nearest-visible targeting, individual damage, inventory and consumables; all explicit paired boss adapters integrated | Verify remaining full combat routes and fix normal-play blockers |
 | Death and saves | Exact ten-second countdown, moving spectator camera, safe 25-health revival; shared checkpoint wipes, solo import, earlier co-op resume, public save/leave/continue and storage-error/backup menu flow | Representative recovery during remaining routes; exhaustive per-visit matrices deferred to polishing |
 | Scenes and machinery | First-arrival ownership, original single-Alice scenes, hidden partner and safe reunion; public scene reconnects and all-living boarding; adapters through the ending | Verify remaining normal transports/exits and the final film/credits handoff; exhaustive owner/skip permutations deferred |
-| Regression checks | 944 active Rust tests on `42139c0`; existing native registry/component checks and build-specific source guards, weapon-effect/audio and solo baselines | Missing normal campaign routes and focused checks for subsequent fixes |
+| Regression checks | 947 active Rust tests on `7710f92`; existing native registry/component checks and build-specific source guards, weapon-effect/audio and solo baselines | Missing normal campaign routes and focused checks for subsequent fixes |
 
 Campaign status from `COOP_CAMPAIGN.md`:
 
@@ -435,7 +462,7 @@ Campaign status from `COOP_CAMPAIGN.md`:
   currently have components or checkpoint segments only.
 - **No visit remains without paired component evidence.** Heart of Darkness's
   adapter is integrated. Component coverage does not complete the full campaign
-  playability pass: 18 normal paired routes are credited, with 21 remaining.
+  playability pass: 22 normal paired routes are credited, with 17 remaining.
 
 See the [full campaign matrix](COOP_CAMPAIGN.md). Future updates should separate
 working features, partial route milestones and completed verification visits.

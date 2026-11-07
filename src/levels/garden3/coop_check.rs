@@ -136,11 +136,63 @@ fn scenes(a: &mut Assets,map: &Bsp)->Result<()> {
     }
     Ok(())
 }
+fn paired_gate_contacts(a: &mut Assets, map: &Bsp) -> Result<()> {
+    use crate::{entity::Id, event::{Event, Input}, interaction::coop::{Contacts, Motion}};
+    let doors=|stage:&Stage| {
+        stage.interactions.levels.iter().find_map(|s|s.ctl.downcast_ref::<Garden>()).unwrap()
+            .saved.doors.iter().map(|d|(d.open,d.latched)).collect::<Vec<_>>()
+    };
+    for first in PlayerId::ALL { for id in [41,48,47,73] {
+        let visit=Visit{epoch:1,map:"garden3".into(),entry:Some("garden3_start1".into()),
+            difficulty:Default::default(),combat_preview:false};
+        let mut world=World::from_bsp(map)?;
+        let mut stage=Stage::load(a,map,&mut world,&visit,false)?;
+        let (eye,yaw)=crate::interaction::spawn(map,visit.entry.as_deref());
+        let mut roster=Roster::new(&world,eye,yaw,Stats::for_level("garden3",visit.entry.as_deref()))?;
+        stage.interactions.skip_cinematic(map,&mut world,&mut roster.players[0].player,&mut stage.story)?;
+        for _ in 0..120 {
+            if !stage.busy() { break; }
+            stage.scene_step(&mut roster,map,&mut world,&Default::default())?;
+        }
+        ensure!(!stage.busy(),"Gate fixture did not finish the original introduction");
+        let center=data::at(&map.entities[id]).translation-crate::collision::PLAYER_CENTER;
+        let crossed=Motion{before:center-Vec3::Y*200.,after:center+Vec3::Y*200.};
+        let before=doors(&stage);
+        let mut gate_contacts=Contacts::new(&stage.interactions);
+        let events=stage.interactions.triggers_pair(FIXED_DT,&mut gate_contacts,
+            std::array::from_fn(|i|(i==first.index()).then_some(crossed)))?;
+        ensure!(events.activations.len()==1 && events.activations[0].entity==Id(id)
+            && events.activations[0].player==first && doors(&stage)!=before,
+            "First crossing did not toggle the authored gate group {id}");
+        let opened=doors(&stage);
+        let saved=stage.snapshot();
+        stage.restore(&saved,map,&mut world)?;
+        // Fresh guest contacts (including solo-to-co-op import or a respawn)
+        // must not reset the committed shared world dispatch history.
+        gate_contacts=Contacts::new(&stage.interactions);
+        let events=stage.interactions.triggers_pair(1.,&mut gate_contacts,
+            std::array::from_fn(|i|(i==first.partner().index()).then_some(crossed)))?;
+        ensure!(events.activations.is_empty() && doors(&stage)==opened,
+            "Following {first:?} closed the shared chase gates at trigger{id}");
+        let event=Event::Entity(Id(id),Input::Activate);
+        ensure!(stage.interactions.event_world.has_fired(&event),"Gate dispatch history was lost");
+        ensure!(stage.interactions.event_world.snapshot().usage[&format!("trigger/{id}")].count==1,
+            "Gate fired more than once after restore");
+        println!("PASS chase trigger{id}, {first:?} first: one shared toggle after restore and fresh partner contacts");
+    }}
+    // Solo activation retains its original repeatable toggle semantics.
+    let (mut solo,_)=free(a,map)?;
+    let before=serde_json::to_value(&solo.saved.doors)?;
+    for _ in 0..2 { solo.output(&crate::event::Effect::Activate(Id(49))); }
+    ensure!(serde_json::to_value(&solo.saved.doors)?==before,"Co-op gate policy changed solo repeatability");
+    Ok(())
+}
 pub(super) fn check(a: &mut Assets)->Result<()> {
     let map=Bsp::parse(&a.read("maps/garden3.bsp")?)?;
     clocks(a,&map)?;
     contacts(a,&map)?;
     scenes(a,&map)?;
+    paired_gate_contacts(a,&map)?;
     println!("PASS Rolling Stones 11 native co-op component cases; full paired traversal remains unverified");
     Ok(())
 }

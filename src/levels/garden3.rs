@@ -352,6 +352,11 @@ impl LevelController for Garden {
     fn receivers(&self, _: &crate::entity::Registry) -> Vec<crate::entity::Id> {
         DOORS.map(crate::entity::Id).to_vec()
     }
+    fn coop_once_trigger(&self, id: crate::entity::Id) -> bool {
+        // Each chase marker advances the shared gate sequence once. A follower
+        // must not undo that transition and close the next gate on both players.
+        matches!(id.0,41|47|48|73)
+    }
     fn rules(&self, _: &crate::level::RuleContext<'_>) -> Vec<crate::event::Rule> {
         DOORS
             .iter()

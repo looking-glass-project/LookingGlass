@@ -460,6 +460,10 @@ impl Interactions {
             }
             let entity = trigger.id;
             let event = Event::Entity(entity, Input::Activate);
+            if !personal && self.levels.iter().any(|s|s.ctl.coop_once_trigger(entity))
+                && self.event_world.has_fired(&event) {
+                continue;
+            }
             for slot in &mut self.levels { slot.ctl.coop_trigger_actor(Some(id.index())); }
             let allowed = self.event_world.allowed(&event, &self.event_facts());
             for slot in &mut self.levels { slot.ctl.coop_trigger_actor(None); }

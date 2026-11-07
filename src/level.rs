@@ -314,6 +314,9 @@ pub trait LevelController: Any {
     fn coop_trigger_actor(&mut self, _player: Option<usize>) {}
     /// Repeatable script contacts that update personal state (e.g. fall rooms).
     fn coop_personal_thread(&self, _thread: &str) -> bool { false }
+    /// One-way shared progression whose repeatable solo contact must not toggle
+    /// back when the other player follows. Uses the existing saved rule history.
+    fn coop_once_trigger(&self, _id: crate::entity::Id) -> bool { false }
     /// A personal boss hold must leave the other player's controls available.
     fn coop_controlled(&self, _player: usize) -> bool { false }
     /// A single-player interactive sequence, such as a chess disguise. The

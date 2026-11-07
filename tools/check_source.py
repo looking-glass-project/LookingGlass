@@ -91,6 +91,37 @@ def working_files(root=ROOT):
     return result
 
 
+def index_blobs(entries, root=ROOT):
+    """Read staged blobs through two Git processes, retaining per-file limits."""
+    if not entries:
+        return
+    sizes = subprocess.check_output(
+        ["git", "cat-file", "--batch-check=%(objectsize)"], cwd=root,
+        input="".join(f"{blob}\n" for _, blob in entries).encode("ascii"),
+    ).splitlines()
+    if len(sizes) != len(entries):
+        raise RuntimeError("Incomplete Git object size response")
+    with subprocess.Popen(["git", "cat-file", "--batch"], cwd=root,
+                          stdin=subprocess.PIPE, stdout=subprocess.PIPE) as reader:
+        for (path, blob), raw_size in zip(entries, sizes):
+            size = int(raw_size)
+            if size > size_limit(path):
+                yield path, size, None
+                continue
+            reader.stdin.write(f"{blob}\n".encode("ascii"))
+            reader.stdin.flush()
+            header = reader.stdout.readline().split()
+            if header != [blob.encode("ascii"), b"blob", str(size).encode("ascii")]:
+                raise RuntimeError(f"Invalid Git blob response for {path}")
+            data = reader.stdout.read(size)
+            if len(data) != size or reader.stdout.read(1) != b"\n":
+                raise RuntimeError(f"Incomplete Git blob response for {path}")
+            yield path, size, data
+        reader.stdin.close()
+        if reader.wait() != 0:
+            raise RuntimeError("Git blob reader failed")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--worktree", action="store_true", help="audit current tracked and new files without staging")
@@ -108,6 +139,7 @@ def main():
         return 0
     index = subprocess.check_output(["git", "ls-files", "--stage", "-z"], cwd=ROOT)
     errors = []
+    entries = []
     count = total = 0
     for record in index.split(b"\0"):
         if not record:
@@ -119,11 +151,11 @@ def main():
         if mode not in {"100644", "100755"} or stage != "0" or not allowed(path):
             errors.append(f"Not an approved ordinary source file: {path}")
             continue
-        size = int(subprocess.check_output(["git", "cat-file", "-s", blob], cwd=ROOT))
-        if size > size_limit(path):
+        entries.append((path, blob))
+    for path, size, data in index_blobs(entries):
+        if data is None:
             errors.append(f"Unexpectedly large source file: {path}")
             continue
-        data = subprocess.check_output(["git", "cat-file", "blob", blob], cwd=ROOT)
         total += len(data)
         errors.extend(audit_data(path, data))
     if errors:

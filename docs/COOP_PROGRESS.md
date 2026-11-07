@@ -1,6 +1,6 @@
 # Co-op progress
 
-Updated 7 November 2026. Branch: `coop`. **Estimated overall completion: 68.7%.**
+Updated 7 November 2026. Branch: `coop`. **Estimated overall completion: 69.2%.**
 The target is now [100% playable co-op](COOP_PLAYABLE.md), followed by a
 separate polishing stage. Complete normal progression and core flows first;
 batch implementation and reuse passing evidence. The historical exhaustive
@@ -41,7 +41,7 @@ foundation point credited the missing import feature. The current additional
 Internet Host/Join point credits completed public core consolidation on `0b5bca3`;
 no additional campaign visit is credited.
 
-Fourteen of 39 visits now have credited normal paired route evidence. Six retain
+Fifteen of 39 visits now have credited normal paired route evidence. Six retain
 the historical combined designation; the broader matrix still labels 33 as
 partial because it includes polishing cases. The next priority is normal paired campaign
 pass, fixing progression blockers and checking core recovery at representative
@@ -55,8 +55,32 @@ remain in the polishing backlog.
 | Two players, movement and presentation | 11.75 | 15 |
 | Combat, individual resources and death | 13.5 | 20 |
 | Scenes, transport and progression | 16 | 20 |
-| Campaign playability | 7.18 | 20 |
-| **Total** | **68.68, rounded to 68.7** | **100** |
+| Campaign playability | 7.69 | 20 |
+| **Total** | **69.19, rounded to 69.2** | **100** |
+
+## Jabberwock survival playable route completed
+
+`bfdf5b3` adds an accelerated two-player production-Arena route from the normal
+Jabberwock's Lair entrance through the original introduction, 90-second fight,
+30/60-second waves, original outro, both personal Eye Staff pickups and actual
+`wforest_start2` arrival. Ordinary controls drive both players; combat damage,
+healing and collision remain active. Both finish alive at 100/75 health without
+revivals or a team wipe, and their carried resources match the forest arrival.
+
+The run covers 24,348 simulation ticks in about eight seconds and checks 203
+exact compressed arena replicas. It uses Anode's graphics context for the
+production characters but does not render or inspect screenshots. This is a
+fresh normal paired simulation, not an independent-process internet run;
+existing public-invite/core-flow evidence remains separate. This faster route
+method can cover normal progression while exhaustive network permutations stay
+in polishing. The first attempt's final assertion incorrectly expected wave
+actors to survive outro cleanup; the final check instead records their actual
+three/six-actor appearances at ticks 3,600 and 7,200.
+
+All 944 active Rust tests, the locked release build, seven package checks and
+source audit pass. Gameplay code is unchanged; the new command and its registry
+declarations are diagnostic additions. This credits one normal route:
+`61.5 + 20 * 15 / 39 = 69.19`; 24 visits remain.
 
 ## Burning Curiosity playable route completed
 
@@ -79,7 +103,8 @@ prefixes contribute to the connected chain.
 All 38 focused Curiosity guards and seven package checks pass. Native code is
 unchanged from the already tested build. Optional pickup/Watch choreography,
 extra scene-owner permutations and repeated full traversals remain polishing.
-This adds one normal-route credit: `61.5 + 20 * 14 / 39 = 68.68`; 25 visits remain.
+That milestone added one normal-route credit: `61.5 + 20 * 14 / 39 = 68.68`,
+leaving 25 visits before the Jabberwock survival pass above.
 
 ## Connected Clockwork and Funhouse routes
 

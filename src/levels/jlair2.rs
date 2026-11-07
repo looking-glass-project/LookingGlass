@@ -27,6 +27,11 @@ pub static REGISTRATION: super::Registration = super::Registration {
     ],
     checks: &[
         super::Check {
+            flag: "--jlair2-coop-route-check",
+            help: "Play an accelerated two-player survival route through the Eye reward and forest arrival.",
+            run: super::Run::Windowed(jabberwock::coop_route::check),
+        },
+        super::Check {
             flag: "--jlair2-coop-world-check",
             help: "Verify shared Jabberwock progression, personal rewards and brush carry.",
             run: super::Run::Headless(jabberwock::coop_world_check::check),

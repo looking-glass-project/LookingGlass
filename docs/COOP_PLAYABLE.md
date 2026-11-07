@@ -27,9 +27,10 @@ verification; the full campaign and requested gameplay features remain in scope.
 2. Build once per coherent batch and run focused checks for the changed behavior.
    Reuse passing evidence for unchanged systems. Fix build errors and failures
    that prevent normal play before expanding test coverage.
-3. Run a consolidated campaign playability pass with two clients. Record each
-   visit's progression and exit; exercise the essential save, death and rejoin
-   flows at representative points.
+3. Run a consolidated campaign playability pass. Accelerated production-Arena
+   runs with two players can establish normal visit progression and exits;
+   separate-process internet tests establish transport and core flows. Exercise
+   essential save, death and rejoin behavior at representative points.
 4. Make the playable build available for hands-on testing. Publishing a release
    or merging still requires the user's later request.
 
@@ -57,7 +58,7 @@ the game 100% playable while a level or requested core flow remains blocked.
 
 ## Normal-route acceptance, 7 November
 
-Fourteen of 39 visits now have credited normal paired route evidence. The six
+Fifteen of 39 visits now have credited normal paired route evidence. The six
 historically combined visits remain credited. The playable milestone also
 accepts complete ordinary-input routes in UTemple, Sanctum, Castling,
 Checkmate and About Face without requiring every polishing permutation.
@@ -77,6 +78,14 @@ actual paired Jabberwock arrival. There are 43,586 matching state samples across
 the retained sections. The new upper route and exit use `40d06c0`; earlier
 approach evidence remains tied to its historical builds. Optional pickup/Watch
 choreography and another uninterrupted full run are deferred to polishing.
+
+Jabberwock's Lair now passes a fresh accelerated two-player production-Arena
+route on `bfdf5b3`: original scenes, 90-second survival, both three-enemy waves,
+both personal Eye Staff pickups and the actual forest return. The 24,348-tick
+run checks 203 compressed arena replicas and finishes at 100/75 health with no
+revival or wipe. It is normal gameplay simulation, not a staged component case
+or a new internet check. Independent-process public-invite and core-flow
+evidence remains required and is already recorded separately.
 
 UTemple now passes a fresh public-internet entrance-to-Garden run on `c8a041e`,
 with 40 ms injected delay and 20 ms jitter. Both clients agree on 2,813
@@ -102,12 +111,12 @@ linked to the exact native revival. Three such revivals/continuations pass a
 bounded audit. The subsequent full attempt still fails after both players die
 in the late encounter at step 154 and restore the initial checkpoint. A Garden
 full-route pass is still required; no team-wipe certification is inferred from
-that failed route. Twenty-five visits remain outside credited normal
+that failed route. Twenty-four visits remain outside credited normal
 route coverage; all have paired component evidence.
 
 Remaining normal-route coverage is first Skool, School Two, all three Pool
 visits, all four Garden visits, Centipede One, both Wood visits, Pale Realm,
-Jabberwock One, the six Maze/Tower
+the six Maze/Tower
 visits, both Grounds visits, Ascension, Castle Keep and the Queen finale.
 
 Run the two fresh-entry route checks together in Anode:

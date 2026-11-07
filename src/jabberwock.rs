@@ -5,6 +5,7 @@ mod battle;
 pub(crate) mod check;
 mod coop;
 pub(crate) mod coop_check;
+pub(crate) mod coop_route;
 pub(crate) mod coop_scene_check;
 mod coop_world;
 pub(crate) mod coop_world_check;

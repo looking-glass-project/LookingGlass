@@ -179,6 +179,30 @@ also passed smoke checks. Clippy on the source snapshot completed with 22
 existing warnings and none in the new encounter modules; a global
 `-D warnings` run remains blocked by those baseline warnings.
 
+## Co-op playable survival route, 7 November 2026
+
+Run `--jlair2-coop-route-check --no-audio` in Anode with an isolated profile.
+This accelerated check uses both production characters, the full Arena pipeline
+and ordinary movement/weapon inputs. It starts at the normal entrance with the
+normal level inventory; it does not seed a battle timer, scene outcome, reward,
+player position or health. Original scenes play without skipping. A separately
+restored arena checks compressed snapshots once per simulated second.
+
+Build `bfdf5b3` passes the full 24,348-tick route in about eight seconds: the
+90-second battle, wave appearances at 30/60 seconds, two scene reunions, both
+personal Eye Staff collections and actual forest-return placement. All 203
+arena replicas match. Both players finish alive at 100/75 health without a
+revival or checkpoint rollback, and the arrival preserves personal resources.
+The initial final assertion wrongly required wave actors after outro cleanup;
+the final check verifies their observed appearances during combat instead.
+
+The report is `jlair2-coop-route.json` in the chosen profile. It includes the
+build identity, phases, wave timings, replicas, final players/world, destination
+and recent inputs, including on a failed attempt. No screenshots are captured.
+This proves normal paired progression, not independent-process internet
+delivery. Internet/core-flow evidence is tracked separately. The 944 active
+Rust tests, locked release build, seven package checks and source audit pass.
+
 ## Remaining original-game parity limits
 
 These are playable reconstructions, not a claim of frame-perfect original AI.

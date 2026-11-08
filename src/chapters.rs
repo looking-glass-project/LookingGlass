@@ -8,6 +8,20 @@ const DIFFICULTY: Rect = Rect::new(36., 62., 568., 24.);
 const BEGIN: Rect = Rect::new(62., 429., 224., 28.);
 const BACK: Rect = Rect::new(354., 429., 224., 28.);
 
+/// Archive labels shared by the startup and in-game chapter chooser.
+pub(crate) struct Labels {
+    pub back: String,
+    pub difficulties: [String; 4],
+}
+impl Default for Labels {
+    fn default() -> Self {
+        Self {
+            back: "Return".into(),
+            difficulties: Difficulty::ALL.map(|d| d.name().into()),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Hit {
     Visit(usize),
@@ -121,7 +135,7 @@ impl Chapters {
         }
     }
 
-    pub fn draw(
+    pub(crate) fn draw(
         &self,
         ui: &ui::Ui,
         choices: &[LevelChoice],
@@ -129,6 +143,7 @@ impl Chapters {
         difficulty: Difficulty,
         interactive: bool,
         pad: bool,
+        labels: &Labels,
     ) {
         let canvas = ui::Canvas::new(screen_width(), screen_height());
         let hover = interactive
@@ -146,7 +161,7 @@ impl Chapters {
             canvas,
             &format!(
                 "{} - {} visits   ({} to change)",
-                difficulty.name(),
+                labels.difficulties[difficulty as usize],
                 choices.len(),
                 if pad { "Y" } else { "D / click" }
             ),
@@ -194,6 +209,7 @@ impl Chapters {
             17.,
             ui::INK,
         );
+        let back_title = format!("{} / {}", labels.back, if pad {"B"} else {"Tab / Esc"});
         for (rect, hit, title) in [
             (
                 BEGIN,
@@ -203,14 +219,10 @@ impl Chapters {
             (
                 BACK,
                 Hit::Back,
-                if pad {
-                    "Return / B"
-                } else {
-                    "Return / Tab / Esc"
-                },
+                back_title.as_str(),
             ),
         ] {
-            ui.font.draw(
+            ui.font.draw_button(
                 canvas,
                 title,
                 rect,

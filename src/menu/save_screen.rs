@@ -76,8 +76,13 @@ impl Film {
             },
         )
         .map_err(|e| anyhow::anyhow!("Save camera material: {e:?}"))?;
+        let specs = texture::read_materials(assets)?;
         let grain = (2..=6)
-            .map(|i| load_texture(assets, &format!("ui/load/sepia1_{i}.tga"), false))
+            .map(|i| {
+                let key = format!("ui/load/sepia1_{i}");
+                let path = menu_texture_path(assets, &specs, &key).context("Missing save film image")?;
+                load_texture(assets, &path, false)
+            })
             .collect::<Result<Vec<_>>>()?;
         Ok(Self {
             material,
@@ -231,7 +236,7 @@ impl Menu {
         self.shutter_art(canvas, "bigcover_left", -190. * open, rect);
         self.shutter_art(canvas, "bigcover_right", 190. * open, rect);
     }
-    pub(super) fn draw_save_details(&self, canvas: Canvas, page: Page) {
+    pub(super) fn draw_save_details(&self, canvas: Canvas, page: Page, focus: Option<Click>) {
         for (index, slot) in Slot::ALL.into_iter().enumerate() {
             let b = self.save_widget(&format!("LoadButton{}", index + 1));
             let lit =
@@ -269,32 +274,27 @@ impl Menu {
             let w = self.save_widget(name);
             self.art(canvas, w.art(), w.rect, 0.65);
         }
-        let page_num = self.save_widget("PageNum").rect;
-        self.ui
-            .font
-            .draw(canvas, "1", page_num, 18., crate::ui::PAPER_TEXT);
+        self.draw_lettering(canvas, self.save_widget("PageNum"), "1", false);
         let shown = self.save_film.shutter.sample(get_time()).0;
-        let title = self.save_widget("MapName").rect;
-        self.ui
-            .font
-            .draw(canvas, &self.save_labels[shown], title, 23., crate::ui::INK);
+        self.draw_lettering(canvas, self.save_widget("MapName"), &self.save_labels[shown], false);
+        let action_title = |name: &str, fallback: &str| {
+            bsp::tokens(self.save_widget(name).value("mouseentercmd")).ok()
+                .and_then(|tokens| tokens.windows(4).find(|t|
+                    t[0] == "widgetcommand" && t[1] == "DateTime" && t[2] == "title")
+                    .map(|t| t[3].trim_end_matches("\\n").to_owned()))
+                .unwrap_or_else(|| fallback.into())
+        };
         let status = if page == Page::LoadSave {
-            match self.selected {
-                6 => "Load Game",
-                7 if self.save_selected == 5 => "Automatic save",
-                7 => "Save Game",
-                _ => &self.save_dates[shown],
+            match focus {
+                Some(Click::LoadSelection) => action_title("LoadingButton", "Load Game"),
+                Some(Click::SaveSelection) if self.save_selected == 5 => "Automatic save".into(),
+                Some(Click::SaveSelection) => action_title("SaveButton", "Save Game"),
+                _ => self.save_dates[shown].clone(),
             }
         } else {
-            &self.save_dates[shown]
+            self.save_dates[shown].clone()
         };
-        self.ui.font.draw(
-            canvas,
-            status,
-            self.save_widget("DateTime").rect,
-            18.,
-            crate::ui::INK,
-        );
+        self.draw_lettering(canvas, self.save_widget("DateTime"), &status, false);
     }
 }
 

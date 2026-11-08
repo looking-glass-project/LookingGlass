@@ -223,13 +223,22 @@ pub struct Loaded {
 pub struct Store {
     pub directory: PathBuf,
     fingerprint: String,
+    compatible_fingerprints: Vec<String>,
 }
 impl Store {
     pub fn new(directory: PathBuf, fingerprint: String) -> Self {
         Self {
             directory,
             fingerprint,
+            compatible_fingerprints: Vec::new(),
         }
+    }
+    pub(crate) fn with_compatible_fingerprints(mut self, fingerprints: Vec<String>) -> Self {
+        self.compatible_fingerprints = fingerprints;
+        self
+    }
+    fn accepts_fingerprint(&self, fingerprint: &str) -> bool {
+        fingerprint == self.fingerprint || self.compatible_fingerprints.iter().any(|f| f == fingerprint)
     }
     fn path(&self, slot: Slot, backup: bool) -> PathBuf {
         self.directory.join(format!(
@@ -324,7 +333,7 @@ impl Store {
             "This save uses an unsupported format version"
         );
         ensure!(
-            e.game_data == self.fingerprint,
+            self.accepts_fingerprint(&e.game_data),
             "This save belongs to different game data"
         );
         let digest = format!("{:x}", Sha256::digest(serde_json::to_vec(&e.payload)?));
@@ -459,7 +468,7 @@ impl Store {
         Self::new(
             self.directory.join("finale-checkpoint"),
             self.fingerprint.clone(),
-        )
+        ).with_compatible_fingerprints(self.compatible_fingerprints.clone())
     }
     pub fn write_finale_checkpoint(&self, game: &Game) -> Result<()> {
         self.finale_store().write(Slot::Auto, game)?;
@@ -871,6 +880,23 @@ mod tests {
         for invalid in ["slot0", "slot5", "../quick", "C:\\save"] {
             assert!(Slot::parse(invalid).is_err());
         }
+    }
+    #[test]
+    fn language_legacy_identity_still_checks_payload_integrity() -> Result<()> {
+        let scratch = format12::Scratch::new("language-identity");
+        let game = format12::game(vec![format12::level("skool1", None, serde_json::Value::Null)]);
+        let old = Store::new(scratch.0.clone(), "legacy-german".into());
+        old.write(Slot::Quick, &game)?;
+        let bytes = fs::read(old.path(Slot::Quick, false))?;
+        let current = Store::new(scratch.0.clone(), "core".into())
+            .with_compatible_fingerprints(vec!["legacy-german".into()]);
+        assert!(current.decode(&bytes).is_ok());
+        assert!(Store::new(scratch.0.clone(), "different-core".into()).decode(&bytes).is_err());
+        let mut changed: serde_json::Value = serde_json::from_slice(&bytes)?;
+        changed["checksum"] = serde_json::json!("damaged");
+        assert!(current.decode(&serde_json::to_vec(&changed)?).err().unwrap().to_string().contains("integrity"));
+        assert!(current.finale_store().accepts_fingerprint("legacy-german"));
+        Ok(())
     }
     #[test]
     fn campaign_cache_unifies_first_entrances_without_overwriting_return_visits() {

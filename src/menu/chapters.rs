@@ -23,6 +23,7 @@ impl Menu {
         input: &mut crate::input::Input,
     ) -> ChapterChoice {
         let mut choices = campaign::level_choices(maps);
+        self.localize_choices(&mut choices, maps);
         let mut chapters = Chapters::default();
         chapters.open(
             campaign::choice_position(&choices, current, entry),
@@ -58,6 +59,7 @@ impl Menu {
                 *difficulty,
                 focused,
                 input.using_pad,
+                &self.chapter_labels,
             );
             if focused {
                 self.ui.cursor();

@@ -1,6 +1,6 @@
 # Rights, ownership and distribution notice
 
-Updated 2 October 2026.
+Updated 21 October 2026.
 
 Looking Glass is an independent, unofficial compatibility engine for American
 McGee's Alice. **This project is not endorsed by or affiliated with EA or its
@@ -32,8 +32,11 @@ game or a licence to its content. Compatible game data is required separately.
 
 There are two important distinctions:
 
-- **External downloads:** the published v0.32.0-preview.1 setup offers an
-  optional download from Internet Archive, a third-party service. This transfers
+- **External downloads:** setup offers an optional download from Internet
+  Archive, a third-party service. Setup defaults to local files; downloading
+  requires an explicit selection and a separate entitlement confirmation that
+  defaults to No. Earlier preview packages may still preselect the download
+  when no local files are found. This transfers
   files from that service to the user's computer, not from a project-hosted
   game-data mirror. Neither that option nor a link, compatibility check or
   checksum establishes the uploader's permission or the user's entitlement.
@@ -68,7 +71,7 @@ law or the terms governing the original game.
 
 Do not upload original game files, extracted assets, proprietary code,
 decompiler dumps or personal saves to this repository or its issue tracker.
-The [contribution guidance](https://github.com/skulitom/LookingGlass/blob/main/CONTRIBUTING.md)
+The [contribution guidance](https://github.com/looking-glass-project/LookingGlass/blob/main/CONTRIBUTING.md)
 describes the source boundary.
 
 ## Warranty and scope of this notice
@@ -86,7 +89,7 @@ by themselves establish that every use or distribution is lawful.
 ## Rights-holder concerns
 
 Rights holders or their authorised representatives can report a concern through
-the [project issue tracker](https://github.com/skulitom/LookingGlass/issues).
+the [project issue tracker](https://github.com/looking-glass-project/LookingGlass/issues).
 Please identify the material, its project URL, the rights concerned and the
 requested action. Do not attach confidential information or original game data
 to a public report. Reports will be reviewed, and material may be restricted or

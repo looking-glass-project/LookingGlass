@@ -13,8 +13,8 @@ QUICK_START = r"""LOOKING GLASS - WINDOWS PREVIEW
 
 1. Extract the whole ZIP (right-click > Extract All).
 2. Open Launch.cmd in the extracted folder.
-3. On first launch, choose Set up. Existing game files are detected, or choose
-   Download compatible game files. Setup checks and unpacks them, then plays.
+3. Setup defaults to existing game files. Choose an archive or folder if needed,
+   then select Set up. Setup checks and unpacks the files, then plays.
 
 Next time: just open Launch.cmd, or your optional desktop shortcut.
 To change game files: open Setup.cmd.
@@ -28,6 +28,9 @@ Use files you are entitled to use. The engine ZIP includes no original game data
 Setup can fetch Alice1_2011_vanilla.7z from:
 https://archive.org/details/alice_202106
 Or use Choose archive / Choose folder for existing English 2011 vanilla files.
+Downloading requires selecting Download from Internet Archive, then confirming
+that you are entitled to download and use the files. The confirmation defaults
+to No. Missing local files never cause setup to select or start a download.
 That download is hosted by a third party, not this project. Its availability
 and setup's checks do not establish permission to download or use it.
 

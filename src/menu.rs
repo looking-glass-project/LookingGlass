@@ -92,8 +92,78 @@ struct Button {
     art: String,
     hover: String,
     click: Click,
+    lettering: Option<Lettering>,
+    setting: Option<SettingView>,
+}
+#[derive(Clone)]
+struct SettingView {
+    label: Widget,
+    control: Widget,
+}
+#[derive(Clone)]
+struct Lettering {
+    offset: Vec2,
+    scale: f32,
+    justify: (String, String),
+    spacing: f32,
+    angle: f32,
+    visible_center: bool,
+    font: String,
+    color: Color,
+    horizontal_start: bool,
+}
+impl Lettering {
+    fn from_widget(w: &Widget) -> Self {
+        let number = |key: &str, index: usize, fallback: f32| {
+            w.fields.get(key).and_then(|v| v.get(index))
+                .and_then(|s| s.parse::<f32>().ok()).filter(|n| n.is_finite())
+                .unwrap_or(fallback)
+        };
+        let alignment = |index| w.fields.get("fontjustify").and_then(|v| v.get(index))
+            .cloned().unwrap_or_else(|| "center".into());
+        Self {
+            offset: vec2(number("fontpos", 0, 0.), number("fontpos", 1, 0.)),
+            scale: number("fontscale", 0, 1.).clamp(0.1, 4.),
+            justify: (alignment(0), alignment(1)),
+            spacing: number("fontspacing", 0, 0.),
+            angle: -number("fontangle", 0, 0.).rem_euclid(360.).to_radians(),
+            visible_center: w.kind == "Button" && alignment(1) == "center",
+            font: w.value("font").into(),
+            color: Color::new(number("fgcolor", 0, crate::ui::INK.r),
+                number("fgcolor", 1, crate::ui::INK.g), number("fgcolor", 2, crate::ui::INK.b),
+                number("fgcolor", 3, 1.)),
+            horizontal_start: w.kind == "Button" && w.fields.contains_key("fontpos"),
+        }
+    }
+    fn text_rect(&self, button: Rect, text_width: f32, size: f32) -> Rect {
+        // Trial interpretation: a button's declared fontpos X is its text start,
+        // not an ornament margin followed by additional horizontal centering.
+        let left = if self.horizontal_start {
+            self.offset.x.clamp(0., button.w)
+        } else {0.};
+        let button = Rect::new(button.x+left, button.y, button.w-left, button.h);
+        let scale = (button.w / text_width.max(1.)).min(button.h / size.max(1.)).min(1.);
+        let width = text_width * scale;
+        let height = size * scale;
+        let align = |space: f32, offset: f32, mode: &str| match mode {
+            "left" | "top" => offset.min(space).max(0.),
+            "right" | "bottom" => (space - offset).max(0.), _ => space * 0.5,
+        };
+        let x = if self.horizontal_start {button.x} else {
+            button.x + align(button.w - width, self.offset.x, &self.justify.0)
+        };
+        Rect::new(x,
+            button.y + align(button.h - height, self.offset.y, &self.justify.1), width, height)
+    }
 }
 impl Button {
+    fn slider_rect(&self) -> Option<Rect> {
+        if let Some(setting) = &self.setting {
+            (setting.control.kind == "Slider").then_some(setting.control.rect)
+        } else {
+            Some(Rect::new(88., self.rect.y + 26., 200., 16.))
+        }
+    }
     fn text(rect: Rect, text: impl Into<String>, click: Click) -> Self {
         Self {
             rect,
@@ -101,6 +171,8 @@ impl Button {
             art: "ui/buttons/apply".into(),
             hover: "ui/buttons/apply_hover".into(),
             click,
+            lettering: None,
+            setting: None,
         }
     }
 }
@@ -131,6 +203,8 @@ impl Widget {
             art: self.art().into(),
             hover: self.value("hovershader").into(),
             click,
+            lettering: Some(Lettering::from_widget(self)),
+            setting: None,
         }
     }
 }
@@ -187,7 +261,95 @@ fn layout(source: &str) -> Result<Vec<Widget>> {
     Ok(widgets)
 }
 
+fn main_layout(bytes: &[u8]) -> Result<Vec<Widget>> {
+    let (source, _, _) = encoding_rs::WINDOWS_1252.decode(bytes);
+    layout(&source)
+}
+
+fn menu_texture_path(
+    assets: &Assets,
+    specs: &BTreeMap<String, texture::MaterialSpec>,
+    key: &str,
+) -> Option<String> {
+    texture::resolve(assets, key, specs)
+}
+
+fn main_background_glow(art: &str) -> bool {
+    art.starts_with("ui/main/main") && art.ends_with("_glow")
+}
+
+#[cfg(test)]
+fn setting_label<'a>(widgets: &'a [Widget], cvar: &str, fallback: &'a str) -> &'a str {
+    setting_view(widgets, cvar).map_or(fallback, |(label, _)| label.value("title"))
+}
+fn setting_view<'a>(widgets: &'a [Widget], cvar: &str) -> Option<(&'a Widget, &'a Widget)> {
+    let index = widgets.iter().position(|w| w.value("linkcvar") == cvar)?;
+    let control = &widgets[index];
+    let label = widgets[..index].iter().rev().find(|w| w.kind == "Label"
+        && w.value("groupid") == control.value("groupid") && !w.value("title").is_empty())?;
+    Some((label, control))
+}
+fn setting_cvars(page: Page) -> &'static [&'static str] {
+    match page {
+        Page::Video => &["r_mode", "r_fullscreen"],
+        Page::Audio => &["s_musicvolume", "s_volume"],
+        Page::Game => &["sensitivity", "m_invert_pitch", "cg_cameradist", "cl_run", "ui_subtitles"],
+        _ => &[],
+    }
+}
+fn bounds(a: Rect, b: Rect) -> Rect {
+    let x = a.x.min(b.x);
+    let y = a.y.min(b.y);
+    Rect::new(x, y, a.right().max(b.right())-x, a.bottom().max(b.bottom())-y)
+}
+fn highlighted(selected: usize, mouse_navigation: bool, hit: Option<usize>, index: usize) -> bool {
+    if mouse_navigation { hit == Some(index) } else { selected == index }
+}
+fn setting_buttons(widgets: &[Widget], page: Page) -> Vec<Button> {
+    setting_cvars(page).iter().enumerate().filter_map(|(row, cvar)| {
+        let (label, control) = setting_view(widgets, cvar)?;
+        Some(Button { rect: bounds(label.rect, control.rect), text: label.value("title").into(),
+            art: String::new(), hover: String::new(), click: Click::Row(row), lettering: None,
+            setting: Some(SettingView {label: label.clone(), control: control.clone()}) })
+    }).collect()
+}
+
+fn binding_labels(bytes: &[u8]) -> Result<BTreeMap<String, String>> {
+    let (text, _, _) = encoding_rs::WINDOWS_1252.decode(bytes);
+    let mut labels = BTreeMap::new();
+    for line in text.lines() {
+        let t = bsp::tokens(line)?;
+        if t.first().is_some_and(|s| s == "binditem") && t.len() >= 3 {
+            labels.insert(t[2].clone(), t[1].clone());
+        }
+    }
+    Ok(labels)
+}
+
+fn binding_command(label: &str) -> Option<&'static str> {
+    Some(match label {
+        "Forward" => "+forward", "Backward" => "+back",
+        "Step left" => "+moveleft", "Step right" => "+moveright",
+        "Jump / climb" => "+moveup", "Dive / descend" => "+movedown",
+        "Interact" => "+use", "Run / walk" => "+speed", "Cheshire hint" => "cheshire",
+        "Primary attack" => "+attackright", "Alternate attack" => "+attackleft",
+        "Previous toy" => "prevweapon", "Next toy" => "nextweapon",
+        "Change view" => "+cameralook", "Pause" => "pause",
+        "Quick save" => "savegame quicksave", "Quick load" => "loadgame quicksave",
+        "Look left" => "+left", "Look right" => "+right",
+        "Vorpal Blade" => "use knife", "Cards" => "use cards", "Mallet" => "use mallet",
+        "Jackbomb" => "use jackbomb", "Ice Wand" => "use icewand", "Jacks" => "use jacks",
+        "Demon Dice" => "use demondice", "Eye Staff" => "use eyestaff",
+        "Blunderbuss" => "use blunderbuss", "Pocket Watch" => "use watch",
+        _ => return None,
+    })
+}
+
 fn load_texture(assets: &mut Assets, path: &str, additive: bool) -> Result<Texture2D> {
+    Ok(load_texture_geometry(assets, path, additive)?.0)
+}
+
+fn load_texture_geometry(assets: &mut Assets, path: &str, additive: bool) -> Result<(Texture2D, Option<(f32, f32)>)> {
     let mut im = texture::decode(assets, path)?;
     // Black-backed additive menu highlights can use the stock alpha pipeline.
     if additive {
@@ -203,7 +365,18 @@ fn load_texture(assets: &mut Assets, path: &str, additive: bool) -> Result<Textu
     }
     let tex = Texture2D::from_rgba8(im.width, im.height, &im.pixels);
     tex.set_filter(FilterMode::Linear);
-    Ok(tex)
+    let mut top = im.height as usize;
+    let mut bottom = 0;
+    for (i, pixel) in im.pixels.chunks_exact(4).enumerate() {
+        if pixel[3] >= 128 {
+            let y = i / im.width as usize;
+            top = top.min(y);
+            bottom = bottom.max(y + 1);
+        }
+    }
+    let bounds = (bottom > top).then_some((top as f32 / im.height as f32,
+        bottom as f32 / im.height as f32));
+    Ok((tex, bounds))
 }
 
 pub struct Menu {
@@ -213,9 +386,14 @@ pub struct Menu {
     pub frontend: bool,
     layouts: BTreeMap<String, Vec<Widget>>,
     textures: BTreeMap<String, Texture2D>,
+    button_bounds: BTreeMap<String, (f32, f32)>,
+    binding_labels: BTreeMap<String, String>,
+    map_titles: BTreeMap<String, String>,
+    pub(crate) chapter_labels: crate::chapters::Labels,
     ui: std::rc::Rc<Ui>,
     selected: usize,
     previous_pointer: Vec2,
+    mouse_navigation: bool,
     draft: Preferences,
     draft_audio: audio::Settings,
     binding: Option<usize>,
@@ -241,7 +419,7 @@ impl Menu {
         let mut credits = Vec::new();
         for name in ["main", "controls", "loadsave", "newgame", "quit", "credits"] {
             let data = assets.read(&format!("ui/{name}.urc"))?;
-            let source = String::from_utf8_lossy(&data);
+            let (source, _, _) = encoding_rs::WINDOWS_1252.decode(&data);
             if name == "credits" {
                 for line in source.lines() {
                     let t = bsp::tokens(line)?;
@@ -250,7 +428,10 @@ impl Menu {
                     }
                 }
             }
-            layouts.insert(name.into(), layout(&source)?);
+            layouts.insert(
+                name.into(),
+                main_layout(&data)?,
+            );
         }
         // The original scroller starts off-page; paging should begin at its text.
         let first = credits
@@ -258,6 +439,8 @@ impl Menu {
             .position(|line| !line.trim().is_empty())
             .unwrap_or(credits.len());
         credits.drain(..first);
+        ensure!(layouts["credits"].iter().any(|w| w.value("name") == "title1"),
+            "Missing original credits text area");
         for name in ["newgame", "loadgame", "settings", "quit", "backtogame"] {
             ensure!(
                 layouts["main"]
@@ -309,46 +492,64 @@ impl Menu {
         .collect::<Vec<_>>();
         for w in layouts.values().flatten() {
             names.extend(
-                [w.art(), w.value("hovershader")]
+                [w.art(), w.value("hovershader"), w.value("checked_shader"), w.value("unchecked_shader")]
                     .into_iter()
                     .filter(|s| !s.is_empty())
                     .map(str::to_owned),
             );
         }
         let mut textures = BTreeMap::new();
+        let mut button_bounds = BTreeMap::new();
         for name in names {
             let key = name.to_ascii_lowercase();
             if textures.contains_key(&key) {
                 continue;
             }
-            let spec = specs.get(&key);
-            let candidate = spec
-                .and_then(|s| s.candidates.iter().find(|p| assets.contains(p)))
-                .cloned()
-                .unwrap_or_else(|| {
-                    if assets.contains(&key) {
-                        key.clone()
-                    } else {
-                        format!("{key}.tga")
-                    }
-                });
-            if assets.contains(&candidate) {
-                textures.insert(
-                    key,
-                    load_texture(
-                        assets,
-                        &candidate,
-                        name.ends_with("_glow") && name.contains("/button_")
-                            || name.ends_with("game_glow")
-                            || name.ends_with("settings_glow")
-                            || name.ends_with("quit_glow"),
-                    )?,
-                );
+            if let Some(candidate) = menu_texture_path(assets, &specs, &key) {
+                let additive = specs.get(&key).is_some_and(|s| s.stages.first()
+                    .is_some_and(|stage| matches!(stage.blend,
+                        crate::materials::Blend::Add | crate::materials::Blend::AlphaAdd)))
+                    || name.ends_with("_glow") && name.contains("/button_")
+                    || name.ends_with("game_glow")
+                    || name.ends_with("settings_glow")
+                    || name.ends_with("quit_glow");
+                let (texture, bounds) = load_texture_geometry(assets, &candidate, additive)?;
+                if let Some(bounds) = bounds {
+                    button_bounds.insert(key.clone(), bounds);
+                }
+                textures.insert(key, texture);
             }
         }
         let mut mirror =
             crate::npc::Puppet::load(assets, "alice", &["idle_stand_rocktoes"], &specs)?;
         mirror.show_attachments(false);
+        let list = layouts["controls"].iter().find(|w| w.kind == "FakkBindList")
+            .context("Missing original binding-list layout")?;
+        let binding_labels = if assets.contains(list.value("filename")) {
+            binding_labels(&assets.read(list.value("filename"))?)?
+        } else {BTreeMap::new()};
+        let mut map_titles = BTreeMap::new();
+        if assets.contains("ui/maplist.scr") {
+            let data = assets.read("ui/maplist.scr")?;
+            let (source, _, _) = encoding_rs::WINDOWS_1252.decode(&data);
+            for line in source.lines() {
+                let tokens = bsp::tokens(line)?;
+                if tokens.len() >= 4 && tokens[0].parse::<u32>().is_ok() {
+                    map_titles.insert(tokens[2].to_ascii_lowercase(), tokens[3].clone());
+                }
+            }
+        }
+        let mut chapter_labels = crate::chapters::Labels::default();
+        if let Some(back) = layouts["newgame"].iter().find(|w| w.kind == "Button"
+            && w.value("stuffcommand").contains("popmenu") && !w.value("title").is_empty()) {
+            chapter_labels.back = back.value("title").into();
+        }
+        for (i, name) in ["easy", "medium", "hard", "nightmare"].iter().enumerate() {
+            if let Some(w) = layouts["newgame"].iter().find(|w| w.value("name") == *name
+                && !w.value("title").is_empty()) {
+                chapter_labels.difficulties[i] = w.value("title").into();
+            }
+        }
         Ok(Self {
             page: None,
             message: String::new(),
@@ -356,9 +557,14 @@ impl Menu {
             frontend: false,
             layouts,
             textures,
+            button_bounds,
+            binding_labels,
+            map_titles,
+            chapter_labels,
             ui: Ui::load(assets)?,
             selected: 0,
             previous_pointer: Vec2::splat(-10000.),
+            mouse_navigation: false,
             draft: Preferences::default(),
             draft_audio: audio::Settings::default(),
             binding: None,
@@ -392,6 +598,7 @@ impl Menu {
         self.draft = preferences.clone();
         self.draft_audio = audio;
         self.previous_pointer = Vec2::from(mouse_position());
+        self.mouse_navigation = false;
         self.message.clear();
         if page == Page::LoadSave {
             self.selected = self.save_selected;
@@ -453,6 +660,103 @@ impl Menu {
             );
         }
     }
+    fn draw_lettering(&self, canvas: Canvas, widget: &Widget, text: &str, selected: bool) {
+        let lettering = Lettering::from_widget(widget);
+        self.draw_styled_text(canvas, widget.rect, widget.art(), text, &lettering, selected);
+    }
+    fn center_button_text(&self, mut text: Rect, button: Rect, art: &str) -> Rect {
+        let (top, bottom) = self.button_bounds.get(&art.to_ascii_lowercase())
+            .copied().unwrap_or((0., 1.));
+        // Normal artwork is the stable reference, even when hover art is drawn.
+        let visible_top = button.y + top * button.h;
+        let visible_height = (bottom - top) * button.h;
+        text.y = visible_top + visible_height * 0.5 - text.h * 0.5;
+        text
+    }
+    fn draw_styled_text(&self, canvas: Canvas, rect: Rect, art: &str, text: &str, lettering: &Lettering, selected: bool) {
+        let font = match lettering.font.as_str() {
+            "verdana-12" => &self.ui.body, "courier-14" => &self.ui.courier, _ => &self.ui.font,
+        };
+        let size = font.height() * lettering.scale;
+        let r = lettering.text_rect(rect, font.width_spaced(text, size, lettering.spacing), size);
+        let r = if lettering.visible_center {self.center_button_text(r, rect, art)} else {r};
+        let anchor = vec2(match lettering.justify.0.as_str() {
+            "left" => r.x, "right" => r.right(), _ => r.center().x,
+        }, match lettering.justify.1.as_str() {
+            "top" => r.y, "bottom" => r.bottom(), _ => r.center().y,
+        });
+        font.draw_transformed(canvas, text, r, size.min(r.h),
+            if selected {Color::from_hex(0x831c12)} else {lettering.color}, lettering.spacing,
+            crate::ui::TextTransform {visible_center: lettering.visible_center,
+                radians: lettering.angle, anchor});
+    }
+    pub(crate) fn localize_choices(&self, choices: &mut [crate::campaign::LevelChoice], maps: &[String]) {
+        for choice in choices {
+            if let Some(title) = self.map_titles.get(&maps[choice.map].to_ascii_lowercase()) {
+                choice.title = if choice.entry.is_some() {
+                    format!("{title} - return")
+                } else {title.clone()};
+            }
+        }
+    }
+    fn credits_widget(&self) -> &Widget {
+        self.layouts["credits"].iter().find(|w| w.value("name") == "title1")
+            .expect("validated original credits text area")
+    }
+    fn credits_geometry(&self) -> (f32, f32, usize) {
+        let widget = self.credits_widget();
+        let lettering = Lettering::from_widget(widget);
+        let font = match lettering.font.as_str() {
+            "verdana-12" => &self.ui.body, "courier-14" => &self.ui.courier, _ => &self.ui.font,
+        };
+        let size = (font.height() * lettering.scale).min(widget.rect.h);
+        let spacing = widget.fields.get("fontspacing").and_then(|v| v.get(1))
+            .and_then(|v| v.parse::<f32>().ok()).filter(|v| v.is_finite()).unwrap_or(0.);
+        let step = (size + spacing).max(1.);
+        let rows = (((widget.rect.h - size).max(0.) / step).floor() as usize + 1).min(1024);
+        (size, step, rows)
+    }
+    fn slider_thumb_size(&self, rect: Rect) -> Vec2 {
+        self.textures.get("ui/control/hslider_indicator").map_or(vec2(rect.h, rect.h), |t| {
+            let scale = (rect.h / t.height()).min(1.);
+            vec2((t.width() * scale).min(rect.w), t.height() * scale)
+        })
+    }
+    fn draw_slider(&self, canvas: Canvas, rect: Rect, value: f32) {
+        let bar_height = self.textures.get("ui/control/hslider_bar")
+            .map_or(rect.h, |t| t.height().min(rect.h));
+        self.art(canvas, "ui/control/hslider_bar",
+            Rect::new(rect.x, rect.y+(rect.h-bar_height)*0.5, rect.w, bar_height), 1.);
+        let size = self.slider_thumb_size(rect);
+        self.art(canvas, "ui/control/hslider_indicator",
+            Rect::new(rect.x+value.clamp(0.,1.)*(rect.w-size.x), rect.y+(rect.h-size.y)*0.5, size.x, size.y), 1.);
+    }
+    fn draw_setting(&self, canvas: Canvas, page: Page, row: usize, setting: &SettingView, selected: bool) {
+        self.draw_lettering(canvas, &setting.label, setting.label.value("title"), selected);
+        let control = &setting.control;
+        if let Some(value) = self.slider(page, row) {
+            self.draw_slider(canvas, control.rect, value);
+        } else if let Some(value) = self.toggle(page, row) {
+            let art = control.value(if value {"checked_shader"} else {"unchecked_shader"});
+            if let Some(texture) = self.textures.get(art) {
+                let scale = (control.rect.h/texture.height()).min(control.rect.w/texture.width()).min(1.);
+                self.art(canvas, art, Rect::new(control.rect.x, control.rect.y+(control.rect.h-texture.height()*scale)*0.5,
+                    texture.width()*scale, texture.height()*scale), 1.);
+            }
+        } else if page == Page::Video && row == 0 {
+            let (w,h) = SIZES[self.draft.resolution];
+            self.draw_lettering(canvas, control, &format!("{w} x {h}"), selected);
+            for (art, right) in [("ui/control/hslider_prev", false), ("ui/control/hslider_next", true)] {
+                if let Some(texture) = self.textures.get(art) {
+                    let scale = (control.rect.h/texture.height()).min(1.);
+                    let width = texture.width()*scale;
+                    let height = texture.height()*scale;
+                    self.art(canvas, art, Rect::new(if right {control.rect.right()-width} else {control.rect.x},
+                        control.rect.y+(control.rect.h-height)*0.5, width, height), 1.);
+                }
+            }
+        }
+    }
     fn button_named(&self, layout: &str, name: &str, click: Click) -> Button {
         self.layouts[layout]
             .iter()
@@ -460,15 +764,24 @@ impl Menu {
             .expect("validated original menu button")
             .button(click)
     }
+    fn binding_area(&self) -> Rect {
+        self.layouts["controls"].iter().find(|w| w.kind == "FakkBindList")
+            .expect("validated original binding-list layout").rect
+    }
     fn buttons(&self, page: Page) -> Vec<Button> {
-        let back = || Button {
+        let back = || self.layouts[page.layout()].iter()
+            .find(|w| w.kind == "Button" && w.value("stuffcommand").contains("popmenu")
+                && !w.value("title").is_empty())
+            .map(|w| w.button(Click::Back)).unwrap_or_else(|| Button {
             rect: Rect::new(0., 456., 80., 24.),
             text: String::new(),
             art: "ui/back_button".into(),
             hover: "ui/back_button_hover".into(),
             click: Click::Back,
-        };
-        match page {
+            lettering: None,
+            setting: None,
+        });
+        let mut buttons = match page {
             Page::Main => {
                 let mut buttons = vec![
                     self.button_named("main", "newgame", Click::Page(Page::NewGame)),
@@ -488,15 +801,19 @@ impl Menu {
             Page::Settings => {
                 let mut buttons = vec![back()];
                 let pages = [Page::Video, Page::Audio, Page::Controls, Page::Game];
-                for (w, page) in self.layouts["controls"]
+                for w in self.layouts["controls"]
                     .iter()
                     .filter(|w| {
                         w.kind == "Button"
                             && w.value("groupid") == "group_main"
                             && w.value("stuffcommand").contains("activategroup")
                     })
-                    .zip(pages)
                 {
+                    let Some(page) = pages.iter().copied().find(|page|
+                        w.value("stuffcommand").contains(match page {
+                            Page::Video => "group_video", Page::Audio => "group_audio",
+                            Page::Controls => "group_control", _ => "group_game",
+                        })) else {continue};
                     buttons.push(w.button(Click::Page(page)));
                 }
                 buttons
@@ -507,12 +824,16 @@ impl Menu {
                     .filter(|w| {
                         w.kind == "Button" && w.value("stuffcommand").contains("seta skill")
                     })
-                    .zip(Difficulty::ALL)
-                    .map(|(w, d)| w.button(if self.frontend {
+                    .filter_map(|w| {
+                        let tokens = w.value("stuffcommand").replace(';', " ");
+                        let tokens = tokens.split_whitespace().collect::<Vec<_>>();
+                        let d = tokens.windows(3).find(|t| t[0] == "seta" && t[1] == "skill")
+                            .and_then(|t| Difficulty::parse(t[2]).ok())?;
+                        Some(w.button(if self.frontend {
                         Click::Action(Action::NewGame(d))
                     } else {
                         Click::Page(Page::ConfirmNew(d))
-                    }))
+                    }))})
                     .collect::<Vec<_>>();
                 buttons.push(back());
                 buttons
@@ -520,13 +841,15 @@ impl Menu {
             Page::Quit => self.layouts["quit"]
                 .iter()
                 .filter(|w| w.kind == "Button")
-                .zip([
-                    Click::Action(Action::Quit),
-                    Click::Back,
-                    Click::Page(Page::Credits),
-                    Click::Back,
-                ])
-                .map(|(w, c)| w.button(c))
+                .filter_map(|w| {
+                    let command = w.value("stuffcommand");
+                    let click = if command.split_whitespace().next() == Some("quit") {
+                        Click::Action(Action::Quit)
+                    } else if command.contains("pushmenu credits") {
+                        Click::Page(Page::Credits)
+                    } else if command.contains("popmenu") {Click::Back} else {return None};
+                    Some(w.button(click))
+                })
                 .collect(),
             Page::ConfirmNew(_) | Page::ConfirmLoad(_) | Page::ConfirmSave(_) => {
                 let action = match page {
@@ -552,6 +875,8 @@ impl Menu {
                         art: String::new(),
                         hover: String::new(),
                         click: Click::Slot(i),
+                        lettering: None,
+                        setting: None,
                     })
                     .collect::<Vec<_>>();
                 buttons.push(self.button_named("loadsave", "LoadingButton", Click::LoadSelection));
@@ -562,8 +887,15 @@ impl Menu {
                 buttons
             }
             Page::Controls => {
+                let area = self.binding_area();
+                // Device switching and pagination are Rust additions inside
+                // the original binding-list rectangle.
+                let row_height = ((area.h - 100.) / 8.).max(1.);
+                let first_row = area.y + 36.;
+                let pager_y = area.bottom() - 64.;
+                let pager_width = (area.w - 45.) * 0.5;
                 let mut buttons = vec![Button {
-                    rect: Rect::new(65., 62., 226., 28.),
+                    rect: Rect::new(area.x, area.y, area.w, 28.),
                     text: if self.controls_pad {
                         "Controller"
                     } else {
@@ -573,15 +905,19 @@ impl Menu {
                     art: String::new(),
                     hover: String::new(),
                     click: Click::Device,
+                    lettering: None,
+                    setting: None,
                 }];
                 let start = self.controls_page * 8;
                 for (row, (label, _)) in BINDINGS.iter().enumerate().skip(start).take(8) {
                     buttons.push(Button {
-                        rect: Rect::new(65., 96. + (row - start) as f32 * 26., 226., 26.),
+                        rect: Rect::new(area.x, first_row + (row - start) as f32 * row_height, area.w, row_height),
                         text: (*label).into(),
                         art: String::new(),
                         hover: String::new(),
                         click: Click::Row(row),
+                        lettering: None,
+                        setting: None,
                     });
                 }
                 if self.controls_pad && self.controls_page == BINDINGS.len().div_ceil(8) {
@@ -590,36 +926,37 @@ impl Menu {
                         .enumerate()
                     {
                         buttons.push(Button {
-                            rect: Rect::new(65., 110. + i as f32 * 66., 226., 44.),
+                            rect: Rect::new(area.x, first_row + i as f32 * row_height * 2., area.w, row_height * 2.),
                             text: label.into(),
                             art: String::new(),
                             hover: String::new(),
                             click: Click::Row(BINDINGS.len() + i),
+                            lettering: None,
+                            setting: None,
                         });
                     }
                 }
-                for (x, label, delta) in [(50., "Previous", -1), (206., "Next", 1)] {
+                for (x, label, delta) in [(area.x, "Previous", -1), (area.right()-pager_width, "Next", 1)] {
                     buttons.push(Button::text(
-                        Rect::new(x, 311., 100., 32.),
+                        Rect::new(x, pager_y, pager_width, 32.),
                         label,
                         Click::ControlsPage(delta),
                     ));
                 }
                 buttons.push(Button::text(
-                    Rect::new(125., 352., 100., 32.),
+                    Rect::new(area.center().x - area.w * 0.25, area.bottom()-32., area.w * 0.5, 32.),
                     "Reset",
                     Click::Reset,
                 ));
-                buttons.push(Button::text(
-                    Rect::new(50., 400., 100., 35.),
-                    "Apply",
-                    Click::Apply,
-                ));
-                buttons.push(Button::text(
-                    Rect::new(200., 400., 100., 35.),
-                    "Cancel",
-                    Click::Cancel,
-                ));
+                let group = match page {
+                    Page::Video => "group_video", Page::Audio => "group_audio", _ => "group_game",
+                };
+                for (click, command) in [(Click::Apply, "ui_setcvars"), (Click::Cancel, "ui_restorecvars")] {
+                    if let Some(w) = self.layouts["controls"].iter().find(|w| w.kind == "Button"
+                        && w.value("groupid") == group && w.value("stuffcommand").contains(command)) {
+                        buttons.push(w.button(click));
+                    }
+                }
                 buttons
             }
             Page::Credits => vec![
@@ -636,79 +973,91 @@ impl Menu {
                 ),
             ],
             _ => {
-                let rows: Vec<(String, f32)> = match page {
-                    Page::Video => vec![
-                        (
-                            format!(
-                                "{} x {}",
-                                SIZES[self.draft.resolution].0, SIZES[self.draft.resolution].1
-                            ),
-                            112.,
-                        ),
-                        (
-                            if self.draft.fullscreen {
-                                "Fullscreen"
-                            } else {
-                                "Windowed"
-                            }
-                            .into(),
-                            210.,
-                        ),
-                    ],
-                    Page::Audio => vec![
-                        ("Music Volume".into(), 168.),
-                        ("Effects Volume".into(), 208.),
-                        ("Mute".into(), 298.),
-                    ],
-                    Page::Game => vec![
-                        ("Sensitivity".into(), 80.),
-                        ("Invert Mouse".into(), 130.),
-                        ("Camera Distance".into(), 168.),
-                        ("Always Run".into(), 222.),
-                        ("Subtitles".into(), 270.),
-                    ],
-                    _ => Vec::new(),
+                let mut buttons = setting_buttons(&self.layouts["controls"], page);
+                if page == Page::Audio {
+                    // Mute is a Rust feature without an original widget.
+                    buttons.push(Button { rect: Rect::new(68., 298., 220., 24.),
+                        text: "Mute".into(), art: String::new(), hover: String::new(),
+                        click: Click::Row(2), lettering: None, setting: None });
+                }
+                let group = match page {
+                    Page::Video => "group_video", Page::Audio => "group_audio", _ => "group_game",
                 };
-                let mut buttons = rows
-                    .into_iter()
-                    .enumerate()
-                    .map(|(i, (text, y))| Button {
-                        rect: Rect::new(
-                            65.,
-                            y,
-                            226.,
-                            if self.slider(page, i).is_some() {
-                                40.
-                            } else {
-                                26.
-                            },
-                        ),
-                        text,
-                        art: String::new(),
-                        hover: String::new(),
-                        click: Click::Row(i),
-                    })
-                    .collect::<Vec<_>>();
-                buttons.push(Button::text(
-                    Rect::new(50., 400., 100., 35.),
-                    "Apply",
-                    Click::Apply,
-                ));
-                buttons.push(Button::text(
-                    Rect::new(200., 400., 100., 35.),
-                    "Cancel",
-                    Click::Cancel,
-                ));
-                if page == Page::Controls {
-                    buttons.push(Button::text(
-                        Rect::new(125., 344., 100., 35.),
-                        "Reset",
-                        Click::Reset,
-                    ));
+                for (click, command) in [(Click::Apply, "ui_setcvars"), (Click::Cancel, "ui_restorecvars")] {
+                    if let Some(w) = self.layouts["controls"].iter().find(|w| w.kind == "Button"
+                        && w.value("groupid") == group && w.value("stuffcommand").contains(command)) {
+                        buttons.push(w.button(click));
+                    }
                 }
                 buttons
             }
+        };
+        // Adapted dialogs and paging have no original layout. Reuse the original
+        // generic button lettering, while keeping their own rectangles and actions.
+        if matches!(page, Page::ConfirmNew(_) | Page::ConfirmLoad(_) | Page::ConfirmSave(_) | Page::Credits) {
+            if let Some(template) = self.layouts["controls"].iter().find(|w|
+                w.kind == "Button" && w.value("stuffcommand").contains("ui_setcvars")) {
+                for b in &mut buttons {
+                    if b.lettering.is_none() {
+                        b.lettering = Some(Lettering::from_widget(template));
+                        b.art = template.art().into();
+                        b.hover = template.value("hovershader").into();
+                    }
+                }
+            }
+            for b in &mut buttons {
+                let shader = match b.text.as_str() {"Yes" => "ui/quit/yes_glow", "No" => "ui/quit/no_glow", _ => continue};
+                if let Some(w) = self.layouts["quit"].iter().find(|w| w.value("hovershader") == shader
+                    && !w.value("title").is_empty()) {
+                    b.text = w.value("title").into();
+                }
+            }
         }
+        if page == Page::Settings || page.settings() {
+            let widgets = &self.layouts["controls"];
+            let group = match page {
+                Page::Video => "group_video", Page::Audio => "group_audio",
+                Page::Game => "group_game", Page::Controls => "group_control",
+                _ => "group_main",
+            };
+            for b in &mut buttons {
+                let command = match b.click {
+                    Click::Apply => Some("ui_setcvars"),
+                    Click::Cancel => Some("ui_restorecvars"),
+                    Click::Reset => Some("exec default.cfg"),
+                    Click::Back => Some("popmenu"),
+                    _ => None,
+                };
+                if let Some(command) = command {
+                    // The control page has no original Apply/Cancel: reuse their
+                    // archive labels from another settings group, but keep Rust actions.
+                    let title = widgets.iter().find(|w| w.kind == "Button"
+                        && w.value("groupid") == group && w.value("stuffcommand").contains(command))
+                        .or_else(|| widgets.iter().find(|w| w.kind == "Button"
+                            && w.value("stuffcommand").contains(command)));
+                    if let Some(w) = title {
+                        let old_rect = b.rect;
+                        let click = b.click;
+                        *b = w.button(click);
+                        b.lettering = Some(Lettering::from_widget(w));
+                        // Controls has added Apply/Cancel actions at the original
+                        // Reset location. Keep Reset on its separate adapted row.
+                        if page == Page::Controls && matches!(click, Click::Apply | Click::Cancel | Click::Reset) {
+                            b.rect = old_rect;
+                        }
+                    }
+                }
+                if let Click::Row(row) = b.click {
+                    if page == Page::Controls && row < BINDINGS.len() {
+                        if let Some(label) = binding_command(BINDINGS[row].0)
+                            .and_then(|c| self.binding_labels.get(c)) {
+                            b.text = label.clone();
+                        }
+                    }
+                }
+            }
+        }
+        buttons
     }
     fn adjust(&mut self, page: Page, row: usize, delta: f32) {
         match (page, row) {
@@ -752,6 +1101,7 @@ impl Menu {
     fn toggle(&self, page: Page, row: usize) -> Option<bool> {
         match (page, row) {
             (Page::Audio, 2) => Some(self.draft_audio.muted),
+            (Page::Video, 1) => Some(self.draft.fullscreen),
             (Page::Game, 1) => Some(self.draft.invert_mouse),
             (Page::Game, 3) => Some(self.draft.always_run),
             (Page::Game, 4) => Some(self.draft.subtitles),
@@ -853,7 +1203,8 @@ impl Menu {
                         "{}{}",
                         s.game
                             .level()
-                            .map_or("Unknown", |l| crate::campaign::level_title(&l.map)),
+                            .map_or("Unknown", |l| self.map_titles.get(&l.map.to_ascii_lowercase())
+                                .map(String::as_str).unwrap_or_else(|| crate::campaign::level_title(&l.map))),
                         if s.backup { " (backup)" } else { "" }
                     )
                 })
@@ -957,9 +1308,19 @@ impl Menu {
         set_default_camera();
     }
     fn draw(&mut self, page: Page, buttons: &[Button]) {
+        self.draw_into(page, buttons, None);
+    }
+    fn draw_into(&mut self, page: Page, buttons: &[Button], target: Option<RenderTarget>) {
         let canvas = Canvas::new(screen_width(), screen_height());
+        let hit = buttons.iter().position(|b| b.rect.contains(canvas.pointer(Vec2::from(mouse_position()))));
         if page.layout() == "controls" {
             self.draw_mirror();
+        }
+        if let Some(target) = &target {
+            set_camera(&Camera2D {
+                render_target: Some(target.clone()),
+                ..Camera2D::from_display_rect(Rect::new(0., 0., screen_width(), screen_height()))
+            });
         }
         clear_background(BLACK);
         if page.layout() == "loadsave" {
@@ -1001,79 +1362,36 @@ impl Menu {
                 continue;
             }
             let group = widget.value("groupid");
-            if !(group.is_empty() || page == Page::Settings && group == "group_main") {
+            if !(group.is_empty() || page == Page::Settings && group == "group_main"
+                || page == Page::Credits && group == "group_page1") {
                 continue;
             }
-            let art = widget.art();
-            let alpha = if art.contains("/glow") || art.contains("wick") {
+            let hovered_title = if page == Page::Settings && widget.value("name") == "TitleBar" {
+                buttons.iter().enumerate().find(|(i,b)|
+                    highlighted(self.selected, self.mouse_navigation, hit, *i) && matches!(b.click, Click::Page(_)))
+                    .and_then(|(_,b)| self.layouts["controls"].iter().find(|w| w.kind == "Button" && w.rect == b.rect))
+                    .and_then(|w| w.value("mouseentercmd").split_whitespace().collect::<Vec<_>>()
+                        .windows(2).find(|p| p[0] == "shader").map(|p| p[1].trim_end_matches("\\n").to_owned()))
+            } else { None };
+            let art = hovered_title.as_deref().unwrap_or_else(|| widget.art());
+            let alpha = if art.contains("/glow")
+                || art.contains("wick")
+                || page == Page::Main && main_background_glow(art)
+            {
                 0.15 + (get_time() as f32 * 3.).sin().abs() * 0.15
             } else {
                 1.
             };
             self.art(canvas, art, widget.rect, alpha);
-        }
-        if page == Page::Video {
-            let ink = Color::from_hex(0x330b0b);
-            self.art(
-                canvas,
-                "ui/control/head_2_video",
-                Rect::new(48., 319., 256., 64.),
-                1.,
-            );
-            for (title, y) in [("Window Resolution", 80.), ("Display Mode", 178.)] {
-                self.ui
-                    .font
-                    .draw(canvas, title, Rect::new(65., y, 226., 26.), 24., ink);
-            }
-            let preset = match SIZES[self.draft.resolution] {
-                (1920, 1080) => "Full HD / 1080p",
-                (2560, 1440) => "QHD / 1440p (2K)",
-                (3840, 2160) => "Ultra HD / 4K",
-                _ => "",
-            };
-            self.ui
-                .font
-                .draw(canvas, preset, Rect::new(65., 141., 226., 21.), 18., ink);
-            for (text, y) in [
-                ("Fullscreen fits your desktop.", 257.),
-                ("Windowed uses the size above.", 281.),
-            ] {
-                self.ui
-                    .font
-                    .draw(canvas, text, Rect::new(65., y, 226., 21.), 17., ink);
-            }
-        }
-        if matches!(page, Page::Audio | Page::Game) {
-            let name = match page {
-                Page::Audio => "audio",
-                Page::Game => "game",
-                _ => "control",
-            };
-            self.art(
-                canvas,
-                &format!("ui/control/head_2_{name}"),
-                Rect::new(48., 319., 256., 64.),
-                1.,
-            );
-        }
-        if page == Page::Settings {
-            if let Some(b) = buttons.get(self.selected) {
-                let art = match b.click {
-                    Click::Page(Page::Video) => "video",
-                    Click::Page(Page::Audio) => "audio",
-                    Click::Page(Page::Game) => "game",
-                    _ => "control",
-                };
-                self.art(
-                    canvas,
-                    &format!("ui/control/head_2_{art}"),
-                    Rect::new(48., 319., 256., 64.),
-                    1.,
-                );
+            if !widget.value("title").is_empty()
+                && !(page.layout() == "loadsave" && ["MapName", "DateTime", "PageNum"].contains(&widget.value("name"))) {
+                self.draw_lettering(canvas, widget, widget.value("title"), false);
             }
         }
         if page.layout() == "loadsave" {
-            self.draw_save_details(canvas, page);
+            let focus = buttons.iter().enumerate().find(|(i, _)|
+                highlighted(self.selected, self.mouse_navigation, hit, *i)).map(|(_, b)| b.click);
+            self.draw_save_details(canvas, page, focus);
         }
         if matches!(
             page,
@@ -1107,24 +1425,22 @@ impl Menu {
             );
         }
         if page == Page::Credits {
+            let widget = self.credits_widget();
+            let (size, step, rows) = self.credits_geometry();
             for (i, line) in self
                 .credits
                 .iter()
                 .skip(self.credit_offset)
-                .take(15)
+                .take(rows)
                 .enumerate()
             {
-                self.ui.font.draw(
-                    canvas,
-                    line,
-                    Rect::new(32., 83. + i as f32 * 20., 260., 22.),
-                    20.,
-                    BLACK,
-                );
+                let mut row = widget.clone();
+                row.rect = Rect::new(widget.rect.x, widget.rect.y + i as f32 * step, widget.rect.w, size);
+                self.draw_lettering(canvas, &row, line, false);
             }
         }
         for (i, b) in buttons.iter().enumerate() {
-            let selected = i == self.selected;
+            let selected = highlighted(self.selected, self.mouse_navigation, hit, i);
             self.art(
                 canvas,
                 if selected && !b.hover.is_empty() {
@@ -1136,7 +1452,15 @@ impl Menu {
                 1.,
             );
             let dark = Color::from_hex(if selected { 0x831c12 } else { 0x330b0b });
+            if let (Click::Row(row), Some(setting)) = (b.click, &b.setting) {
+                self.draw_setting(canvas, page, row, setting, selected);
+                continue;
+            }
             if !b.text.is_empty() {
+                if let Some(lettering) = &b.lettering {
+                    self.draw_styled_text(canvas, b.rect, &b.art, &b.text, lettering, selected);
+                    continue;
+                }
                 let r = if page == Page::Video && matches!(b.click, Click::Row(_)) {
                     for (name, x) in [("prev", b.rect.x), ("next", b.rect.right() - 18.)] {
                         self.art(
@@ -1159,24 +1483,16 @@ impl Menu {
                 };
                 if let Click::Row(row) = b.click {
                     if page == Page::Controls && row < BINDINGS.len() {
-                        self.ui.font.draw_left(
-                            canvas,
-                            BINDINGS[row].0,
-                            Rect::new(r.x, r.y, r.w - 80., r.h),
-                            20.,
-                            dark,
-                        );
-                        self.ui.font.draw(
-                            canvas,
-                            if self.controls_pad {
-                                &self.draft.pad_bindings[row]
-                            } else {
-                                &self.draft.bindings[row]
-                            },
-                            Rect::new(r.right() - 78., r.y, 78., r.h),
-                            19.,
-                            dark,
-                        );
+                        let mut cell = self.layouts["controls"].iter()
+                            .find(|w| w.kind == "FakkBindList").expect("validated binding list").clone();
+                        cell.fields.entry("fontjustify".into()).or_insert_with(|| vec!["left".into(), "center".into()]);
+                        let key_width = r.w / 3.;
+                        cell.rect = Rect::new(r.x, r.y, r.w-key_width, r.h);
+                        self.draw_lettering(canvas, &cell, &b.text, selected);
+                        cell.rect = Rect::new(r.right()-key_width, r.y, key_width, r.h);
+                        self.draw_lettering(canvas, &cell, if self.controls_pad {
+                            &self.draft.pad_bindings[row]
+                        } else {&self.draft.bindings[row]}, selected);
                     } else if page != Page::Video {
                         let width = if self.toggle(page, row).is_some() {
                             r.w - 38.
@@ -1194,7 +1510,8 @@ impl Menu {
                         self.ui.font.draw(canvas, &b.text, r, 24., dark);
                     }
                 } else {
-                    self.ui.font.draw(canvas, &b.text, r, 24., dark);
+                    let r = self.center_button_text(r, b.rect, &b.art);
+                    self.ui.font.draw_button(canvas, &b.text, r, 24., dark);
                 }
             }
             if let Click::Row(row) = b.click {
@@ -1211,18 +1528,9 @@ impl Menu {
                     );
                 }
                 if let Some(value) = self.slider(page, row) {
-                    self.art(
-                        canvas,
-                        "ui/control/hslider_bar",
-                        Rect::new(88., b.rect.y + 30., 200., 8.),
-                        1.,
-                    );
-                    self.art(
-                        canvas,
-                        "ui/control/hslider_indicator",
-                        Rect::new(84. + value * 200., b.rect.y + 25., 12., 20.),
-                        1.,
-                    );
+                    if let Some(rect) = b.slider_rect() {
+                        self.draw_slider(canvas, rect, value);
+                    }
                 }
             }
         }
@@ -1254,6 +1562,7 @@ impl Menu {
                 WHITE,
             );
             if page == Page::Controls {
+                let area = self.binding_area();
                 self.ui.font.draw(
                     canvas,
                     &format!(
@@ -1261,7 +1570,7 @@ impl Menu {
                         self.controls_page + 1,
                         BINDINGS.len().div_ceil(8) + usize::from(self.controls_pad)
                     ),
-                    Rect::new(155., 312., 45., 20.),
+                    Rect::new(area.center().x-22.5, area.bottom()-64., 45., 32.),
                     18.,
                     BLACK,
                 );
@@ -1292,6 +1601,12 @@ impl Menu {
                 22.,
                 crate::ui::INK,
             );
+        }
+        if target.is_some() {
+            unsafe {
+                get_internal_gl().flush();
+            }
+            set_default_camera();
         }
     }
     /// The world loop does not advance while this modal loop is running.
@@ -1345,27 +1660,35 @@ impl Menu {
                         }
                     }
                 } else {
-                    if mouse.distance_squared(self.previous_pointer) > 1. {
+                    if self.using_pad {
+                        self.mouse_navigation = false;
+                    }
+                    if mouse != self.previous_pointer {
+                        self.mouse_navigation = true;
                         if let Some(i) = hit {
                             self.selected = i;
                         }
                     }
                     if is_mouse_button_down(MouseButton::Left) {
+                        self.mouse_navigation = true;
                         if let Some(i) = hit {
                             if let Click::Row(row) = buttons[i].click {
                                 let p = canvas.pointer(mouse);
-                                if self.slider(page, row).is_some()
-                                    && p.y >= buttons[i].rect.y + 26.
-                                {
-                                    self.drag_slider(page, row, (p.x - 88.) / 200.);
+                                if self.slider(page, row).is_some() {
+                                    if let Some(rect) = buttons[i].slider_rect().filter(|r| r.contains(p)) {
+                                        let thumb = self.slider_thumb_size(rect);
+                                        self.drag_slider(page, row, (p.x - rect.x - thumb.x*0.5) / (rect.w-thumb.x).max(1.));
+                                    }
                                 }
                             }
                         }
                     }
                     if input.ui(KeyCode::Down) {
+                        self.mouse_navigation = false;
                         self.selected = (self.selected + 1) % buttons.len();
                     }
                     if input.ui(KeyCode::Up) {
+                        self.mouse_navigation = false;
                         self.selected = (self.selected + buttons.len() - 1) % buttons.len();
                     }
                     let click = if page == Page::Main && input.ui(KeyCode::Tab) {
@@ -1389,6 +1712,7 @@ impl Menu {
                     } else if is_mouse_button_pressed(MouseButton::Left) {
                         hit.map(|i| buttons[i].click)
                     } else if input.ui(KeyCode::Enter) {
+                        self.mouse_navigation = false;
                         Some(buttons[self.selected].click)
                     } else if page == Page::Controls
                         && (input.pad_pressed("LB")
@@ -1406,6 +1730,7 @@ impl Menu {
                         None
                     };
                     if input.ui(KeyCode::Left) || input.ui(KeyCode::Right) {
+                        self.mouse_navigation = false;
                         if let Click::Row(row) = buttons[self.selected].click {
                             self.adjust(page, row, if input.ui(KeyCode::Left) { -1. } else { 1. });
                         }
@@ -1435,13 +1760,15 @@ impl Menu {
                             Click::Row(row) => {
                                 if !(is_mouse_button_pressed(MouseButton::Left)
                                     && self.slider(page, row).is_some()
-                                    && canvas.pointer(mouse).y
-                                        >= buttons[hit.unwrap_or(self.selected)].rect.y + 26.)
+                                    && buttons[hit.unwrap_or(self.selected)].slider_rect()
+                                        .is_some_and(|r| r.contains(canvas.pointer(mouse))))
                                 {
                                     let previous = page == Page::Video
+                                        && row == 0
                                         && is_mouse_button_pressed(MouseButton::Left)
                                         && hit.is_some_and(|i| {
-                                            canvas.pointer(mouse).x < buttons[i].rect.x + 24.
+                                            canvas.pointer(mouse).x < buttons[i].setting.as_ref()
+                                                .map_or(buttons[i].rect.center().x, |s| s.control.rect.center().x)
                                         });
                                     self.adjust(page, row, if previous { -1. } else { 1. });
                                 }
@@ -1500,8 +1827,9 @@ impl Menu {
                                 }
                             }
                             Click::CreditScroll(delta) => {
-                                self.credit_offset = (self.credit_offset as i32 + delta * 14)
-                                    .clamp(0, self.credits.len().saturating_sub(15) as i32)
+                                let rows = self.credits_geometry().2;
+                                self.credit_offset = (self.credit_offset as i32 + delta * rows.saturating_sub(1).max(1) as i32)
+                                    .clamp(0, self.credits.len().saturating_sub(rows) as i32)
                                     as usize
                             }
                             Click::Apply => {
@@ -1566,6 +1894,106 @@ impl Menu {
 mod tests {
     use super::*;
     #[test]
+    #[ignore = "Requires local game data and a native graphics window"]
+    fn settings_render_with_local_data() {
+        let data = std::env::var("LOOKING_GLASS_DATA")
+            .unwrap_or_else(|_| "private/game-data/base".into());
+        let mut assets = Assets::open(std::path::Path::new(&data)).unwrap();
+        let selected_page = std::env::var("LOOKING_GLASS_MENU_RENDER_PAGE").ok();
+        macroquad::Window::from_config(crate::viewer::config(), async move {
+            let mut menu = Menu::load(&mut assets).unwrap();
+            let target = render_target(screen_width() as u32, screen_height() as u32);
+            for (page, name) in [(Page::Settings, "overview"), (Page::Video, "video"),
+                (Page::Audio, "audio"), (Page::Controls, "controls"), (Page::Game, "game")] {
+                if selected_page.as_deref().is_some_and(|s| s != name) {
+                    continue;
+                }
+                let buttons = menu.buttons(page);
+                assert!(buttons.iter().any(|b| matches!(b.click, Click::Back | Click::Apply)));
+                for _ in 0..4 {
+                    menu.draw_into(page, &buttons, Some(target.clone()));
+                    next_frame().await;
+                }
+                menu.draw_into(page, &buttons, Some(target.clone()));
+                // Read a separate framebuffer instead of the desktop window.
+                let frame = target.texture.get_texture_data();
+                let mut pixels = frame.bytes;
+                let stride = frame.width as usize * 4;
+                for y in 0..frame.height as usize / 2 {
+                    let opposite = frame.height as usize - 1 - y;
+                    let (top, bottom) = pixels.split_at_mut(opposite * stride);
+                    top[y * stride..(y + 1) * stride].swap_with_slice(&mut bottom[..stride]);
+                }
+                if page.settings() {
+                    let r = Canvas::new(frame.width as f32, frame.height as f32)
+                        .rect(Rect::new(50., 400., 250., 35.));
+                    let mut button_pixels = 0;
+                    for y in r.y.ceil() as usize..(r.bottom() as usize).min(frame.height as usize) {
+                        for x in r.x.ceil() as usize..(r.right() as usize).min(frame.width as usize) {
+                            let offset = y * stride + x * 4;
+                            if pixels[offset + 1] > pixels[offset].saturating_add(10)
+                                && pixels[offset + 2] > pixels[offset].saturating_add(10) {
+                                button_pixels += 1;
+                            }
+                        }
+                    }
+                    assert!(button_pixels > 100, "Missing settings footer buttons on {page:?}");
+                }
+                std::fs::create_dir_all("private/dev-checks").unwrap();
+                image::save_buffer(format!("private/dev-checks/settings-{name}.png"),
+                    &pixels, frame.width as u32, frame.height as u32, image::ColorType::Rgba8).unwrap();
+                next_frame().await;
+            }
+        });
+    }
+    #[test]
+    fn localized_main_layout_preserves_umlauts_and_glow_layers() {
+        let widgets = main_layout(b"resource\nButton\n{\nrect 0 455 75 25\nname backtogame\ntitle \"Zur\xfcck\"\n}\n").unwrap();
+        assert_eq!(widgets[0].value("title"), "Zurück");
+        assert!(main_background_glow("ui/main/maina_glow"));
+        assert!(!main_background_glow("ui/main/newgame_glow"));
+    }
+
+    #[test]
+    fn main_and_settings_menus_prefer_localized_ftx() -> Result<()> {
+        use std::io::Write;
+        let folder = std::env::temp_dir().join(format!("looking-glass-menu-{}", std::process::id()));
+        std::fs::create_dir_all(&folder)?;
+        let file = std::fs::File::create(folder.join("pak0.pk3"))?;
+        let mut zip = zip::ZipWriter::new(file);
+        for name in ["ui/main/maina.tga", "ui/main/maina.ftx",
+            "ui/main/button_newgame_glow.tga", "ui/main/button_newgame_glow.ftx",
+            "ui/control/head_2.tga", "ui/control/head_2.ftx"] {
+            zip.start_file(name, zip::write::FileOptions::default())?;
+            zip.write_all(b"resolution fixture")?;
+        }
+        zip.finish()?;
+        let assets = Assets::open(&folder)?;
+        let mut specs = BTreeMap::new();
+        specs.insert("ui/main/newgame_glow".into(), texture::MaterialSpec {
+            candidates: vec!["ui/main/button_newgame_glow.tga".into()],
+            ..Default::default()
+        });
+        assert_eq!(menu_texture_path(&assets, &specs, "ui/main/maina").as_deref(), Some("ui/main/maina.ftx"));
+        assert_eq!(menu_texture_path(&assets, &specs, "ui/main/newgame_glow").as_deref(), Some("ui/main/button_newgame_glow.ftx"));
+        assert_eq!(menu_texture_path(&assets, &specs, "ui/control/head_2").as_deref(), Some("ui/control/head_2.ftx"));
+        drop(assets);
+        std::fs::remove_file(folder.join("pak0.pk3"))?;
+        std::fs::remove_dir(folder)?;
+        Ok(())
+    }
+    #[test]
+    fn settings_labels_follow_cvars_and_bind_commands_in_the_archive() -> Result<()> {
+        let widgets = main_layout(b"resource\nLabel\n{\nrect 0 0 10 10\ngroupid group_audio\ntitle \"Lautst\xe4rke Musik\"\n}\nresource\nSlider\n{\nrect 0 20 10 10\ngroupid group_audio\nlinkcvar s_musicvolume\n}\n")?;
+        assert_eq!(setting_label(&widgets, "s_musicvolume", "Music Volume"), "Lautstärke Musik");
+        assert_eq!(setting_label(&widgets, "missing", "Mute"), "Mute");
+        let labels = binding_labels(b"// binditem ignored\nbinditem \"Vorw\xe4rts bewegen\" +forward run_nowep true\nbinditem \"Messer w\xe4hlen\" \"use knife\"\n")?;
+        assert_eq!(labels.get(binding_command("Forward").unwrap()).map(String::as_str), Some("Vorwärts bewegen"));
+        assert_eq!(labels.get(binding_command("Vorpal Blade").unwrap()).map(String::as_str), Some("Messer wählen"));
+        assert!(binding_command("Choose level").is_none());
+        Ok(())
+    }
+    #[test]
     fn layouts_are_data_and_bounds_are_checked() {
         let w=layout("menu test\nresource\nButton\n{\nrect 12 16 80 24\ntitle \"Back to game\"\nstuffcommand \"quit\"\n}\n").unwrap();
         assert_eq!(w[0].rect, Rect::new(12., 16., 80., 24.));
@@ -1573,6 +2001,70 @@ mod tests {
         assert!(layout("resource\nLabel\n{\nrect NaN 0 1 2\n}\n").is_err());
         assert!(layout("resource\nLabel\n{\nrect 0 0 -1 2\n}\n").is_err());
         assert!(layout("resource\nLabel\n{").is_err());
+    }
+    #[test]
+    fn archive_back_button_preserves_art_and_lettering_bounds() -> Result<()> {
+        let widgets = main_layout(b"resource\nButton\n{\nrect 0 455 75 25\ntitle \"Zur\xfcck\"\nshader ui/buttons/tab\nhovershader ui/buttons/tab_hover\nfontpos 25 5\nfontscale 0.8\nfontjustify center center\n}\n")?;
+        let b = widgets[0].button(Click::Back);
+        let lettering = Lettering::from_widget(&widgets[0]);
+        assert_eq!(b.art, "ui/buttons/tab");
+        assert_eq!(b.hover, "ui/buttons/tab_hover");
+        assert_eq!(b.rect, Rect::new(0., 455., 75., 25.));
+        assert_eq!(lettering.offset, vec2(25., 5.));
+        assert_eq!(lettering.scale, 0.8);
+        assert_eq!(widgets[0].value("title"), "Zurück");
+        let mut plain = lettering.clone();
+        plain.horizontal_start = false;
+        let mut anchored = lettering.clone();
+        anchored.justify = ("left".into(), "top".into());
+        anchored.offset = vec2(3., 1.);
+        let mut end = plain.clone();
+        end.justify = ("right".into(), "bottom".into());
+        end.offset = vec2(3., 1.);
+        for style in [&lettering, &plain, &anchored, &end] {
+            for text in ["Zurück", "Retour", "Volver al menú principal",
+                "Zurück zu den vorherigen Spieleinstellungen"] {
+                // Synthetic fixed-width metrics keep this test independent of GPU/assets.
+                let width = text.chars().count() as f32 * 8.;
+                for size in [20., 24., 40.] {
+                    let rect = style.text_rect(b.rect, width, size);
+                    assert_rect_inside(b.rect, rect);
+                    assert!(rect.w <= width + 0.001 && rect.h <= size + 0.001);
+                }
+            }
+        }
+        Ok(())
+    }
+    fn assert_rect_inside(outer: Rect, inner: Rect) {
+        const EPSILON: f32 = 0.001;
+        assert!([inner.x, inner.y, inner.w, inner.h].into_iter().all(f32::is_finite));
+        assert!(inner.w > 0. && inner.h > 0.);
+        assert!(inner.x >= outer.x - EPSILON && inner.y >= outer.y - EPSILON,
+            "{inner:?} starts outside {outer:?}");
+        assert!(inner.right() <= outer.right() + EPSILON
+            && inner.bottom() <= outer.bottom() + EPSILON,
+            "{inner:?} ends outside {outer:?}");
+    }
+    #[test]
+    fn settings_use_archive_label_control_and_hit_rectangles() -> Result<()> {
+        let widgets = layout("resource\nLabel\n{\nrect 21 50 140 24\ntitle Music\ngroupid group_audio\nfontjustify left center\n}\nresource\nSlider\n{\nrect 35 69 123 16\nlinkcvar s_musicvolume\ngroupid group_audio\n}\n")?;
+        let buttons = setting_buttons(&widgets, Page::Audio);
+        assert_eq!(buttons.len(), 1);
+        let b = &buttons[0];
+        assert_eq!(b.setting.as_ref().unwrap().label.rect, Rect::new(21., 50., 140., 24.));
+        assert_eq!(b.slider_rect(), Some(Rect::new(35., 69., 123., 16.)));
+        assert_rect_inside(b.rect, b.setting.as_ref().unwrap().label.rect);
+        assert_rect_inside(b.rect, b.slider_rect().unwrap());
+        assert!(b.rect.contains(vec2(40., 80.)));
+        Ok(())
+    }
+    #[test]
+    fn mouse_leaving_button_clears_hover_without_losing_keyboard_selection() {
+        assert!(highlighted(0, true, Some(0), 0));
+        assert!(!highlighted(0, true, None, 0));
+        assert!(!highlighted(0, true, Some(1), 0));
+        assert!(highlighted(0, false, None, 0));
+        assert!(!highlighted(0, false, Some(1), 1));
     }
     #[test]
     fn letterboxing_preserves_original_hit_regions() {

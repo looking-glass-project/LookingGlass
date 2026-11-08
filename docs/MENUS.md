@@ -40,7 +40,17 @@ The menus read `ui/main.urc`, `ui/controls.urc`, `ui/newgame.urc`, `ui/loadsave.
 
 The runtime parses layout data and routes an explicit set of Rust actions. Original `stuffcommand`, cvar, engine-restart and executable commands are never executed. The supported settings pages are adapted to this renderer; legacy Miles/EAX driver selection, 16-bit modes, gamma/detail controls, original binary saves/deletion and decorative transitions/sounds outside Load/Save are not reproduced. The original main menu and options are available at startup and in-game. Chapter selection shares its navigation and original parchment/lettering between both contexts. Settings use original checkbox and slider/arrow artwork, the original cursor and a shared archive-font renderer. See [UI_FIDELITY.md](UI_FIDELITY.md) for the gameplay overlays and remaining presentation differences.
 
+## Localized menus and subtitles
+
+Main, Settings, New Game, Load/Save, Quit and Credits use the selected language's original labels, artwork and lettering. Settings also use localized option and binding names, including the original fullscreen checkbox. Button text fits the artwork, and Load/Save retains the angled chapter/date lettering.
+
+Chapter choosers and save titles use localized chapter names while keeping story order and return visits. Added controls, hints and confirmation text remain English where the original data provides no translation.
+
+Subtitles preserve supported accented characters and use readable replacements for missing glyphs. Larger text and tighter line spacing keep dialogue legible within its box; original dialogue text and voice timing are retained.
+
 ## Checks
+
+Automated checks cover localized labels and artwork, button and subtitle layout, and independent mouse hover and keyboard selection. An optional settings render check uses local game data without changing preferences or saves.
 
 Native Anode checks use `private/menu-native` saves and `private/menu-test-settings` preferences, separate from the player's files. They cover opening/resuming with Escape, keyboard navigation, mouse slider input, Apply/Cancel, binding capture, fullscreen, save confirmation, repeated saves while paused, menu loading and New Game at the village entrance. The repeated-save check compares the complete gameplay payload, including resources, actor state, quests and clocks; it is unchanged while the menu is open. Unit checks cover layout bounds, widescreen hit testing, Escape hierarchy, preference validation and binding conflicts. Additional restart and final visual checks are recorded in `VALIDATION.md`.
 

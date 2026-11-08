@@ -47,8 +47,37 @@ pub struct BitmapFont {
     texture: Texture2D,
     indices: Vec<i32>,
     glyphs: Vec<Rect>,
+    ink_bounds: Vec<Option<Rect>>,
     height: f32,
 }
+pub(crate) struct TextTransform {
+    pub visible_center: bool,
+    pub radians: f32,
+    pub anchor: Vec2,
+}
+
+fn font_character(c: char) -> char {
+    match c {
+        '’' | '‘' => '\'',
+        '“' | '”' => '"',
+        '—' | '–' => '-',
+        _ => c,
+    }
+}
+
+// Unlike drawing, this lookup must never substitute the question-mark glyph.
+fn direct_glyph_index(indices: &[i32], c: char) -> Option<usize> {
+    indices.get(font_character(c) as usize).copied()
+        .filter(|&i| i >= 0).map(|i| i as usize)
+}
+
+fn vertical_ink_bounds(ink: impl Iterator<Item = Rect>, scale: f32) -> Option<(f32, f32)> {
+    ink.fold(None, |bounds, r| {
+        Some(bounds.map_or((r.y * scale, r.bottom() * scale), |(top, bottom): (f32, f32)|
+            (top.min(r.y * scale), bottom.max(r.bottom() * scale))))
+    })
+}
+
 impl BitmapFont {
     pub fn load(assets: &mut Assets, name: &str) -> Result<Self> {
         let tokens = bsp::tokens(&String::from_utf8_lossy(
@@ -98,10 +127,41 @@ impl BitmapFont {
                 .all(|&i| i == -1 || (i >= 0 && (i as usize) < glyphs.len())),
             "Invalid glyph reference"
         );
+        // Measure the visible ink once, using the same atlas that is rendered.
+        // Transparent padding belongs to the line metrics, not button centering.
+        let path = if name == "asrafel" && assets.contains("gfx/fonts/asrafel.tga") {
+            "gfx/fonts/asrafel.tga".to_owned()
+        } else {format!("gfx/2d/fonts/{name}.tga")};
+        let atlas = texture::decode(assets, &path)?;
+        let ink_bounds = glyphs.iter().map(|glyph| {
+            let mut left = atlas.width as usize;
+            let mut top = atlas.height as usize;
+            let mut right = 0;
+            let mut bottom = 0;
+            for y in glyph.y.floor() as usize..(glyph.bottom().ceil() as usize).min(atlas.height as usize) {
+                for x in glyph.x.floor() as usize..(glyph.right().ceil() as usize).min(atlas.width as usize) {
+                    // The atlas contains nearly transparent residue extending to
+                    // glyph-cell edges. Measure the visible contour at half opacity,
+                    // rather than letting that residue determine the text center.
+                    if atlas.pixels[(y * atlas.width as usize + x) * 4 + 3] >= 128 {
+                        left = left.min(x);
+                        top = top.min(y);
+                        right = right.max(x + 1);
+                        bottom = bottom.max(y + 1);
+                    }
+                }
+            }
+            (right > left && bottom > top).then(|| Rect::new(
+                left as f32 - glyph.x, top as f32 - glyph.y,
+                (right - left) as f32, (bottom - top) as f32))
+        }).collect();
+        let texture = Texture2D::from_rgba8(atlas.width, atlas.height, &atlas.pixels);
+        texture.set_filter(FilterMode::Linear);
         Ok(Self {
-            texture: load_texture(assets, &format!("gfx/2d/fonts/{name}.tga"))?,
+            texture,
             indices,
             glyphs,
+            ink_bounds,
             height: tokens
                 .get(2)
                 .context("Font height")?
@@ -109,27 +169,35 @@ impl BitmapFont {
                 .clamp(1., 128.),
         })
     }
-    pub fn glyph(&self, c: char) -> Rect {
-        let c = match c {
-            '’' | '‘' => '\'',
-            '“' | '”' => '"',
-            '—' | '–' => '-',
-            _ => c,
-        };
+    fn glyph_index(&self, c: char) -> Option<usize> {
+        let c = font_character(c);
         let n = c as usize;
         let i = self
             .indices
             .get(n)
             .copied()
             .unwrap_or(self.indices[b'?' as usize]);
-        if i < 0 {
-            Rect::default()
-        } else {
-            self.glyphs[i as usize]
-        }
+        (i >= 0).then_some(i as usize)
+    }
+    pub(crate) fn supports_character(&self, c: char) -> bool {
+        direct_glyph_index(&self.indices, c).is_some()
+    }
+    pub fn glyph(&self, c: char) -> Rect {
+        self.glyph_index(c).map_or(Rect::default(), |i| self.glyphs[i])
+    }
+    pub fn height(&self) -> f32 {
+        self.height
+    }
+    pub(crate) fn visible_vertical_bounds(&self, text: &str, size: f32) -> Option<(f32, f32)> {
+        vertical_ink_bounds(text.chars().filter_map(|c| self.glyph_index(c)
+            .and_then(|i| self.ink_bounds[i])), size / self.height)
     }
     pub fn width(&self, text: &str, size: f32) -> f32 {
-        text.chars().map(|c| self.glyph(c).w).sum::<f32>() * size / self.height
+        self.width_spaced(text, size, 0.)
+    }
+    pub fn width_spaced(&self, text: &str, size: f32, spacing: f32) -> f32 {
+        (text.chars().map(|c| self.glyph(c).w).sum::<f32>()
+            + text.chars().count().saturating_sub(1) as f32 * spacing) * size / self.height
     }
     pub fn left(&self, text: &str, x: f32, y: f32, size: f32, color: Color) {
         self.draw(
@@ -148,10 +216,31 @@ impl BitmapFont {
         self.draw(canvas, text, r, size, color);
     }
     pub fn draw(&self, canvas: Canvas, text: &str, r: Rect, size: f32, color: Color) {
-        let width: f32 = text.chars().map(|c| self.glyph(c).w).sum();
+        self.draw_spaced(canvas, text, r, size, color, 0.);
+    }
+    pub fn draw_spaced(&self, canvas: Canvas, text: &str, r: Rect, size: f32, color: Color, spacing: f32) {
+        self.draw_transformed(canvas, text, r, size, color, spacing,
+            TextTransform {visible_center: false, radians: 0., anchor: r.center()});
+    }
+    pub(crate) fn draw_button(&self, canvas: Canvas, text: &str, r: Rect, size: f32, color: Color) {
+        self.draw_transformed(canvas, text, r, size, color, 0.,
+            TextTransform {visible_center: true, radians: 0., anchor: r.center()});
+    }
+    pub(crate) fn draw_transformed(&self, canvas: Canvas, text: &str, r: Rect, size: f32, color: Color,
+        spacing: f32, transform: TextTransform) {
+        let width: f32 = text.chars().map(|c| self.glyph(c).w).sum::<f32>()
+            + text.chars().count().saturating_sub(1) as f32 * spacing;
         let scale = (size / self.height).min(r.w / width.max(1.));
         let mut x = r.x + (r.w - width * scale) * 0.5;
-        let y = r.y + (r.h - self.height * scale) * 0.5;
+        let mut y = r.y + (r.h - self.height * scale) * 0.5;
+        if transform.visible_center {
+            let ink = self.visible_vertical_bounds(text, self.height);
+            if let Some((top, bottom)) = ink {
+                let visible_height = (bottom - top) * scale;
+                y = r.y + r.h * 0.5 - visible_height * 0.5 - top * scale;
+            }
+        }
+        let pivot = canvas.rect(Rect::new(transform.anchor.x, transform.anchor.y, 0., 0.)).point();
         for c in text.chars() {
             let glyph = self.glyph(c);
             if glyph.w > 0. && glyph.h > 0. {
@@ -164,11 +253,13 @@ impl BitmapFont {
                     DrawTextureParams {
                         dest_size: Some(dest.size()),
                         source: Some(glyph),
+                        rotation: transform.radians,
+                        pivot: Some(pivot),
                         ..Default::default()
                     },
                 );
             }
-            x += glyph.w * scale;
+            x += (glyph.w + spacing) * scale;
         }
     }
 }
@@ -354,6 +445,45 @@ impl Ui {
         );
     }
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn subtitle_ink_bounds_include_accents_and_descenders_at_each_scale() {
+        let glyphs = [Rect::new(0., 4., 8., 12.), // ordinary letter
+            Rect::new(0., 1., 8., 15.), // umlaut
+            Rect::new(0., 5., 8., 17.)]; // descender
+        for scale in [0.5, 1., 2.] {
+            assert_eq!(vertical_ink_bounds(glyphs.into_iter(), scale),
+                Some((scale, 22. * scale)));
+        }
+        assert_eq!(vertical_ink_bounds(std::iter::empty(), 1.), None);
+    }
+
+    #[test]
+    fn subtitle_coverage_does_not_use_fallback_glyph() {
+        let mut indices = vec![-1; 256];
+        indices[b'?' as usize] = 0;
+        indices[b'A' as usize] = 1;
+        assert_eq!(direct_glyph_index(&indices, 'A'), Some(1));
+        assert_eq!(direct_glyph_index(&indices, '?'), Some(0));
+        assert_eq!(direct_glyph_index(&indices, 'ä'), None);
+        assert_eq!(direct_glyph_index(&indices, '漢'), None);
+    }
+
+    #[test]
+    fn subtitle_coverage_matches_rendered_punctuation() {
+        let mut indices = vec![-1; 256];
+        indices[b'\'' as usize] = 0;
+        indices[b'"' as usize] = 1;
+        indices[b'-' as usize] = 2;
+        assert_eq!(direct_glyph_index(&indices, '’'), Some(0));
+        assert_eq!(direct_glyph_index(&indices, '“'), Some(1));
+        assert_eq!(direct_glyph_index(&indices, '—'), Some(2));
+    }
+}
+
 fn nine(t: &Texture2D, r: Rect, b: f32) {
     let dx = b.min(r.w * 0.25);
     let dy = b.min(r.h * 0.25);

@@ -1,6 +1,6 @@
 # Co-op progress
 
-Updated 7 November 2026. Branch: `coop`. **Estimated overall completion: 80.0%.**
+Updated 8 November 2026. Branch: `coop`. **Estimated overall completion: 80.5%.**
 The target is now [100% playable co-op](COOP_PLAYABLE.md), followed by a
 separate polishing stage. Complete normal progression and core flows first;
 batch implementation and reuse passing evidence. The historical exhaustive
@@ -41,7 +41,7 @@ foundation point credited the missing import feature. The current additional
 Internet Host/Join point credits completed public core consolidation on `0b5bca3`;
 no additional campaign visit is credited.
 
-Thirty-six of 39 visits now have credited normal paired route evidence. Six retain
+Thirty-seven of 39 visits now have credited normal paired route evidence. Six retain
 the historical combined designation; the broader matrix still labels 33 as
 partial because it includes polishing cases. The next priority is normal paired campaign
 pass, fixing progression blockers and checking core recovery at representative
@@ -55,8 +55,41 @@ remain in the polishing backlog.
 | Two players, movement and presentation | 11.75 | 15 |
 | Combat, individual resources and death | 13.5 | 20 |
 | Scenes, transport and progression | 16 | 20 |
-| Campaign playability | 18.46 | 20 |
-| **Total** | **79.9615, rounded to 80.0** | **100** |
+| Campaign playability | 18.97 | 20 |
+| **Total** | **80.4744, rounded to 80.5** | **100** |
+
+## School Two normal paired route accepted
+
+Frozen `b925e5c` passes the complete main quest in **53,696 ticks**, with
+**448 exact compressed replicas**, **six reunions** and both players finishing
+at **100 health**. The run includes the gym lever and bleachers, Gnome battle,
+laboratory stairs and rescue, Jumbogrow, both personal portal journeys, greenhouse
+growth, lollipop, potion and star rewards, and actual `skool1_start2` arrival.
+There are no deaths, revivals, team wipes, health floors, cheats or forced quest
+state. Optional Dice collection remains outside this main-quest route; the
+normal return fills the missing campaign weapon baseline.
+
+The run exposed a real post-battle reunion lock when the scene owner stood on
+the gym's narrow outer trim and the partner had already descended. If ordinary
+reunion fails there, co-op now places both players on verified supported ground
+near the original scene's Alice mark. Both landings must fit before either body
+changes. Personal resources, solo scenes and the save schema are unchanged.
+The failing and fixed normal runs have identical inputs, completed steps and
+positions through the scene trigger at tick 15,453; the fixed pair continues.
+
+The pilot uses ordinary E for manual doors and walks the moving greenhouse
+doorway. It ignores optional enemy drops with no supported approach. These are
+test input changes, without altered loot, combat or progression. The standard
+command's players, world, commands and arrival exactly match the accepted course
+on `61d7ab5`. Evidence: `private/coop-playable-school2-default-verified.json`;
+repeat with `tools/test_coop_native_route.py --map skool2` and local game data.
+
+All **951 active Rust tests** pass on the gameplay-fix build `2acd182`; later
+changes affect diagnostic inputs only. The original School Two checks also
+pass watched/skipped scenes, pause/restore, mover/rider behavior and reward
+gates. Source/package audits pass. Normal coverage is **37/39 visits**, with
+the two swimming visits remaining, or **80.5%** overall. The rendered two-client
+ending handoff remains separate; broader recovery permutations are polishing.
 
 ## Duchess normal paired route accepted
 

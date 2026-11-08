@@ -12,6 +12,29 @@ pub fn entrance(world: &World, feet: Vec3, safe: impl Fn(Vec3) -> bool) -> Optio
     near(world, feet, 256., safe)
 }
 
+/// Atomic placement at an authored scene endpoint. Both bodies must fit on
+/// safe, fully supported ground before the caller changes either player.
+pub(crate) fn scene_pair(world:&World, anchor:Vec3, safe:impl Fn(Vec3)->bool)->Option<(Player,Player)> {
+    scene_landings(world,anchor,&safe).into_iter().find_map(|first| {
+        reunion(world,&first,&safe).map(|second|(first,second))
+    })
+}
+pub(crate) fn scene_landings(world:&World, anchor:Vec3, safe:impl Fn(Vec3)->bool)->Vec<Player> {
+    // This is a cutscene endpoint search, not movement from the pre-scene
+    // body. An authored mark can lie against trim or a railing; accept only
+    // nearby actual floor that fits both players before applying the warp.
+    let mut landings=Vec::new();
+    for radius in (0..=24).map(|r|r as f32*4.) {
+        for index in 0..32 {
+            let angle=index as f32*std::f32::consts::TAU/32.;
+            let at=anchor+vec3(angle.cos(),angle.sin(),0.)*radius+Vec3::Z*18.;
+            let Some(first)=beside_with_step(world,at,at,50.,0.,&safe) else {continue;};
+            landings.push(first);
+        }
+    }
+    landings
+}
+
 /// A completed scene can restore Alice at the airborne point where it started.
 /// Place the partner on nearby supported ground so ordinary gravity can resume
 /// for the owner. This wider search must not change revival placement rules.
@@ -199,7 +222,7 @@ fn clear_path(world: &World, from: Vec3, to: Vec3) -> bool {
 
 /// Require a full footprint plus a small edge margin. Probe around the actual
 /// floor plane: a fixed four-unit downward ray incorrectly rejects normal hills.
-pub(super) fn supported(world: &World, feet: Vec3) -> bool {
+pub(crate) fn supported(world: &World, feet: Vec3) -> bool {
     if !world.body_clear(feet) || Immersion::sample(world, feet).level != 0 {
         return false;
     }
@@ -227,6 +250,20 @@ pub(super) fn supported(world: &World, feet: Vec3) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn authored_scene_pair_requires_two_safe_supported_landings() {
+        let floor=(vec3(-300.,-300.,-20.),vec3(300.,300.,0.));
+        let world=World::fixture(&[floor]);
+        let (a,b)=scene_pair(&world,Vec3::ZERO,|_|true).unwrap();
+        assert!(a.grounded && b.grounded && supported(&world,a.feet) && supported(&world,b.feet));
+        assert!((a.feet-b.feet).truncate().length()>=40.);
+        assert!(scene_pair(&world,Vec3::ZERO,|_|false).is_none());
+        let small=World::fixture(&[(vec3(-22.,-22.,-20.),vec3(22.,22.,0.))]);
+        assert!(scene_pair(&small,Vec3::ZERO,|_|true).is_none());
+        let roof=(vec3(-300.,-300.,40.),vec3(300.,300.,80.));
+        assert!(scene_pair(&World::fixture(&[floor,roof]),Vec3::ZERO,|_|true).is_none());
+        assert!(scene_pair(&World::fixture(&[]),Vec3::ZERO,|_|true).is_none());
+    }
     #[test]
     fn authored_perch_reunion_keeps_wall_support_and_hazard_checks() {
         let floor=(vec3(-400.,-400.,-20.),vec3(400.,400.,0.));

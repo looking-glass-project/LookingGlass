@@ -581,11 +581,20 @@ impl Stage {
             }
             let partner = owner.partner();
             if roster.players[partner.index()].stats.alive() {
+                let mut owner_landing=None;
                 let Some(player) =
                     super::placement::reunion_with_partner(world, &roster.players[owner.index()].player,
                         &roster.players[partner.index()].player, |at| {
                         !self.interactions.hazardous(at)
                             && self.interactions.beyond.as_ref().is_none_or(|b| b.reunion_safe(at))
+                    }).or_else(|| {
+                        let actor=&roster.players[owner.index()].player;
+                        let anchor=self.interactions.school2.as_ref()?.coop_reunion_anchor(actor)?;
+                        let (mut first,second)=super::placement::scene_pair(world,anchor,
+                            |at|!self.interactions.hazardous(at))?;
+                        first.script_facing=actor.script_facing;
+                        owner_landing=Some(first);
+                        Some(second)
                     }).or_else(|| {
                         let actor=&roster.players[owner.index()].player;
                         self.interactions.levels.iter().find_map(|slot| {
@@ -599,6 +608,7 @@ impl Stage {
                 else {
                     return Ok(());
                 };
+                if let Some(first)=owner_landing {roster.players[owner.index()].player=first;}
                 roster.players[partner.index()].player = player;
             }
             let facing = roster.players[owner.index()].player.script_facing;

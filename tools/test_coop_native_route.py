@@ -15,7 +15,7 @@ from coop_recovery import read_trace
 EXITS = {'centipede1': 'centipede2', 'grounds2': 'facade', 'facade': 'keep', 'keep': 'qlair',
          'wforest': 'wchess1', 'wforest-return': 'hedge1', 'tower1': 'hedge2', 'hedge2': 'tower2',
          'tower2': 'hedge3', 'hedge3': 'tower3', 'tower3': 'grounds1', 'qlair': None, 'hedge1': 'tower1',
-         'potears3': 'utemple'}
+         'potears3': 'utemple', 'skool2': 'skool1'}
 
 
 def verify(profile, map_name):
@@ -36,6 +36,8 @@ def verify(profile, map_name):
     else:
         next_map = EXITS[map_name]
         next_entry = None if map_name == 'potears3' else f'{next_map}_start1'
+        if map_name == 'skool2':
+            next_entry = 'skool1_start2'
         assert report['world']['stage']['transition'] == [next_map, next_entry]
         arrival = report['arrival']
         assert arrival['visit']['map'] == next_map and arrival['visit']['entry'] == next_entry
@@ -53,6 +55,8 @@ def verify(profile, map_name):
                 # a missing Jackbomb milestone for the non-collecting partner.
                 expected['turtle_air'] = True
                 expected['owned'][3] = max(expected['owned'][3], 1)
+            if map_name == 'skool2':
+                expected['owned'][6] = max(expected['owned'][6], 1)
             assert expected == new['stats'], 'Arrival changed resources beyond its campaign weapon grant'
             assert new['stats']['sanity'] > 0 and not old['stats']['god'] and not old['stats']['notarget']
     recovery = read_trace(profile / report['recovery_log'], report['build'])
@@ -77,6 +81,11 @@ def verify(profile, map_name):
         assert boss['action'] == 'Death' and boss['shell_returned'] and boss['attacks'] > 0
         assert any('potears3:21' in b['stats']['collected'] for b in report['frame']['players'])
         assert report['reunions'] == 1 and len(report['scene_starts']) == 2
+    if map_name == 'skool2':
+        quest = report['world']['stage']['world']['school2']['quest']
+        assert quest['stage'] == 'Complete'
+        assert all(b['stats']['school_items']['potion'] and b['stats']['school_items']['star']
+                   for b in report['frame']['players'])
     return dict(build=report['build'], ticks=report['frame']['tick'], replicas=report['replica_samples'],
         reunions=report['reunions'], health=[p['stats']['sanity'] for p in report['frame']['players']],
         personal_second_die=dice, recovery=recovery,

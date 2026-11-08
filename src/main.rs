@@ -95,6 +95,7 @@ mod school;
 mod school2;
 mod school2_quest;
 mod school2_route;
+mod school2_coop_route;
 mod school_return;
 mod school_return_route;
 mod school_route;
@@ -431,6 +432,7 @@ fn run() -> Result<()> {
             "--coop-duchess-check" => mode = "coop-duchess",
             "--coop-duchess-arena-check" => mode = "coop-duchess-arena",
             "--potears3-coop-route-check" => mode = "coop-duchess-route",
+            "--skool2-coop-route-check" => mode = "coop-school2-route",
             "--coop-encounter-check" => mode = "coop-encounter",
             "--coop-import-check" => mode = "coop-import",
             "--coop-campaign-check" => mode = "coop-campaign",
@@ -1270,6 +1272,15 @@ fn run() -> Result<()> {
         macroquad::Window::from_config(viewer::config(), async move {
             if let Err(e) = coop::pandemonium_check::check(&mut assets).await {
                 eprintln!("Co-op Pandemonium check failed: {e:#}");
+                std::process::exit(1);
+            }
+        });
+        return Ok(());
+    }
+    if mode == "coop-school2-route" {
+        macroquad::Window::from_config(viewer::config(), async move {
+            if let Err(e) = school2_coop_route::check(&mut assets).await {
+                eprintln!("Co-op School Two route failed: {e:#}");
                 std::process::exit(1);
             }
         });

@@ -10,7 +10,7 @@ pub mod checkpoint;
 pub mod solo;
 pub mod solo_check;
 mod clock;
-mod placement;
+pub(crate) mod placement;
 pub(crate) mod separation;
 mod effects;
 pub(crate) mod codec;

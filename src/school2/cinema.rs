@@ -332,6 +332,13 @@ impl School2 {
     pub fn cinematic(&self) -> bool {
         self.cinema.as_ref().is_some_and(|s| s.active)
     }
+    /// If the gym dialogue caught Alice on its narrow outer trim, reunite the
+    /// pair at the original scene's Alice mark instead of locking the controls.
+    pub(crate) fn coop_reunion_anchor(&self, player:&Player) -> Option<Vec3> {
+        let at=self.cinema_data.points["alice_mush1"].translation;
+        (self.cinema.as_ref().is_some_and(|s|s.beat==Beat::Warp && !s.active)
+            && player.feet.distance(at)<=256.).then_some(at)
+    }
     pub(super) fn scene_dialogue(&mut self, name: &str) -> bool {
         if let Some(s) = self
             .cinema

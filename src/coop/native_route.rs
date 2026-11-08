@@ -358,7 +358,12 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
                         .map(|clock|clock.ready(&arena)).transpose()?;
                     let boarding=steps.get(course[i].cursor).filter(|s|s.mode=="board")
                         .map(|s|course_machines[i].sample(&map,&arena,s.ticks as usize)).transpose()?;
-                    inputs[i].0=course[i].input(p,steps,partner_done,clock,boarding.as_ref());
+                    if let Some(leg)=steps.get(course[i].cursor).filter(|s|s.mode=="nav") {
+                        let goal=Vec3::from_array(leg.at);
+                        let close=if course[i].cursor+1==steps.len() && partner_done {70.}else{32.};
+                        if p.grounded && p.feet.distance(goal)<close {course[i].cursor+=1;}
+                        else {inputs[i].0=walking[i].input(&world,p,goal,close,true)?;planned[i]=true;}
+                    } else {inputs[i].0=course[i].input(p,steps,partner_done,clock,boarding.as_ref());}
                     work|=course[i].cursor<steps.len();
                 } else if let Command::RideHeight(height)=command {
                     ride_done[i]|=p.grounded && p.feet.z>=*height;
@@ -501,10 +506,10 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
                     let drop = (body.stats.sanity()<99. || body.stats.will()<99.).then(|| body.stats.loot.get(&arena.visit_key))
                         .flatten().and_then(|loot| loot.drops.iter()
                             .filter(|d| d.origin.truncate().distance(home[i].truncate())<*radius && (d.origin.z-p.feet.z).abs()<90.)
-                            .min_by(|a,b| a.origin.distance_squared(p.feet).total_cmp(&b.origin.distance_squared(p.feet))));
-                    if let Some(drop)=drop {
-                        let at=world.actor_footing(drop.origin+Vec3::Z*16.,PLAYER_CENTER,PLAYER_HALF,180.)
-                            .context("Unsupported personal essence")?;
+                            .filter_map(|d|world.actor_footing(d.origin+Vec3::Z*16.,PLAYER_CENTER,PLAYER_HALF,180.)
+                                .map(|at|(d,at)))
+                            .min_by(|(a,_),(b,_)| a.origin.distance_squared(p.feet).total_cmp(&b.origin.distance_squared(p.feet))));
+                    if let Some((_,at))=drop {
                         inputs[i].0=walking[i].input(&world,p,at,22.,require_landing)?; planned[i]=true; work=true;
                     } else if let Some((target,_))=visible {
                         inputs[i].0=Controls{wish:super::route_driver::combat_dodge(&world,p,home[i],target.center,roster.tick,0.,
@@ -530,6 +535,22 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
                         }
                     }
                     work=true;
+                }
+            }
+            // Match the solo route pilot: open a door with ordinary E input
+            // when its prompt is visible in the direction of movement. Only
+            // one body presses each toggle per tick, so partners cannot close
+            // the same door immediately after the first player opens it.
+            let mut opening=Vec::new();
+            for i in 0..2 {
+                if busy || !roster.players[i].stats.alive() {continue;}
+                let aim=inputs[i].0.wish.extend(0.).normalize_or_zero();
+                if let Some(id)=arena.stage.interactions.closed_door_in_reach(&world,roster.players[i].player.eye(),aim) {
+                    if !opening.contains(&id) {
+                        opening.push(id);inputs[i].0.use_pressed=true;
+                        inputs[i].1.yaw=aim.y.atan2(aim.x);inputs[i].1.pitch=0.;
+                        inputs[i].1.primary=false;inputs[i].1.alternate=false;
+                    }
                 }
             }
             if matches!(command,Command::Walk(_)) && !walk_touch {work=true;}
@@ -599,6 +620,13 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
                 ensure!(roster.players[owner.partner().index()].player.feet==before[owner.partner().index()],"Scene moved hidden partner");
             }
             if old_owner.is_some() && arena.stage.owner.is_none() {
+                // A real scene reunion can bring the waiting partner across
+                // a narrow passage. Resume their input course at the owner's
+                // current leg instead of walking back over completed ground.
+                if matches!(command,Command::CourseFile(_)) {
+                    let owner=old_owner.unwrap().index();let leg=course[owner];
+                    course[1-owner].rejoin(leg);
+                }
                 reunions+=1;walking=Default::default();swimming=Default::default();approach_lead=None;approach_stuck=0;
                 home=roster.players.each_ref().map(|b|b.player.feet);
             }

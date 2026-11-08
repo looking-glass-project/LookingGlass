@@ -204,7 +204,7 @@ pub static RESERVATIONS: [Reservation; 39] = [
         "skool2",
         VisitFlags {
             contract: &["--school2-check", "--gym-check"],
-            route: &["--school2-route-check"],
+            route: &["--school2-route-check", "--skool2-coop-route-check"],
             skip: &[],
             render: &["--school2-render-check"],
         },

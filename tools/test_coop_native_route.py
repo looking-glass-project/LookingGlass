@@ -15,7 +15,7 @@ from coop_recovery import read_trace
 EXITS = {'centipede1': 'centipede2', 'grounds2': 'facade', 'facade': 'keep', 'keep': 'qlair',
          'wforest': 'wchess1', 'wforest-return': 'hedge1', 'tower1': 'hedge2', 'hedge2': 'tower2',
          'tower2': 'hedge3', 'hedge3': 'tower3', 'tower3': 'grounds1', 'qlair': None, 'hedge1': 'tower1',
-         'potears3': 'utemple', 'skool2': 'skool1', 'potears2': 'potears3'}
+         'potears3': 'utemple', 'skool2': 'skool1', 'potears2': 'potears3', 'potears1': 'potears2'}
 
 
 def verify(profile, map_name):
@@ -91,6 +91,11 @@ def verify(profile, map_name):
         assert all(t is not None for t in pond['pond']['leaves']) and pond['pond']['ladies']
         assert pond['fish']['attack'] is None and pond['gate_time'] == 2
         assert pond['scene']['phase'] == 'Done' and all(g['health'] <= 0 for g in pond['guards'])
+        assert report['health_floors'] == [0, 0]
+    if map_name == 'potears1':
+        pool = report['world']['stage']['world']['pool']
+        assert all(t is not None for t in pool['rides'] + pool['turtle'])
+        assert all(pool['cinema']['done']) and pool['cinema']['exit_sent']
         assert report['health_floors'] == [0, 0]
     return dict(build=report['build'], ticks=report['frame']['tick'], replicas=report['replica_samples'],
         reunions=report['reunions'], health=[p['stats']['sanity'] for p in report['frame']['players']],

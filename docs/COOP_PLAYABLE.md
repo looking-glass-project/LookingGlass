@@ -56,6 +56,30 @@ a normal-play blocker, data loss, or a missing requested core feature.
 Report playable readiness and the polishing backlog separately. Do not label
 the game 100% playable while a level or requested core flow remains blocked.
 
+## Pool of Tears normal paired route accepted
+
+Frozen `dcdc1d2` passes the final missing normal visit in **67,887 ticks**,
+with **566 exact compressed replicas**, four scene reunions and actual Hollow
+Hideaway arrival. Both players finish alive at **63.39/25 health**. Three deaths
+use normal recovery: each revival occurs after exactly **1,200 active ticks**
+at 25 health. There are no team wipes, health floors, cheats or forced progression.
+
+The input pilot takes narrow banks in single file, leaves room for boarding,
+and steers/jumps around the third leaf's obstacles using collision queries.
+The rope approach uses ordinary movement and E; one player's death there is
+recovered normally. This proves a playable route with the requested recovery,
+not a flawless deathless traverse. Gameplay physics, scenes and resources are
+unchanged. Evidence is pinned in `private/coop-playable-pool-course-verified.json`.
+The standard check on `cddd820` exactly matches the accepted commands, players,
+world, scenes, revivals and arrival. Its pin is
+`private/coop-playable-pool-default-verified.json`; repeat with
+`tools/test_coop_native_route.py --map potears1` and local game data.
+
+Normal paired progression now covers **39/39 campaign visits**. The public
+save/rejoin core retains its thirteen accepted groups on unchanged `0b5bca3`.
+The remaining playable acceptance item is the actual two-client movie/credits
+handoff; broader recovery and presentation combinations are polishing.
+
 ## Hollow Hideaway normal paired route accepted
 
 Frozen `5fd9df4` passes the complete normal paired visit in **33,897 ticks**,

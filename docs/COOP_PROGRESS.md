@@ -1,10 +1,15 @@
 # Co-op progress
 
-Updated 8 November 2026. Branch: `coop`. **Estimated overall completion: 81.0%.**
+Updated 8 November 2026. Branch: `coop`. **Playable readiness: 95%. Historical full-matrix completion: 81.5%.**
 The target is now [100% playable co-op](COOP_PLAYABLE.md), followed by a
 separate polishing stage. Complete normal progression and core flows first;
 batch implementation and reuse passing evidence. The historical exhaustive
 matrix below also tracks polishing work and does not all gate playability.
+
+Playable scoring now assigns 40 points to requested core flows, 55 to normal
+campaign coverage and 5 to the two-client ending handoff. The first 95 points
+are accepted; ending presentation is still open. The historical full-matrix
+score below retains deferred polishing work and is reported separately.
 
 The older 42% reports are historical. This percentage measures delivered and
 verified behavior against the full co-op scope; it is not a running test's progress.
@@ -41,7 +46,7 @@ foundation point credited the missing import feature. The current additional
 Internet Host/Join point credits completed public core consolidation on `0b5bca3`;
 no additional campaign visit is credited.
 
-Thirty-eight of 39 visits now have credited normal paired route evidence. Six retain
+All 39 visits now have credited normal paired route evidence. Six retain
 the historical combined designation; the broader matrix still labels 33 as
 partial because it includes polishing cases. The next priority is normal paired campaign
 pass, fixing progression blockers and checking core recovery at representative
@@ -55,8 +60,32 @@ remain in the polishing backlog.
 | Two players, movement and presentation | 11.75 | 15 |
 | Combat, individual resources and death | 13.5 | 20 |
 | Scenes, transport and progression | 16 | 20 |
-| Campaign playability | 19.49 | 20 |
-| **Total** | **80.9872, rounded to 81.0** | **100** |
+| Campaign playability | 20 | 20 |
+| **Historical full-matrix total** | **81.5** | **100** |
+
+## Pool of Tears normal paired route accepted
+
+Frozen `dcdc1d2` passes the final missing normal visit in **67,887 ticks**,
+with **566 exact compressed replicas**, four scene reunions and actual Hollow
+Hideaway arrival. Both players finish alive at **63.39/25 health**. Three deaths
+use normal recovery: each revival occurs after exactly **1,200 active ticks**
+at 25 health. There are no team wipes, health floors, cheats or forced progression.
+
+The input pilot takes narrow banks in single file, leaves room for boarding,
+and steers/jumps around the third leaf's obstacles using collision queries.
+The rope approach uses ordinary movement and E; one player's death there is
+recovered normally. This proves a playable route with the requested recovery,
+not a flawless deathless traverse. Gameplay physics, scenes and resources are
+unchanged. Evidence is pinned in `private/coop-playable-pool-course-verified.json`.
+The standard check on `cddd820` exactly matches the accepted commands, players,
+world, scenes, revivals and arrival. Its pin is
+`private/coop-playable-pool-default-verified.json`; repeat with
+`tools/test_coop_native_route.py --map potears1` and local game data.
+
+Normal paired progression now covers **39/39 campaign visits**. The public
+save/rejoin core retains its thirteen accepted groups on unchanged `0b5bca3`.
+The remaining playable acceptance item is the actual two-client movie/credits
+handoff; broader recovery and presentation combinations are polishing.
 
 ## Hollow Hideaway normal paired route accepted
 

@@ -19,6 +19,7 @@ pub mod cinema;
 pub mod cinema_check;
 pub(crate) mod coop;
 pub(crate) mod coop_check;
+pub(crate) mod coop_route;
 pub mod pilot_check;
 pub mod route;
 pub mod save_check;

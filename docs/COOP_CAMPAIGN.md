@@ -8,10 +8,13 @@ First Skool Daze now has a verified four-segment normal save chain, including
 all six scenes, both lifts, personal Mallets and actual School Two arrival.
 Unchanged checkpoint hashes join 15,852 matching network states. The Queen
 normal paired ending state is also accepted. Normal paired coverage is
-**38/39 visits**, with **1 remaining**; overall readiness is **81.0%**.
+**39/39 visits**, with **no normal routes remaining**. Playable readiness is
+**95%** pending the two-client ending; the historical full matrix is **81.5%**.
 Hollow Hideaway now passes its normal paired route on `5fd9df4`: 33,897 ticks,
 283 exact replicas, both large leaf rides, the Bill reunion and actual arrival.
-Red also revives at 25 health after exactly ten seconds. Pool of Tears remains.
+Red also revives at 25 health after exactly ten seconds. Pool of Tears now
+passes on `dcdc1d2`: 67,887 ticks, 566 replicas, four reunions and actual onward
+arrival. Three ordinary deaths each revive after exactly ten active seconds.
 School Two now passes its normal main quest on `b925e5c`: 53,696 ticks,
 448 exact replicas, six reunions, both personal rewards and actual return arrival.
 Both players finish at 100 health. See `COOP_PLAYABLE.md`.

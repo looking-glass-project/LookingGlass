@@ -12,8 +12,7 @@ impl Machine {
         if self.shape.as_ref().is_none_or(|(id,_)|*id!=model) {
             self.shape=Some((model,Template::model(map,model)?));
         }
-        let (_,center,rotation)=arena.stage.interactions.levels.iter()
-            .flat_map(|s|s.ctl.transforms()).find(|(id,_,_)|*id==model)
+        let (_,center,rotation)=arena.stage.interactions.transforms().into_iter().find(|(id,_,_)|*id==model)
             .context("Route machine lacks a live controller transform")?;
         Ok(Pose{center,rotation,collider:self.shape.as_ref().unwrap().1.at(center,rotation)})
     }

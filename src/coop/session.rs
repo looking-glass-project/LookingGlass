@@ -13,23 +13,50 @@ use std::{
 
 const CHECK_TIMEOUT: Duration = Duration::from_secs(15);
 const LOAD_TIMEOUT: Duration = Duration::from_secs(120);
-const FRAMES_IN_FLIGHT: usize = 4;
+const MIN_FRAMES_IN_FLIGHT: usize = 4;
+const MAX_FRAMES_IN_FLIGHT: usize = 12;
+const SNAPSHOT_BYTES_IN_FLIGHT: usize = 64 * 1024;
+
+struct SentFrame { tick: u64, at: Instant, bytes: usize }
 
 /// TCP/relay buffers can hold seconds of stale snapshots even when the local
 /// channels are small. Receipt feedback bounds the entire path to the guest.
 #[derive(Default)]
 struct SnapshotWindow {
     base: Option<Vec<u8>>,
-    pending: VecDeque<u64>,
+    pending: VecDeque<SentFrame>,
+    pending_bytes: usize,
+    last_bytes: usize,
+    fastest_receipt: Option<Duration>,
     sent: Option<u64>,
     seen: Option<u64>,
 }
 impl SnapshotWindow {
-    fn acknowledge(&mut self, tick: u64) -> Result<()> {
+    fn limit(&self) -> usize {
+        // Cover one measured round trip at the existing 20 Hz snapshot rate.
+        // Use the fastest validated receipt, so a stalled reader or bloated
+        // TCP queue cannot keep increasing how much stale state we enqueue.
+        self.fastest_receipt.map_or(MIN_FRAMES_IN_FLIGHT, |rtt|
+            (rtt.as_millis().div_ceil(50) as usize + 1)
+                .clamp(MIN_FRAMES_IN_FLIGHT, MAX_FRAMES_IN_FLIGHT))
+    }
+    fn room_for(&self, bytes: usize) -> bool {
+        self.pending.len() < self.limit()
+            && (self.pending.is_empty() || bytes <= SNAPSHOT_BYTES_IN_FLIGHT.saturating_sub(self.pending_bytes))
+    }
+    fn admitted(&mut self, tick: u64, bytes: usize, now: Instant) {
+        self.pending.push_back(SentFrame { tick, bytes, at: now });
+        self.pending_bytes += bytes;
+        self.last_bytes = bytes;
+        self.sent = Some(tick);
+    }
+    fn acknowledge(&mut self, tick: u64, now: Instant) -> Result<()> {
         if self.seen == Some(tick) { return Ok(()); }
-        let index = self.pending.iter().position(|&sent| sent == tick)
+        let index = self.pending.iter().position(|sent| sent.tick == tick)
             .ok_or_else(||anyhow::anyhow!("Guest acknowledged an unsent or old snapshot."))?;
-        self.pending.drain(..=index);
+        let rtt = now.saturating_duration_since(self.pending[index].at);
+        self.fastest_receipt = Some(self.fastest_receipt.map_or(rtt, |best| best.min(rtt)));
+        for frame in self.pending.drain(..=index) { self.pending_bytes -= frame.bytes; }
         self.seen = Some(tick);
         Ok(())
     }
@@ -120,6 +147,9 @@ impl Host {
     pub fn input_timing(&self) -> serde_json::Value {
         let mut timing = self.input.timing();
         timing["unacknowledged_frames"] = self.frames.pending.len().into();
+        timing["snapshot_window"] = self.frames.limit().into();
+        timing["snapshot_bytes_in_flight"] = self.frames.pending_bytes.into();
+        timing["fastest_receipt_ms"] = self.frames.fastest_receipt.map(|rtt| rtt.as_secs_f32()*1000.).into();
         timing["latest_sent_frame"] = self.frames.sent.into();
         timing["acknowledged_frame"] = self.frames.seen.into();
         timing["control_reset"] = self.control_reset.into();
@@ -131,7 +161,7 @@ impl Host {
     }
     pub fn can_send_frame(&self) -> bool {
         self.phase == Phase::Playing && self.pending.is_empty()
-            && self.frames.pending.len() < FRAMES_IN_FLIGHT
+            && self.frames.room_for(self.frames.last_bytes)
     }
     pub fn send_frame(&mut self, frame: super::world::Frame) -> Result<bool> {
         if !self.can_send_frame() {
@@ -150,10 +180,12 @@ impl Host {
                 frame: Box::new(frame),
             },
         )?;
-        let sent = self.peer.send(super::codec::encode_snapshot(&serialized, self.frames.base.as_deref())?)?;
+        let packet = super::codec::encode_snapshot(&serialized, self.frames.base.as_deref())?;
+        let bytes = packet.len();
+        if !self.frames.room_for(bytes) { return Ok(false); }
+        let sent = self.peer.send(packet)?;
         if sent {
-            self.frames.pending.push_back(tick);
-            self.frames.sent = Some(tick);
+            self.frames.admitted(tick, bytes, Instant::now());
             self.frames.base = Some(serialized);
         }
         Ok(sent)
@@ -273,7 +305,7 @@ impl Host {
                         "Guest snapshot receipt arrived before identification.");
                     ensure!(epoch <= self.visit.epoch, "Guest acknowledged a future visit.");
                     if epoch == self.visit.epoch && self.phase == Phase::Playing {
-                        self.frames.acknowledge(tick)?;
+                        self.frames.acknowledge(tick, now)?;
                     }
                 }
                 FromGuest::ControlsReset { epoch, reset, sequence, sampled_micros, controls } => {
@@ -695,6 +727,53 @@ mod tests {
     use crate::coop::transport::{self, Conditions};
     use macroquad::prelude::Vec2;
     use std::thread;
+
+    #[test]
+    fn long_distance_snapshot_window_keeps_updates_flowing_with_bounded_bytes() {
+        let mut window = SnapshotWindow::default();
+        let start = Instant::now();
+        let mut delivered = VecDeque::new();
+        let mut admitted = 0;
+        for tick in 0..100_u64 {
+            let now = start + Duration::from_millis(tick*50);
+            while delivered.front().is_some_and(|&(at, _)| at <= now) {
+                let (_, receipt) = delivered.pop_front().unwrap();
+                window.acknowledge(receipt, now).unwrap();
+            }
+            if window.room_for(2048) {
+                window.admitted(tick, 2048, now);
+                delivered.push_back((now+Duration::from_millis(450), tick));
+                admitted += 1;
+            }
+            assert!(window.pending.len() <= 10);
+            assert!(window.pending_bytes <= SNAPSHOT_BYTES_IN_FLIGHT);
+        }
+        assert!(admitted >= 90, "A high-RTT path unnecessarily throttled small snapshots: {admitted}");
+        assert_eq!(window.limit(),10);
+        // Queueing delay is not evidence that the path needs a larger window.
+        let last = window.sent.unwrap();
+        window.acknowledge(last,start+Duration::from_secs(20)).unwrap();
+        assert_eq!(window.limit(),10);
+        assert_eq!(window.pending_bytes,0);
+    }
+
+    #[test]
+    fn snapshot_byte_budget_allows_one_large_frame_but_never_a_large_backlog() {
+        let mut window = SnapshotWindow::default(); let now=Instant::now();
+        assert!(window.room_for(MAX_STATE));
+        window.admitted(1,MAX_STATE,now);
+        assert!(!window.room_for(1));
+        assert!(window.acknowledge(2,now).is_err());
+        assert_eq!(window.pending_bytes,MAX_STATE);
+        window.acknowledge(1,now+Duration::from_millis(400)).unwrap();
+        for tick in 2..6 { assert!(window.room_for(16384)); window.admitted(tick,16384,now); }
+        assert!(!window.room_for(1));
+        window.acknowledge(3,now+Duration::from_millis(400)).unwrap();
+        assert_eq!(window.pending_bytes,32768);
+        window.acknowledge(3,now+Duration::from_secs(3)).unwrap();
+        assert_eq!(window.pending_bytes,32768,"Duplicate receipt freed bytes twice");
+        assert!(window.acknowledge(2,now).is_err());
+    }
 
     #[test]
     fn a_long_active_input_burst_resets_without_disconnect_or_replaying_stale_actions() {

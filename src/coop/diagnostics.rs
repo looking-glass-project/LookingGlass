@@ -27,6 +27,30 @@ pub struct Frames {
     values: Vec<f32>,
     seconds: f32,
 }
+
+/// Compact CPU phase measurements, aligned with the preceding rendered frame.
+/// Zero-work frames count too: sparse snapshot work must not inflate averages.
+#[derive(Default)]
+pub struct Work {
+    values: Vec<[f32; 12]>,
+}
+impl Work {
+    pub fn sample(&mut self, values: [f32; 12]) { self.values.push(values); }
+    pub fn take(&mut self) -> serde_json::Value {
+        let mut report = serde_json::Map::new();
+        for (index, name) in ["guest_poll_ms", "replicate_ms", "simulation_ms", "send_ms", "draw_ms", "cpu_ms", "audio_ms", "effects_update_ms", "world_ms", "characters_ms", "npcs_targets_ms", "transparent_ms"].into_iter().enumerate() {
+            let mut values: Vec<_> = self.values.iter().map(|v| v[index]).collect();
+            values.sort_by(f32::total_cmp);
+            if let Some(&max) = values.last() {
+                let n = values.len();
+                report.insert(name.into(), serde_json::json!({"mean":values.iter().sum::<f32>()/n as f32,
+                    "p95":values[(n*95/100).min(n-1)],"max":max}));
+            }
+        }
+        self.values.clear();
+        report.into()
+    }
+}
 impl Frames {
     pub fn sample(&mut self, seconds: f32) -> Option<serde_json::Value> {
         if !seconds.is_finite() || seconds <= 0. { return None; }
@@ -46,6 +70,17 @@ impl Frames {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn phase_windows_include_idle_frames_and_keep_single_cpu_spikes() {
+        let mut work = Work::default();
+        for _ in 0..59 { work.sample([0.;12]); }
+        work.sample([60.;12]);
+        let report = work.take();
+        assert_eq!(report["guest_poll_ms"]["mean"],1.);
+        assert_eq!(report["cpu_ms"]["p95"],0.);
+        assert_eq!(report["cpu_ms"]["max"],60.);
+        assert_eq!(work.take(),serde_json::json!({}));
+    }
     #[test]
     fn performance_window_keeps_the_stall_between_report_frames() {
         let mut frames = Frames::default();

@@ -170,8 +170,8 @@ impl Animator {
         self.motion = s.motion;
         self.time = s.time;
         self.transition = s.transition;
-        self.previous = s.previous.clone();
-        self.pose = s.pose.clone();
+        self.previous.clone_from(&s.previous);
+        self.pose.clone_from(&s.pose);
         self.jumps = s.jumps;
         self.landings = s.landings;
         self.large = s.large;

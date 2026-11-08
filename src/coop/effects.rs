@@ -16,6 +16,11 @@ impl Effects {
     pub fn update(&mut self, assets: &mut Assets, map: &Bsp, world: &World,
                   arena: &Arena, frame: &Frame, local: PlayerId, eye: Vec3) -> Result<()> {
         let stamp = (frame.epoch,frame.checkpoint_generation,frame.tick);
+        // Between network snapshots the authoritative switches and animation
+        // clock have not changed. Particle simulation already receives dt=0;
+        // avoid rebuilding those same emitter bindings on every render frame.
+        // Camera-dependent drawing and light selection still run every frame.
+        if self.previous == Some(stamp) { return Ok(()); }
         if self.previous.is_some_and(|old| old.0 != stamp.0 || old.1 != stamp.1 || old.2 > stamp.2) {
             // A checkpoint can re-enable emitters stopped by the theatre. Old
             // puffs must not follow the players back into the restored world.

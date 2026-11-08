@@ -8,6 +8,20 @@ import time
 import uuid
 from test_coop_play import ROOT, read
 
+def process_cpu_seconds(process):
+    """Separate actual CPU consumption from wall-clock stalls on the shared PC."""
+    if os.name != 'nt':
+        return None
+    import ctypes as c
+    from ctypes import wintypes as w
+    times = [w.FILETIME() for _ in range(4)]
+    api = c.WinDLL('kernel32', use_last_error=True).GetProcessTimes
+    api.argtypes = [w.HANDLE] + [c.POINTER(w.FILETIME)] * 4
+    api.restype = w.BOOL
+    if not api(w.HANDLE(int(process._handle)), *(c.byref(t) for t in times)):
+        raise c.WinError(c.get_last_error())
+    return sum((t.dwHighDateTime << 32) | t.dwLowDateTime for t in times[2:]) / 10_000_000
+
 class Exercise:
     """Ordinary keyboard/mouse input, only in the explicitly selected test seat."""
     def __init__(self, seat_session):
@@ -17,6 +31,24 @@ class Exercise:
         assert seat_session is not None and session.value == seat_session and session.value != 0, 'Wrong desktop session'
         self.desktop, self.held, self.started = Desktop(), None, None
         self.hwnd, self.events = None, 0
+
+    def arrange(self, processes):
+        from test_coop_menu import c, w, wait
+        user = self.desktop.user
+        receipts, x = {}, 8
+        for role, process in processes.items():
+            assert process.poll() is None, 'Owned client exited before arrangement'
+            hwnd = wait(lambda: self.desktop.window(process.pid), label=role + ' window')
+            rect = w.RECT()
+            assert user.GetWindowRect(hwnd, c.byref(rect))
+            width, height = rect.right-rect.left, rect.bottom-rect.top
+            assert x+width <= user.GetSystemMetrics(0) and 8+height <= user.GetSystemMetrics(1), 'Use a larger Anode display for two unobscured clients'
+            assert user.SetWindowPos(hwnd, None, x, 8, 0, 0, 0x15)  # move only, keep size/z-order/focus
+            assert user.GetWindowRect(hwnd, c.byref(rect))
+            receipts[role] = [rect.left, rect.top, rect.right, rect.bottom]
+            x += width+8
+        assert receipts['host'][2] <= receipts['guest'][0], 'Test windows overlap'
+        return receipts
 
     def key(self, key, down):
         from test_coop_menu import Input, Payload, Key
@@ -61,7 +93,9 @@ def run(args):
     folder.mkdir(parents=True)
     invite = folder / 'invite.txt'
     processes, logs, samples = {}, [], {'host': [], 'guest': []}
-    exercise = Exercise(args.seat_session) if args.exercise_guest else None
+    desktop = Exercise(args.seat_session) if args.exercise_guest or args.tile_windows else None
+    exercise = desktop if args.exercise_guest else None
+    placement = None
     latest_guest = None
     try:
         for role in samples:
@@ -83,6 +117,8 @@ def run(args):
                 assert processes[role].poll() is None, 'Host exited; inspect ' + str(folder)
                 assert time.monotonic() < deadline, 'Invite timeout'
                 time.sleep(.05)
+        if args.tile_windows:
+            placement = desktop.arrange(processes)
         started, deadline = None, time.monotonic() + 90
         previous = {}
         while True:
@@ -98,7 +134,8 @@ def run(args):
                     if previous.get(role) != marker:
                         previous[role] = marker
                         samples[role].append(dict(timing=report['timing'], network=report['network'], scene=report['scene'],
-                            local_view=report.get('local_view'), renderer=report.get('renderer'), elapsed=time.monotonic()-started))
+                            process_cpu_seconds=process_cpu_seconds(processes[role]),
+                            work=report.get('work'), local_view=report.get('local_view'), renderer=report.get('renderer'), elapsed=time.monotonic()-started))
                         if role == 'guest':
                             latest_guest = report
                     continue
@@ -152,7 +189,7 @@ def run(args):
             assert yaw_span > .05, 'Native mouse input did not turn the camera'
             assert movement > 2, 'Native movement did not move guest Alice'
             input_result = dict(mouse_events=exercise.events, yaw_span=yaw_span, movement=movement)
-        result = dict(exe=str(args.exe.resolve()), map=args.map, local=args.local, input_exercise=input_result,
+        result = dict(exe=str(args.exe.resolve()), map=args.map, local=args.local, input_exercise=input_result, windows=placement,
             delay_ms=args.delay_ms, jitter_ms=args.jitter_ms, metrics_only=args.metrics_only,
             summary=summary, samples=samples)
         (folder / 'result.json').write_text(json.dumps(result, indent=2))
@@ -182,6 +219,7 @@ if __name__ == '__main__':
     p.add_argument('--local', action='store_true')
     p.add_argument('--metrics-only', action='store_true', help='Normal gameplay with compact per-second FPS diagnostics only')
     p.add_argument('--exercise-guest', action='store_true', help='Move and turn with native input after the opening cutscene')
+    p.add_argument('--tile-windows', action='store_true', help='Keep both clients unobscured on a sufficiently wide Anode display')
     p.add_argument('--seat-session', type=int, help='Required Anode session ID when exercising input')
     args = p.parse_args()
     assert not args.exercise_guest or args.metrics_only, 'Native input exercise requires compact metrics'

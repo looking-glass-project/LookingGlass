@@ -233,16 +233,18 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
         let mut performance_writer = None;
         let renderer = super::diagnostics::renderer();
         let mut performance_frames = super::diagnostics::Frames::default();
+        let mut performance_work = super::diagnostics::Work::default();
+        let mut previous_work = [0.;12];
         let mut performance_text = String::new();
         let mut menu_selected = 0;
         let mut copied_at: Option<Instant> = None;
         let mut rejected_guest = String::new();
-        let mut last_sent = 0;
+        let mut snapshot_clock = super::clock::Snapshots::default();
         let mut rendered = 0;
         let mut started_playing = None;
         let mut death_approach = None;
         let mut report_at = Instant::now();
-        let mut guest_send_at = Instant::now();
+        let mut input_clock = super::clock::Inputs::new(Instant::now());
         let mut weapon_buttons = crate::weapon_rules::Buttons::default();
         weapon_buttons.block();
         let mut captured_midpoint = false;
@@ -281,6 +283,8 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
             let mut driver_ms = 0.;
             let mut simulation_ms = 0.;
             let mut send_ms = 0.;
+            let mut draw_ms = 0.;
+            let mut draw_phases = [0.;6];
             if let Some(driver) = &mut route_driver { driver.poll(now); }
             if let Some(setup) = &hosting {
                 if let Status::Failed(reason) = setup.status() { anyhow::bail!("{reason}"); }
@@ -367,7 +371,7 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                 keys = Input::default();
                 local_latch = RemoteInput::default();
                 simulation_clock = super::clock::Clock::default();
-                last_sent = 0;
+                snapshot_clock = super::clock::Snapshots::default();
                 weapon_buttons.block();
                 // Do not charge the synchronous asset-loading time to movement.
                 next_frame().await;
@@ -389,6 +393,7 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
             let focused = crate::look::window_focused();
             if focused && is_key_pressed(KeyCode::F11) { performance_open = !performance_open; }
             if performance_open && playing {
+                performance_work.sample(previous_work);
                 if let Some(timing) = performance_frames.sample(get_frame_time()) {
                     performance_text = format!("{:.0} FPS / worst frame {:.1} ms", timing["fps"].as_f64().unwrap_or(0.), timing["max_ms"].as_f64().unwrap_or(0.));
                     let writer = performance_writer.get_or_insert_with(|| super::diagnostics::Writer::new(crate::preferences::path("coop-performance.json")));
@@ -396,7 +401,7 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                         "pid":std::process::id(),"host":launch.host,"playing":playing,"map":visit.map,"renderer":renderer,
                         "local_view":display.as_ref().map(|f| serde_json::json!({
                             "feet":f.players[local.index()].player.feet,"yaw":yaw,"pitch":pitch})),
-                        "scene":arena.stage.busy(),"timing":timing,"network":guest.as_ref().map(Guest::input_timing)
+                        "scene":arena.stage.busy(),"timing":timing,"work":performance_work.take(),"network":guest.as_ref().map(Guest::input_timing)
                             .or_else(|| host.as_ref().map(Host::input_timing))})) { writer.write(bytes); }
                 }
             }
@@ -644,7 +649,8 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                 local_latch.accept(local_sequence, keys, now)?;
             }
             if let Some(guest) = &mut guest {
-                if guest_send_at.elapsed() >= Duration::from_millis(33) && guest.controls(keys)? { guest_send_at = now; }
+                let sampled = Instant::now();
+                if input_clock.due(sampled) && guest.controls(keys)? { input_clock.sent(sampled); }
             }
             if let (Some(host), Some(roster)) = (&mut host, &mut roster) {
                 if playing {
@@ -752,13 +758,13 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                     }
                     let mut frame = roster.frame(visit.epoch, host.acknowledged_input());
                     frame.sounds = Some(arena.stage.sounds.batch(frame.tick));
-                    if frame.tick >= last_sent + 6 && host.can_send_frame() {
+                    if snapshot_clock.due(frame.tick) && host.can_send_frame() {
                         let sending=Instant::now();
                         let mut network = frame.clone();
                         network.combat = Some(Box::new(arena.snapshot()));
                         if host.send_frame(network)? {
                             if let Some(driver) = &mut route_driver { driver.record_state(&frame, &arena)?; }
-                            last_sent = frame.tick;
+                            snapshot_clock.sent(frame.tick);
                             if arena.stage.interactions.levels.iter().any(|s| s.ctl.ending_ready()) {
                                 finale_sent.get_or_insert(frame.tick);
                             }
@@ -831,7 +837,10 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                 let scripted = arena.stage.camera(&scene.world);
                 let (camera_eye, target, up) = scripted.map_or((follow_eye, follow_target, Vec3::Z), |c| (c.eye, c.target, c.up));
                 let listening = target - camera_eye;
+                let section = Instant::now();
                 audio.update(assets,&arena,frame,&scene.world,watched,camera_eye,listening.y.atan2(listening.x),elapsed,playing)?;
+                draw_phases[0] = section.elapsed().as_secs_f32()*1000.;
+                let section = Instant::now();
                 let view = Camera3D { position: camera_eye, target, up,
                     fovy: if scripted.is_some() { arena.stage.scene_fovy(screen_width() / screen_height()) } else { 60_f32.to_radians() },
                     z_near: 2., z_far: 30000., ..Default::default() };
@@ -839,6 +848,8 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                 effects.update(assets, &scene.map, &scene.world, &arena, frame, local, camera_eye)?;
                 crate::lighting::select(effects.lights(&arena), camera_eye, &scene.world);
                 crate::render_fx::begin_view(&view, frame.tick as f32 * FIXED_DT, &scene.atmosphere, false);
+                draw_phases[1] = section.elapsed().as_secs_f32()*1000.;
+                let section = Instant::now();
                 arena.stage.interactions.presentation.apply(&mut scene);
                 let transforms = arena.stage.draw_transforms(&scene.world);
                 let hands = arena.stage.rope_hands(&scene.world, &visual.players, &arena.characters);
@@ -847,6 +858,8 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                 level_art.story_pose(&arena.stage.story);
                 level_art.coop_view(local.index());
                 level_art.draw(&arena.stage.interactions, &arena.stage.hints, &scene.atmosphere, camera_eye, false);
+                draw_phases[2] = section.elapsed().as_secs_f32()*1000.;
+                let section = Instant::now();
                 // Rage uses the owning player's authoritative transformation
                 // pose, rather than a separate cinematic Alice in LevelArt.
                 let rage_actor = arena.stage.interactions.beyond.as_ref()
@@ -869,6 +882,8 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                     }
                     character.draw_effects(camera_eye, false, show_body);
                 }
+                draw_phases[3] = section.elapsed().as_secs_f32()*1000.;
+                let section = Instant::now();
                 arena.npcs.draw(camera_eye, (target - camera_eye).normalize_or_zero(), &scene.atmosphere, false);
                 let personal = &frame.players[local.index()].stats;
                 let body = &visual.players[local.index()];
@@ -893,6 +908,8 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                 if let Some(loot) = personal.loot.get(&arena.visit_key) {
                     pickup_art.draw(&loot.pickups(&arena.visit_key), personal, &arena.visit_key, &scene.atmosphere, camera_eye, frame.tick as f32 * FIXED_DT);
                 }
+                draw_phases[4] = section.elapsed().as_secs_f32()*1000.;
+                let section = Instant::now();
                 scene.draw_with_particles(camera_eye, listening.normalize_or_zero(),
                     frame.tick as f32 * FIXED_DT, false, &transforms, &effects.steam);
                 if let Some(encounters) = &arena.stage.interactions.encounters { encounters.draw_waves(); }
@@ -902,6 +919,7 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                 level_art.effects(&arena.stage.interactions, camera_eye, &scene.atmosphere);
                 crate::lighting::flares(camera_eye, listening.normalize_or_zero());
                 let effect_batches = crate::render_fx::finish();
+                draw_phases[5] = section.elapsed().as_secs_f32()*1000.;
                 presented = Some(visual);
                 set_default_camera();
                 let fade = arena.stage.fade();
@@ -921,7 +939,7 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                     };
                     ui.toast(&message, screen_height() * 0.4);
                 }
-                let draw_ms=drawing.elapsed().as_secs_f32()*1000.;
+                draw_ms=drawing.elapsed().as_secs_f32()*1000.;
                 if detailed_reports && report_at.elapsed() >= Duration::from_millis(200) {
                     let observing=Instant::now();
                     if let Some(driver) = &mut route_driver { driver.observe(frame, &arena, &scene.world); }
@@ -1097,6 +1115,8 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                 if let Some(path) = &options.capture { crate::viewer::save_capture(path)?; }
                 break;
             }
+            previous_work = [guest_poll_ms, replicate_ms, simulation_ms, send_ms, draw_ms, now.elapsed().as_secs_f32()*1000.,
+                draw_phases[0],draw_phases[1],draw_phases[2],draw_phases[3],draw_phases[4],draw_phases[5]];
             next_frame().await;
         }
         look.release();

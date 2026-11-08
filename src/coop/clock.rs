@@ -1,6 +1,28 @@
 //! Bound work per rendered frame without losing the host's simulation time.
 use crate::movement::FIXED_DT;
 use super::protocol::INPUT_TIMEOUT;
+use std::time::{Duration, Instant};
+
+/// Sample current input at 30 Hz without accumulating render-frame overshoot.
+pub struct Inputs { next: Instant }
+impl Inputs {
+    const PERIOD: Duration = Duration::from_nanos(1_000_000_000 / 30);
+    pub fn new(now: Instant) -> Self { Self { next: now } }
+    pub fn due(&self, now: Instant) -> bool { now >= self.next }
+    pub fn sent(&mut self, now: Instant) {
+        let late = now.saturating_duration_since(self.next).as_nanos() % Self::PERIOD.as_nanos();
+        self.next = now + Self::PERIOD - Duration::from_nanos(late as u64);
+    }
+}
+
+/// A stable 20 Hz cadence on the 120 Hz simulation clock. Small render jitter
+/// must not postpone every subsequent snapshot by another whole render frame.
+#[derive(Default)]
+pub struct Snapshots { last_tick: u64 }
+impl Snapshots {
+    pub fn due(&self, tick: u64) -> bool { tick / 6 > self.last_tick / 6 }
+    pub fn sent(&mut self, tick: u64) { self.last_tick = tick; }
+}
 
 #[derive(Default)]
 pub struct Clock {
@@ -28,7 +50,36 @@ mod tests {
     use super::*;
     use crate::coop::protocol::{Input, TimedInput};
     use macroquad::prelude::Vec2;
-    use std::time::{Duration, Instant};
+
+    #[test]
+    fn input_pacing_keeps_thirty_hertz_and_never_sends_a_catch_up_burst() {
+        let start=Instant::now(); let mut clock=Inputs::new(start); let mut sent=0;
+        for frame in 0..600_u64 {
+            let now=start+Duration::from_nanos(frame*16_666_667+(frame%7)*300_000);
+            if clock.due(now) { clock.sent(now); sent+=1; }
+            assert!(!clock.due(now),"Sent twice in the same frame");
+        }
+        assert_eq!(sent,300,"Input sampling accumulated render jitter");
+        let resumed=start+Duration::from_secs(60);
+        assert!(clock.due(resumed)); clock.sent(resumed);
+        assert!(!clock.due(resumed+Duration::from_millis(30)));
+        assert!(clock.due(resumed+Duration::from_millis(34)));
+    }
+
+    #[test]
+    fn snapshot_pacing_keeps_twenty_hertz_through_render_jitter_without_replaying_missed_frames() {
+        let mut clock=Snapshots::default(); let mut sent=0;
+        // Ten seconds rendered near 60 Hz, alternately early/late by one tick.
+        for frame in 0..600 {
+            let tick=frame*2+frame%2;
+            if clock.due(tick) { clock.sent(tick); sent+=1; }
+        }
+        assert_eq!(sent,199,"Render jitter reduced the promised snapshot rate");
+        assert!(clock.due(2400)); // a stall/backpressure interval
+        clock.sent(2400);
+        for tick in 2400..2406 { assert!(!clock.due(tick),"Replayed a missed snapshot"); }
+        assert!(clock.due(2406));
+    }
 
     #[test]
     fn brief_render_stalls_do_not_permanently_delay_guest_controls() {

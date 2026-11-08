@@ -3,9 +3,9 @@
 This work addresses the first remote two-player playtest of preview.1.
 Both players must use the same candidate executable. Save formats and game-data
 requirements are unchanged.
-The preview.3 test candidate combines the first batch below with the network
-follow-up. Both players need preview.3; older candidates have different co-op
-build identities. F11 displays frame timing and the active graphics renderer.
+The preview.4 test candidate includes the latency optimization pass below.
+Both players need preview.4; older candidates have different co-op build identities.
+F11 displays frame timing and the active graphics renderer.
 
 ## Changes
 
@@ -45,7 +45,7 @@ diagnostics remain disabled. Failure receipts retain samples and exit codes.
 Use the ordinary report mode only when comparing older builds without the F11
 metrics; those older sampled reports do not measure every frame.
 
-## Scope of the evidence
+## Initial candidate evidence
 
 On 8 November 2026 the candidate passed 973 Rust tests (six ignored), sixteen
 setup tests, seven source-package tests and two launcher tests. A native display
@@ -84,7 +84,7 @@ needs another remote playtest before that report can be marked fully resolved.
 ## Network follow-up
 
 The latency injector had its own throughput bug: four delayed packets at
-160–210 ms limited ordinary input traffic to about 20 messages per second.
+160â€“210 ms limited ordinary input traffic to about 20 messages per second.
 A 40 Hz regression accumulated a 2.88-second queue before the correction.
 Delayed traffic now has room for packets in flight while retaining the old
 32 MiB byte ceiling. Normal, undelayed channels stay at four packets. All
@@ -168,3 +168,45 @@ and checked in the native client. Seven source-package tests passed.
 Final preview.3 executable SHA-256:
 `3bba8bea872a31efc83b2a4027f442d81fa4fdfe20af6f1da9fbf6c9cca1a2ec`.
 This remains a test candidate for the remote laptop, not a published release.
+
+## Latency optimization pass
+
+Idle camera turns previously prevented the input timeline from discarding old
+network delay. A deterministic 50 ms one-way fixture reproduced a 250 ms delay
+before fresh movement after a temporary stall. Neutral camera updates now merge
+only after their action counters are consumed; the regression requires fresh
+movement within 100 ms and preserves the original aim of queued attack presses.
+Run-ups, short pauses, weapon changes and action edges keep their timing.
+
+Snapshot flow adapts from four to at most twelve outstanding updates using the
+fastest validated receipt. A separate 64 KiB wire-byte budget prevents a large
+snapshot backlog; one oversized full snapshot may travel alone. A stalled or
+forged receipt cannot free arbitrary slots or keep increasing the window.
+The input and snapshot schedulers preserve their 30 Hz and 20 Hz cadence through
+render jitter, and never replay missed sends after a stall. Unchanged snapshot
+frames skip redundant particle bindings, and pose restoration reuses buffers.
+
+Compact F11 diagnostics now measure CPU phases without serializing the world.
+The performance harness records process CPU consumption and can place both
+clients side by side with `--tile-windows --seat-session <id>`. Use a sufficiently
+wide Anode display, such as 2560 x 1440, to avoid overlapping test windows.
+All profiles are isolated. Neither screenshots nor live game-state edits are
+needed for this performance test.
+
+A controlled 45-second school comparison used the same two-window layout,
+160 ms plus up to 50 ms jitter per sender, and real guest movement/mouse input.
+Before the final cadence adjustment, admitted guest snapshots increased from
+436 to 776; median snapshot age fell from 50.1 to 16.8 ms, and p95 inter-snapshot
+gap from 233.3 to 83.5 ms. Input acknowledgement median stayed approximately
+401 ms, which includes the injected round trip. Both builds had approximately
+60 FPS median and two startup frames over 50 ms per client. These are same-PC
+measurements, not evidence that the remote laptop's original stutter is fixed.
+Earlier overlapping-window runs had substantial, variable stalls in both the
+baseline and changed builds; they are retained as diagnostic evidence rather
+than used to claim a frame-rate improvement.
+
+Preview.4 passed 985 Rust tests (six ignored), seven source-package tests,
+Python syntax checks and the exact staged source audit. The locked static-CRT
+Windows release build completed. Frozen executable SHA-256:
+`c02bb765612cd5de54f0c97ae2a869491476dbd7876fcf9a17108d592456cc61`.
+Native follow-up results are recorded in the draft PR and private receipts.

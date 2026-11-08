@@ -72,6 +72,18 @@ fn counters(input:Input) -> [u64;6] {
         input.rope_edges[0],input.rope_edges[1]]
 }
 
+fn idle(input: Input) -> bool {
+    input.wish == Vec2::ZERO && input.swim == Vec3::ZERO && input.rise == 0.
+        && !input.primary && !input.alternate && !input.skip_scene
+}
+
+/// Looking around while idle changes presentation, not the movement interval.
+/// Keep action counters and weapon selection distinct, even when stationary.
+fn same_interval(mut a: Input, mut b: Input, look_only: bool) -> bool {
+    if look_only && idle(a) && idle(b) { a.yaw=0.; a.pitch=0.; b.yaw=0.; b.pitch=0.; }
+    a == b
+}
+
 impl TimedInput {
     // Acknowledgements retain their existing meaning: received and validated.
     pub fn sequence(&self) -> u64 { self.accepted.map_or(0,|s|s.sequence) }
@@ -123,6 +135,9 @@ impl TimedInput {
                 && new.checked_sub(applied).is_some_and(|n|n<=MAX_EDGES-pending),
                 "Invalid or excessive pending co-op actions.");
         }
+        // A short click can already be released while its edge is still queued.
+        // Its original aim must survive until the host has consumed the action.
+        let look_only = pending.iter().all(|&n| n==0) && counters(input)==counters(self.latch.last);
         let first=self.current.or_else(||self.queued.front().copied());
         let ahead=first.map_or(0,|s|u128::from(sampled_micros-s.at)*120)
             .saturating_sub(self.elapsed);
@@ -131,18 +146,19 @@ impl TimedInput {
             // a current one in the same poll. Replaying seconds of that idle
             // only adds latency; it contains no movement or action to retain.
             // Active intervals, changed edges and forged clocks remain bounded.
-            if !(input.wish==Vec2::ZERO && input.swim==Vec3::ZERO && input.rise==0.
-                && !input.primary && !input.alternate && !input.skip_scene
+            if !(idle(input)
                 && counters(input)==counters(previous) && pending.iter().all(|&n|n==0)
-                && self.current.is_none_or(|s|s.input==input)
-                && self.queued.iter().all(|s|s.input==input)) { return Err(InputBacklog.into()); }
+                && self.current.is_none_or(|s|same_interval(s.input,input,look_only))
+                && self.queued.iter().all(|s|same_interval(s.input,input,look_only))) { return Err(InputBacklog.into()); }
             self.current=None; self.queued.clear(); self.elapsed=0;
         }
         let sample=Sample{sequence,input,at:sampled_micros};
-        if self.queued.back().is_some_and(|s|s.input==input) {
-            self.queued.back_mut().unwrap().sequence=sequence;
-        } else if self.queued.is_empty() && self.current.is_some_and(|s|s.input==input) {
-            self.current.as_mut().unwrap().sequence=sequence;
+        if self.queued.back().is_some_and(|s|same_interval(s.input,input,look_only)) {
+            let last = self.queued.back_mut().unwrap();
+            last.sequence=sequence; last.input=input;
+        } else if self.queued.is_empty() && self.current.is_some_and(|s|same_interval(s.input,input,look_only)) {
+            let current = self.current.as_mut().unwrap();
+            current.sequence=sequence; current.input=input;
             self.latch.accept(sequence,input,now)?;
             // A late packet shifts playback behind the sender. Once the host
             // has actually applied a quarter-second of unchanged idle, there
@@ -151,8 +167,7 @@ impl TimedInput {
             // old jitter as permanent latency for the next movement command.
             // Short pauses, active controls and queued changes keep their time.
             if self.elapsed >= SETTLED_IDLE_UNITS && pending.iter().all(|&n|n==0)
-                && input.wish==Vec2::ZERO && input.swim==Vec3::ZERO && input.rise==0.
-                && !input.primary && !input.alternate && !input.skip_scene {
+                && idle(input) {
                 let confirmed=u128::from(sampled_micros-self.current.unwrap().at)*120;
                 self.elapsed=self.elapsed.max(confirmed);
             }
@@ -361,6 +376,49 @@ mod tests {
         }
         assert!(resumed.is_some_and(|time|time<=2_100_000),
             "An earlier burst still delayed fresh movement after a long idle: {resumed:?}");
+    }
+
+    #[test]
+    fn looking_around_while_idle_does_not_retain_old_network_delay() {
+        let mut stream=TimedInput::default(); let start=Instant::now();
+        let mut packets=VecDeque::new(); let mut last_delivery=0;
+        for number in 0..90_u64 {
+            let sampled=number*1_000_000/30;
+            let delay=if (300_000..500_000).contains(&sampled) {250_000} else {50_000};
+            last_delivery=last_delivery.max(sampled+delay);
+            let wish=if sampled<600_000 {
+                if sampled/100_000%2==0 {Vec2::X} else {Vec2::Y}
+            } else if sampled<2_000_000 {Vec2::ZERO} else {Vec2::X};
+            packets.push_back((last_delivery,number+1,sampled,
+                Input{wish,yaw:number as f32*0.03,pitch:(number as f32*0.04).sin(),..Default::default()}));
+        }
+        let mut resumed=None;
+        for tick in 0..360_u64 {
+            let micros=tick*1_000_000/120; let now=start+Duration::from_micros(micros);
+            while packets.front().is_some_and(|p|p.0<=micros) {
+                let (_,sequence,sampled,input)=packets.pop_front().unwrap();
+                stream.accept(sequence,input,sampled,now).unwrap();
+            }
+            let controls=stream.sample(now).0;
+            if micros>=2_000_000 && controls.wish==Vec2::X && resumed.is_none() {resumed=Some(micros);}
+        }
+        assert!(resumed.is_some_and(|time|time<=2_100_000),
+            "Camera-only idle samples retained an old delay before fresh movement: {resumed:?}");
+    }
+
+    #[test]
+    fn idle_look_coalescing_preserves_a_queued_clicks_original_aim() {
+        let mut stream=TimedInput::default(); let start=Instant::now();
+        stream.accept(1,Input::default(),0,start).unwrap();
+        let click=Input{yaw:1.,jumps:1,attack_presses:[1,0],..Default::default()};
+        stream.accept(2,click,100_000,start).unwrap();
+        stream.accept(3,Input{yaw:2.,..click},200_000,start).unwrap();
+        for tick in 0..25 {
+            let (movement,input)=stream.sample(start+Duration::from_secs_f64(tick as f64/120.));
+            assert_eq!(movement.jump,tick==12);
+            assert_eq!(input.primary,tick==12);
+            assert_eq!(input.yaw,if tick<12 {0.} else if tick<24 {1.} else {2.});
+        }
     }
 
     #[test]

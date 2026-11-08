@@ -295,11 +295,47 @@ impl Route {
     /// Each step is 24 ticks of one of nine headings, with or without a jump; the plan is the list
     /// of inputs with the position each is expected to end at. `Err` is the number of states
     /// searched before giving up.
-    fn plan(
+    pub(crate) fn plan(
         world: &World,
         start: &Player,
         goal: Vec3,
         tolerance: f32,
+    ) -> Result<Vec<(Controls, Vec3)>, usize> {
+        Self::plan_with_takeoff_margin(world, start, goal, tolerance, 0)
+    }
+    /// Optional remote-input margin for diagnostic routes. A planned jump or
+    /// grounded turn must retain support if the preceding input lasts longer,
+    /// and its first landing must have support around the center of the body.
+    /// Native routes retain their exact zero-margin search and gameplay physics.
+    pub(crate) fn plan_with_takeoff_margin(
+        world: &World,
+        start: &Player,
+        goal: Vec3,
+        tolerance: f32,
+        takeoff_ticks: u32,
+    ) -> Result<Vec<(Controls, Vec3)>, usize> {
+        Self::search_inputs(world, start, goal, tolerance, takeoff_ticks, false, false)
+    }
+    /// Opt-in walking search for feedback-driven remote test navigation.
+    /// Keep grounded steering points with room for the arrival tolerance;
+    /// an unavailable walking route falls back to the existing jump search.
+    pub(crate) fn plan_grounded(
+        world: &World, start: &Player, goal: Vec3, tolerance: f32,
+    ) -> Result<Vec<(Controls, Vec3)>, usize> {
+        if !start.grounded || start.swimming || start.ledge.is_some() { return Err(0); }
+        Self::search_inputs(world, start, goal, tolerance, 0, true, false)
+    }
+    /// Live diagnostic clients cannot pause liquid damage while an asynchronous
+    /// planner runs or a partner approaches. Search for an ordinary dry passage
+    /// when requested; native single-player routes keep their existing policy.
+    pub(crate) fn plan_without_liquid_damage(world: &World, start: &Player,
+        goal: Vec3, tolerance: f32, takeoff_ticks: u32, walking: bool,
+    ) -> Result<Vec<(Controls, Vec3)>, usize> {
+        if walking && (!start.grounded || start.swimming || start.ledge.is_some()) { return Err(0); }
+        Self::search_inputs(world, start, goal, tolerance, if walking {0} else {takeoff_ticks}, walking, true)
+    }
+    fn search_inputs(world: &World, start: &Player, goal: Vec3, tolerance: f32,
+        takeoff_ticks: u32, walking: bool, avoid_liquid_damage: bool,
     ) -> Result<Vec<(Controls, Vec3)>, usize> {
         use std::cmp::Reverse;
         use std::collections::{BinaryHeap, HashSet};
@@ -307,7 +343,7 @@ impl Route {
         let mut queue = BinaryHeap::from([Reverse((0u32, 0usize))]);
         let mut seen = HashSet::new();
         while let Some(Reverse((_, index))) = queue.pop() {
-            let (p, _, _, cost) = nodes[index].clone();
+            let (p, _, previous, cost) = nodes[index].clone();
             if p.feet.distance(goal) < tolerance && p.grounded {
                 let mut path = Vec::new();
                 let mut at = index;
@@ -318,9 +354,17 @@ impl Route {
                 path.reverse();
                 return Ok(path);
             }
-            if nodes.len() > 100000 {
+            if nodes.len() > if walking { 30000 } else { 100000 } {
                 break;
             }
+            let transition_safe = if p.grounded && takeoff_ticks > 0 {
+                let mut late = p.clone();
+                (0..takeoff_ticks).all(|_| {
+                    late.tick(world, Controls { jump:false, ..previous });
+                    late.grounded && (!avoid_liquid_damage || late.immersion.level==0
+                        || late.immersion.kind.damage_per_second()==0.)
+                })
+            } else { true };
             for d in 0..9 {
                 let angle = d as f32 * std::f32::consts::FRAC_PI_4;
                 let wish = if d == 8 {
@@ -328,18 +372,25 @@ impl Route {
                 } else {
                     vec2(angle.cos(), angle.sin())
                 };
+                // A late grounded turn can run off a narrow approach before
+                // the later jump is even sampled. Reserve the same support
+                // interval for direction changes as for takeoff; checking
+                // only the jump node cannot protect its preceding approach.
+                if !transition_safe && wish != previous.wish { continue; }
                 for jump in [false, true] {
-                    if jump && !p.grounded && p.ledge.is_none() {
+                    if jump && (walking || !transition_safe || !p.grounded && p.ledge.is_none()) {
                         continue;
                     }
                     let input = Controls {
                         wish,
                         jump,
-                        run: true,
+                        run: !walking,
                         ..Default::default()
                     };
                     let mut next = p.clone();
+                    let mut unsafe_landing=false;
                     for t in 0..24 {
+                        let airborne=!next.grounded;
                         next.tick(
                             world,
                             Controls {
@@ -347,15 +398,35 @@ impl Route {
                                 ..input
                             },
                         );
+                        if avoid_liquid_damage && next.immersion.level>0
+                            && next.immersion.kind.damage_per_second()>0. {
+                            unsafe_landing=true;break;
+                        }
+                        // A body can barely catch a platform with its side.
+                        // That route loses support after a few ticks of remote
+                        // timing variation, even if the later endpoint is safe.
+                        // Check first contact, before subsequent ground motion
+                        // conceals the marginal landing. Native routes retain
+                        // their original zero-margin search.
+                        if takeoff_ticks>0 && airborne && next.grounded
+                            && !supported_footing(world,next.feet) {
+                            unsafe_landing=true;break;
+                        }
                     }
-                    if next.feet.z < goal.z - 320. || !world.body_clear(next.feet) {
+                    if unsafe_landing || next.feet.z < goal.z - 320. || !world.body_clear(next.feet) {
                         continue;
                     }
+                    if walking && (!next.grounded || next.swimming || next.ledge.is_some()
+                        || !supported_footing(world,next.feet)) { continue; }
                     let key = (
                         (next.feet.x / 12.).round() as i32,
                         (next.feet.y / 12.).round() as i32,
                         (next.feet.z / 12.).round() as i32,
                         (next.velocity.z / 120.).round() as i32,
+                        // Remote transition safety holds the preceding input.
+                        // Arriving at one cell from a different direction can
+                        // leave the only safe late turn; keep both approaches.
+                        (takeoff_ticks>0).then_some(d),
                         // The early pull-up moves less than one position cell. Keep its
                         // animation clock distinct so the search can finish the climb.
                         next.ledge.as_ref().map(|h| (h.pulling, (h.elapsed * 10.).round() as u8)),
@@ -1141,9 +1212,234 @@ impl Route {
     }
 }
 
+pub(crate) fn supported_footing(world:&World,feet:Vec3)->bool {
+    // Box contact stands above the centre of an inclined floor. Flat rays from
+    // that contact height can miss the downhill side of a perfectly supported
+    // landing. Keep the existing eight-unit margin, measured on the floor plane.
+    let contact=world.body_trace(feet,feet-Vec3::Z*3.);
+    if contact.start_solid || contact.fraction>=1. || contact.normal.z<0.65 {return false;}
+    let start=feet+Vec3::Z;
+    let centre=world.sweep(start,start-Vec3::Z*41.,Vec3::ZERO);
+    if centre.start_solid || centre.fraction>=1. || centre.normal.z<0.65 {return false;}
+    let ground=start-Vec3::Z*(41.*centre.fraction);
+    let plane_contact=ground.z+centre.normal.truncate().abs()
+        .dot(crate::collision::PLAYER_HALF.truncate())/centre.normal.z;
+    // The centre ray must describe the actual box contact, not a lower floor
+    // beneath an overhanging body whose side barely touches an upper ledge.
+    if (plane_contact-(feet.z-3.*contact.fraction)).abs()>2. {return false;}
+    [Vec3::ZERO,Vec3::X*8.,-Vec3::X*8.,Vec3::Y*8.,-Vec3::Y*8.].iter().all(|offset| {
+        let plane_z=-(centre.normal.x*offset.x+centre.normal.y*offset.y)/centre.normal.z;
+        let high=ground+*offset+Vec3::Z*(plane_z+8.);
+        let floor=world.sweep(high,high-Vec3::Z*16.,Vec3::ZERO);
+        !floor.start_solid && floor.fraction<1. && floor.normal.z>=0.65
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[ignore = "requires LOOKING_GLASS_TEST_DATA"]
+    fn remote_curiosity_ascent_retains_approach_directions() {
+        let base=std::env::var_os("LOOKING_GLASS_TEST_DATA").unwrap();
+        let mut assets=Assets::open(std::path::Path::new(&base)).unwrap();
+        let map=Bsp::parse(&assets.read("maps/jlair1.bsp").unwrap()).unwrap();
+        let world=World::from_bsp(&map).unwrap();
+        let goal=vec3(-6314.,3038.,2150.6575);
+        // Earlier successful arrival, settled guest, and the failed live search.
+        for feet in [vec3(-6474.3486,3274.1404,2208.03125),
+            vec3(-6474.0103,3275.6643,2208.03125),vec3(-6474.0015,3275.7017,2208.03125)] {
+            let mut player=Player::new(feet);player.grounded=true;
+            let plan=Route::plan_without_liquid_damage(&world,&player,goal,22.,12,false)
+                .unwrap_or_else(|states|panic!("No safe ascent from {feet:?} after {states} states"));
+            let mut previous=Controls::default();
+            for (input,expected) in plan {
+                if player.grounded && (input.jump || input.wish!=previous.wish) {
+                    let mut late=player.clone();
+                    for _ in 0..12 {
+                        late.tick(&world,Controls{jump:false,..previous});
+                        assert!(late.grounded && late.liquid_damage==0.,"Lost the late-input margin");
+                    }
+                }
+                for tick in 0..24 {
+                    let airborne=!player.grounded;
+                    player.tick(&world,Controls{jump:input.jump&&tick==0,..input});
+                    assert!(world.body_clear(player.feet) && player.liquid_damage==0.);
+                    if airborne && player.grounded {assert!(supported_footing(&world,player.feet));}
+                }
+                assert!(player.feet.distance(expected)<0.01);
+                previous=input;
+            }
+            assert!(player.grounded && player.jumps>0 && player.liquid_damage==0. && player.feet.distance(goal)<22.);
+            println!("Safe Curiosity route from {feet:?} reaches {:?}",player.feet);
+        }
+    }
+
+    #[test]
+    fn diagnostic_navigation_avoids_damaging_liquids_with_walks_and_jumps() {
+        for walking in [true,false] {
+            let width=if walking {200.} else {24.};
+            let mut world=World::fixture(&[(vec3(-60.,-width,-40.),vec3(360.,width,0.))]);
+            world.add_liquid(vec3(60.,-48.,-10.),vec3(190.,48.,8.),8,None);
+            let start=Player::spawn(&world,Vec3::Z*crate::movement::EYE_HEIGHT).unwrap();
+            let goal=vec3(280.,0.,0.03125);
+            let plan=Route::plan_without_liquid_damage(&world,&start,goal,22.,12,walking)
+                .expect("Ordinary route around or over shallow lava");
+            assert_eq!(plan.iter().any(|(input,_)|input.jump),!walking);
+            let mut player=start;
+            let mut previous=Controls::default();
+            for (input,_) in plan {
+                if input.jump && player.grounded {
+                    let mut late=player.clone();
+                    for _ in 0..12 {
+                        late.tick(&world,Controls{jump:false,..previous});
+                        assert!(late.grounded && (late.immersion.level==0
+                            || late.immersion.kind.damage_per_second()==0.),
+                            "Delayed takeoff enters liquid or loses support: {:?}",late.feet);
+                    }
+                }
+                for tick in 0..24 {
+                    player.tick(&world,Controls{jump:input.jump && tick==0,..input});
+                    assert!(player.immersion.level==0 || player.immersion.kind.damage_per_second()==0.,
+                        "Liquid damage along the selected route: {:?}",player.feet);
+                }
+                previous=input;
+            }
+            assert!(player.grounded && player.feet.distance(goal)<22.);
+        }
+    }
+
+    #[test]
+    fn remote_footing_accepts_real_slopes_without_accepting_edges_or_floating_bodies() {
+        for normal in [vec3(-1.,0.,1.).normalize(),vec3(-0.7,-0.7,1.).normalize()] {
+            let world=World::sloped_fixture(vec3(-120.,-120.,-300.),vec3(120.,120.,300.),
+                crate::bsp::Plane {normal,distance:0.});
+            let at=|x|world.actor_footing(vec3(x,0.,200.),crate::collision::PLAYER_CENTER,
+                crate::collision::PLAYER_HALF,400.).unwrap();
+            let feet=at(0.);
+            assert!(supported_footing(&world,feet),"Rejected actual sloped body contact: {feet:?}");
+            assert!(!supported_footing(&world,feet+Vec3::Z*12.),"Accepted floating body above a slope");
+            assert!(!supported_footing(&world,at(118.)),"Accepted a landing without its eight-unit edge margin");
+            let mut player=Player::new(at(-60.));player.grounded=true;
+            let goal=at(60.);
+            let plan=Route::plan_grounded(&world,&player,goal,22.).expect("Supported slope has an ordinary walking route");
+            for (input,_) in plan {
+                assert!(!input.jump);
+                for _ in 0..24 {player.tick(&world,input);}
+            }
+            assert!(player.grounded && player.feet.distance(goal)<22.);
+        }
+        let lip=World::fixture(&[
+            (vec3(-200.,-200.,-80.),vec3(200.,200.,-30.)),
+            (vec3(10.,-100.,-30.),vec3(100.,100.,0.)),
+        ]);
+        let feet=Vec3::Z*0.03125;
+        assert!(lip.body_trace(feet,feet-Vec3::Z*3.).fraction<1.,"Fixture must catch the upper lip");
+        assert!(!supported_footing(&lip,feet),"Lower floor cannot justify marginal contact with an upper lip");
+    }
+
+    #[test]
+    fn remote_plan_lands_on_supported_center_before_walking_inward() {
+        let world=World::fixture(&[
+            (vec3(-60.,-60.,-100.),vec3(40.,40.,0.)),
+            (vec3(83.,120.,-100.),vec3(200.,220.,0.)),
+        ]);
+        let mut start=Player::new(vec3(0.,0.,0.03125));start.grounded=true;
+        let goal=vec3(115.,142.,0.03125);
+        // The old corner-catching jump can be grounded while its center is
+        // still outside the platform. Later walking hides this fragile contact.
+        let mut marginal=start.clone();
+        for (i,wish) in [vec2(1.,1.).normalize(),Vec2::Y,Vec2::Y,
+            vec2(1.,1.).normalize(),vec2(1.,1.).normalize()].into_iter().enumerate() {
+            for t in 0..24 {marginal.tick(&world,Controls{wish,run:true,jump:i==0&&t==0,..Default::default()});}
+        }
+        assert!(marginal.grounded && !supported_footing(&world,marginal.feet),"Missing marginal contact: {:?}",marginal.feet);
+        for _ in 0..24 {marginal.tick(&world,Controls{wish:Vec2::X,run:true,..Default::default()});}
+        assert!(marginal.grounded && supported_footing(&world,marginal.feet));
+        let route=Route::plan_with_takeoff_margin(&world,&start,goal,22.,12).unwrap();
+        let mut p=start;let mut landings=0;
+        for (input,_) in route {
+            for tick in 0..24 {
+                let airborne=!p.grounded;
+                p.tick(&world,Controls{jump:input.jump&&tick==0,..input});
+                if airborne && p.grounded {
+                    landings+=1;
+                    assert!(supported_footing(&world,p.feet),"Planner accepted marginal first contact: {:?}",p.feet);
+                }
+            }
+        }
+        assert!(landings>0 && p.grounded && p.feet.distance(goal)<22.);
+    }
+
+    #[test]
+    fn remote_grounded_turn_keeps_support_during_a_late_direction_change() {
+        // The old jump-only margin accepts a diagonal run ending at
+        // (71.33,19.33), then an eastward turn. Nine late ticks leave this
+        // narrow corner before the turn is applied, despite a valid jump
+        // margin at any later takeoff. The ceiling keeps this a walking case.
+        let world=World::fixture(&[
+            (vec3(-40.,-200.,-100.),vec3(40.,20.,0.)),
+            (vec3(0.,-20.,-100.),vec3(400.,20.,0.)),
+            (vec3(-40.,-200.,64.),vec3(400.,20.,100.)),
+        ]);
+        let start=Player::spawn(&world,vec3(0.,-180.,crate::movement::EYE_HEIGHT)).unwrap();
+        let goal=vec3(200.,0.,0.03125);
+        let plan=Route::plan_with_takeoff_margin(&world,&start,goal,22.,12).unwrap();
+        let mut player=start;let mut previous=Controls::default();
+        for (input,_) in plan {
+            if player.grounded && input.wish!=previous.wish {
+                let mut late=player.clone();
+                for tick in 0..12 {
+                    late.tick(&world,Controls{jump:false,..previous});
+                    assert!(late.grounded,"Turn loses support after {} late ticks: {:?}, previous {:?}, next {:?}",tick+1,player.feet,previous.wish,input.wish);
+                }
+            }
+            for tick in 0..24 {player.tick(&world,Controls{jump:input.jump&&tick==0,..input});}
+            previous=input;
+        }
+        assert!(player.grounded && player.feet.distance(goal)<22.);
+    }
+
+    #[test]
+    fn remote_plan_reserves_support_for_delayed_jump_input() {
+        let world=World::fixture(&[
+            (vec3(-400.,-100.,-100.),vec3(0.,100.,0.)),
+            (vec3(160.,-100.,-100.),vec3(500.,100.,0.)),
+        ]);
+        let start=Player::spawn(&world,vec3(-170.,0.,crate::movement::EYE_HEIGHT)).unwrap();
+        let goal=vec3(260.,0.,0.);
+        assert!(Route::plan_grounded(&world,&start,goal,22.).is_err(),
+            "A required jump must not be reported as a grounded route");
+        // Reproduce a real input timing failure: the final run segment lasts
+        // up to 100 ms longer before the jump packet is applied. Use the same
+        // production physics as the host, including its grounded-only jump.
+        let replay = |plan:&[(Controls,Vec3)], delay| {
+            let mut player=start.clone();
+            let mut previous=Controls::default();
+            for (input,_) in plan {
+                if input.jump {
+                    for _ in 0..delay { player.tick(&world,Controls {jump:false,..previous}); }
+                }
+                for t in 0..24 { player.tick(&world,Controls {jump:input.jump && t==0,..*input}); }
+                previous=*input;
+            }
+            player
+        };
+        let original=Route::plan(&world,&start,goal,22.).unwrap();
+        let missed=replay(&original,12);
+        assert_eq!(missed.jumps,0,"The original route must reproduce the missed takeoff");
+        assert!(!missed.grounded && missed.feet.z < -100.);
+        let remote=Route::plan_with_takeoff_margin(&world,&start,goal,22.,12).unwrap();
+        let jumps=remote.iter().filter(|(input,_)|input.jump).count() as u64;
+        assert!(jumps>0);
+        for delay in 0..=12 {
+            let player=replay(&remote,delay);
+            assert_eq!(player.jumps,jumps,"Missed takeoff with {delay} ticks of delay");
+            assert!(player.grounded && player.feet.distance(goal)<42.,
+                "Delayed route did not land near its goal: delay={delay} feet={:?}",player.feet);
+        }
+    }
 
     /// A 96-unit room with walls on every side. The state space is small, and a goal 70 units east
     /// of its centre lies beyond the east wall, out of reach at the first tolerance and inside the

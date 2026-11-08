@@ -1,5 +1,29 @@
 use super::*;
 use crate::route::Route;
+pub(super) fn coop_check(a: &mut Assets) -> super::super::BoxFuture<'_> {
+    use crate::coop::native_route::{Command, Navigation, Spec};
+    let mut commands=Vec::new();
+    // Both bodies can follow the next marker directly around this turn. The
+    // intermediate solo marker makes two parallel approach plans block each other.
+    for id in [267,273,275].into_iter().chain(183..=240).chain(351..=372).filter(|id|*id!=356) {
+        commands.push(Command::Node(id));
+        if let Some(pickup)=match id {215=>Some(3),231=>Some(388),360=>Some(389),_=>None} {
+            commands.push(Command::Node(pickup));
+        }
+        if id==275 {commands.push(Command::Watch);}
+        if [183,204,225,351].contains(&id) {
+            for _ in 0..4 {commands.push(Command::Clear(450.));commands.push(Command::Wait(360));}
+        }
+    }
+    crate::coop::native_route::check(a,Spec{map:"grounds2",entry:"grounds2_start1",
+        exit:crate::level::spec::ExitSpec{map:"facade",entrance:"facade_start1"},commands,navigation:Navigation::Nearby,
+        verify:|arena,_| {
+            let o=arena.stage.interactions.levels.iter().find_map(|s|s.ctl.downcast_ref::<Royale>()).context("Missing Royale")?;
+            ensure!(o.saved.done,"Battle Royale arrival incomplete");
+            println!("Battle Royale paired company counts {:?}",o.saved.groups.each_ref().map(|g|g.count));
+            Ok(())
+        }})
+}
 pub(super) fn survey(r: &Route) -> Result<()> {
     let mut points = vec![];
     for (id, e) in r.map.entities.iter().enumerate() {

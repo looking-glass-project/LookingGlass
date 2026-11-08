@@ -2,6 +2,8 @@
 mod art;
 mod battle;
 mod check;
+mod coop;
+mod coop_check;
 mod data;
 mod route_input;
 mod saves;
@@ -69,6 +71,11 @@ pub static REGISTRATION: super::Registration = super::Registration {
     story_beats: &[],
     checks: &[
         super::Check {
+            flag: "--rchess1-coop-check",
+            help: "Verify paired Checkmate combat, healing, clocks and original scenes.",
+            run: super::Run::Headless(coop_check::check),
+        },
+        super::Check {
             flag: "--rchess1-check",
             help: "Verify Red King attacks, phases, gates and restoration.",
             run: super::Run::Headless(check::check),
@@ -113,6 +120,8 @@ struct Saved {
     checkpoint: bool,
     scene_from: Transform,
     exit: crate::level::exit::ExitState,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    coop: Option<coop::State>,
 }
 impl state::State for Saved {
     const VERSION: u8 = 1;
@@ -129,6 +138,7 @@ impl state::State for Saved {
             state::clock(n, t, m)?;
         }
         self.boss.validate()?;
+        if let Some(coop)=&self.coop {coop.validate(self)?;}
         ensure!(
             self.essence < 3
                 && self.remainder.is_finite()
@@ -172,6 +182,7 @@ struct Encounter {
     poses: Vec<(usize, Vec3, Quat)>,
     shapes: Vec<Collider>,
     alive: bool,
+    incoming: bool,
 }
 impl Encounter {
     fn load(a: &mut Assets, map: &Bsp) -> Result<Self> {
@@ -191,6 +202,7 @@ impl Encounter {
             checkpoint: false,
             scene_from: data.points["beheading_node1"],
             exit: Default::default(),
+            coop: None,
         };
         let mut o = Self {
             data,
@@ -198,6 +210,7 @@ impl Encounter {
             poses: vec![],
             shapes: vec![],
             alive: true,
+            incoming: false,
         };
         o.rebuild(map)?;
         Ok(o)
@@ -237,6 +250,26 @@ impl Encounter {
 impl LevelController for Encounter {
     fn id(&self) -> &'static str {
         "rchess1"
+    }
+    fn coop_prepare(&mut self,players:&mut [crate::level::CoopPlayer<'_>;2]) {self.pair_prepare(players);}
+    fn coop_advance_roster(&mut self,dt:f32,map:&Bsp,world:&mut World,
+        players:&mut [crate::level::CoopPlayer<'_>;2],fixed:&[Collider])->Result<()> {
+        self.pair_advance(dt,map,world,players,fixed)
+    }
+    fn coop_scene_step(&mut self,owner:usize,player:&mut Player,stats:&mut Stats) {
+        self.pair_scene(owner,player,stats);
+    }
+    fn coop_contacts(&mut self,_dt:f32,players:&mut [crate::level::CoopPlayer<'_>;2])->Option<usize> {
+        self.pair_actor(players)
+    }
+    fn coop_update(&mut self,_index:usize,world:&mut World,player:&Player,aim:Vec3,use_pressed:bool)->Events {
+        self.update(world,player,aim,use_pressed)
+    }
+    fn coop_combat_roster(&mut self,dt:f32,world:&World,
+        players:&mut [crate::level::CoopPlayer<'_>;2])->Feedback {self.pair_fight(dt,world,players)}
+    fn coop_threats(&mut self,threatens:&dyn Fn(&Target)->bool) {
+        self.incoming=threatens(&self.saved.boss.target());
+        for (id,piece) in &mut self.saved.pieces {piece.threatened(threatens(&piece.target(BASE+100+*id)));}
     }
     fn event(&mut self, n: &str) -> Option<Events> {
         if n == BEHEAD {
@@ -555,6 +588,7 @@ impl LevelController for Encounter {
             self.saved = old;
             return Err(e);
         }
+        self.incoming = false;
         Ok(())
     }
     fn upgrade(&self) -> Upgrade {

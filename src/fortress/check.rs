@@ -98,6 +98,7 @@ pub fn check(assets: &mut Assets) -> Result<()> {
     f.cinema.begin(&mut f.state.cinema, &mut skipped.story);
     ensure!(!f.state.cinema.active(), "Legacy save replayed arrival");
     let mut return_route = Route::new(assets, "fortress1", Some("fortress1_start2"))?;
+    return_follow_camera(&return_route)?;
     ensure!(
         !return_route.interactions.scripted(),
         "Return visit played arrival"
@@ -182,6 +183,33 @@ pub fn check(assets: &mut Assets) -> Result<()> {
         "Boojum scene replayed"
     );
     println!("PASS Fortress arrival/return: watched and skipped outcomes, voiced story, paused clocks, mid-scene resume, legacy saves, one-shot ambush");
+    Ok(())
+}
+
+fn return_follow_camera(r: &Route) -> Result<()> {
+    use crate::{camera::Follow, collision::Collider, coop::world::Roster, inventory::Stats};
+    // Read the visible portal independently of the world's camera obstacles so
+    // this fails if a later sync forgets to install that scenery collider.
+    let entity = r.map.entities.iter().find(|e|
+        e.get("targetname").is_some_and(|name| name == "portal_back1")).unwrap();
+    let model = entity["model"].trim_start_matches('*').parse()?;
+    let origin = crate::interaction::vector(&entity["origin"]).unwrap();
+    let portal = Collider::model(&r.map, model, origin, Quat::IDENTITY, true)?;
+    let (eye, yaw) = crate::interaction::spawn(&r.map, Some("fortress1_start2"));
+    let roster = Roster::new(&r.world, eye, yaw, Stats::for_level("fortress1", Some("fortress1_start2")))?;
+    for fps in [30, 60, 144] {
+        for body in &roster.players {
+            let mut camera = Follow::default();
+            for _ in 0..fps {
+                let (eye, target, _) = camera.update(&r.world, body.player.feet,
+                    vec3(yaw.cos(), yaw.sin(), 0.), 180., 1. / fps as f32);
+                ensure!(!portal.trace(eye, eye, Vec3::splat(3.9)).start_solid
+                    && portal.trace(target, eye, Vec3::splat(3.9)).fraction > 0.999,
+                    "Fortress return camera entered the visible portal at {eye:?}");
+            }
+        }
+    }
+    println!("PASS Fortress return follow cameras: both entrance placements stay outside the visible portal at 30/60/144 Hz");
     Ok(())
 }
 

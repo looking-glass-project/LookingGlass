@@ -113,7 +113,14 @@ pub fn check(assets: &mut Assets, map: &Bsp) -> Result<()> {
                     s.return_visit.as_ref().unwrap().phase
                         == crate::school_return::Phase::Observatory
                         && !s.cinematic(),
-                    "Lift did not release"
+                    "Lift did not release: phase {:?}, scene {:?}, motion {:?}, lift {:?}, feet {:?}, aboard {}, clear {}",
+                    s.return_visit.as_ref().unwrap().phase,
+                    s.return_visit.as_ref().unwrap().scene.as_ref().map(|scene| (scene.time, scene.active)),
+                    s.object("observatory_lift").motion.as_ref().map(|motion| motion.time),
+                    s.object("observatory_lift").pose.origin,
+                    player.feet,
+                    crate::moving::aboard(&s.object("observatory_lift").collider, player.feet),
+                    world.body_clear(player.feet)
                 );
                 ensure!(
                     world.body_clear(player.feet) && player.feet.z > 1000.,

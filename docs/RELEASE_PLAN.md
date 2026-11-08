@@ -1,4 +1,24 @@
-# Walking cadence update
+# Co-op preview
+
+**v0.33.0-preview.1**, 8 November 2026, brings two-player internet co-op to the
+regular **Launch.cmd** and main/ESC menus. Host shares an invite link; Join uses
+it. Blue and red Alice have separate cameras, health and consumables.
+
+Existing solo saves can become co-op sessions. Shared checkpoints support
+resuming and rejoining; a fallen player spectates their partner for ten seconds
+before reviving nearby, and a shared death restores the last checkpoint.
+Normal paired progression has been accepted across all 39 campaign visits,
+including leaf rides, swimming and the ending. See [playable evidence and
+remaining polish](COOP_PLAYABLE.md) and [core save/rejoin checks](COOP_CORE_TESTS.md).
+
+The release incorporates the current main branch's localization and explicit
+download opt-in setup, shares its ordinary-save reader with co-op import, and
+prevents the source launcher from selecting an obsolete private playtest build.
+The Windows package includes a static C runtime, dependency notices, source
+manifest and checksums. It remains unsigned and experimental; Latest makes the
+download discoverable and is not a stability certification.
+
+## Walking cadence update (historical record)
 
 **v0.32.0-preview.2**, 9 October 2026, follows the first Windows preview below.
 [Download and release notes](https://github.com/skulitom/LookingGlass/releases/tag/v0.32.0-preview.2).

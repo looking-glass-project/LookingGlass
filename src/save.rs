@@ -226,6 +226,10 @@ pub struct Store {
     compatible_fingerprints: Vec<String>,
 }
 impl Store {
+    pub(crate) fn for_assets(directory: PathBuf, assets: &mut crate::assets::Assets) -> Result<Self> {
+        let (identity, legacy) = assets.save_fingerprints()?;
+        Ok(Self::new(directory, identity).with_compatible_fingerprints(legacy))
+    }
     pub fn new(directory: PathBuf, fingerprint: String) -> Self {
         Self {
             directory,
@@ -492,7 +496,7 @@ fn read_limited(path: &Path) -> Result<Vec<u8>> {
     ensure!(bytes.len() as u64 <= LIMIT, "Save file is too large");
     Ok(bytes)
 }
-fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
+pub(crate) fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
     let temp = path.with_extension(format!("json.{}.tmp", std::process::id()));
     // A per-process temporary file cannot replace the committed save before flush succeeds.
     let result = (|| -> Result<()> {

@@ -27,6 +27,26 @@ pub static REGISTRATION: super::Registration = super::Registration {
     ],
     checks: &[
         super::Check {
+            flag: "--jlair2-coop-route-check",
+            help: "Play an accelerated two-player survival route through the Eye reward and forest arrival.",
+            run: super::Run::Windowed(|a| jabberwock::coop_route::check(a, Kind::Lair)),
+        },
+        super::Check {
+            flag: "--jlair2-coop-world-check",
+            help: "Verify shared Jabberwock progression, personal rewards and brush carry.",
+            run: super::Run::Headless(jabberwock::coop_world_check::check),
+        },
+        super::Check {
+            flag: "--jlair2-coop-scene-check",
+            help: "Verify both Jabberwock scene owners, saved scenes and safe reunion.",
+            run: super::Run::Headless(jabberwock::coop_scene_check::check),
+        },
+        super::Check {
+            flag: "--jlair2-coop-check",
+            help: "Verify paired Jabberwock combat and personal healing in both arenas.",
+            run: super::Run::Headless(jabberwock::coop_check::check),
+        },
+        super::Check {
             flag: "--jlair2-check",
             help: "Verify Jabberwock survival, waves, reward and saves.",
             run: super::Run::Headless(|a| jabberwock::check::check(a, Kind::Lair)),

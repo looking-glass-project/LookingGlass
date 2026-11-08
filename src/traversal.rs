@@ -23,7 +23,7 @@ pub struct Push {
     pub launch: bool,
     pub accelerate: bool,
 }
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Rope {
     pub id: Id,
     pub model: usize,
@@ -32,7 +32,7 @@ pub struct Rope {
     pub anchor: Vec3,
     pub length: f32,
 }
-#[derive(Default, Debug)]
+#[derive(Clone, Default, Debug)]
 pub struct Traversal {
     pub currents: Vec<current::Path>,
     pub pushes: Vec<Push>,

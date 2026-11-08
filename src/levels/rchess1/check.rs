@@ -259,6 +259,7 @@ pub(super) fn render(a: &mut Assets) -> super::super::BoxFuture<'_> {
             ] {
                 if name == label {
                     o.saved.boss.shots.push(battle::Shot {
+                    player: None,
                         id: 1,
                         kind,
                         at: o.saved.boss.at + vec3(-100., -20., 100.),

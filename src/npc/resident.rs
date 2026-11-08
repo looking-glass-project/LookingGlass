@@ -491,7 +491,7 @@ impl Resident {
                 }
             }
         }
-        let f = match &mut self.body {
+        let mut f = match &mut self.body {
             Body::Wildlife(g) => {
                 let mut f = combat::Feedback::default();
                 g.step(world, eye, data, &mut f);
@@ -532,14 +532,9 @@ impl Resident {
                 result
             }
         };
-        out.damage += f.damage;
-        out.will_drain += f.will_drain;
-        out.cue_sounds.extend(f.cue_sounds);
-        out.impulse += f.impulse;
-        out.summon_hits.extend(f.summon_hits);
-        out.spatial_sounds.extend(f.spatial_sounds);
-        out.spatial_sounds
-            .extend(f.sounds.into_iter().map(|s| (s, self.position())));
+        f.spatial_sounds
+            .extend(f.sounds.drain(..).map(|s| (s, self.position())));
+        out.append(f);
     }
     pub fn draw(
         &self,

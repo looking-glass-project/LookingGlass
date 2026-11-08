@@ -1,5 +1,7 @@
 //! Airborne Terror: saved arrival performance and four contact-driven face gusts.
 mod check;
+mod coop_check;
+mod coop_route;
 mod faces;
 mod route;
 mod scene;
@@ -79,6 +81,13 @@ impl Tower {
     fn gust(&self, n: usize) -> bool {
         (0.55..2.55).contains(&self.saved.faces[n])
     }
+    fn advance_clocks(&mut self, dt: f32) {
+        self.saved.fade = (self.saved.fade - dt).max(0.);
+        self.saved.cat_tail = (self.saved.cat_tail - dt).max(0.);
+        for t in &mut self.saved.faces {
+            *t = (*t + dt as f64).min(6.);
+        }
+    }
 }
 impl LevelController for Tower {
     fn id(&self) -> &'static str {
@@ -127,16 +136,22 @@ impl LevelController for Tower {
         p: &mut Player,
         _: &[Collider],
     ) -> Result<()> {
-        if dt <= 0. {
+        if !dt.is_finite() || dt <= 0. {
             return Ok(());
         }
         let dt = dt.min(0.1);
-        self.saved.fade = (self.saved.fade - dt).max(0.);
-        self.saved.cat_tail = (self.saved.cat_tail - dt).max(0.);
-        for t in &mut self.saved.faces {
-            *t = (*t + dt as f64).min(6.);
-        }
+        self.advance_clocks(dt);
         self.advance_intro(dt, w, p)
+    }
+    fn coop_advance(&mut self, dt: f32, _: &Bsp, _: &mut World,
+        players: &mut [&mut Player], _: &[Collider]) -> Result<()> {
+        // The Stage already supplies shared Watch time. One clock drives both
+        // bodies, native enemies, face animation, smoke and sound cues.
+        // The original scene runner exclusively advances an active intro.
+        if dt.is_finite() && dt > 0. && !players.is_empty() && !self.scripted() {
+            self.advance_clocks(dt.min(0.1));
+        }
+        Ok(())
     }
     fn traversal(&self, t: &mut crate::traversal::Traversal) {
         t.actor_pushes = self.actor_pushes.clone();
@@ -266,9 +281,19 @@ pub static REGISTRATION: Registration = Registration {
     )],
     checks: &[
         Check {
+            flag: "--tower1-coop-route-check",
+            help: "Traverse paired Airborne Terror with ordinary inputs and the live face clocks.",
+            run: Run::Windowed(coop_route::check),
+        },
+        Check {
             flag: "--tower1-check",
             help: "Verify Tower arrival, timed face gusts and saved phases.",
             run: Run::Headless(check::check),
+        },
+        Check {
+            flag: "--tower1-coop-check",
+            help: "Verify paired Tower gust contacts, shared clocks, pushes and original arrival.",
+            run: Run::Headless(coop_check::check),
         },
         Check {
             flag: "--tower1-route-check",

@@ -3,7 +3,7 @@ use super::*;
 use crate::{
     ant::Timing,
     chess::{Kind, Piece as CombatPiece},
-    combat::{DamageKind, Feedback, Hit, Target},
+    combat::{DamageKind, Feedback, Hit, PlayerTarget, Target},
 };
 #[derive(Clone, Serialize, Deserialize)]
 pub(super) struct Walk {
@@ -20,6 +20,10 @@ pub(super) struct Flight {
 }
 #[derive(Clone, Serialize, Deserialize)]
 pub(super) struct Actor {
+    // Preserve a committed human target across host saves and guest snapshots.
+    // Single-player actors omit this field and retain their original save shape.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub player: Option<usize>,
     pub flight: Option<Flight>,
     pub pad: Option<usize>,
     pub entity: usize,
@@ -43,6 +47,7 @@ impl Actor {
         BASE + self.entity * 4 + self.instance
     }
     pub fn validate(&self) -> Result<()> {
+        ensure!(self.player.is_none_or(|i| i < 2 && !self.white), "Invalid chess player target");
         self.piece.validate()?;
         if let Some(f) = &self.flight {
             ensure!(
@@ -121,6 +126,7 @@ pub(super) fn load(map: &Bsp) -> Result<Vec<Actor>> {
             p.active = class != "func_spawn" && name != "pawn_npc2";
             p.script_wait = !red || name == "red_knight_bully";
             result.push(Actor {
+                player: None,
                 flight: None,
                 pad: None,
                 entity: id,
@@ -346,11 +352,26 @@ impl Realm {
         if c.dt <= 0. || self.scripted() {
             return Feedback::default();
         }
-        let dt = c.dt.min(0.1);
-        let mut out = Feedback {
-            damage: std::mem::take(&mut self.saved.damage),
-            ..Default::default()
-        };
+        let mut out = self.fight_cast(c.dt, c.world, c.player.eye(), c.notarget,
+            c.summon, None, c.threatens);
+        out.damage += std::mem::take(&mut self.saved.damage);
+        out
+    }
+    pub(super) fn fight_pair(&mut self, dt: f32, world: &World, mut players: [PlayerTarget; 2]) -> Feedback {
+        if !dt.is_finite() || dt <= 0. || self.scripted() {
+            return Feedback::default();
+        }
+        // Cast-only fixtures have no world step. In play the paired machinery
+        // adapter advances walks exactly once before combat.
+        if self.saved.coop.is_none() { self.move_cast(dt.min(0.1)); }
+        if let Some(actor) = self.coop_focus_player() { players[1-actor].hidden = true; }
+        self.fight_cast(dt, world, players[0].eye, false, None, Some(players), &|_| false)
+    }
+    fn fight_cast(&mut self, dt: f32, world: &World, eye: Vec3, notarget: bool,
+        summon: Option<Target>, players: Option<[PlayerTarget; 2]>,
+        threatens: &dyn Fn(&Target) -> bool) -> Feedback {
+        let dt = dt.min(0.1);
+        let mut out = Feedback::default();
         let roster: Vec<_> = self
             .saved
             .cast
@@ -392,7 +413,7 @@ impl Realm {
                     f.time += dt;
                     f.velocity.z -= 800. * dt;
                     let trace =
-                        c.world
+                        world
                             .sweep(body.center, body.center + f.velocity * dt, body.half);
                     if !trace.start_solid {
                         a.piece.feet += f.velocity * dt * trace.fraction;
@@ -414,6 +435,11 @@ impl Realm {
                     .iter()
                     .filter(|r| {
                         r.1 != a.white && r.2 && r.4 && r.3.center.distance(a.piece.feet) < 600.
+                            && (players.is_none() || {
+                                let sight = world.sweep(a.piece.target(a.id()).center,
+                                    r.3.center, Vec3::splat(0.5));
+                                !sight.start_solid && sight.fraction >= 1.
+                            })
                     })
                     .min_by(|x, y| {
                         x.3.center
@@ -422,30 +448,41 @@ impl Realm {
                     })
             });
             // Explicit duels win over proximity. Otherwise red pieces may choose Alice.
+            let human_distance = players.map_or_else(|| eye.distance(a.piece.feet), |players| {
+                players.iter().filter(|p| p.alive && !p.hidden).filter(|p| {
+                    let sight = world.sweep(a.piece.target(a.id()).center, p.eye, Vec3::splat(0.5));
+                    !sight.start_solid && sight.fraction >= 1.
+                }).map(|p| p.eye.distance(a.piece.feet)).fold(f32::INFINITY, f32::min)
+            });
             let foe = foe.filter(|f| {
                 a.white
                     || forced.is_some()
-                    || f.3.center.distance(a.piece.feet) < c.player.eye().distance(a.piece.feet)
+                    || f.3.center.distance(a.piece.feet) < human_distance
             });
             a.piece.notarget = if foe.is_some() {
                 false
             } else {
-                c.notarget || a.white
+                notarget || a.white
             };
             a.piece.opponents.summon = if foe.is_none() && !a.white {
-                c.summon
+                summon
             } else {
                 None
             };
-            a.piece.threatened((c.threatens)(&a.piece.target(a.id())));
+            a.piece.opponents.players = players.filter(|_| foe.is_none() && !a.white);
+            a.piece.opponents.selected_player = a.player;
+            a.piece.threatened(threatens(&a.piece.target(a.id())));
             let mut f = Feedback::default();
             a.piece.update(
                 dt,
-                c.world,
-                foe.map_or(c.player.eye(), |f| f.3.center),
+                world,
+                foe.map_or(eye, |f| f.3.center),
                 &self.data,
                 &mut f,
             );
+            a.player = if a.piece.opponents.players.is_some() {
+                a.piece.opponents.selected_player
+            } else { None };
             if let Some(v) = foe {
                 if f.damage > 0. {
                     hits.push(Hit {
@@ -459,15 +496,21 @@ impl Realm {
                 out.damage += f.damage;
                 out.impulse += f.impulse;
                 out.summon_hits.extend(f.summon_hits);
+                for (to, from) in out.players.iter_mut().zip(f.players) {
+                    to.damage += from.damage;
+                    to.impulse += from.impulse;
+                    to.will_drain += from.will_drain;
+                }
             }
             out.sounds.extend(f.sounds);
             out.spatial_sounds.extend(f.spatial_sounds);
             if a.counted && a.piece.active && a.piece.health > 0. && !a.piece.script_wait {
-                let target = foe.map_or(c.player.eye(), |f| f.3.center);
-                let sight = c
-                    .world
+                let target = foe.map_or_else(|| players.and_then(|p| a.player.map(|i| p[i].eye))
+                    .unwrap_or(eye), |f| f.3.center);
+                let sight = world
                     .sweep(a.piece.target(a.id()).center, target, Vec3::splat(0.5));
-                if sight.start_solid || sight.fraction < 1. || target.distance(a.piece.feet) > 800.
+                if (players.is_some() && foe.is_none() && a.player.is_none())
+                    || sight.start_solid || sight.fraction < 1. || target.distance(a.piece.feet) > 800.
                 {
                     a.unseen = (a.unseen + dt).min(10.);
                 } else {

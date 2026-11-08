@@ -550,9 +550,18 @@ impl Queen {
         }
     }
     pub(super) fn battle(&mut self, c: &mut Combat<'_>) -> Feedback {
+        let bodies = crate::combat::Opponents { summon: c.summon, ..Default::default() }.bodies(c.player.eye());
+        let target = if c.notarget { c.summon } else {
+            Some(Target {id: crate::dice::ALICE, center: c.player.feet + Vec3::Z * 32., half: vec3(16.,16.,32.)})
+        };
+        self.battle_with(c.dt, c.world, c.player, c.stats, bodies, target)
+    }
+    pub(super) fn battle_with(&mut self, dt: f32, world: &World, player: &mut Player,
+        stats: &mut Stats, bodies: Vec<Target>, target: Option<Target>) -> Feedback {
         let mut f = Feedback::default();
-        let dt = c.dt.min(0.1);
-        if dt <= 0. || !c.stats.alive() {
+        if !dt.is_finite() { return f; }
+        let dt = dt.min(0.1);
+        if dt <= 0. || !stats.alive() {
             return f;
         }
         if self.saved.phase == Phase::Queen1 && self.saved.queen1 <= 0. {
@@ -580,21 +589,7 @@ impl Queen {
                 return f;
             }
         }
-        let bodies = crate::combat::Opponents {
-            summon: c.summon,
-            demon: false,
-        }
-        .bodies(c.player.eye());
-        let target = if c.notarget {
-            c.summon
-        } else {
-            Some(Target {
-                id: crate::dice::ALICE,
-                center: c.player.feet + Vec3::Z * 32.,
-                half: vec3(16., 16., 32.),
-            })
-        };
-        self.projectiles(dt, &bodies, c.world, &mut f);
+        self.projectiles(dt, &bodies, world, &mut f);
         let Some(target) = target else {
             return f;
         };
@@ -628,7 +623,7 @@ impl Queen {
                 } else {
                     self.saved.body.translation + Vec3::Z * 1000.
                 };
-                let visible = clear(c.world, eye, target.center);
+                let visible = clear(world, eye, target.center);
                 self.saved.attack = self.choose_attack(q1, eye.distance(target.center), visible);
                 // The unsuffixed AI animation aliases select both authored variants.
                 self.saved.attack_variant =
@@ -645,7 +640,7 @@ impl Queen {
                 if self.saved.attack == Attack::Popup {
                     let high = target.center + Vec3::Z * 10.;
                     let low = high - Vec3::Z * 250.;
-                    let floor = c.world.sweep(high, low, Vec3::ZERO);
+                    let floor = world.sweep(high, low, Vec3::ZERO);
                     if !floor.start_solid && floor.fraction < 1. {
                         self.saved.attack_target = high.lerp(low, floor.fraction) + Vec3::Z * 32.;
                     }
@@ -664,7 +659,7 @@ impl Queen {
         if self.saved.attack == Attack::Popup && before < 1. && t >= 1. {
             let high = target.center + Vec3::Z * 10.;
             let low = high - Vec3::Z * 250.;
-            let floor = c.world.sweep(high, low, Vec3::ZERO);
+            let floor = world.sweep(high, low, Vec3::ZERO);
             self.saved.attack_target = high.lerp(low, floor.fraction) + Vec3::Z * 32.;
             if floor.start_solid
                 || floor.fraction == 1.
@@ -689,9 +684,9 @@ impl Queen {
             if before < capture
                 && t >= capture
                 && target.center.distance(self.saved.attack_target) <= 96.
-                && clear(c.world, self.queen1_pose().translation, target.center)
+                && clear(world, self.queen1_pose().translation, target.center)
             {
-                if self.saved.attack == Attack::Grab && target.id == crate::dice::ALICE {
+                if self.saved.attack == Attack::Grab && combat::player_id(target.id) {
                     self.saved.grabbed = true;
                 } else {
                     self.saved.fired |= 1;
@@ -702,13 +697,13 @@ impl Queen {
                 let at = self.data.rigs["c_queen1"]
                     .tag("tag_squeeze", clip, local, self.queen1_pose(), false)
                     .translation;
-                let next = c.player.feet.lerp(at, (dt * 4.).min(1.));
-                let trace = c.world.body_trace(c.player.feet, next);
+                let next = player.feet.lerp(at, (dt * 4.).min(1.));
+                let trace = world.body_trace(player.feet, next);
                 if !trace.start_solid {
-                    c.player.feet = c.player.feet.lerp(next, trace.fraction);
-                    c.player.velocity = Vec3::ZERO;
+                    player.feet = player.feet.lerp(next, trace.fraction);
+                    player.velocity = Vec3::ZERO;
                 }
-                if (c.player.feet - at).length() < 64. {
+                if (player.feet - at).length() < 64. {
                     self.saved.grab_arrived = true;
                 }
                 if self.saved.grab_arrived {
@@ -719,8 +714,9 @@ impl Queen {
                 if self.saved.grab_arrived
                     && self.saved.clock.floor() > (self.saved.clock - dt).floor()
                 {
-                    f.damage +=
-                        ((c.stats.sanity() - 1.) / c.stats.difficulty.incoming()).clamp(0., 10.);
+                    f.strike(target.id,
+                        ((stats.sanity() - 1.) / stats.difficulty.incoming()).clamp(0., 10.),
+                        Vec3::ZERO, DamageKind::Other);
                 }
             }
             if matches!(self.saved.attack, Attack::SlamLeft | Attack::SlamRight)
@@ -737,7 +733,7 @@ impl Queen {
                     self.saved.fired |= 2;
                 } else if self.saved.fired & 2 != 0
                     && self.saved.fired & 4 == 0
-                    && (target.id != crate::dice::ALICE || c.player.velocity.length() < 800.)
+                    && (!combat::player_id(target.id) || player.velocity.length() < 800.)
                 {
                     f.strike(target.id, 20., Vec3::ZERO, DamageKind::Other);
                     self.saved.fired |= 4;
@@ -751,7 +747,7 @@ impl Queen {
         {
             let at = self.saved.attack_target - Vec3::Z * 22.;
             let ctx = combat::Context {
-                world: c.world,
+                world: world,
                 targets: &bodies,
             };
             if let Some((id, _)) =
@@ -860,7 +856,7 @@ impl Queen {
                                 .unwrap_or(2000.);
                             let end = beam_end(source, target.center, distance, row[4] != "0");
                             let ctx = combat::Context {
-                                world: c.world,
+                                world: world,
                                 targets: &bodies,
                             };
                             let contact = combat::contact(&ctx, source.translation, end, 5.);
@@ -868,7 +864,7 @@ impl Queen {
                                 let damage = row[2].parse().unwrap_or(1.);
                                 f.strike(id, damage, Vec3::ZERO, DamageKind::Electric);
                             }
-                            let trace = c.world.sweep(source.translation, end, Vec3::ZERO);
+                            let trace = world.sweep(source.translation, end, Vec3::ZERO);
                             let end = source
                                 .translation
                                 .lerp(end, contact.map_or(trace.fraction, |(_, f)| f));
@@ -899,7 +895,7 @@ impl Queen {
                         "melee" => {
                             // A continuous contact window may strike each opponent only once.
                             let mask = part.map_or(self.saved.fired, |n| self.saved.part_fired[n]);
-                            if mask & 3 != 3 {
+                            if mask & 7 != 7 {
                                 let source = rig.tag(&row[2], clip, *at, pose, false).translation;
                                 let previous = rig
                                     .tag(
@@ -916,7 +912,11 @@ impl Queen {
                                     .unwrap_or(vec3(128., 150., 128.))
                                     * 0.5;
                                 for body in &bodies {
-                                    let bit = if body.id == crate::dice::ALICE { 1 } else { 2 };
+                                    let bit = match body.id {
+                                        combat::COOP_BLUE => 1, combat::COOP_RED => 2,
+                                        crate::dice::ALICE => 1,
+                                        _ => if self.saved.coop.is_some() { 4 } else { 2 },
+                                    };
                                     if mask & bit != 0 {
                                         continue;
                                     }
@@ -927,7 +927,7 @@ impl Queen {
                                         body.half + half,
                                     )
                                     .is_some()
-                                        && clear(c.world, source, body.center)
+                                        && clear(world, source, body.center)
                                     {
                                         f.strike(
                                             body.id,
@@ -963,8 +963,8 @@ impl Queen {
             && (!self.saved.grabbed || self.saved.grab_time >= 3. || t >= duration + 5.);
         if self.saved.attack != Attack::Idle && finished {
             if self.saved.grabbed {
-                c.player.knockback(
-                    (c.player.feet - self.queen1_pose().translation).normalize_or_zero() * 800.,
+                player.knockback(
+                    (player.feet - self.queen1_pose().translation).normalize_or_zero() * 800.,
                 );
             }
             self.saved.grabbed = false;
@@ -975,9 +975,8 @@ impl Queen {
             self.saved.fired = 0;
         }
         if self.saved.grabbed {
-            f.damage = f
-                .damage
-                .min(((c.stats.sanity() - 1.) / c.stats.difficulty.incoming()).max(0.));
+            let damage = if let Some(i) = combat::player_slot(target.id) { &mut f.players[i].damage } else { &mut f.damage };
+            *damage = damage.min(((stats.sanity() - 1.) / stats.difficulty.incoming()).max(0.));
         }
         f
     }

@@ -2,6 +2,7 @@ use super::*;
 use crate::{npc::Puppet, particles::Attached, weapons::Prop};
 use std::collections::BTreeMap;
 pub(super) struct Art {
+    local_player: Option<usize>,
     ui: std::rc::Rc<crate::ui::Ui>,
     eye_beam: crate::weapons::EnemyBeam,
     beams: std::rc::Rc<crate::npc::attack_fx::Art>,
@@ -30,6 +31,7 @@ impl Art {
             );
         }
         Ok(Self {
+            local_player: None,
             ui: crate::ui::Ui::load(a)?,
             eye_beam: crate::weapons::EnemyBeam::load(a, &specs)?,
             beams: crate::npc::attack_fx::Art::load(a, &specs)?,
@@ -45,6 +47,9 @@ impl Art {
     }
 }
 impl LevelArt for Art {
+    fn coop_view(&mut self, local: usize) {
+        self.local_player = Some(local.min(1));
+    }
     fn story_pose(&mut self, s: &Story) {
         for (model, names) in [
             ("alice", &["fakeplayer", "alice"][..]),
@@ -120,10 +125,10 @@ impl LevelArt for Art {
                 bright,
             );
         }
-        if s.phase == Phase::Fight && s.essence_wait == 0. {
-            self.essence.draw(crate::loot::Grade::Medium, o.essence_position(), atm, camera, s.clock);
+        if let Some(at) = o.personal_essence(self.local_player) {
+            self.essence.draw(crate::loot::Grade::Medium, at, atm, camera, s.clock);
         }
-        if o.eye_visible() {
+        if o.personal_eye_visible(self.local_player) {
             self.eye
                 .draw_frame(o.data.points["eye_altar"], 1., bright, s.clock, true);
         }
@@ -168,7 +173,7 @@ impl LevelArt for Art {
                 atm,
             );
         }
-        if o.eye_visible() {
+        if o.personal_eye_visible(self.local_player) {
             if let Some(fx) = &mut self.altar {
                 fx.draw(
                     o.saved.clock,

@@ -1942,12 +1942,194 @@ implementation uses `--wchess1-route` for its route and `--wchess1-floor-survey`
 private collision calibration; both are explicitly reserved alongside the planned
 standard names.
 
+Mystifying Madness, Labyrinthine Revenge and Machinations additionally reserve
+`--hedge2-coop-check`, `--hedge3-coop-check` and `--tower3-coop-check` for focused
+paired machinery, personal contacts and saved continuation. These checks share
+the existing controllers and hit IDs; they do not certify full paired routes.
+
+Battle Royale, Ascension and Castle Keep additionally reserve
+`--grounds2-coop-check`, `--facade-coop-check` and `--keep-coop-check` for focused
+paired waves/combat, lift boarding, puzzle scenes and saved progression. They
+share the existing controllers and hit IDs.
+
 Battle Royale also reserves `--grounds2-save-check` for its native save fixtures;
 it shares the existing grounds2 visit and hit-ID reservation.
 
-Hollow Hideaway additionally reserves `--potears2-transport-check` (headless moving supports and fish), `--potears2-route-native-check` (production resident cast), and `--potears2-store-write-check` / `--potears2-store-read-check` (separate native save processes). They share the existing potears2 owner and hit-ID reservation. `LOOKING_GLASS_HOLLOW_WATCH=1` selects the watched ending for the route checks.
+Heart of Darkness additionally reserves `--qlair-coop-check` for paired Queen
+targeting, personal resources/capture, shared phases and ending-state replication.
+It shares the existing finale controller and hit IDs.
+
+Hollow Hideaway additionally reserves `--potears2-transport-check` (headless moving supports and fish), `--potears2-coop-check` (paired supports, boarding, guards and personal fish recovery), `--potears2-route-native-check` (production resident cast), and `--potears2-store-write-check` / `--potears2-store-read-check` (separate native save processes). They share the existing potears2 owner and hit-ID reservation. `LOOKING_GLASS_HOLLOW_WATCH=1` selects the watched ending for the route checks.
+
+The underwater temple additionally reserves `--utemple-coop-check` for paired
+breathing, swimming, machinery contacts and original exit ownership, and
+`--utemple-coop-route-check` for normal-input paired swimming through the full
+visit in the production Arena. They share the existing controller and hit IDs.
+
+Dry Landing additionally reserves `--garden1-coop-check` for paired arrival
+resources, scene ownership/reunion, moving supports and saved machinery. This
+focused headless check shares the existing Garden controller and hit IDs; it
+does not certify a full paired traversal.
+`--garden1-coop-route-check` additionally reserves a windowed production-Arena
+paired course using ordinary controls; its existence alone is not a passing run.
+
+Herbaceous Border additionally reserves `--garden2-coop-check` for staged native
+paired fulcrum, resident targeting/damage, scene ownership and snapshot checks.
+It shares the existing Garden2 controller and hit IDs and does not establish a
+full paired traversal or an independent-client network pass.
+`--garden2-coop-route-check` reserves a production-Arena paired course using
+ordinary controls and the original authored route waypoints. It saves failures
+and recent controls; adding the driver alone does not establish a passing route.
+
+Rolling Stones additionally reserves `--garden3-coop-check` for staged paired
+marble contacts, shared gate/collapse clocks and original scene reunion. It
+shares the existing controller and hit IDs, with no full-route credit implied.
+`--garden3-coop-route-check` reserves the windowed ordinary-input paired chase,
+including live marble progression, exact recovery records and the actual
+Icy Reception arrival. Registering the check does not establish a passing run.
+
+Icy Reception additionally reserves `--garden4-coop-check` for staged paired
+rock damage, shared ice/wall clocks, Easy altar contacts, original scene reunion
+and portal unlock. It shares the existing controller and hit IDs; a component
+pass does not establish full paired traversal or independent internet clients.
+
+Fungiferous Flora additionally reserves `--centipede1-coop-check` for staged
+paired Ant targeting/damage, shared wave/countdown clocks, spawn visibility and
+original ambush ownership/reunion. It shares the existing controller and hit IDs;
+full paired traversal and independent-client networking require separate proof.
+
+Centipede's Sanctum additionally reserves `--centipede2-coop-check` for native
+paired boss targeting, personal attacks/grabs/healing and original scene handoffs,
+and `--centipede2-coop-arena-check` for the production two-player controls,
+attacks, recovery and rendered guest-state checks.
+`--centipede2-coop-route-check` reserves the complete paired ordinary-input route
+with either climbing leader and watched/skipped arrival. Failure recordings are
+private diagnostics; a registered command does not establish a passing route.
+Source `0edf86a` now passes all four native paired routes after fixing simultaneous
+ledge pull-up contact, with both players alive at the actual next-level arrival.
+The follower survives a later climb fall and uses the first-arrival scene/level
+handoff. Independent internet traversal/rejoin remains open; see `CENTIPEDE2.md`.
+It shares the existing boss stages and hit IDs. Staged checks do not establish
+full paired traversal or independent-client networking.
+
+`--jlair2-coop-route-check` reserves an accelerated production-Arena paired
+survival route from the normal entrance, including original scenes, the 30/60
+second waves, individual Eye Staff collection and actual forest-return arrival.
+It uses ordinary controls and compressed replica checks, without staging battle
+prerequisites. It requires Anode's graphics context but does not capture images.
+This route check is separate from independent-process internet verification.
+
+`--grounds1-coop-route-check` extends that accelerated normal paired route to
+Royal Rage: ordinary flight/ground combat, original scenes, both bridge walkers,
+the opened gate and actual Battle Royale arrival. It does not stage boss defeat.
+
+`--grounds2-coop-route-check` reserves the accelerated normal paired Battle Royale
+route, with ordinary weapon controls, personal loot and actual Ascension arrival.
+An optional `LOOKING_GLASS_COOP_NATIVE_ROUTE` file supplies navigation/combat
+commands only; it cannot supply world state, health, rewards or progression.
+
+`--facade-coop-route-check` reserves the normal paired Ascension course, including
+ordinary steam steering, the shared lift waiting for its partner and actual Keep
+arrival. It extends the accelerated diagnostic command set without staging any
+climb, gate, lift or player state.
+
+`--keep-coop-route-check` reserves the ordinary paired Castle Keep course,
+including lever use, portrait shots, steam climbs and actual Queen arrival.
+
+`--wforest-coop-check` reserves staged co-op checks across both Caterpillar's
+Plot visits: shared machinery, individual healing, Staff arrival and original
+scene ownership/reunion. Full traversal and internet coverage remain separate.
+
+`--wchess2-coop-cast-check` reserves isolated paired Castling cast checks:
+closest visible living player selection, personal attacks, saved attack ownership,
+scripted faction duels and legacy save compatibility. It does not replace the
+Castling world, route, scene, recovery or independent-client checks.
+
+`--wchess2-coop-world-check` reserves staged paired Castling machinery and
+royal-scene checks: shared clocks, personal door use, portal boarding/carry,
+saved first-arrival ownership and safe reunion. Full routes remain separate.
+
+`--wchess2-coop-route-check` reserves continuous paired Castling traversal through
+the production Arena, both first-arrival roles, watched/skipped royal scenes,
+compressed guest replicas and resource-preserving Checkmate arrival. It uses
+ordinary movement/weapon inputs and records failed states; staged component
+checks and independent internet runs remain separate evidence.
+
+`--funhouse-coop-scene-check` reserves staged native paired scene contracts:
+Arrival, Gas, Tweedles and Hatter with either actor, watched or held-skipped,
+living or dead partners, paused/compressed restored cameras and safe handoff.
+It also checks the real personal Jacks pickup and ordinary speech during
+exploration. Full traversal, rendered effects and internet remain separate.
+
+`--funhouse-coop-world-check` reserves native paired Funhouse machinery
+fixtures: all-rider carry/obstruction, weighted fulcrums, a pendulum period,
+either-player door contacts, the rotating tube and saved boarding order,
+dead-player exclusion and automatic gas-scene ownership. Full scene/reunion
+combinations, continuous traversal and independent internet runs are separate.
+
+`--funhouse-coop-check` reserves staged paired Funhouse battle components:
+nearest-visible living Tweedle targets, personal knife/grenade/ground-pound
+damage, separate healing, saved battle continuation and the post-damage
+victory owner. Shared machinery, full scene combinations, traversal,
+rendered effects and independent internet coverage remain separate.
+
+`--rchess1-coop-check` reserves staged paired Checkmate components: native King
+and chess-piece targeting/attacks, personal healing, one shared clock, saved
+attack ownership and the three original scene handoffs with either actor.
+It does not replace continuous co-op traversal, internet, recovery or rendered
+effects checks.
+
+`--wchess1-coop-combat-check` reserves isolated paired Pale Realm cast checks:
+targeting, personal attacks, scripted faction fights and gate death callbacks.
+It uses the native roster and timings; paired puzzles, machinery, traversal and
+internet coverage remain separate.
+
+`--wchess1-coop-world-check` reserves native paired Pale Realm machinery,
+personal hazards, original scene ownership and both ordinary-input chess puzzle
+solutions. Full combat traversal and internet coverage remain separate.
+`--wchess1-coop-render-check` draws both original transformation owners and
+compares their native particle batches with the restored guest state; no images
+are captured. This is a focused renderer check, not full internet traversal.
 
 Majestic Maze additionally reserves `--hedge1-save-write` and `--hedge1-save-read` for fresh-process native save checks. Its route requires a native window for the existing NPC cast; it has no active cinematic to skip.
+
+`--hatter1-coop-check` reserves staged paired Clockwork components: one shared
+machinery clock, both living riders, obstruction rollback, actual boarding
+contacts, personal lever actions and their saved owners, plus local closing-door
+catch-up with either first player and living/dead partners. These checks do not
+replace continuous traversal, internet, recovery or single-player regression
+checks. `--hatter1-coop-scene-check` separately reserves native Hare, Port,
+Gryphon and Stop scene handoffs with both owners, watched/held-skipped play,
+living/dead waiting partners and paused/compressed restores, plus ordinary
+Mirror/Hint speech during exploration.
+
+`--hatter2-coop-combat-check` reserves staged paired About Face combat
+components: the shared clock cycle, nearest visible living targets, individual
+melee/projectile/tea impacts, reinforcement targets and compressed restoration.
+These combat checks do not establish the whole visit. `--hatter2-coop-check`
+separately reserves personal reward/arrival/cooldown contracts and shared
+machinery boarding/carry/obstruction checks. `--hatter2-coop-scene-check` reserves
+native first-entrant Gryphon scenes (watched/skipped, both owners, living/dead
+partners, pause/restore and the shared exit request), plus ordinary Cat speech.
+Full two-client traversal, rendered delivery and recovery remain separate checks.
+
+`--jlair1-coop-check` reserves staged Burning Curiosity paired arrival and
+personal essence, sinking-platform boarding/carry/obstruction, compressed saves,
+and original arrival/Caterpillar scenes with watched/skipped and dead-partner
+cases. It does not establish full independent-client traversal or recovery.
+
+`tools/test_coop_jlair1.py` separately reserves independent-client approach
+segments through steps 0-52, with individual ordinary-input arrivals, safe
+waiting moves, original arrival playback and unchanged normal checkpoint resumes.
+A passing prefix does not establish the shared lava crossing or a full visit.
+
+`tools/test_coop_hatter1.py` separately reserves fresh two-client Clockwork
+prefix tests, using the internet session by default, individual waypoint
+receipts, supported waiting moves, ordinary lever inputs and normal checkpoints.
+It currently supports nav/walk/wait/lever actions and rejects unsupported
+requested prefixes. Native local door cases include read-only observations of
+Clockwork-owned doors, actual E use and partner yield at an open leaf. These
+fixtures do not establish the complete route or death/rejoin coverage.
 
 Clockwork and Ascension additionally reserve `--hatter1-route-native-check` and
 `--facade-route-native-check` for continuous entrance-to-exit input courses with

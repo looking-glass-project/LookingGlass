@@ -1,6 +1,6 @@
 use super::*;
 #[path = "waves.rs"]
-mod waves;
+pub(super) mod waves;
 #[derive(Clone, Serialize, Deserialize)]
 pub(super) struct Lift {
     pub phase: u8,
@@ -137,6 +137,47 @@ pub(super) fn load(map: &Bsp) -> Result<Vec<Object>> {
         .collect()
 }
 impl Realm {
+    pub(super) fn lift_support(&self, feet: Vec3) -> bool {
+        let lift = self.objects.iter().find(|o| o.name == "elevator").unwrap();
+        let t = lift.collider.trace(feet+PLAYER_CENTER,feet+PLAYER_CENTER-Vec3::Z*3.,vec3(1.,1.,PLAYER_HALF.z));
+        !t.start_solid && t.fraction < 1. && t.normal.z > 0.65
+    }
+    pub(super) fn move_pair_world(&mut self, dt: f32, map: &Bsp, w: &mut World,
+        players: &mut [&mut Player], fixed: &[Collider]) -> Result<()> {
+        let before = self.saved.elevator.clone();
+        let riders = players.iter().map(|p| p.velocity.z <= 1. && self.lift_support(p.feet)).collect::<Vec<_>>();
+        let all = !riders.is_empty() && riders.iter().all(|r| *r);
+        let any = riders.iter().any(|r| *r);
+        // The lower departure remains armed if a player steps off during its
+        // delay. An occupied lift also waits at the top; an empty lift returns.
+        if !(before.phase == 2 && !all || before.phase == 4 && any && !all) {
+            self.saved.elevator.step(dt);
+        }
+        self.rebuild(map)?;
+        let delta = Vec3::Z*(self.saved.elevator.height-before.height);
+        let feet = players.iter().zip(&riders).map(|(p,rider)| p.feet+if *rider {delta} else {Vec3::ZERO}).collect::<Vec<_>>();
+        w.set_dynamic(fixed.iter().cloned().chain(self.objects.iter()
+            .filter(|o| o.solid && o.name != "elevator").map(|o| o.collider.clone())).collect());
+        let swept = players.iter().zip(&feet).zip(&riders).all(|((p,at),rider)| {
+            if !rider { return true; }
+            let t = w.body_trace(p.feet,*at);
+            !t.start_solid && t.fraction >= 1. && w.body_clear(*at)
+        });
+        let lift = self.objects.iter().find(|o| o.name == "elevator").unwrap();
+        let clear = feet.iter().all(|at| !lift.collider.trace(*at+PLAYER_CENTER,*at+PLAYER_CENTER,PLAYER_HALF).start_solid);
+        let separate = feet.iter().enumerate().all(|(i,a)| feet.iter().skip(i+1).all(|b| {
+            let d = *a-*b;
+            d.truncate().length() >= crate::coop::separation::DISTANCE || d.z.abs() >= PLAYER_HALF.z*2.
+        }));
+        if swept && clear && separate {
+            for (p,at) in players.iter_mut().zip(feet) { p.feet = at; }
+        } else {
+            self.saved.elevator = before;
+            self.rebuild(map)?;
+        }
+        w.set_dynamic(fixed.iter().cloned().chain(self.colliders()).collect());
+        Ok(())
+    }
     pub(super) fn rebuild(&mut self, map: &Bsp) -> Result<()> {
         let gate = self.quad_open();
         for o in &mut self.objects {
@@ -245,20 +286,8 @@ impl Realm {
                             .spikes_off
                             .is_none_or(|t| self.saved.age - t < 1.)
                     }) {
-                        let t = (self.saved.age - start).rem_euclid(waves::PERIOD);
-                        if let Some((_, at, pos)) = waves::WAVE
-                            .iter()
-                            .find(|(k, at, _)| *k == i && (0. ..0.7).contains(&(t - at)))
-                        {
-                            let u = t - at;
-                            let rise = if u < 0.1 {
-                                u * 1600.
-                            } else if u < 0.6 {
-                                160.
-                            } else {
-                                (0.7 - u) * 1600.
-                            };
-                            o.pose.translation = Vec3::from_array(*pos) + Vec3::Z * rise;
+                        if let Some(pos) = waves::position(i, self.saved.age - start) {
+                            o.pose.translation = Vec3::from_array(pos);
                             o.draw = true;
                             o.solid = true;
                             o.hazard = true;

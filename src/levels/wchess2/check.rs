@@ -533,7 +533,7 @@ pub(super) fn survey(a: &mut Assets) -> Result<()> {
     Ok(())
 }
 
-const COURSE: &[[f32; 3]] = &[
+pub(super) const COURSE: &[[f32; 3]] = &[
     [160.0_f32, -4800.0_f32, 0.03125_f32],
     [160.0_f32, -4896.0_f32, 0.03125_f32],
     [-128.0_f32, -4896.0_f32, 0.03125_f32],

@@ -1,8 +1,12 @@
 //! Water Logged: three weighted flushers, rising water, lids, drain fans and the introduction.
 mod cast_check;
 mod check;
+mod coop;
+mod coop_check;
+mod coop_route;
 mod motion;
 mod route;
+mod safety;
 mod scene;
 use super::{state, Check, Registration, Run};
 use crate::{
@@ -51,6 +55,8 @@ struct Saved {
     arrived: bool,
     #[serde(default)]
     fade: f32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    coop: Option<coop::State>,
 }
 impl state::State for Saved {
     const VERSION: u8 = 1;
@@ -68,6 +74,10 @@ impl state::State for Saved {
             }
         }
         state::clock("tower fade", self.fade, 0.5)?;
+        if let Some(coop) = &self.coop {
+            ensure!(self.machine.is_some(), "Paired Tower lacks machinery");
+            coop.validate()?;
+        }
         ensure!(
             !self.arrived || self.scene.is_none(),
             "Repeated Tower introduction"
@@ -126,6 +136,7 @@ struct Tower {
     water: Liquid,
     data: scene::Data,
     currents: Vec<crate::traversal::Push>,
+    fan_sweeps: Vec<safety::FanSweep>,
     stopped: bool,
 }
 fn owned(e: &super::Entity) -> bool {
@@ -175,6 +186,7 @@ impl Tower {
             .filter(|p| [30, 48, 49, 50].contains(&p.id.0))
             .collect();
         let mut out = Self {
+            fan_sweeps: safety::load(map, &objects),
             objects,
             water: liquid,
             data: scene::Data::load(a, map)?,
@@ -187,6 +199,7 @@ impl Tower {
                 scene: Some(intro),
                 arrived: false,
                 fade: 0.,
+                coop: None,
             },
         };
         out.rebuild(map)?;
@@ -264,6 +277,26 @@ impl LevelController for Tower {
     fn ignores_watch(&self) -> bool {
         true
     }
+    fn hazardous(&self, feet: Vec3) -> bool {
+        self.fan_sweeps.iter().any(|sweep| sweep.contains(feet))
+    }
+    fn coop_prepare(&mut self, players: &mut [crate::level::CoopPlayer<'_>; 2]) {
+        self.prepare_pair(players);
+    }
+    fn coop_advance_roster(&mut self, dt: f32, map: &Bsp, world: &mut World,
+        players: &mut [crate::level::CoopPlayer<'_>; 2], fixed: &[Collider]) -> Result<()> {
+        self.advance_pair(dt, map, world, players, fixed)
+    }
+    fn coop_combat_roster(&mut self, dt: f32, _: &World,
+        players: &mut [crate::level::CoopPlayer<'_>; 2]) -> crate::combat::Feedback {
+        self.damage_pair(dt, players)
+    }
+    fn coop_respawned(&mut self, player: usize) {
+        if let Some(state) = self.saved.coop.as_mut().filter(|_| player < 2) {
+            state.crush[player] = false;
+            state.currents[player] = [0.; 4];
+        }
+    }
     fn traversal(&self, t: &mut crate::traversal::Traversal) {
         t.pushes.retain(|p| ![30, 48, 49, 50].contains(&p.id.0));
     }
@@ -294,12 +327,16 @@ impl LevelController for Tower {
         p: &mut Player,
         fixed: &[Collider],
     ) -> Result<()> {
-        if dt <= 0. {
+        if !dt.is_finite() || dt <= 0. || (self.saved.coop.is_some() && !self.scripted()) {
             return Ok(());
         }
         let dt = dt.min(0.1);
         self.saved.fade = (self.saved.fade - dt).max(0.);
         self.advance_intro(dt, w, p)?;
+        // The partner rejoins before paired machinery or currents resume.
+        if self.saved.coop.is_some() && !self.scripted() {
+            return Ok(());
+        }
         self.move_machinery(dt, map, w, p, fixed)?;
         self.move_currents(dt, p);
         Ok(())
@@ -445,6 +482,16 @@ pub static REGISTRATION: Registration = Registration {
         1,
     )],
     checks: &[
+        Check {
+            flag: "--tower2-coop-route-check",
+            help: "Traverse the full paired water course, three flushers and fan gaps into hedge3.",
+            run: Run::Windowed(coop_route::check),
+        },
+        Check {
+            flag: "--tower2-coop-check",
+            help: "Verify paired water machinery, personal currents and fan hazards, saved scenes and swimming.",
+            run: Run::Headless(coop_check::check),
+        },
         Check {
             flag: "--tower2-cast-check",
             help: "Verify every native Snark wave and its saved continuation.",

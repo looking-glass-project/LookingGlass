@@ -63,13 +63,14 @@ impl Page {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Action {
     Resume,
+    Coop,
     Chapters,
     Save(Slot),
     Load(Slot),
     NewGame(Difficulty),
     Quit,
 }
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 enum Click {
     Page(Page),
     Back,
@@ -604,6 +605,42 @@ impl Menu {
             self.save_film.open(self.save_selected, get_time());
         }
     }
+    /// Finale-only credits return directly to the caller's main menu.
+    pub async fn completion_credits(&mut self, prefs: &Preferences, input: &mut crate::input::Input) {
+        self.open(Page::Credits, prefs, audio::Settings::default());
+        self.message = "Campaign complete / Host Resume replays your last co-op checkpoint".into();
+        input.suppress();
+        let mut presented = false;
+        loop {
+            let focused = crate::look::window_focused();
+            input.update(prefs, focused);
+            if is_quit_requested() || focused && (input.ui(KeyCode::Escape) || input.ui(KeyCode::Enter)
+                || input.pad_pressed("Start") || input.pad_pressed("A")) { break; }
+            if focused {
+                let delta = i32::from(input.ui(KeyCode::Down)) - i32::from(input.ui(KeyCode::Up));
+                self.credit_offset = (self.credit_offset as i32 + delta * 14)
+                    .clamp(0, self.credits.len().saturating_sub(15) as i32) as usize;
+                if is_mouse_button_pressed(MouseButton::Left) {
+                    let pointer = Canvas::new(screen_width(), screen_height()).pointer(Vec2::from(mouse_position()));
+                    if let Some(button) = self.buttons(Page::Credits).iter().find(|b| b.rect.contains(pointer)) {
+                        match button.click {
+                            Click::Back => break,
+                            Click::CreditScroll(delta) => self.credit_offset = (self.credit_offset as i32 + delta * 14)
+                                .clamp(0, self.credits.len().saturating_sub(15) as i32) as usize,
+                            _ => (),
+                        }
+                    }
+                }
+            }
+            self.draw(Page::Credits, &self.buttons(Page::Credits));
+            next_frame().await;
+            if !presented {
+                println!("Finale credits: first frame presented");
+                presented = true;
+            }
+        }
+        self.close();
+    }
     pub fn close(&mut self) {
         self.page = None;
         self.save_film.stop();
@@ -756,6 +793,9 @@ impl Menu {
                 if self.post_game || self.frontend {
                     buttons.pop();
                 }
+                buttons.push(Button::text(
+                    Rect::new(18., 410., 150., 36.), "Co-op", Click::Action(Action::Coop),
+                ));
                 buttons
             }
             Page::Settings => {
@@ -1653,6 +1693,8 @@ impl Menu {
                     }
                     let click = if page == Page::Main && input.ui(KeyCode::Tab) {
                         Some(Click::Action(Action::Chapters))
+                    } else if page == Page::Main && is_key_pressed(KeyCode::C) {
+                        Some(Click::Action(Action::Coop))
                     } else if input.ui(KeyCode::Escape) {
                         Some(Click::Back)
                     } else if page == Page::Quit && is_key_pressed(KeyCode::Y) {
@@ -1828,6 +1870,10 @@ impl Menu {
             let buttons = self.buttons(page);
             self.selected = self.selected.min(buttons.len().saturating_sub(1));
             self.draw(page, &buttons);
+            if crate::ui_probe::enabled() {
+                crate::ui_probe::screen(&format!("menu-{page:?}"), &buttons.iter()
+                    .map(|b| (format!("{:?}", b.click), b.rect)).collect::<Vec<_>>(), &self.message);
+            }
             if focused {
                 self.ui.cursor();
             }

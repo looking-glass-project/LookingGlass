@@ -1509,12 +1509,13 @@ impl Scene {
         hand: Option<(usize, Vec3)>,
         transforms: &[(usize, Vec3, Quat)],
     ) {
+        let hand = hand.map(|(model, point)| (model, crate::rope::Grip::at(point)));
+        self.update_ropes_many(dt, hand.as_slice(), transforms);
+    }
+    pub fn update_ropes_many(&mut self, dt: f32, hands: &[(usize, crate::rope::Grip)], transforms: &[(usize, Vec3, Quat)]) {
         for shape in &mut self.rope_shapes {
-            shape.update(
-                dt,
-                hand.filter(|h| h.0 == shape.model).map(|h| h.1),
-                &self.world,
-            );
+            let grips = hands.iter().filter(|h| h.0 == shape.model).map(|h| h.1).collect::<Vec<_>>();
+            shape.update_many(dt, &grips, &self.world);
             let Some((_, origin, rotation)) = transforms.iter().find(|t| t.0 == shape.model) else {
                 continue;
             };
@@ -1524,6 +1525,12 @@ impl Scene {
                 .find(|b| b.model == Some(shape.model))
             {
                 batch.base = shape.vertices(*origin, *rotation);
+                if batch.mesh.vertices.len() != batch.base.len() {
+                    batch.mesh.vertices.clone_from(&batch.base);
+                    batch.mesh.indices = shape.indices();
+                    batch.full_indices.clone_from(&batch.mesh.indices);
+                    batch.normals.resize(batch.base.len(), Vec3::Z);
+                }
                 batch.bounds = batch.base.iter().fold(
                     (Vec3::splat(f32::INFINITY), Vec3::splat(f32::NEG_INFINITY)),
                     |(lo, hi), v| (lo.min(v.position), hi.max(v.position)),

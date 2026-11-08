@@ -1,5 +1,6 @@
 //! Ascension's targeted gates and saved, scene-owned departure lift.
 mod check;
+mod coop_check;
 mod route;
 pub(crate) use route::drive as drive_route;
 use super::{state, Check, Registration, Run};
@@ -205,6 +206,22 @@ impl Facade {
         }
     }
 }
+impl Facade {
+    fn step_gate(&mut self, dt: f32) {
+        let speed = 1. / self.gates.iter().map(|b| b.duration).fold(0_f32, f32::max);
+        if self.saved.gate_opening {
+            self.saved.gate = (self.saved.gate + dt * speed).min(1.);
+            if self.saved.gate == 1. {
+                self.saved.gate_hold = (self.saved.gate_hold - dt).max(0.);
+                if self.saved.gate_hold == 0. {
+                    self.saved.gate_opening = false;
+                }
+            }
+        } else {
+            self.saved.gate = (self.saved.gate - dt * speed).max(0.);
+        }
+    }
+}
 impl LevelController for Facade {
     fn id(&self) -> &'static str {
         "facade"
@@ -260,6 +277,36 @@ impl LevelController for Facade {
             transition: self.saved.exit.request(EXIT),
             ..Default::default()
         }
+    }
+    fn coop_events(&mut self) -> Events {
+        Events {transition: self.saved.exit.request(EXIT), ..Default::default()}
+    }
+    fn coop_boarding_ready(&self, thread: &str, feet: &[Vec3]) -> Option<bool> {
+        (thread == "Facade_Lift").then(|| !feet.is_empty() && feet.iter().all(|at| {
+            // Permit a normal hop onto the deck, but not a player still on the
+            // approach or another floor. Probe only the actual lift collider.
+            let c = &self.solids[0];
+            let hit = c.trace(*at + PLAYER_CENTER, *at + PLAYER_CENTER - Vec3::Z * 64., PLAYER_HALF);
+            !hit.start_solid && hit.fraction < 1. && hit.normal.z >= 0.65
+        }))
+    }
+    fn coop_advance(&mut self, dt: f32, map: &Bsp, w: &mut World,
+        players: &mut [&mut Player], fixed: &[Collider]) -> Result<()> {
+        if !dt.is_finite() || dt <= 0. || players.is_empty() || self.scripted() { return Ok(()); }
+        let before = self.saved.gate;
+        let dt = dt.min(0.1);
+        self.saved.exit.advance(dt);
+        self.step_gate(dt);
+        self.rebuild(map)?;
+        w.set_dynamic(fixed.iter().cloned().chain(self.colliders()).collect());
+        if players.iter().any(|p| !w.body_clear(p.feet)) {
+            self.saved.gate = before;
+            self.saved.gate_opening = true;
+            self.saved.gate_hold = 3.;
+            self.rebuild(map)?;
+            w.set_dynamic(fixed.iter().cloned().chain(self.colliders()).collect());
+        }
+        Ok(())
     }
     fn exit_contact(&mut self, d: &(String, Option<String>)) -> Option<Events> {
         EXIT.matches(d).then(|| Events {
@@ -324,18 +371,7 @@ impl LevelController for Facade {
                 self.saved.exit.committed = s.time == DEPART || s.skip == Some(0.5);
             }
         }
-        let speed = 1. / self.gates.iter().map(|b| b.duration).fold(0_f32, f32::max);
-        if self.saved.gate_opening {
-            self.saved.gate = (self.saved.gate + dt * speed).min(1.);
-            if self.saved.gate == 1. {
-                self.saved.gate_hold = (self.saved.gate_hold - dt).max(0.);
-                if self.saved.gate_hold == 0. {
-                    self.saved.gate_opening = false;
-                }
-            }
-        } else {
-            self.saved.gate = (self.saved.gate - dt * speed).max(0.);
-        }
+        self.step_gate(dt);
         self.rebuild(map)?;
         let feet = self.alice_pose().map_or(p.feet, |at| at.translation);
         w.set_dynamic(fixed.to_vec());
@@ -508,6 +544,10 @@ pub static REGISTRATION: Registration = Registration {
     target_base: None,
     story_beats: &[],
     checks: &[
+        Check {flag: "--facade-coop-route-check", help: "Play an accelerated paired Ascension course, steam climbs and shared lift.",
+            run: Run::Windowed(route::coop_check)},
+        Check {flag: "--facade-coop-check", help: "Verify paired castle progression and personal combat.",
+            run: Run::Headless(coop_check::check)},
         Check {
             flag: "--facade-route-native-check",
             help: "Replay the full Ascension input course with resident enemies.",

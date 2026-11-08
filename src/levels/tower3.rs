@@ -1,5 +1,8 @@
 //! Machinations: bound lifts and ride machinery, room fall returns and arrival scene.
 mod check;
+mod coop;
+mod coop_route;
+mod coop_check;
 mod motion;
 mod route;
 mod scene;
@@ -30,6 +33,8 @@ struct Saved {
     fade: f32,
     damage: f32,
     hurt_wait: f32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    coop: Option<coop::State>,
 }
 impl state::State for Saved {
     const VERSION: u8 = 1;
@@ -56,6 +61,7 @@ impl state::State for Saved {
             self.arrived == self.scene.is_none(),
             "Inconsistent Tower introduction"
         );
+        if let Some(pair) = &self.coop { pair.validate()?; }
         if let Some(s) = &self.scene {
             s.validate()?;
         }
@@ -67,6 +73,7 @@ struct Tower {
     roots: Vec<usize>,
     saved: Saved,
     data: scene::Data,
+    actor: Option<usize>,
 }
 impl Tower {
     fn load(a: &mut Assets, map: &Bsp) -> Result<Self> {
@@ -86,12 +93,14 @@ impl Tower {
             fade: 0.,
             damage: 0.,
             hurt_wait: 0.,
+            coop: None,
         };
         let mut out = Self {
             objects,
             roots,
             saved,
             data: scene::Data::load(a, map)?,
+            actor: None,
         };
         out.rebuild();
         Ok(out)
@@ -112,7 +121,8 @@ impl LevelController for Tower {
     fn facts(&self) -> Facts {
         let mut f = Facts::default();
         for n in 1..=3 {
-            f.flag(&format!("tower3.room{n}"), self.saved.room == n);
+            f.flag(&format!("tower3.room{n}"), self.actor.and_then(|i| self.saved.coop.as_ref().map(|s| s.room[i]))
+                .unwrap_or(self.saved.room) == n);
         }
         f.flag("tower3.play", self.saved.arrived);
         f.flag("tower3.intro_hint_disabled", false);
@@ -128,6 +138,13 @@ impl LevelController for Tower {
         }
     }
     fn event(&mut self, thread: &str) -> Option<Events> {
+        if let Some(index) = self.actor {
+            if let Some(room) = coop::room(thread) {
+                self.pair_state().room[index] = room;
+                if index == 0 { self.saved.room = room; }
+                return Some(Events::default());
+            }
+        }
         match thread {
             "Room1Tele" => self.saved.room = 1,
             "Room2Tele" => self.saved.room = 2,
@@ -165,7 +182,7 @@ impl LevelController for Tower {
         p: &mut Player,
         fixed: &[Collider],
     ) -> Result<()> {
-        if dt <= 0. {
+        if !dt.is_finite() || dt <= 0. {
             return Ok(());
         }
         let dt = dt.min(0.1);
@@ -173,6 +190,24 @@ impl LevelController for Tower {
         self.saved.hurt_wait = (self.saved.hurt_wait - dt).max(0.);
         self.advance_intro(dt, w, p)?;
         self.move_all(dt, w, p, fixed)
+    }
+    fn coop_prepare(&mut self, _: &mut [crate::level::CoopPlayer<'_>; 2]) { self.pair_state(); }
+    fn coop_trigger_actor(&mut self, actor: Option<usize>) { self.actor = actor; }
+    fn coop_personal_thread(&self, thread: &str) -> bool { coop::room(thread).is_some() }
+    fn coop_advance_roster(&mut self, dt: f32, _: &Bsp, w: &mut World,
+        players: &mut [crate::level::CoopPlayer<'_>; 2], fixed: &[Collider]) -> Result<()> {
+        self.advance_pair(dt, w, players, fixed)
+    }
+    fn coop_combat_roster(&mut self, dt: f32, _: &World,
+        players: &mut [crate::level::CoopPlayer<'_>; 2]) -> crate::combat::Feedback {
+        self.damage_pair(dt, players)
+    }
+    fn coop_respawned(&mut self, player: usize) {
+        if player < 2 {
+            let s = self.pair_state();
+            s.damage[player] = 0.; s.hurt_wait[player] = 0.;
+            s.room[player] = s.room[1 - player];
+        }
     }
     fn transforms(&self) -> Vec<(usize, Vec3, Quat)> {
         self.objects
@@ -336,6 +371,16 @@ pub static REGISTRATION: Registration = Registration {
         1,
     )],
     checks: &[
+        Check {
+            flag: "--tower3-coop-route-check",
+            help: "Traverse paired Machinations lifts and gears into Royal Rage.",
+            run: Run::Windowed(coop_route::check),
+        },
+        Check {
+            flag: "--tower3-coop-check",
+            help: "Verify paired machinery, personal contacts and saved continuation.",
+            run: Run::Headless(coop_check::check),
+        },
         Check {
             flag: "--tower3-check",
             help: "Verify bound machines, checkpoints and introduction.",

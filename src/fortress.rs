@@ -1,5 +1,6 @@
 //! Fortress of Doors playable visits. Original archives remain read-only data.
 pub mod check;
+pub mod coop_check;
 pub mod cinema;
 pub(crate) mod spline;
 use crate::{
@@ -215,6 +216,13 @@ impl Fortress {
             .filter(|o| o.solid && self.visible(&o.name))
             .map(|o| o.collider.clone())
     }
+    /// The return portal is passable scenery, but the follow camera must stay
+    /// in front of its visible volume instead of filling the view with orange.
+    pub fn camera_colliders(&self) -> impl Iterator<Item = Collider> + '_ {
+        self.objects.iter()
+            .filter(|o| o.name == "portal_back1" && self.visible(&o.name))
+            .map(|o| o.collider.clone())
+    }
     pub fn trigger_pose(&self, name: &str, base: Vec3) -> Option<(Vec3, Quat)> {
         match name {
             "s1_changelevel" => Some(pose(name, base, &self.state)),
@@ -278,11 +286,26 @@ impl Fortress {
         }
         self.state.age += dt.min(0.1);
         self.cinema.advance(&mut self.state.cinema, dt, player);
+        self.advance_machinery(dt, map, world, &mut [player], fixed)
+    }
+    /// Freely controlled co-op bodies share one moving-room clock. Original
+    /// cutscenes continue through `advance` with only their authored Alice.
+    pub fn advance_players(
+        &mut self, dt: f32, map: &Bsp, world: &mut World,
+        players: &mut [&mut Player], fixed: &[Collider],
+    ) -> Result<()> {
+        if !dt.is_finite() || dt <= 0. { return Ok(()); }
+        self.state.age += dt.min(0.1);
+        self.advance_machinery(dt, map, world, players, fixed)
+    }
+    fn advance_machinery(
+        &mut self, dt: f32, map: &Bsp, world: &mut World,
+        players: &mut [&mut Player], fixed: &[Collider],
+    ) -> Result<()> {
         if self.state.splitting && self.state.split < 1. {
             let old = self.state.clone();
             let next = (old.split + dt.min(0.1) / 10.).min(1.);
-            let riding = self
-                .objects
+            let riding: Vec<_> = players.iter().map(|player| self.objects
                 .iter()
                 .find(|o| {
                     if !o.solid || !self.visible(&o.name) {
@@ -298,27 +321,30 @@ impl Fortress {
                         && hit.fraction < 1.
                         && hit.normal.z > 0.65
                 })
-                .map(|o| (o.name.clone(), o.model, o.base));
+                .map(|o| (o.name.clone(), o.model, o.base))).collect();
             self.state.split = next;
             self.rebuild(map)?;
-            let mut feet = player.feet;
-            if let Some((name, model, base)) = riding {
-                let (p0, r0) = pose(&name, base, &old);
-                let (p1, r1) = pose(&name, base, &self.state);
-                feet = p1 + r1 * r0.inverse() * (feet - p0);
-                if let Some((f, n)) = self
-                    .objects
-                    .iter()
-                    .find(|o| o.model == model)
-                    .and_then(|o| o.collider.rider_feet(feet))
-                {
-                    feet = f;
-                    player.ground_normal = n;
+            let proposed: Vec<_> = players.iter().zip(riding).map(|(player, riding)| {
+                let mut feet = player.feet;
+                let mut normal = player.ground_normal;
+                if let Some((name, model, base)) = riding {
+                    let (p0, r0) = pose(&name, base, &old);
+                    let (p1, r1) = pose(&name, base, &self.state);
+                    feet = p1 + r1 * r0.inverse() * (feet - p0);
+                    if let Some((f, n)) = self.objects.iter().find(|o| o.model == model)
+                        .and_then(|o| o.collider.rider_feet(feet)) {
+                        feet = f;
+                        normal = n;
+                    }
                 }
-            }
+                (feet, normal)
+            }).collect();
             world.set_dynamic(fixed.iter().cloned().chain(self.colliders()).collect());
-            if world.body_clear(feet) {
-                player.feet = feet;
+            if proposed.iter().all(|(feet, _)| world.body_clear(*feet)) {
+                for (player, (feet, normal)) in players.iter_mut().zip(proposed) {
+                    player.feet = feet;
+                    player.ground_normal = normal;
+                }
             } else {
                 self.state.split = old.split;
                 self.rebuild(map)?;

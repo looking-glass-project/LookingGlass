@@ -1,9 +1,12 @@
 //! Burning Curiosity: Gryphon arrival, lava crossing and Caterpillar revelation.
 mod art;
 mod check;
+mod coop;
+mod coop_check;
 mod route;
 mod saves;
 mod scene;
+pub(crate) use coop::{route_platform, PlatformReport};
 use super::{state, Beat, Check, Registration, Run};
 use crate::{
     assets::Assets,
@@ -36,6 +39,8 @@ struct Saved {
     essence_live: bool,
     #[serde(default)]
     essence_taken: [bool; 2],
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    coop: Option<coop::State>,
     scene: Option<Scene>,
 }
 impl Default for Saved {
@@ -48,6 +53,7 @@ impl Default for Saved {
             sink: 0.,
             essence_live: false,
             essence_taken: [false; 2],
+            coop: None,
             scene: Some(Scene::new(Kind::Arrival)),
         }
     }
@@ -67,6 +73,10 @@ impl state::State for Saved {
             !self.essence_taken.iter().any(|b| *b) || self.essence_live,
             "Essence collected before spawn"
         );
+        if let Some(pair) = &self.coop {
+            ensure!(!pair.essence_taken.iter().flatten().any(|b| *b) || self.essence_live,
+                "Personal essence collected before spawn");
+        }
         if let Some(s) = &self.scene {
             s.validate()?;
             ensure!(
@@ -353,6 +363,18 @@ impl LevelController for Curiosity {
             }
         }
     }
+    fn coop_prepare(&mut self, players: &mut [crate::level::CoopPlayer<'_>; 2]) {
+        self.prepare_pair(players);
+    }
+    fn coop_contacts(&mut self, dt: f32, players: &mut [crate::level::CoopPlayer<'_>; 2]) -> Option<usize> {
+        self.pickups_pair(dt, players);
+        None
+    }
+    fn coop_advance_roster(&mut self, dt: f32, map: &Bsp, world: &mut World,
+        players: &mut [crate::level::CoopPlayer<'_>; 2], fixed: &[Collider]) -> Result<()> {
+        self.move_sink_pair(dt, map, world, players, fixed)
+    }
+    fn coop_scene_step(&mut self, _: usize, _: &mut Player, _: &mut Stats) {}
     fn advance(
         &mut self,
         dt: f32,
@@ -488,6 +510,11 @@ pub static REGISTRATION: Registration = Registration {
         Beat::linear("jlair1", CATERPILLAR, "jlair1_cinematics", CATERPILLAR, 15),
     ],
     checks: &[
+        Check {
+            flag: "--jlair1-coop-check",
+            help: "Check paired arrival, personal healing, sinking platform and original scenes.",
+            run: Run::Headless(coop_check::check),
+        },
         Check {
             flag: "--jlair1-traversal-check",
             help: "Replay the Burning Curiosity physical route without the cast.",

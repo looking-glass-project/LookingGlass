@@ -72,6 +72,9 @@ pub(super) struct Data {
     pub cameras: BTreeMap<String, Spline>,
     pub emitters: Vec<(usize, String, Transform)>,
     pub pushes: Vec<usize>,
+    pub tube_boarding: Collider,
+    pub gas_focus: Vec3,
+    pub jack_key: String,
 }
 pub fn pose(e: &super::super::Entity) -> Transform {
     let v = e
@@ -99,6 +102,20 @@ impl Data {
             .iter()
             .filter_map(|e| e.get("targetname").map(|n| (n.clone(), pose(e))))
             .collect::<BTreeMap<_, _>>();
+        let tube=map.entities.iter().find(|e|e.get("thread").is_some_and(|s|s=="Funhouse_Rotate_Tuber"))
+            .context("Missing tube boarding volume")?;
+        let model=tube.get("model").and_then(|s|s.strip_prefix('*'))
+            .context("Missing tube boarding model")?.parse::<usize>()?;
+        let tube_boarding=Collider::model(map,model,pose(tube).translation,Quat::IDENTITY,false)?;
+        let pipe=map.entities.iter().find(|e|e.get("targetname").is_some_and(|s|s=="broken_pipe"))
+            .context("Missing gas scene focus")?;
+        let model=pipe.get("model").and_then(|s|s.strip_prefix('*'))
+            .context("Missing gas scene focus model")?.parse::<usize>()?;
+        let shape=map.models.get(model).context("Invalid gas scene focus model")?;
+        let gas_focus=pose(pipe).translation+(shape.min+shape.max)*0.5;
+        let jack=map.entities.iter().position(|e|e.get("pickup_thread").is_some_and(|s|s==Kind::Jack.id()))
+            .context("Missing Jacks pickup dialogue")?;
+        let jack_key=format!("funhouse:{jack}");
         for n in [
             "funhouse_start1",
             "alice_pos1",
@@ -230,6 +247,9 @@ impl Data {
             cameras,
             emitters,
             pushes,
+            tube_boarding,
+            gas_focus,
+            jack_key,
         })
     }
 }

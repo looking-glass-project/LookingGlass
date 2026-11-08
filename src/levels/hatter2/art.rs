@@ -2,6 +2,7 @@ use super::*;
 use crate::{npc::Puppet, particles::Attached, weapons::Prop};
 use std::collections::BTreeMap;
 pub(super) struct Art {
+    local_player: Option<usize>,
     actors: BTreeMap<String, Puppet>,
     adds: Vec<Puppet>,
     essence: crate::loot_art::Art,
@@ -53,6 +54,7 @@ impl Art {
         }
         // The source timer has 100 frames over five seconds and no render surfaces.
         Ok(Self {
+            local_player: None,
             actors,
             adds,
             essence: crate::loot_art::Art::load(a, &specs)?,
@@ -74,6 +76,9 @@ impl Art {
     }
 }
 impl LevelArt for Art {
+    fn coop_view(&mut self, local: usize) {
+        self.local_player = Some(local.min(1));
+    }
     fn story_pose(&mut self, s: &Story) {
         for (m, n) in [
             ("c_gryphon", &["gryphon_actor1"][..]),
@@ -124,7 +129,7 @@ impl LevelArt for Art {
                 );
             }
         }
-        if !s.blade {
+        if o.visible_blade(self.local_player) {
             self.blade.draw_frame(
                 Transform {
                     translation: o.data.blade,
@@ -136,11 +141,18 @@ impl LevelArt for Art {
                 true,
             );
         }
-        if s.essence_live {
-            self.essence.draw(crate::loot::Grade::Medium, o.essence_position(), atm, camera, s.clock);
+        if let Some(at) = o.visible_essence(self.local_player) {
+            self.essence
+                .draw(crate::loot::Grade::Medium, at, atm, camera, s.clock);
         }
-        for (at, age) in &s.drops {
-            let grade = if *age < 10. { crate::loot::Grade::Large } else if *age < 30. { crate::loot::Grade::Medium } else { crate::loot::Grade::Small };
+        for (at, age) in &o.visible_drops(self.local_player) {
+            let grade = if *age < 10. {
+                crate::loot::Grade::Large
+            } else if *age < 30. {
+                crate::loot::Grade::Medium
+            } else {
+                crate::loot::Grade::Small
+            };
             self.essence.draw(grade, *at, atm, camera, s.clock);
         }
         for shot in &s.boss.shots {
@@ -237,7 +249,7 @@ impl LevelArt for Art {
                 );
             }
         }
-        if !s.blade {
+        if o.visible_blade(self.local_player) {
             if let Some(fx) = &mut self.altar {
                 fx.draw(
                     s.clock,

@@ -1,8 +1,13 @@
 //! Centipede arena: animation-driven weak point, three combat stages and mushroom departure.
 mod art;
+mod arena_check;
 mod battle;
 mod check;
+mod coop;
+mod coop_check;
+mod coop_route;
 pub(crate) use check::drive as drive_route;
+pub(crate) use coop_route::NetworkDriver;
 mod data;
 mod saves;
 mod scene;
@@ -55,6 +60,8 @@ struct Saved {
     essence_wait: f32,
     exit: crate::level::exit::ExitState,
     checkpoint: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    coop: Option<coop::State>,
 }
 impl state::State for Saved {
     const VERSION: u8 = 1;
@@ -68,6 +75,7 @@ impl state::State for Saved {
         state::clock("Centipede exit retry", self.exit.retry_time, 1.)?;
         ensure!(self.essence < 3, "Invalid essence station");
         self.battle.validate()?;
+        if let Some(c) = &self.coop { c.validate()?; }
         let defeated = matches!(
             self.phase,
             Phase::Drop | Phase::Climb | Phase::Greeting | Phase::Eat | Phase::Grow | Phase::Done
@@ -93,6 +101,7 @@ struct Centipede {
     shapes: Vec<Collider>,
     poses: Vec<(usize, Vec3, Quat)>,
     alive: bool,
+    arena_trigger: Collider,
 }
 impl Centipede {
     fn load(a: &mut Assets, map: &Bsp) -> Result<Self> {
@@ -119,10 +128,12 @@ impl Centipede {
                 essence_wait: 0.,
                 exit: Default::default(),
                 checkpoint: false,
+                coop: None,
             },
             shapes: vec![],
             poses: vec![],
             alive: true,
+            arena_trigger: coop::arena_trigger(map)?,
         };
         o.rebuild(map)?;
         Ok(o)
@@ -244,7 +255,7 @@ impl LevelController for Centipede {
         p: &mut Player,
         _: &[Collider],
     ) -> Result<()> {
-        if dt <= 0. || !self.alive {
+        if dt <= 0. || !self.alive || self.saved.coop.is_some() && !self.scripted() {
             return Ok(());
         }
         let dt = dt.min(0.1);
@@ -383,6 +394,33 @@ impl LevelController for Centipede {
         }
         self.saved.battle.advance(c, &self.data)
     }
+    fn coop_prepare(&mut self, players: &mut [crate::level::CoopPlayer<'_>; 2]) {
+        self.prepare_pair(players);
+    }
+    fn coop_advance_roster(&mut self, dt: f32, map: &Bsp, world: &mut World,
+        players: &mut [crate::level::CoopPlayer<'_>; 2], _: &[Collider]) -> Result<()> {
+        self.advance_pair(dt, map, world, players)
+    }
+    fn coop_contacts(&mut self, _: f32, _: &mut [crate::level::CoopPlayer<'_>; 2]) -> Option<usize> {
+        self.saved.coop.as_mut().and_then(|c| c.pending_scene.take())
+    }
+    fn coop_scene_step(&mut self, _: usize, _: &mut Player, _: &mut Stats) {
+        if let Some(c) = &mut self.saved.coop { c.previous = [None; 2]; }
+    }
+    fn coop_controlled(&self, player: usize) -> bool {
+        self.saved.phase == Phase::Fight && self.saved.battle.grabbed
+            && self.saved.battle.coop.as_ref().is_some_and(|c| c.grab == Some(player))
+    }
+    fn coop_respawned(&mut self, player: usize) {
+        self.saved.battle.release_player(player);
+        if let Some(c) = &mut self.saved.coop { c.previous[player] = None; }
+    }
+    fn coop_combat_roster(&mut self, dt: f32, world: &World,
+        players: &mut [crate::level::CoopPlayer<'_>; 2]) -> Feedback {
+        if !dt.is_finite() || dt <= 0. || self.saved.phase != Phase::Fight
+            || !players.iter().any(|p| p.stats.alive()) { return Feedback::default(); }
+        self.saved.battle.advance_pair(dt, world, players, &self.data)
+    }
     fn lights(&self) -> Vec<crate::lighting::Light> {
         self.boss_lights()
     }
@@ -457,6 +495,21 @@ pub static REGISTRATION: super::Registration = super::Registration {
         BeatSpec::linear("centipede2", TALK2, "centipede2_cinematics", TALK2, 1),
     ],
     checks: &[
+        super::Check {
+            flag: "--centipede2-coop-route-check",
+            help: "Play the paired Sanctum boss and climbing route with ordinary controls.",
+            run: super::Run::Windowed(coop_route::check),
+        },
+        super::Check {
+            flag: "--centipede2-coop-arena-check",
+            help: "Verify paired Sanctum controls, attacks, recovery and rendered guest effects.",
+            run: super::Run::Windowed(arena_check::check),
+        },
+        super::Check {
+            flag: "--centipede2-coop-check",
+            help: "Verify paired Centipede combat, personal pickups and scene handoffs.",
+            run: super::Run::Headless(coop_check::check),
+        },
         super::Check {
             flag: "--centipede2-check",
             help: "Verify Centipede weak points, phases, spikes and mushroom exit.",

@@ -1,5 +1,7 @@
 //! Majestic Maze: the live child cast holds the authored plate and sliding gates.
 mod check;
+mod coop_check;
+mod coop_route;
 mod data;
 mod route;
 mod save_check;
@@ -90,6 +92,85 @@ impl Maze {
     fn touch(&self, center: Vec3, half: Vec3) -> bool {
         self.data.plate.touches(center, center, half)
     }
+    fn advance_players(&mut self, dt: f32, world: &mut World,
+        players: &mut [&mut Player], fixed: &[Collider]) -> Result<()> {
+        if !dt.is_finite() || dt <= 0. {
+            return Ok(());
+        }
+        self.saved.debt += f64::from(dt.min(0.1));
+        while self.saved.debt + 1e-9 >= 1. / 120. {
+            self.saved.debt = (self.saved.debt - 1. / 120.).max(0.);
+            let dt = 1. / 120.;
+            self.saved.exit.advance(dt);
+            self.saved.following = self
+                .companions
+                .iter()
+                .any(|c| c.name == "seek_kid_chase" && c.visible);
+            // Older NPC-only saves may already contain the completed handoff.
+            self.saved.start_seen |= self.saved.following;
+            self.saved.holding = self.companions.iter().any(|c| {
+                c.name == "seek_kid_chase"
+                    && c.visible
+                    && c.holding
+                    && self.touch(c.feet + Vec3::Z * c.half.z, c.half)
+            });
+            let occupied = players.iter().any(|p| self.touch(p.feet + PLAYER_CENTER, PLAYER_HALF))
+                || self
+                    .companions
+                    .iter()
+                    .any(|c| c.visible && self.touch(c.feet + Vec3::Z * c.half.z, c.half))
+                || self.actors.iter().any(|a| self.touch(a.center, a.half));
+            self.saved.pulse = (self.saved.pulse - dt).max(0.);
+            self.saved.release = (self.saved.release - dt).max(0.);
+            if occupied && (!self.saved.occupied || self.saved.pulse <= 0.) {
+                self.saved.pulse = 0.2;
+                self.saved.release = 0.3;
+            }
+            self.saved.occupied = occupied;
+            let opening = self.saved.release > 0.;
+            for i in 0..3 {
+                let old = self.saved.doors[i];
+                let p = (old
+                    + if opening {
+                        dt / self.data.doors[i].duration
+                    } else {
+                        -dt / self.data.doors[i].duration
+                    })
+                .clamp(0., 1.);
+                self.saved.doors[i] = p;
+                world.set_dynamic(fixed.iter().cloned().chain(self.colliders()).collect());
+                // A descending plate carries Alice; a closing gate waits instead of crushing.
+                let lift = self.data.doors[i].slide * (p - old);
+                let candidates: Vec<_> = players.iter().map(|player| {
+                    let on_plate = i == 0
+                        && player.grounded
+                        && (player.feet.z
+                            - (self.data.doors[i].top + old * self.data.doors[i].slide.z))
+                            .abs()
+                            < 1.
+                        && self.data.doors[i]
+                            .shape
+                            .at(
+                                self.data.doors[i].base + self.data.doors[i].slide * old,
+                                Quat::IDENTITY,
+                            )
+                            .rider_feet(player.feet)
+                            .is_some();
+                    player.feet + if on_plate { lift } else { Vec3::ZERO }
+                }).collect();
+                if candidates.iter().all(|&at| world.body_clear(at)) {
+                    for (player, candidate) in players.iter_mut().zip(candidates) {
+                        player.feet = candidate;
+                    }
+                } else {
+                    self.saved.doors[i] = old;
+                }
+            }
+            world.set_dynamic(fixed.iter().cloned().chain(self.colliders()).collect());
+        }
+        Ok(())
+    }
+
 }
 impl LevelController for Maze {
     fn id(&self) -> &'static str {
@@ -124,85 +205,18 @@ impl LevelController for Maze {
     fn actor_contacts(&mut self, a: &[Target]) {
         self.actors = a.to_vec();
     }
-    fn advance(
-        &mut self,
-        dt: f32,
-        _: &Bsp,
-        world: &mut World,
-        player: &mut Player,
-        fixed: &[Collider],
-    ) -> Result<()> {
-        if dt <= 0. {
-            return Ok(());
-        }
-        self.saved.debt += f64::from(dt.min(0.1));
-        while self.saved.debt + 1e-9 >= 1. / 120. {
-            self.saved.debt = (self.saved.debt - 1. / 120.).max(0.);
-            let dt = 1. / 120.;
-            self.saved.exit.advance(dt);
-            self.saved.following = self
-                .companions
-                .iter()
-                .any(|c| c.name == "seek_kid_chase" && c.visible);
-            // Older NPC-only saves may already contain the completed handoff.
-            self.saved.start_seen |= self.saved.following;
-            self.saved.holding = self.companions.iter().any(|c| {
-                c.name == "seek_kid_chase"
-                    && c.visible
-                    && c.holding
-                    && self.touch(c.feet + Vec3::Z * c.half.z, c.half)
-            });
-            let occupied = self.touch(player.feet + PLAYER_CENTER, PLAYER_HALF)
-                || self
-                    .companions
-                    .iter()
-                    .any(|c| c.visible && self.touch(c.feet + Vec3::Z * c.half.z, c.half))
-                || self.actors.iter().any(|a| self.touch(a.center, a.half));
-            self.saved.pulse = (self.saved.pulse - dt).max(0.);
-            self.saved.release = (self.saved.release - dt).max(0.);
-            if occupied && (!self.saved.occupied || self.saved.pulse <= 0.) {
-                self.saved.pulse = 0.2;
-                self.saved.release = 0.3;
-            }
-            self.saved.occupied = occupied;
-            let opening = self.saved.release > 0.;
-            for i in 0..3 {
-                let old = self.saved.doors[i];
-                let p = (old
-                    + if opening {
-                        dt / self.data.doors[i].duration
-                    } else {
-                        -dt / self.data.doors[i].duration
-                    })
-                .clamp(0., 1.);
-                self.saved.doors[i] = p;
-                world.set_dynamic(fixed.iter().cloned().chain(self.colliders()).collect());
-                // A descending plate carries Alice; a closing gate waits instead of crushing.
-                let lift = self.data.doors[i].slide * (p - old);
-                let on_plate = i == 0
-                    && player.grounded
-                    && (player.feet.z
-                        - (self.data.doors[i].top + old * self.data.doors[i].slide.z))
-                        .abs()
-                        < 1.
-                    && self.data.doors[i]
-                        .shape
-                        .at(
-                            self.data.doors[i].base + self.data.doors[i].slide * old,
-                            Quat::IDENTITY,
-                        )
-                        .rider_feet(player.feet)
-                        .is_some();
-                let candidate = player.feet + if on_plate { lift } else { Vec3::ZERO };
-                if world.body_clear(candidate) {
-                    player.feet = candidate;
-                } else {
-                    self.saved.doors[i] = old;
-                }
-            }
-            world.set_dynamic(fixed.iter().cloned().chain(self.colliders()).collect());
-        }
-        Ok(())
+    fn advance(&mut self, dt: f32, _: &Bsp, world: &mut World,
+        player: &mut Player, fixed: &[Collider]) -> Result<()> {
+        self.advance_players(dt, world, &mut [player], fixed)
+    }
+    fn coop_advance(&mut self, dt: f32, _: &Bsp, world: &mut World,
+        players: &mut [&mut Player], fixed: &[Collider]) -> Result<()> {
+        self.advance_players(dt, world, players, fixed)
+    }
+    fn coop_events(&mut self) -> Events {
+        let mut events = Events::default();
+        events.transition = self.saved.exit.request(EXIT);
+        events
     }
     fn transforms(&self) -> Vec<(usize, Vec3, Quat)> {
         self.data
@@ -289,6 +303,21 @@ pub static REGISTRATION: Registration = Registration {
     target_base: None,
     story_beats: &[],
     checks: &[
+        Check {
+            flag: "--hedge1-coop-route-check",
+            help: "Escort the Maze child with two players through the actual tower exit.",
+            run: Run::Windowed(coop_route::check),
+        },
+        Check {
+            flag: "--hedge1-coop-check",
+            help: "Verify paired maze plate, gates, child contacts and saved continuation.",
+            run: Run::Headless(coop_check::check),
+        },
+        Check {
+            flag: "--hedge1-coop-cast-check",
+            help: "Verify real paired Maze cast contacts and either player's escort triggers.",
+            run: Run::Windowed(|a| Box::pin(coop_check::cast(a))),
+        },
         Check {
             flag: "--hedge1-check",
             help: "Verify the maze escort gate, plate, pause and saves.",

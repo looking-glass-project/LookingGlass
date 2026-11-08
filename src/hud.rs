@@ -201,6 +201,27 @@ impl Hud {
         input: &crate::input::Input,
         prefs: &crate::preferences::Preferences,
     ) {
+        self.draw_with_retry(stats, catalog, inventory, input, prefs, true);
+    }
+    /// Co-op owns the spectator countdown and automatic recovery prompt.
+    pub fn draw_coop(
+        &self,
+        stats: &Stats,
+        catalog: &Catalog,
+        input: &crate::input::Input,
+        prefs: &crate::preferences::Preferences,
+    ) {
+        self.draw_with_retry(stats, catalog, false, input, prefs, false);
+    }
+    fn draw_with_retry(
+        &self,
+        stats: &Stats,
+        catalog: &Catalog,
+        inventory: bool,
+        input: &crate::input::Input,
+        prefs: &crate::preferences::Preferences,
+        show_retry: bool,
+    ) {
         let text_scale = crate::ui::overlay_scale();
         if !inventory {
             if let Some((kind, time)) = stats.active_power() {
@@ -260,7 +281,7 @@ impl Hud {
         // The handles cover the cards' hinges on both sides.
         self.meter(0, stats.sanity(), 24. * s, y, s);
         self.meter(1, stats.will(), w - 48. * s, y, s);
-        if !stats.alive() {
+        if show_retry && !stats.alive() {
             let r = Rect::new(
                 (w - 440. * text_scale).max(16. * text_scale) * 0.5,
                 h * 0.34,

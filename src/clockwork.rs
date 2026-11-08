@@ -313,10 +313,12 @@ impl Automaton {
         for victim in self.opponents.bodies(eye) {
             let bit = if victim.id == crate::dice::SUMMON {
                 2
+            } else if victim.id == crate::combat::COOP_RED {
+                4
             } else {
                 1
             };
-            if self.steam_hits & bit != 0 || (victim.id == crate::dice::ALICE && self.notarget) {
+            if self.steam_hits & bit != 0 || (crate::combat::player_id(victim.id) && self.notarget) {
                 continue;
             }
             let delta = victim.center - origin;
@@ -587,7 +589,7 @@ impl Automaton {
                         && self.fists.is_empty()
                         && self.impacts.is_empty()))
                 && self.contacts < 8
-                && self.steam_hits < 4
+                && self.steam_hits < 8
                 && self.recoil.valid()
                 && self.last_seen.is_finite()
                 && (0. ..=3.).contains(&self.memory)
@@ -608,7 +610,7 @@ impl Automaton {
                 && f.direction.is_finite()
                 && (f.direction.length_squared() - 1.).abs() < 0.01
                 && (0. ..=5.).contains(&f.age)
-                && matches!(f.victim, crate::dice::ALICE | crate::dice::SUMMON))
+                && crate::combat::opponent_id(f.victim))
                 && self
                     .impacts
                     .iter()

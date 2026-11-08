@@ -2,8 +2,16 @@
 mod art;
 mod battle;
 mod check;
+mod coop;
+mod coop_check;
+mod coop_scene_check;
+mod coop_world_check;
 mod data;
 mod motion;
+mod network_exit;
+mod network_pendulums;
+pub(crate) use network_pendulums::{NetworkPendulums, PendulumReport};
+pub(crate) use network_exit::{NetworkExit, ExitReport};
 mod presentation_check;
 mod performance_check;
 mod route;
@@ -77,6 +85,8 @@ struct Saved {
     essence_wait: f32,
     essence_generation: u32,
     exit: ExitState,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    coop: Option<coop::State>,
 }
 impl state::State for Saved {
     const VERSION: u8 = 1;
@@ -173,6 +183,7 @@ impl state::State for Saved {
         if let Some(s) = &self.scene {
             s.validate()?;
         }
+        if let Some(s) = &self.coop { s.validate(self)?; }
         Ok(())
     }
 }
@@ -181,6 +192,24 @@ struct Funhouse {
     data: data::Data,
     objects: Vec<motion::Object>,
 }
+
+/// Local route diagnostics only: a goal on a named, currently transformed board.
+#[derive(Clone, Debug, Serialize)]
+pub(crate) struct RouteSurface {
+    pub entity: usize,
+    pub requested: Vec3,
+    pub goal: Vec3,
+    pub supported: [bool; 2],
+}
+
+pub(crate) fn route_surface(ctl: &dyn LevelController, entity: usize, requested: Vec3,
+    players: [&Player; 2]) -> Option<RouteSurface> {
+    let o = ctl.downcast_ref::<Funhouse>()?;
+    let goal = o.surface_goal(entity, requested)?;
+    Some(RouteSurface { entity, requested, goal,
+        supported: players.map(|p| o.surface_supports(entity, p)) })
+}
+
 impl Funhouse {
     fn load(a: &mut Assets, map: &Bsp) -> Result<Self> {
         let data = data::Data::load(a, map)?;
@@ -223,6 +252,7 @@ impl Funhouse {
                 essence_wait: 0.,
                 essence_generation: 0,
                 exit: Default::default(),
+                coop: None,
             },
             data,
             objects,
@@ -249,6 +279,35 @@ impl Funhouse {
 impl LevelController for Funhouse {
     fn id(&self) -> &'static str {
         "funhouse"
+    }
+    fn coop_prepare(&mut self, players:&mut [crate::level::CoopPlayer<'_>;2]) { self.pair_prepare(players); }
+    fn coop_advance_roster(&mut self,dt:f32,map:&Bsp,world:&mut World,
+        players:&mut [crate::level::CoopPlayer<'_>;2],fixed:&[Collider])->Result<()> {
+        self.pair_advance(dt,map,world,players,fixed)
+    }
+    fn coop_boarding_ready(&self,thread:&str,feet:&[Vec3])->Option<bool> {
+        (thread=="Funhouse_Rotate_Tuber").then(||!feet.is_empty() && feet.iter().all(|at| {
+            let c=*at+PLAYER_CENTER;
+            self.data.tube_boarding.trace(c,c,PLAYER_HALF).start_solid
+        }))
+    }
+    fn coop_scene_step(&mut self, owner:usize, _player:&mut Player, stats:&mut Stats) { self.pair_scene(owner,stats); }
+    fn coop_reunion_limits(&self, player:&Player)->Option<(f32,f32)> {
+        // The arrival stand only fits the original actor and withdraws two
+        // seconds later. Reunite on the adjacent lower corridor, retaining the
+        // shared swept-path, full-footprint and hazard checks.
+        (self.saved.arrived && self.saved.stand.is_some()
+            && player.feet.distance(self.data.points["funhouse_start1"].translation)<8.)
+            .then_some((256.,256.))
+    }
+    fn coop_contacts(&mut self, _dt:f32, players:&mut [crate::level::CoopPlayer<'_>;2])->Option<usize> {
+        self.pair_actor(players)
+    }
+    fn coop_combat_roster(&mut self, dt:f32, world:&World, players:&mut [crate::level::CoopPlayer<'_>;2])->Feedback {
+        self.pair_fight(dt,world,players)
+    }
+    fn coop_update(&mut self, _index:usize, world:&mut World, player:&Player, aim:Vec3, use_pressed:bool)->Events {
+        self.update(world,player,aim,use_pressed)
     }
     fn facts(&self) -> Facts {
         let mut f = Facts::default();
@@ -360,7 +419,10 @@ impl LevelController for Funhouse {
         }
     }
     fn scripted(&self) -> bool {
-        self.saved
+        // Co-op must retain its actor for the update that delivers a committed
+        // exit. A dead partner needs no reunion; releasing control immediately
+        // would otherwise skip that update and strand the surviving player.
+        (self.saved.coop.is_some() && self.saved.exit.committed) || self.saved
             .scene
             .as_ref()
             .is_some_and(|s| s.kind != Kind::Jack)
@@ -657,6 +719,21 @@ pub static REGISTRATION: Registration = Registration {
         ),
     ],
     checks: &[
+        Check {
+            flag: "--funhouse-coop-scene-check",
+            help: "Verify paired scene ownership, skipping, saved cameras and safe reunion.",
+            run: Run::Headless(coop_scene_check::check),
+        },
+        Check {
+            flag: "--funhouse-coop-world-check",
+            help: "Verify paired machinery, tube boarding and automatic scene ownership.",
+            run: Run::Headless(coop_world_check::check),
+        },
+        Check {
+            flag: "--funhouse-coop-check",
+            help: "Verify paired Tweedle targeting, attacks, healing and saved combat state.",
+            run: Run::Headless(coop_check::check),
+        },
         Check {
             flag: "--funhouse-route-check",
             help: "Walk the Normal Mirror Image route with native enemies.",

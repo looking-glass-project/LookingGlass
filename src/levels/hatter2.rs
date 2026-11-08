@@ -2,6 +2,12 @@
 mod art;
 mod battle;
 mod check;
+mod coop;
+mod coop_check;
+mod coop_items;
+mod coop_scene_check;
+mod coop_world;
+mod coop_world_check;
 mod data;
 mod saves;
 mod scene;
@@ -75,6 +81,21 @@ pub static REGISTRATION: super::Registration = super::Registration {
     ],
     checks: &[
         super::Check {
+            flag: "--hatter2-coop-check",
+            help: "Verify paired Hatter rewards, boarding and shared machinery.",
+            run: super::Run::Headless(coop_world_check::check),
+        },
+        super::Check {
+            flag: "--hatter2-coop-scene-check",
+            help: "Verify original Hatter speech and owned Gryphon escape scenes.",
+            run: super::Run::Headless(coop_scene_check::check),
+        },
+        super::Check {
+            flag: "--hatter2-coop-combat-check",
+            help: "Verify paired Hatter targeting, personal impacts and shared combat clocks.",
+            run: super::Run::Headless(coop_check::check),
+        },
+        super::Check {
             flag: "--hatter2-check",
             help: "Verify Hatter attacks, clock phases, lifts, rewards and restoration.",
             run: super::Run::Headless(check::check),
@@ -114,6 +135,8 @@ struct Wave {
 }
 #[derive(Clone, Serialize, Deserialize)]
 struct Saved {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    coop: Option<coop::State>,
     version: u8,
     phase: Phase,
     time: f32,
@@ -146,6 +169,9 @@ impl state::State for Saved {
         self.version
     }
     fn validate(&self, _: state::Visit) -> Result<()> {
+        if let Some(coop) = &self.coop {
+            coop.validate(self)?;
+        }
         for (n, t, max) in [
             ("scene", self.time, 3600.),
             ("world", self.clock, 86400.),
@@ -228,6 +254,7 @@ impl Encounter {
         let mut o = Self {
             data,
             saved: Saved {
+                coop: None,
                 version: 1,
                 phase: Phase::Arrival,
                 time: 0.,
@@ -372,6 +399,60 @@ impl Encounter {
 impl LevelController for Encounter {
     fn id(&self) -> &'static str {
         "hatter2"
+    }
+    fn coop_prepare(&mut self, players: &mut [crate::level::CoopPlayer<'_>; 2]) {
+        self.pair_prepare(players);
+    }
+    fn coop_contacts(
+        &mut self,
+        dt: f32,
+        players: &mut [crate::level::CoopPlayer<'_>; 2],
+    ) -> Option<usize> {
+        self.pair_pickups(dt, players);
+        None
+    }
+    fn coop_advance_roster(
+        &mut self,
+        dt: f32,
+        map: &Bsp,
+        world: &mut World,
+        players: &mut [crate::level::CoopPlayer<'_>; 2],
+        fixed: &[Collider],
+    ) -> Result<()> {
+        self.pair_advance(dt, map, world, players, fixed)
+    }
+    fn coop_boarding_ready(&self, thread: &str, feet: &[Vec3]) -> Option<bool> {
+        (thread == "drawbridgeMove").then(|| {
+            let edge = self.data.points["drawbridge"].translation.y;
+            !feet.is_empty()
+                && feet
+                    .iter()
+                    .all(|p| p.y - crate::collision::PLAYER_HALF.y >= edge)
+        })
+    }
+    fn coop_update(
+        &mut self,
+        _: usize,
+        world: &mut World,
+        player: &Player,
+        aim: Vec3,
+        pressed: bool,
+    ) -> Events {
+        self.update(world, player, aim, pressed)
+    }
+    fn coop_scene_bound(&mut self, owner: usize, player: &Player) {
+        self.pair_bind_scene(owner, player);
+    }
+    fn coop_scene_step(&mut self, owner: usize, player: &mut Player, stats: &mut Stats) {
+        self.pair_scene(owner, player, stats);
+    }
+    fn coop_combat_roster(
+        &mut self,
+        dt: f32,
+        world: &World,
+        players: &mut [crate::level::CoopPlayer<'_>; 2],
+    ) -> Feedback {
+        self.pair_fight(dt, world, players)
     }
     fn facts(&self) -> crate::event::Facts {
         let mut f = crate::event::Facts::default();

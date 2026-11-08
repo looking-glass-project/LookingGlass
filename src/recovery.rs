@@ -53,7 +53,7 @@ pub struct Recovery {
     departures: VecDeque<Footing>,
 }
 
-fn supported(world: &World, feet: Vec3) -> bool {
+pub(crate) fn supported(world: &World, feet: Vec3) -> bool {
     if !world.body_clear(feet) || Immersion::sample(world, feet).level != 0 {
         return false;
     }

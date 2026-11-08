@@ -1,6 +1,8 @@
 //! Icy Reception: ice collapse, rolling hazards, wall smash and the Caterpillar portal.
 mod art;
 mod check;
+mod coop_check;
+mod coop_route;
 mod course;
 mod course_check;
 mod data;
@@ -238,6 +240,13 @@ impl Garden {
     fn ready(&self) -> bool {
         self.saved.complete && self.saved.enable_delay == 0. && !self.saved.exit.committed
     }
+    fn advance_clocks(&mut self, dt: f32) {
+        self.saved.fade = (self.saved.fade - dt).max(0.);
+        self.saved.idle = (self.saved.idle + dt).min(1e6);
+        if let Some(t) = &mut self.saved.outro { *t = (*t + dt).min(600.); }
+        self.saved.exit.advance(dt);
+        self.saved.enable_delay = (self.saved.enable_delay - dt).max(0.);
+    }
     fn finish(&mut self, w: &World, p: &mut Player) -> Result<()> {
         let Some(s) = &mut self.saved.scene else {
             return Ok(());
@@ -395,13 +404,7 @@ impl LevelController for Garden {
         }
         let dt = dt.min(0.1);
         self.course_step(dt, map, w, p, fixed)?;
-        self.saved.fade = (self.saved.fade - dt).max(0.);
-        self.saved.idle = (self.saved.idle + dt).min(1e6);
-        if let Some(t) = &mut self.saved.outro {
-            *t = (*t + dt).min(600.);
-        }
-        self.saved.exit.advance(dt);
-        self.saved.enable_delay = (self.saved.enable_delay - dt).max(0.);
+        self.advance_clocks(dt);
         if let Some(s) = &mut self.saved.scene {
             let line_time = s.clock.line_time;
             let mut run = SceneRunner {
@@ -435,6 +438,41 @@ impl LevelController for Garden {
             }
         }
         Ok(())
+    }
+    fn coop_advance_roster(&mut self, dt: f32, map: &Bsp, world: &mut World,
+        players: &mut [crate::level::CoopPlayer<'_>; 2], fixed: &[Collider]) -> Result<()> {
+        if !dt.is_finite() || dt <= 0. || self.scripted() { return Ok(()); }
+        let dt = dt.min(0.1);
+        let previous = self.course().coop_previous.unwrap_or([None; 2]);
+        let feet = std::array::from_fn(|i|players[i].stats.alive().then_some(players[i].player.feet));
+        if self.data.easy && self.course().altar.is_none() && feet.iter().enumerate().any(|(i,at)|
+            at.is_some_and(|at|self.data.easy_altar.touches(
+                previous[i].unwrap_or(at)+crate::collision::PLAYER_CENTER,
+                at+crate::collision::PLAYER_CENTER, crate::collision::PLAYER_HALF))) {
+            self.course_event("Ice_Fall3");
+        }
+        self.course_mut().coop_previous = Some(feet);
+        let targets = players.iter().enumerate().filter(|(_,p)|p.stats.alive())
+            .map(|(id,p)|crate::combat::Target {id,
+                center:p.player.feet+crate::collision::PLAYER_CENTER,
+                half:crate::collision::PLAYER_HALF}).collect::<Vec<_>>();
+        for (id,damage,impulse) in self.course_targets(dt,&targets)? {
+            players[id].stats.damage(damage);
+            players[id].player.knockback(impulse);
+        }
+        self.advance_clocks(dt);
+        self.rebuild(map)?;
+        world.set_dynamic(fixed.iter().cloned().chain(self.colliders()).collect());
+        Ok(())
+    }
+    fn coop_respawned(&mut self, player: usize) {
+        if let Some(previous) = &mut self.course_mut().coop_previous { previous[player] = None; }
+    }
+    fn coop_scene_step(&mut self, _: usize, player: &mut Player, stats: &mut Stats) {
+        self.prepare_player(stats,player);
+        // The shared scene reunites players at a new position; don't sweep the
+        // Easy altar from the pre-scene position after that relocation.
+        self.course_mut().coop_previous = None;
     }
     fn skip(&mut self, _: &Bsp, _: &mut World, _: &mut Player, story: &mut Story) -> Result<bool> {
         let Some(s) = &mut self.saved.scene else {
@@ -742,6 +780,16 @@ pub static REGISTRATION: Registration = Registration {
         BeatSpec::linear("garden4", END, "garden4_cinematics", END, 1),
     ],
     checks: &[
+        Check {
+            flag: "--garden4-coop-route-check",
+            help: "Walk paired Icy Reception through the original hazards, vents and Flora exit.",
+            run: Run::Windowed(coop_route::check),
+        },
+        Check {
+            flag: "--garden4-coop-check",
+            help: "Verify paired ice hazards, shared clocks and original scene reunions.",
+            run: Run::Headless(coop_check::check),
+        },
         Check {
             flag: "--garden4-route-check",
             help: "Walk Icy Reception from the entrance into Fungiferous Flora.",

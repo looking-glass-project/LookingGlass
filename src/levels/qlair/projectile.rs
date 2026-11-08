@@ -130,7 +130,9 @@ impl Impact {
                 .mark
                 .as_ref()
                 .is_none_or(|s| s.len() < 150 && !s.contains(".."))
-            && (0. ..=256.).contains(&self.mark_radius)
+            // The Queen's native comet/jack effects use 300-unit marks.
+            // Keep the authored radius valid in saves and replicated impacts.
+            && (0. ..=1024.).contains(&self.mark_radius)
     }
 }
 pub(super) fn first_seek() -> f32 {
@@ -167,7 +169,7 @@ fn splash(
         let offset = body.center - origin;
         let distance = offset.length();
         let falloff = (1. - distance / spec.radius.max(1.)).max(0.);
-        let inner = if body.id == crate::dice::ALICE {
+        let inner = if combat::player_id(body.id) {
             0.25
         } else {
             0.5

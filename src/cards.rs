@@ -520,12 +520,18 @@ impl Guard {
                 } else {
                     80. * self.scale
                 };
-        let (aim, notarget, victim) = self.opponents.aim(
+        let vision = self.vision;
+        let memory = self.memory;
+        let forward = vec2(self.yaw.cos(), self.yaw.sin());
+        let cone = if self.kind == Kind::Heart { -0.866 } else { -0.766 };
+        let (aim, notarget, victim) = self.opponents.aim_with(
             world,
             from,
             eye,
             self.notarget,
             !self.loops() && self.phase != Phase::Alert,
+            |eye| eye.distance(from) < vision && (memory > 0.
+                || forward.dot((eye - from).truncate().normalize_or_zero()) > cone),
         );
         let delta = aim - from;
         let distance = delta.truncate().length();
@@ -760,7 +766,7 @@ impl Guard {
                     && s.direction.is_finite()
                     && (s.direction.length() - 1.).abs() < 0.01
                     && (0. ..=5.).contains(&s.age)
-                    && [crate::dice::ALICE, crate::dice::SUMMON].contains(&s.victim),
+                    && crate::combat::opponent_id(s.victim),
                 "Invalid card shot"
             );
         }

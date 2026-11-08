@@ -1,6 +1,8 @@
 //! Mystifying Madness: two one-use levers and their persistent door choreography.
 mod art;
 mod check;
+mod coop_check;
+mod coop_route;
 mod route;
 mod saves;
 use super::{state, Check, Registration, Run};
@@ -294,6 +296,51 @@ impl Maze {
             && !self.scripted()
     }
 }
+impl Maze {
+    fn move_doors(&mut self, dt: f32, map: &Bsp, w: &mut World,
+        feet: &[Vec3], fixed: &[Collider]) -> Result<()> {
+        if let Some(t) = &mut self.saved.release {
+            *t = (*t + dt).min(0.1);
+        }
+        let tunnel = self.saved.finished[0]
+            || self
+                .saved
+                .scene
+                .as_ref()
+                .is_some_and(|s| s.index == 0 && s.time >= 8.);
+        let end = self.saved.finished[1]
+            || self
+                .saved
+                .scene
+                .as_ref()
+                .is_some_and(|s| s.index == 1 && s.time >= 1.);
+        let release = self.saved.release == Some(0.1);
+        let goals = [!release, release, release, tunnel, end, end];
+        // Rebuild each attempted physical step and reject a closing leaf that overlaps Alice.
+        // Cutaway clocks keep running even if a player blocks the returning trapdoor.
+        for k in 0..6 {
+            let old = self.saved.motion[k];
+            let target = if goals[k] { 1. } else { 0. };
+            let step = dt / self.objects[k].duration;
+            self.saved.motion[k] = if old < target {
+                (old + step).min(target)
+            } else {
+                (old - step).max(target)
+            };
+            if old == self.saved.motion[k] {
+                continue;
+            }
+            self.rebuild(map)?;
+            w.set_dynamic(fixed.iter().cloned().chain(self.colliders()).collect());
+            if feet.iter().any(|p| !w.body_clear(*p)) {
+                self.saved.motion[k] = old;
+                self.rebuild(map)?;
+            }
+        }
+        w.set_dynamic(fixed.iter().cloned().chain(self.colliders()).collect());
+        Ok(())
+    }
+}
 impl LevelController for Maze {
     fn id(&self) -> &'static str {
         "hedge2"
@@ -325,6 +372,23 @@ impl LevelController for Maze {
         }) {
             p.breath.refill();
         }
+    }
+    fn coop_prepare(&mut self, players: &mut [crate::level::CoopPlayer<'_>; 2]) {
+        for p in players.iter_mut().filter(|p| p.stats.alive()) {
+            self.prepare_player(p.stats, p.player);
+        }
+    }
+    fn coop_update(&mut self, _: usize, w: &mut World, p: &Player,
+        aim: Vec3, pressed: bool) -> Events {
+        self.update(w, p, aim, pressed)
+    }
+    fn coop_advance(&mut self, dt: f32, map: &Bsp, w: &mut World,
+        players: &mut [&mut Player], fixed: &[Collider]) -> Result<()> {
+        if !dt.is_finite() || dt <= 0. || players.is_empty() || self.scripted() {
+            return Ok(());
+        }
+        self.move_doors(dt.min(0.1), map, w,
+            &players.iter().map(|p| p.feet).collect::<Vec<_>>(), fixed)
     }
     fn active_npcs(&self) -> Vec<usize> {
         if self.saved.fired[0] {
@@ -365,7 +429,7 @@ impl LevelController for Maze {
         p: &mut Player,
         fixed: &[Collider],
     ) -> Result<()> {
-        if dt <= 0. {
+        if !dt.is_finite() || dt <= 0. {
             return Ok(());
         }
         let dt = dt.min(0.1);
@@ -393,46 +457,7 @@ impl LevelController for Maze {
                 self.finish(k);
             }
         }
-        if let Some(t) = &mut self.saved.release {
-            *t = (*t + dt).min(0.1);
-        }
-        let tunnel = self.saved.finished[0]
-            || self
-                .saved
-                .scene
-                .as_ref()
-                .is_some_and(|s| s.index == 0 && s.time >= 8.);
-        let end = self.saved.finished[1]
-            || self
-                .saved
-                .scene
-                .as_ref()
-                .is_some_and(|s| s.index == 1 && s.time >= 1.);
-        let release = self.saved.release == Some(0.1);
-        let goals = [!release, release, release, tunnel, end, end];
-        // Rebuild each attempted physical step and reject a closing leaf that overlaps Alice.
-        // Cutaway clocks keep running even if a player blocks the returning trapdoor.
-        for k in 0..6 {
-            let old = self.saved.motion[k];
-            let target = if goals[k] { 1. } else { 0. };
-            let step = dt / self.objects[k].duration;
-            self.saved.motion[k] = if old < target {
-                (old + step).min(target)
-            } else {
-                (old - step).max(target)
-            };
-            if old == self.saved.motion[k] {
-                continue;
-            }
-            self.rebuild(map)?;
-            w.set_dynamic(fixed.iter().cloned().chain(self.colliders()).collect());
-            if !w.body_clear(p.feet) {
-                self.saved.motion[k] = old;
-                self.rebuild(map)?;
-            }
-        }
-        w.set_dynamic(fixed.iter().cloned().chain(self.colliders()).collect());
-        Ok(())
+        self.move_doors(dt, map, w, &[p.feet], fixed)
     }
     fn transforms(&self) -> Vec<(usize, Vec3, Quat)> {
         self.objects
@@ -584,6 +609,16 @@ pub static REGISTRATION: Registration = Registration {
     target_base: Some(9_000_000),
     story_beats: &[],
     checks: &[
+        Check {
+            flag: "--hedge2-coop-route-check",
+            help: "Traverse paired maze combat, levers and water passages with ordinary inputs.",
+            run: Run::Windowed(coop_route::check),
+        },
+        Check {
+            flag: "--hedge2-coop-check",
+            help: "Verify paired machinery, personal contacts and saved continuation.",
+            run: Run::Headless(coop_check::check),
+        },
         Check {
             flag: "--hedge2-check",
             help: "Check hedge levers, movers, cutaways and saved gates.",

@@ -261,11 +261,8 @@ fn walk(a: &mut Assets, skip: bool) -> Result<()> {
     }
     Ok(())
 }
-pub(crate) fn drive(a: &mut Assets, r: &mut crate::route::Route) -> Result<()> {
-    let skip = r.skip_cinematics;
-    r.tactics = true;
-    r.stop_at_exit = true;
-    let goals: Vec<[f32; 3]> = if let Ok(path) = std::env::var("LOOKING_GLASS_CENTIPEDE1_ROUTE") {
+pub(super) fn goals() -> Result<Vec<[f32; 3]>> {
+    Ok(if let Ok(path) = std::env::var("LOOKING_GLASS_CENTIPEDE1_ROUTE") {
         serde_json::from_slice(&std::fs::read(path)?)?
     } else {
         vec![
@@ -282,7 +279,13 @@ pub(crate) fn drive(a: &mut Assets, r: &mut crate::route::Route) -> Result<()> {
             [-256., 4100., -680.],
             [-280., 4820., -704.],
         ]
-    };
+    })
+}
+pub(crate) fn drive(a: &mut Assets, r: &mut crate::route::Route) -> Result<()> {
+    let skip = r.skip_cinematics;
+    r.tactics = true;
+    r.stop_at_exit = true;
+    let goals = goals()?;
     for xyz in goals {
         let guess = Vec3::from_array(xyz);
         let goal = [0., 64., 128., -64.]

@@ -1,5 +1,19 @@
 # Labyrinthine Revenge
 
+## Normal co-op route
+
+The paired production-Arena course on `714bd1f` reaches actual Machinations
+with both players alive at 95/25 health. It records 138,944 ticks, 1,158 exact
+compressed replicas and eight ordinary revivals, each exactly ten active
+seconds at 25 health. Personal resources carry into the next level unchanged.
+No gameplay, save or networking behavior changed for this diagnostic.
+
+The driver uses live gear poses, ordinary Watch/Staff/Ice inputs, personal
+waypoint and hammer timing, normal Will regeneration under cover, and a safe
+regrouping stop before the exit. Run `tools/test_coop_native_route.py --map hedge3 --exe <exe> --data <base-directory> --profile <new-directory>` in Anode.
+This establishes normal paired progression and recovery; internet transport
+and rendered views have separate evidence. All 949 active Rust tests pass.
+
 Use `Launch.cmd` for ordinary play, or `tools/launchers/Launch-Labyrinthine-Revenge.cmd`
 to start this visit with separate playtest saves.
 

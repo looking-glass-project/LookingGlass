@@ -1,5 +1,66 @@
 # Jabberwock: both major battles
 
+## Co-op scenes, rewards and exit (2026-11-06)
+
+Build `ccd6cd15eecf026f4d9694b5a69a2f9382f994c396c4278493b8401b8e3aaf5d`
+adds the remaining paired progression hooks. The Lair finale uses the normal
+trigger ordering after the survival timer opens its gate, retaining a waiting
+first entrant. Royal Rage advances its original death/fall sequence once, then
+binds the finale to the nearest living Alice. Both keep the original single
+Alice camera/performance, hide and freeze the partner, and use the normal safe
+reunion. Watched, skipped, paused and restored outcomes preserve personal stats.
+
+The Lair Eye Staff and its local model/effect availability are personal. Each
+living player collects once and receives the ordinary weapon pickup's own Will
+refill. The first collection neither consumes nor refills the partner's copy.
+The departure countdown starts after both collections; a dead partner who has
+not collected can do so after revival. Failed departure retries without another
+use press. Optional validated world state preserves older solo and paired saves.
+
+Royal Rage's drawbridge is a crossing that lowers from vertical, not a passenger
+lift. Its clock starts after the cinematic reunion. Living riders move together
+only when both proposed positions and paths are clear; an obstruction stops
+the brush without moving either rider. Dead bodies do not block or ride it.
+Either living Alice can open the castle door. Shared epilogue clocks advance
+once, and duplicate contacts do not restart them.
+
+`--jlair2-coop-world-check` passes 21 supplied-map cases.
+`--jlair2-coop-scene-check` passes 32 scene combinations plus two ordinary-input
+post-battle walks across the bridge, through the gate and into the real exit
+trigger, with either player leading. These fixtures stage battle prerequisites;
+they do not bypass prerequisites during ordinary play. All 58 earlier combat
+cases also pass. The two original solo checks and two solo routes produce
+byte-identical logs to `7c3ca24`. Full two-client combat-to-exit traversal,
+rendered effects and per-encounter death/wipe/rejoin acceptance remain open.
+
+## Co-op combat and personal healing (2026-11-06)
+
+The host now advances each boss and its waves once, retaining the original
+120 Hz battle schedule and boss immunity/health rules. The boss chooses the
+nearest visible living Alice; committed attacks retain their target until it
+becomes ineligible. Melee, breath, beam and spiral collision use both living
+bodies, and a spiral can damage the other player with its ordinary visible
+splash without damaging its direct victim twice. Dive contact can hit both
+overlapping bodies once. Each of the six Lair wave actors retains its target
+slot across a save. A living player's Pocket Watch stops the same spirals and
+waves as solo play; it does not freeze the boss or breath packets.
+
+Healing is individual, including the current pickup location, eight-second
+cooldown and local art visibility. Importing a solo save initializes both
+players from that save's current cycle/cooldown. Collection cannot heal the
+partner, consume their pickup or revive a dead player. Optional validated
+co-op state preserves existing solo snapshots and compressed co-op restores.
+
+On frozen source `7c3ca2407b8bd1378499a813103a913152e67a7a2292404622bf77bf1671a8b3`,
+`--jlair2-coop-check` passes 58 staged cases using the supplied rigs across both
+maps. It runs headlessly without screenshots. The two existing solo checks and
+two production-input solo routes pass with byte-identical logs to `c6f580e`.
+Private manifests retain executable/source hashes and per-check receipts.
+
+That build was a combat/resource milestone; the follow-up above adds paired
+victory scenes, Eye Staff reward, drawbridge and exit progression. No full paired route,
+internet rejoin, encounter death/recovery or rendered-effects pass is claimed.
+
 ## Eye altar visibility correction (2026-10-01)
 
 The placed Eye Staff altar emitted its purple plume during the introduction and
@@ -117,6 +178,48 @@ fixtures passed in fresh reader processes. The release build and both launchers
 also passed smoke checks. Clippy on the source snapshot completed with 22
 existing warnings and none in the new encounter modules; a global
 `-D warnings` run remains blocked by those baseline warnings.
+
+## Co-op playable survival route, 7 November 2026
+
+Run `--jlair2-coop-route-check --no-audio` in Anode with an isolated profile.
+This accelerated check uses both production characters, the full Arena pipeline
+and ordinary movement/weapon inputs. It starts at the normal entrance with the
+normal level inventory; it does not seed a battle timer, scene outcome, reward,
+player position or health. Original scenes play without skipping. A separately
+restored arena checks compressed snapshots once per simulated second.
+
+Build `bfdf5b3` passes the full 24,348-tick route in about eight seconds: the
+90-second battle, wave appearances at 30/60 seconds, two scene reunions, both
+personal Eye Staff collections and actual forest-return placement. All 203
+arena replicas match. Both players finish alive at 100/75 health without a
+revival or checkpoint rollback, and the arrival preserves personal resources.
+The initial final assertion wrongly required wave actors after outro cleanup;
+the final check verifies their observed appearances during combat instead.
+
+The report is `jlair2-coop-route.json` in the chosen profile. It includes the
+build identity, phases, wave timings, replicas, final players/world, destination
+and recent inputs, including on a failed attempt. No screenshots are captured.
+This proves normal paired progression, not independent-process internet
+delivery. Internet/core-flow evidence is tracked separately. The 944 active
+Rust tests, locked release build, seven package checks and source audit pass.
+
+## Co-op playable Royal Rage route, 7 November 2026
+
+`--grounds1-coop-route-check --no-audio` uses the same accelerated production
+Arena runner from the normal Royal Rage entrance. Both players fight with
+their actual starting weapons and resources; the fixture does not seed boss
+damage, defeat, scenes or bridge/gate progression. It watches the original
+introduction and farewell, waits for the drawbridge to lower, walks each player
+across a separate lane to the gate, then activates the actual castle exit.
+
+Build `4f1d1ea` passes 18,802 simulation ticks and 157 matching compressed
+arena replicas. The boss finishes dead and landed; both scene reunions pass.
+Blue and Red reach the gate at ticks 18,429 and 18,430, before departure.
+Both arrive at `grounds2_start1` with unchanged personal resources, alive at
+100/72.27 health and without revival or checkpoint rollback. The profile report
+is `grounds1-coop-route.json`. The shared Lair regression remains unchanged at
+24,348 ticks, 203 replicas and 100/75 health. Both runs capture no screenshots.
+They prove normal paired progression, with internet transport covered separately.
 
 ## Remaining original-game parity limits
 

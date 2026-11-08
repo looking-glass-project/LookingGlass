@@ -8,6 +8,13 @@ pub(super) struct State {
     pub bridge: Option<f32>,
     pub rabbit: Option<f32>,
     pub rock_seen: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub coop: Option<CoopMotion>,
+}
+#[derive(Clone, Serialize, Deserialize)]
+pub(super) struct CoopMotion {
+    pub pads: [f32; 3],
+    pub bridge_time: f32,
 }
 impl State {
     pub fn validate(&self) -> Result<()> {
@@ -15,7 +22,16 @@ impl State {
         for t in [self.bridge, self.rabbit].into_iter().flatten() {
             state::clock("garden activation", t, self.time)?;
         }
+        if let Some(coop) = &self.coop {
+            for t in coop.pads { state::clock("paired garden lily", t, self.time)?; }
+            state::clock("paired garden bridge", coop.bridge_time, self.time)?;
+            ensure!(self.bridge.is_none_or(|start| coop.bridge_time >= start),
+                "Paired garden bridge precedes activation");
+        }
         Ok(())
+    }
+    pub fn enable_coop(&mut self) {
+        self.coop.get_or_insert(CoopMotion { pads: [self.time; 3], bridge_time: self.time });
     }
 }
 pub(super) struct Pad {
@@ -110,9 +126,9 @@ impl WorldData {
         Ok(Self { pads, brushes })
     }
     pub fn rebuild(&mut self, map: &Bsp, s: &State) -> Result<()> {
-        for p in &mut self.pads {
+        for (index,p) in self.pads.iter_mut().enumerate() {
             p.pose = Transform {
-                translation: p.path.sample(s.time, false).translation,
+                translation: p.path.sample(s.coop.as_ref().map_or(s.time, |c| c.pads[index]), false).translation,
                 rotation: p.base.rotation,
             };
             // Binding retains the editor-space offset; ignoreangles leaves pad yaw unchanged.
@@ -128,7 +144,7 @@ impl WorldData {
             let old = b.pose;
             b.pose = Some(b.base);
             if let Some(start) = s.bridge {
-                let t = s.time - start;
+                let t = s.coop.as_ref().map_or(s.time, |c| c.bridge_time) - start;
                 if b.id == 61 {
                     continue;
                 }
@@ -181,6 +197,60 @@ impl WorldData {
             .filter_map(|b| b.pose.map(|p| (b.model, p.translation, p.rotation)))
             .collect()
     }
+    /// Free-running loops have no boarding activation. Each pad advances once
+    /// and can wait for an obstruction without stopping another pad or the
+    /// world clock. The collapsing bridge commits all pieces/riders together.
+    pub fn carry_players(&mut self, dt: f32, map: &Bsp, s: &mut State,
+        w: &mut World, players: &mut [&mut Player], fixed: &[Collider],
+        portals: &[Collider]) -> Result<()> {
+        if !dt.is_finite() || dt <= 0. { return Ok(()); }
+        s.enable_coop();
+        let mut remaining = dt.min(0.1);
+        while remaining > 0.000001 {
+            let step = remaining.min(crate::movement::FIXED_DT);
+            remaining -= step;
+            let old_bridge = s.coop.as_ref().unwrap().bridge_time;
+            let previous_brushes: Vec<_> = self.brushes.iter()
+                .map(|b|(b.pose,b.collider.clone())).collect();
+            s.time = (s.time+step).min(1e7);
+            s.coop.as_mut().unwrap().bridge_time = (old_bridge+step).min(s.time);
+            for index in 0..self.pads.len() {
+                let old_clock = s.coop.as_ref().unwrap().pads[index];
+                let from = self.pads[index].pose;
+                let previous = self.pads[index].collider.clone();
+                s.coop.as_mut().unwrap().pads[index] = (old_clock+step).min(s.time);
+                self.rebuild(map,s)?;
+                w.set_dynamic(fixed.iter().cloned().chain(portals.iter().cloned())
+                    .chain(self.pads.iter().enumerate().filter(|(i,_)|*i!=index).map(|(_,p)|p.collider.clone()))
+                    .chain(self.brushes.iter().filter(|b|b.pose.is_some()).map(|b|b.collider.clone())).collect());
+                let pad = &self.pads[index];
+                if !super::coop::carry(w,&previous,&pad.collider,from,pad.pose,players) {
+                    s.coop.as_mut().unwrap().pads[index] = old_clock;
+                    self.rebuild(map,s)?;
+                }
+            }
+            let mut proposed: Vec<_> = players.iter().map(|p|(**p).clone()).collect();
+            let mut accepted = true;
+            for (index,(from,previous)) in previous_brushes.iter().enumerate() {
+                let (Some(from),Some(to)) = (*from,self.brushes[index].pose) else { continue; };
+                if from.translation==to.translation && from.rotation==to.rotation { continue; }
+                w.set_dynamic(fixed.iter().cloned().chain(portals.iter().cloned())
+                    .chain(self.pads.iter().map(|p|p.collider.clone()))
+                    .chain(self.brushes.iter().enumerate().filter(|(i,b)|*i!=index && b.pose.is_some())
+                        .map(|(_,b)|b.collider.clone())).collect());
+                if !super::coop::carry(w,previous,&self.brushes[index].collider,from,to,
+                    &mut proposed.iter_mut().collect::<Vec<_>>()) { accepted=false; break; }
+            }
+            if accepted {
+                for (player,next) in players.iter_mut().zip(proposed) { **player=next; }
+            } else {
+                s.coop.as_mut().unwrap().bridge_time = old_bridge;
+                self.rebuild(map,s)?;
+            }
+        }
+        w.set_dynamic(fixed.iter().cloned().chain(portals.iter().cloned()).chain(self.colliders()).collect());
+        Ok(())
+    }
     pub fn carry(
         &mut self,
         dt: f32,
@@ -224,6 +294,11 @@ impl WorldData {
                 ))
         });
         s.time = (s.time + dt).min(1e7);
+        // A single-Alice scene still advances the shared co-op machinery once.
+        if let Some(coop) = &mut s.coop {
+            for clock in &mut coop.pads { *clock = (*clock+dt).min(s.time); }
+            coop.bridge_time = (coop.bridge_time+dt).min(s.time);
+        }
         self.rebuild(map, s)?;
         w.set_dynamic(
             fixed

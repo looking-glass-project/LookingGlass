@@ -1,6 +1,8 @@
 //! Castle Keep: saved mirror/portrait progression and the final Cheshire scene.
 mod art;
 mod check;
+mod coop_check;
+mod route;
 mod data;
 mod guards;
 mod motion;
@@ -35,6 +37,8 @@ const EXIT: ExitSpec = ExitSpec {
 // Selection order is authored: club, diamond, spade. Correct portraits use the same order.
 const SUITS: [&str; 3] = ["club", "diamond", "spade"];
 const ANGLES: [f32; 3] = [60., 0., -60.];
+// Loot is scoped to this visit. Combat hit IDs still use BASE + entity.
+const LOOT_WAVE_STRIDE: usize = 1024;
 #[derive(Clone, Serialize, Deserialize)]
 struct Spawned {
     entity: usize,
@@ -76,6 +80,8 @@ struct Saved {
     head: crate::dismember::State,
     scene: Option<Scene>,
     spawned: Vec<Spawned>,
+    #[serde(default)]
+    spawn_generation: u16,
     exit: ExitState,
 }
 impl Default for Saved {
@@ -112,6 +118,7 @@ impl Default for Saved {
             head: Default::default(),
             scene: None,
             spawned: vec![],
+            spawn_generation: 0,
             exit: ExitState::default(),
         }
     }
@@ -191,6 +198,7 @@ impl state::State for Saved {
         ensure!(self.spawned.len() <= 5, "Unbounded Keep guard pool");
         let mut ids = std::collections::BTreeSet::new();
         for a in &self.spawned {
+            ensure!(a.entity < LOOT_WAVE_STRIDE, "Keep reward entity out of range");
             ensure!(ids.insert(a.entity), "Duplicate Keep guard");
             a.guard.validate()?;
             ensure!(
@@ -292,6 +300,7 @@ impl Keep {
         }
     }
     fn spawn_group(&mut self, group: &str) {
+        self.saved.spawn_generation = self.saved.spawn_generation.saturating_add(1);
         self.saved.spawned = self
             .data
             .spawns
@@ -317,6 +326,30 @@ impl Keep {
             && aim.normalize_or_zero().dot(d.normalize()) > 0.45
             && !t.start_solid
             && t.fraction >= 1.
+    }
+}
+impl Keep {
+    fn advance_clocks(&mut self, dt: f32) {
+        self.saved.clock = (self.saved.clock + dt).min(1e6);
+        self.saved.exit.advance(dt);
+        if self.saved.room.is_some() {
+            self.saved.room_time = (self.saved.room_time + dt).min(1.);
+        }
+        if self.saved.lost.is_some() {
+            self.saved.loss_time = (self.saved.loss_time + dt).min(1.5);
+        }
+        if self.saved.smashed.is_some() {
+            self.saved.win_time = (self.saved.win_time + dt).min(2.1);
+        }
+        if self.all_won()
+            && self.saved.win_time == 2.1
+            && !self.saved.heart_scene
+            && self.saved.scene.is_none()
+        {
+            self.saved.heart_scene = true;
+            self.saved.heart_open = true;
+            self.begin(Kind::Heart);
+        }
     }
 }
 impl LevelController for Keep {
@@ -492,6 +525,32 @@ impl LevelController for Keep {
             ..Default::default()
         }
     }
+    fn coop_prepare(&mut self, players: &mut [crate::level::CoopPlayer<'_>; 2]) {
+        for p in players.iter_mut().filter(|p| p.stats.alive()) { self.prepare_player(p.stats, p.player); }
+    }
+    fn coop_update(&mut self, _: usize, w: &mut World, p: &Player, aim: Vec3, pressed: bool) -> Events {
+        self.update(w, p, aim, pressed)
+    }
+    fn coop_events(&mut self) -> Events {
+        Events {transition: self.saved.exit.request(EXIT), ..Default::default()}
+    }
+    fn coop_advance(&mut self, dt: f32, map: &Bsp, w: &mut World,
+        players: &mut [&mut Player], fixed: &[Collider]) -> Result<()> {
+        if !dt.is_finite() || dt <= 0. || players.is_empty() || self.scripted() { return Ok(()); }
+        let dt = dt.min(0.1);
+        if players.iter().any(|p| p.feet.y > 1180. && p.feet.y < 1550. && (p.feet.x - 512.).abs() < 220.) {
+            self.saved.hall = 2.;
+        }
+        self.advance_clocks(dt);
+        // The Stage binds an automatically started cutaway before its first
+        // scene step. Free machinery must not advance that scene a second time.
+        self.motion.advance_players(dt, map, w, players, fixed, &mut self.saved)
+    }
+    fn coop_combat(&mut self, dt: f32, world: &World,
+        players: [crate::combat::PlayerTarget; 2]) -> crate::combat::Feedback {
+        if !players.iter().any(|p| p.alive) { return Default::default(); }
+        self.combat_guards_with(dt, world, players[0].eye, false, None, Some(players))
+    }
     fn prompt(&self, w: &World, eye: Vec3, aim: Vec3) -> Option<&'static str> {
         self.lever(w, eye, aim).then_some("E / Turn the mirror")
     }
@@ -518,26 +577,7 @@ impl LevelController for Keep {
             return Ok(());
         }
         let dt = dt.min(0.1);
-        self.saved.clock = (self.saved.clock + dt).min(1e6);
-        self.saved.exit.advance(dt);
-        if self.saved.room.is_some() {
-            self.saved.room_time = (self.saved.room_time + dt).min(1.);
-        }
-        if self.saved.lost.is_some() {
-            self.saved.loss_time = (self.saved.loss_time + dt).min(1.5);
-        }
-        if self.saved.smashed.is_some() {
-            self.saved.win_time = (self.saved.win_time + dt).min(2.1);
-        }
-        if self.all_won()
-            && self.saved.win_time == 2.1
-            && !self.saved.heart_scene
-            && self.saved.scene.is_none()
-        {
-            self.saved.heart_scene = true;
-            self.saved.heart_open = true;
-            self.begin(Kind::Heart);
-        }
+        self.advance_clocks(dt);
         self.advance_scene(dt, w, p)?;
         self.motion.advance(dt, map, w, p, fixed, &mut self.saved)?;
         Ok(())
@@ -594,7 +634,10 @@ impl LevelController for Keep {
         self.combat_guards(c)
     }
     fn loot_sources(&self) -> Vec<crate::loot::Source> {
-        self.saved.spawned.iter().map(|a|crate::loot::Source{id:BASE+a.entity,feet:a.guard.feet(),grade:if matches!(&a.guard,guards::Body::Card(g) if g.kind==crate::cards::Kind::Heart){crate::loot::Grade::Large}else{crate::loot::Grade::Medium},dead:a.guard.health()==0.}).collect()
+        // A later group contains new enemies even when it reuses the same
+        // map spawn points. Generation zero preserves existing saves' IDs.
+        let reward_base=BASE+usize::from(self.saved.spawn_generation)*LOOT_WAVE_STRIDE;
+        self.saved.spawned.iter().map(|a|crate::loot::Source{id:reward_base+a.entity,feet:a.guard.feet(),grade:if matches!(&a.guard,guards::Body::Card(g) if g.kind==crate::cards::Kind::Heart){crate::loot::Grade::Large}else{crate::loot::Grade::Medium},dead:a.guard.health()==0.}).collect()
     }
     fn scripted(&self) -> bool {
         self.saved.scene.is_some()
@@ -744,6 +787,10 @@ pub static REGISTRATION: Registration = Registration {
         ),
     ],
     checks: &[
+        Check {flag: "--keep-coop-route-check", help: "Walk the normal paired Keep puzzle and combat course.",
+            run: Run::Windowed(route::check)},
+        Check {flag: "--keep-coop-check", help: "Verify paired castle progression and personal combat.",
+            run: Run::Headless(coop_check::check)},
         Check {
             flag: "--keep-check",
             help: "Verify Keep puzzle, scenes, saves and gated exit.",

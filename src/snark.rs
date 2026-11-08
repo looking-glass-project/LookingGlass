@@ -590,7 +590,7 @@ impl Snark {
         for a in &self.acid {
             ensure!(
                 self.kind == Kind::Water
-                    && matches!(a.victim, crate::dice::ALICE | crate::dice::SUMMON)
+                    && crate::combat::opponent_id(a.victim)
                     && ids.insert(a.victim as u32)
                     && (0. ..1.).contains(&a.time)
                     && a.ticks < 3,

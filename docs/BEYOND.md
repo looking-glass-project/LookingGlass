@@ -51,3 +51,22 @@ Reviewed deviations and limits:
 - Route timing values in ticks depend on the fights: the numbers above are what the final build prints.
 
 Native captures confirm the levers, bridge, raised room and shuffled doors without missing images. A native F5 save, separate-process restart and F9 restore pass in `private/beyond-native-saves`. The hidden desktop had no audio device, so this run verifies visuals/save loading rather than audible playback. Original note/voice assets decode successfully. The current source passes 476 unit tests, strict Clippy and formatting checks. The 2026-09-30 camera build additionally passes 72 separate-process save cases, 78 native replacements and Normal strict chains through visit 6 watched/skipped; see `VALIDATION.md`.
+
+### Co-op contact regression, 27 October 2026
+
+The old staged Rage test tried to walk the second player through the first
+collector, who remained on the item centre. The personal-space boundary stops
+that approach outside the item's pickup box. The test now has the first collector
+walk to checked, separate space on the lowered lift, then lets the partner walk
+and jump for her own item. It still checks that both remain supported aboard,
+both receive separate Rage copies and the second collection never replays the
+shared scene. No pickup, collision or scene behavior changed.
+
+All **15** native Beyond adapter checks pass, including both collection orders,
+late boarding, watched/skipped scenes, pause/restore, shared transport and musical
+levers. Exact source: `a613c5f8d9b606e766b1a2e26e6a78a0696bd958f3800665f95cb2651b8a85da`;
+log: `private/coop-beyond-rage-yield-check.log`. Full independent-client traversal
+repeats after the contact changes remain separate requirements.
+
+All 15 checks also pass on the final source `685a05d`; the repeated result is in
+`private/coop-wchess1-beyond-685a05d.log`.

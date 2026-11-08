@@ -16,6 +16,7 @@ Checks:
 
 - `--hedge2-check`: actual lever reach and use, delayed callbacks, scene outcomes at 30/60/144 Hz, closed collision gates, saved continuation and invalid-state rejection.
 - `--hedge2-route-check`: production movement, swimming, lever input and native enemy simulation.
+- `--hedge2-coop-route-check`: normal paired combat, swimming, both lever scenes and actual Water Logged arrival; writes replica and exact recovery evidence to an isolated profile.
 - `--hedge2-render-check`: native lever and cutaway captures under `private/hedge2-work/captures`.
 
 Source references: local `maps/hedge2.scr`, `models/lever.tik`, the two camera tracks, and map entities 11, 32–34, 52–54, 402, 450, 507, 567, 576 and 577. These are identifiers and independently written behavior descriptions; no original script or dialogue is distributed.
@@ -25,3 +26,14 @@ The route check walks from the entrance through the maze, first dive and bubble 
 Verification on 2026-10-01: the native Normal route reached tower2 with watched cutaways after an unedited checkpoint reload at the well. A fresh run from the entrance also completed with both cutaways skipped. Both arrived with 51.42 Sanity, no teleportation and no drowning damage; the destination, spawn, difficulty and carried inventory were checked. The replay collects the original recovery items and uses the owned Eye Staff in the upper maze.
 
 The 629 unit tests passed. Six actual save phases resumed in separate game processes with the same state and subsequent twenty seconds of machinery. Native captures cover both pulls and both camera sequences. The other 38 visit snapshots and event signatures match the previously selected Dry Landing release. Native checks use programmatic production inputs with audio disabled.
+
+Co-op verification on 7 November 2026: frozen `f9d8893` completes the full
+normal paired course in 53,709 ticks, with 448 matching compressed replicas,
+both lever reunions and personal breathing shells. Both reach Water Logged
+alive at 80/70.59 health with their resources unchanged. Five Blue revivals
+each take 1,200 active ticks; the last waits eight more ticks for safe footing.
+The route uses normal inputs, live combat and no progression staging or wipe.
+Its exposed simultaneous low-climb lock is fixed; 949 active unit tests and
+the affected Airborne Terror route pass. Exact evidence is pinned privately.
+This establishes normal Arena progression; internet, presentation and further
+recovery permutations retain their separate evidence and polishing backlog.

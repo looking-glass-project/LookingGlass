@@ -1,6 +1,8 @@
 //! Rolling Stones: one scene owner and the W9 marble that continues into play.
 mod art;
 mod check;
+mod coop_check;
+mod coop_route;
 mod data;
 mod motion;
 mod route;
@@ -229,28 +231,38 @@ impl Garden {
         true
     }
     fn rock_step(&mut self, dt: f32, player: Option<&Player>) {
-        if dt <= 0. {
-            return;
-        }
-        self.data.rock.gravity = 800. * self.saved.gravity;
         let bodies = player.map(|p| crate::combat::Target {
             id: crate::dice::ALICE,
             center: p.feet + crate::collision::PLAYER_CENTER,
             half: crate::collision::PLAYER_HALF,
         });
-        let out = self
-            .data
-            .rock
-            .advance(&mut self.saved.rock, dt, bodies.as_slice());
+        let out = self.rock_targets(dt, bodies.as_slice());
         for (_, damage, impulse) in out.hits {
             self.saved.damage = self.saved.damage.max(damage);
             self.saved.impulse = impulse;
         }
+    }
+    fn rock_targets(&mut self, dt: f32, bodies: &[crate::combat::Target]) -> crate::falling_rock::Output {
+        if dt <= 0. { return Default::default(); }
+        self.data.rock.gravity = 800. * self.saved.gravity;
+        let out = self.data.rock.advance(&mut self.saved.rock, dt, bodies);
         if !out.arrivals.is_empty() {
             self.saved.bounce = Some(self.saved.age);
         }
-        for n in out.threads {
-            self.callback(&n);
+        for n in &out.threads {
+            self.callback(n);
+        }
+        out
+    }
+    fn advance_doors(&mut self, dt: f32) {
+        for (k, passed) in [7, 55, 35, 24].into_iter().enumerate() {
+            if self.saved.rock.node >= passed {
+                self.saved.doors[k].latched = true;
+                self.saved.doors[k].open = true;
+            }
+        }
+        for (k, d) in self.saved.doors.iter_mut().enumerate() {
+            d.advance(dt, self.data.travel[k]);
         }
     }
     fn intro_step(&mut self, _from: f32, to: f32) {
@@ -339,6 +351,11 @@ impl LevelController for Garden {
     }
     fn receivers(&self, _: &crate::entity::Registry) -> Vec<crate::entity::Id> {
         DOORS.map(crate::entity::Id).to_vec()
+    }
+    fn coop_once_trigger(&self, id: crate::entity::Id) -> bool {
+        // Each chase marker advances the shared gate sequence once. A follower
+        // must not undo that transition and close the next gate on both players.
+        matches!(id.0,41|47|48|73)
     }
     fn rules(&self, _: &crate::level::RuleContext<'_>) -> Vec<crate::event::Rule> {
         DOORS
@@ -438,16 +455,29 @@ impl LevelController for Garden {
         } else {
             self.saved.age += dt;
             self.rock_step(dt, Some(p));
-            for (k, passed) in [7, 55, 35, 24].into_iter().enumerate() {
-                if self.saved.rock.node >= passed {
-                    self.saved.doors[k].latched = true;
-                    self.saved.doors[k].open = true;
-                }
-            }
-            for (k, d) in self.saved.doors.iter_mut().enumerate() {
-                d.advance(dt, self.data.travel[k]);
-            }
+            self.advance_doors(dt);
         }
+        self.rebuild(map)?;
+        world.set_dynamic(fixed.iter().cloned().chain(self.colliders()).collect());
+        Ok(())
+    }
+    fn coop_advance_roster(&mut self, dt: f32, map: &Bsp, world: &mut World,
+        players: &mut [crate::level::CoopPlayer<'_>; 2], fixed: &[Collider]) -> Result<()> {
+        if !dt.is_finite() || dt <= 0. || self.scripted() { return Ok(()); }
+        let dt = dt.min(0.1);
+        self.saved.age += dt;
+        // Stable roster slots survive filtering: a dead Blue must not make
+        // Red's marble contact appear to belong to slot zero.
+        let bodies = players.iter().enumerate().filter(|(_,p)|p.stats.alive())
+            .map(|(id,p)|crate::combat::Target {id,
+                center:p.player.feet+crate::collision::PLAYER_CENTER,
+                half:crate::collision::PLAYER_HALF}).collect::<Vec<_>>();
+        let out = self.rock_targets(dt,&bodies);
+        for (id,damage,impulse) in out.hits {
+            players[id].stats.damage(damage);
+            players[id].player.knockback(impulse);
+        }
+        self.advance_doors(dt);
         self.rebuild(map)?;
         world.set_dynamic(fixed.iter().cloned().chain(self.colliders()).collect());
         Ok(())
@@ -609,6 +639,16 @@ pub static REGISTRATION: Registration = Registration {
     target_base: Some(BASE),
     story_beats: &[],
     checks: &[
+        Check {
+            flag: "--garden3-coop-route-check",
+            help: "Run both players through the normal Rolling Stones chase and Icy Reception arrival.",
+            run: Run::Windowed(coop_route::check),
+        },
+        Check {
+            flag: "--garden3-coop-check",
+            help: "Verify paired Rolling Stones clocks, personal marble damage and scene reunion.",
+            run: Run::Headless(coop_check::check),
+        },
         Check {
             flag: "--garden3-route-check",
             help: "Run Rolling Stones from arrival to Icy Reception with a live marble.",

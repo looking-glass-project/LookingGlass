@@ -73,36 +73,54 @@ fn traverse(assets: &mut Assets, mut stats: crate::inventory::Stats, skip: bool)
 /// The return visit from the school entrance to the observatory and the exit to the Pool of
 /// Tears. Alice starts with whatever she carried out of school two.
 pub fn drive(r: &mut Route) -> Result<()> {
+    // Use the same funded combat inputs as the first-school route. Repeated
+    // legacy Blade throws leave Alice exposed to Boojum waves at the library.
+    r.tactics = true;
     r.wait(1.)?;
     println!("RETURN ENTRANCE {:?}", r.player.feet);
     r.walk_xy(vec2(-1888., 3290.))?;
     r.wait(5.)?;
     r.navigate(vec3(-1888., 2890., -480.))?;
-    r.walk_xy(vec2(-1888., 2290.))?;
+    // The approach can leave Alice on the raised edge beside the entrance
+    // stairs. Plan ordinary movement/jumps down to the lower landing instead
+    // of holding a straight walking input against that edge.
+    r.navigate(vec3(-1888., 2290., -512.))?;
+    r.clear(700.)?;
     for goal in [vec3(-2340., 2368., -480.), vec3(-2256., 2544., -480.)] {
         r.walk(goal, true)?;
+        r.clear(700.)?;
     }
     for goal in [vec3(-2304., 2624., -342.), vec3(-2304., 2800., -256.)] {
         r.navigate(goal)?;
+        r.clear(700.)?;
     }
     r.navigate(vec3(-2272., 2440., -256.))?;
+    r.clear(700.)?;
     r.navigate(vec3(-2304., 2800., -256.))?;
     for goal in [vec3(-2304., 3248., -256.), vec3(-1664., 3248., -256.)] {
         r.walk(goal, false)?;
+        r.clear(700.)?;
     }
     for goal in [vec3(-1664., 3008., -256.), vec3(-1480., 3008., -256.)] {
         r.navigate(goal)?;
+        r.clear(700.)?;
     }
+    // The doorway reveals the Boojums after the outside waiting point. Reach
+    // the supported corridor with running inputs before stopping to fight;
+    // lingering on its exposed edge lets the first wave push Alice off.
+    r.navigate(vec3(-1200., 3008., -256.))?;
+    r.clear(700.)?;
     for goal in [
         vec3(-208., 3008., -256.),
         vec3(-208., 3968., -256.),
         vec3(208., 3968., -288.),
         vec3(208., 4160., -264.),
         vec3(144., 4230., -288.),
-        vec3(144., 4304., -264.),
     ] {
-        r.walk(goal, goal.y == 4304.)?;
+        r.walk(goal, false)?;
+        r.clear(700.)?;
     }
+    board_spiral(r)?;
     r.ride_to(64.)?;
     for goal in [vec3(272., 4160., 64.), vec3(0., 4096., 64.)] {
         r.walk(goal, false)?;
@@ -139,4 +157,23 @@ pub fn drive(r: &mut Route) -> Result<()> {
         "Return did not spend the two quest rewards"
     );
     Ok(())
+}
+
+/// The lift starts when Alice approaches. Stop steering at actual supported
+/// boarding instead of chasing a fixed lower-floor point during its rotation.
+fn board_spiral(r: &mut Route) -> Result<()> {
+    for tick in 0..7200 {
+        if r.player.grounded && r.interactions.school.as_ref().unwrap()
+            .riding_support("library_spiral_lift", r.player.feet) {
+            println!("  BOARDED spiral {:?}", r.player.feet);
+            return Ok(());
+        }
+        let delta = vec2(144., 4360.) - r.player.feet.truncate();
+        r.tick(crate::movement::Controls {
+            wish: if delta.length() > 8. { delta.normalize_or_zero() } else { Vec2::ZERO },
+            jump: r.player.grounded && tick % 120 == 0,
+            ..Default::default()
+        })?;
+    }
+    anyhow::bail!("Could not board the spiral lift with ordinary inputs at {:?}", r.player.feet)
 }

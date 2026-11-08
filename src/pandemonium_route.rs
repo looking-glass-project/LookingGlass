@@ -150,5 +150,7 @@ pub fn drive(r: &mut Route) -> Result<()> {
         r.stats.copies(1) > 0 && r.shots > 0,
         "Route missed Cards or combat"
     );
+    anyhow::ensure!(r.interactions.pandemonium.as_ref().unwrap().state.cinema.return_done,
+        "The normal route missed the Gnome's return cutscene");
     Ok(())
 }

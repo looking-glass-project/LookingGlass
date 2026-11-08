@@ -1,4 +1,5 @@
 use super::*;
+pub(super) const GREAT_GEAR_SPEED: f32 = 50.;
 pub(super) struct Object {
     pub id: usize,
     pub model: usize,
@@ -102,6 +103,100 @@ fn approach(v: f32, t: f32, d: f32) -> f32 {
     }
 }
 impl Clockwork {
+    pub(super) fn route_gear_velocity(&self, player: &Player) -> Option<Vec3> {
+        if !player.grounded || player.swimming || player.ledge.is_some()
+            || !self.supported_by("astralmonkey",player.feet) { return None; }
+        // Steering begins once the two-lever lowering is complete. The normal
+        // controller still owns the motion and may roll it back on obstruction.
+        if self.saved.age-self.saved.both()? < 1. { return None; }
+        let first=self.saved.levers[0]?.min(self.saved.levers[1]?);
+        if self.saved.age-first < 2. { return None; }
+        let center=self.objects.iter().find(|o|o.name=="astralmonkey")?.pose.translation;
+        Some(Vec3::Z.cross(player.feet-center)*GREAT_GEAR_SPEED.to_radians())
+    }
+    pub(super) fn supported_by(&self, name: &str, feet: Vec3) -> bool {
+        self.objects.iter().any(|o| o.name == name && o.solid && {
+            let trace = o.collider.trace(feet + PLAYER_CENTER, feet + PLAYER_CENTER - Vec3::Z * 3., PLAYER_HALF);
+            !trace.start_solid && trace.fraction < 1. && trace.normal.z > 0.65
+        })
+    }
+
+    pub(super) fn advance_pair_motion(&mut self, dt: f32, map: &Bsp, world: &mut World,
+        players: &mut [&mut Player], fixed: &[Collider]) -> Result<()> {
+        let before = self.saved.clone();
+        let supports = players.iter().map(|p| self.objects.iter().enumerate().find(|(_, o)| {
+            o.solid && p.velocity.z <= 1. && {
+                let t = o.collider.trace(p.feet + PLAYER_CENTER, p.feet + PLAYER_CENTER - Vec3::Z * 3., PLAYER_HALF);
+                !t.start_solid && t.fraction < 1. && t.normal.z > 0.65
+            }
+        }).map(|(k, o)| (k, o.pose))).collect::<Vec<_>>();
+        self.saved.age = (self.saved.age + dt).min(1e7);
+        self.saved.lift = approach(self.saved.lift, if self.saved.lift_up { 0. } else { 170. }, dt * 850.);
+        for (k, o) in self.objects.iter().enumerate() {
+            if o.class == "func_sinkobject" {
+                let occupied = supports.iter().any(|s| s.is_some_and(|(i, _)| i == k));
+                let speed = if occupied { o.speed } else { o.speed.min(100.) };
+                self.saved.sinks[k] = approach(self.saved.sinks[k], if occupied { o.limit } else { 0. }, speed * dt);
+            }
+            if !o.class.contains("door") { continue; }
+            let scripted = self.door_target(o);
+            if scripted.is_none() && o.flags & 64 != 0 && o.flags & (8 | 128) == 0
+                && players.iter().any(|p| {
+                    let center = p.feet + PLAYER_CENTER;
+                    center.cmpge(o.bounds.0 - vec3(60., 60., 8.) - PLAYER_HALF).all()
+                        && center.cmple(o.bounds.1 + vec3(60., 60., 8.) + PLAYER_HALF).all()
+                }) {
+                self.saved.holds[k] = o.wait.max(3.);
+            }
+            let open = scripted.unwrap_or(self.saved.holds[k] > 0.);
+            self.saved.holds[k] = (self.saved.holds[k] - dt).max(0.);
+            self.saved.doors[k] = approach(self.saved.doors[k], if open { 1. } else { 0. }, dt / o.duration);
+        }
+        // A blocked cushion pauses only that cushion. Re-evaluate every rider
+        // after that adjustment before committing any shared movement.
+        for attempt in 0..2 {
+            self.rebuild(map)?;
+            let proposed = players.iter().zip(&supports).map(|(p, s)| s.map_or(p.feet, |(k, old)| {
+                self.objects[k].pose.point(old.rotation.inverse() * (p.feet - old.translation))
+            })).collect::<Vec<_>>();
+            let mut blocked = false;
+            let mut blocked_sinks = Vec::new();
+            for ((p, at), support) in players.iter().zip(&proposed).zip(&supports) {
+                world.set_dynamic(fixed.iter().cloned().chain(self.objects.iter().enumerate()
+                    .filter(|(k, o)| o.solid && support.is_none_or(|(i, _)| i != *k))
+                    .map(|(_, o)| o.collider.clone())).collect());
+                let trace = world.body_trace(p.feet, *at);
+                world.set_dynamic(fixed.iter().cloned().chain(self.colliders()).collect());
+                if trace.start_solid || trace.fraction < 1. || !world.body_clear(*at) {
+                    blocked = true;
+                    if let Some((k, _)) = support.filter(|(k, _)| self.objects[*k].class == "func_sinkobject") {
+                        blocked_sinks.push(k);
+                    }
+                }
+            }
+            if attempt == 0 && !blocked_sinks.is_empty() {
+                for k in blocked_sinks { self.saved.sinks[k] = before.sinks[k]; }
+                continue;
+            }
+            for (i, a) in proposed.iter().enumerate() {
+                for b in &proposed[i + 1..] {
+                    let delta = *a - *b;
+                    blocked |= delta.truncate().length() < crate::coop::separation::DISTANCE - 0.05
+                        && delta.z.abs() < PLAYER_HALF.z * 2. - 0.05;
+                }
+            }
+            if blocked {
+                self.saved = before;
+                self.rebuild(map)?;
+            } else {
+                for (p, at) in players.iter_mut().zip(proposed) { p.feet = at; }
+            }
+            world.set_dynamic(fixed.iter().cloned().chain(self.colliders()).collect());
+            return Ok(());
+        }
+        unreachable!("Second carry attempt always commits or rolls back")
+    }
+
     pub(super) fn rebuild(&mut self, map: &Bsp) -> Result<()> {
         let s = &self.saved;
         let ct = s.elapsed(s.clock, 5.);
@@ -167,7 +262,7 @@ impl Clockwork {
                         .min_by(|a, b| a.total_cmp(b));
                     o.pose.rotation = Quat::from_rotation_z(
                         first
-                            .map_or(0., |a| (t - a - 2.).max(0.) * 50.)
+                            .map_or(0., |a| (t - a - 2.).max(0.) * GREAT_GEAR_SPEED)
                             .to_radians(),
                     );
                 }
@@ -344,6 +439,23 @@ impl Clockwork {
                 && !tr.start_solid
                 && tr.fraction + 0.02 >= own.fraction)
                 .then_some(k)
+        })
+    }
+    pub(super) fn route_door_closed(&self, id: crate::entity::Id) -> Option<bool> {
+        let k = self.objects.iter().position(|o| o.id == id.0 && o.class.contains("door"))?;
+        let o = &self.objects[k];
+        Some(self.door_target(o).is_none() && o.flags & (8 | 128) == 0
+            && self.saved.holds[k] <= 0. && self.saved.doors[k] < 1.)
+    }
+    pub(super) fn route_door_to_open(&self, selected: usize) -> Option<crate::entity::Id> {
+        let center = (self.objects[selected].bounds.0 + self.objects[selected].bounds.1) * 0.5;
+        // Native use opens nearby leaves together. Proximity may have opened
+        // only the selected leaf already; observe its still-closed neighbor
+        // so an ordinary E press can finish opening the same native group.
+        self.objects.iter().find_map(|o| {
+            let id = crate::entity::Id(o.id);
+            (self.route_door_closed(id) == Some(true)
+                && ((o.bounds.0 + o.bounds.1) * 0.5).distance(center) < 150.).then_some(id)
         })
     }
     pub(super) fn use_door(&mut self, w: &World, p: &Player, aim: Vec3) {

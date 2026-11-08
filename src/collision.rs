@@ -358,7 +358,7 @@ impl Collider {
         .then_some((feet, t.normal))
     }
 }
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 enum Node {
     Leaf {
         bounds: Bounds,
@@ -443,7 +443,7 @@ impl Default for Trace {
         }
     }
 }
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct World {
     pub traversal: crate::traversal::Traversal,
     dynamic: Vec<Collider>,
@@ -808,6 +808,12 @@ impl World {
             hull.planes.push(p);
         }
         self.liquids.push((contents, hull));
+    }
+    #[cfg(test)]
+    pub fn sloped_fixture(min: Vec3, max: Vec3, plane: Plane) -> Self {
+        let mut world = Self::fixture(&[(min, max)]);
+        world.hulls[0].planes.push(plane);
+        world
     }
     #[cfg(test)]
     pub fn ramp_fixture() -> Self {

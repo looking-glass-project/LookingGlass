@@ -7,11 +7,16 @@ use std::collections::BTreeSet;
 pub(super) struct State {
     pub age: f64,
     pub leaves: [Option<f64>; 2],
+    /// A requested departure retains its boarding pose until the first carry
+    /// commits. In particular, leaf2 begins with a different authored rotation.
+    #[serde(default, skip_serializing_if = "no_pending")]
+    pub pending: [bool; 2],
     pub clocks: [f64; 7],
     pub ladies: bool,
     pub remove_at: Option<f64>,
     pub removed: bool,
 }
+fn no_pending(pending: &[bool; 2]) -> bool { !pending.iter().any(|p| *p) }
 impl State {
     pub fn validate(&self) -> Result<()> {
         ensure!((0. ..=1e8).contains(&self.age), "Invalid pond clock");
@@ -24,6 +29,9 @@ impl State {
         for t in self.leaves.into_iter().chain([self.remove_at]).flatten() {
             ensure!((0. ..=self.age).contains(&t), "Invalid pond activation");
         }
+        ensure!(self.pending.iter().enumerate().all(|(i,p)| !p ||
+            (self.leaves[i].is_some() && self.clocks[i+5] == 0. && (i == 0 || !self.removed))),
+            "Invalid pending leaf departure");
         ensure!(
             !self.ladies || self.leaves[0].is_some(),
             "Ladybugs before leaf cue"
@@ -241,7 +249,7 @@ impl Data {
     }
     pub fn rebuild(&mut self, map: &Bsp, s: &State) -> Result<()> {
         for (i, p) in self.pads.iter_mut().enumerate() {
-            let mut root = if i < 5 || s.leaves[i - 5].is_some() {
+            let mut root = if i < 5 || (s.leaves[i - 5].is_some() && !s.pending[i - 5]) {
                 p.path.pose(s.clocks[i], i >= 4)
             } else {
                 Transform {
@@ -355,6 +363,7 @@ impl Data {
                 ))
         });
         s.age += f64::from(dt);
+        s.pending = [false; 2];
         for i in 0..7 {
             if i < 5 || s.leaves[i - 5].is_some() {
                 s.clocks[i] += f64::from(dt);
@@ -396,6 +405,7 @@ impl Data {
                     || rider.is_some_and(|(j, _)| j == i)
                 {
                     s.clocks[i] = old.clocks[i];
+                    if i >= 5 { s.pending[i-5] = old.pending[i-5]; }
                 }
             }
             self.rebuild(map, s)?;
@@ -416,6 +426,51 @@ impl Data {
         }
         s.removed = s.remove_at.is_some_and(|t| s.age >= t + 2.);
         w.set_dynamic(fixed.iter().cloned().chain(self.colliders(s)).collect());
+        Ok(())
+    }
+
+    /// Each path owns one clock; an obstructed rider holds only that path.
+    pub fn advance_players(&mut self, dt: f32, map: &Bsp, s: &mut State,
+        world: &mut World, players: &mut [&mut Player], fixed: &[Collider]) -> Result<()> {
+        if !dt.is_finite() || dt <= 0. { return Ok(()); }
+        let mut remaining = dt.min(0.1);
+        while remaining > 0.000001 {
+            let step = remaining.min(crate::movement::FIXED_DT);
+            remaining -= step;
+            s.age += f64::from(step);
+            for i in 0..self.pads.len() {
+                if !Self::visible(s, i) || (i >= 5 && s.leaves[i-5].is_none()) { continue; }
+                let old_clock = s.clocks[i];
+                let from = self.pads[i].pose;
+                let previous = self.pads[i].collider.clone();
+                let pending = i >= 5 && s.pending[i-5];
+                if i >= 5 { s.pending[i-5] = false; }
+                s.clocks[i] += f64::from(step);
+                self.rebuild(map, s)?;
+                let pad = &self.pads[i];
+                world.set_dynamic(fixed.iter().cloned().chain(self.pads.iter().enumerate()
+                    .filter(|(j, _)| *j != i && Self::visible(s, *j))
+                    .map(|(_, p)| p.collider.clone())).collect());
+                let accepted = if i < 5 && from.translation.distance(pad.pose.translation) >= 128. {
+                    players.iter().all(|p| !pad.collider.touches(p.feet + PLAYER_CENTER,
+                        p.feet + PLAYER_CENTER, PLAYER_HALF))
+                } else {
+                    crate::moving::carry(world, &previous, &pad.collider, from, pad.pose, true, players)
+                };
+                if !accepted {
+                    s.clocks[i] = old_clock;
+                    if i >= 5 { s.pending[i-5] = pending; }
+                    self.rebuild(map, s)?;
+                }
+            }
+            if self.pads[5].path.cue.is_some_and(|t| s.clocks[5] >= f64::from(t)) { s.ladies = true; }
+            if self.pads[6].path.cue.is_some_and(|t| s.clocks[6] >= f64::from(t)) {
+                s.remove_at.get_or_insert(s.age);
+            }
+            s.removed = s.remove_at.is_some_and(|t| s.age >= t + 2.);
+            self.rebuild(map, s)?;
+        }
+        world.set_dynamic(fixed.iter().cloned().chain(self.colliders(s)).collect());
         Ok(())
     }
 }

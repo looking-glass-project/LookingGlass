@@ -1027,11 +1027,39 @@ impl Audio {
         self.queue(path, Some(origin), 1.);
     }
     pub fn animation(&mut self, cue: events::Cue) {
+        self.animation_at(cue, None);
+    }
+    pub fn animation_at(&mut self, cue: events::Cue, origin: Option<Vec3>) {
         // Health changes choose the context-appropriate cry even when Alice is
         // swimming, in first person, or attacking without a pain animation.
         if reaction::kind(&cue.path) != Some(reaction::Kind::Pain) {
-            self.queue(&cue.path, None, cue.volume);
+            self.queue(&cue.path, origin, cue.volume);
         }
+    }
+    pub fn effect(&mut self, path: &str, origin: Option<Vec3>, volume: f32) {
+        self.queue(path, origin, volume);
+    }
+    pub fn restore_world(&mut self) {
+        self.stop_voice();
+        self.pending.clear(); self.effects.clear(); self.loops.clear();
+        self.reset_listener_player();
+        self.world_sounds = world::State::default();
+    }
+    /// Switching the camera to another Alice must not compare their different
+    /// health values as damage or carry the previous body's swimming ambience.
+    /// Shared world sounds and dialogue continue across this personal change.
+    pub fn reset_listener_player(&mut self) {
+        self.reaction = None; self.last_sanity = None;
+        self.reaction_gate = reaction::Gate::default(); self.swim_bed = None;
+    }
+    pub fn diagnostics(&self) -> (u64, f32, u64, usize) {
+        (self.monitor.count.load(Ordering::Relaxed) / 2,
+            f32::from_bits(self.monitor.peak.load(Ordering::Relaxed)), self.resolved, self.missing.len())
+    }
+    /// Optional app-only recording starts at gameplay, not during a potentially
+    /// long internet handshake. This does not record the microphone/system mix.
+    pub fn begin_capture(&mut self) {
+        if self.capture.is_some() { self.monitor.samples.lock().unwrap().clear(); }
     }
     fn queue(&mut self, path: &str, origin: Option<Vec3>, volume: f32) {
         let volume = volume
@@ -1126,13 +1154,23 @@ impl Audio {
         &mut self,
         assets: &mut Assets,
         interactions: &crate::interaction::Interactions,
+        loops: Vec<LoopCue>,
+    ) { self.world_inner(assets, interactions, loops, true); }
+    /// The host has already published each clock-crossing cue in its journal.
+    /// A replica reconstructs continuous loops and music without firing it again.
+    pub fn world_replica(&mut self, assets: &mut Assets,
+        interactions: &crate::interaction::Interactions, loops: Vec<LoopCue>) {
+        self.world_inner(assets, interactions, loops, false);
+    }
+    fn world_inner(&mut self, assets: &mut Assets, interactions: &crate::interaction::Interactions,
         mut loops: Vec<LoopCue>,
+        emit: bool,
     ) {
         let clocks = world::collect(interactions, &mut loops);
         if let Some(mood) = interactions.levels.iter().find_map(|s| s.ctl.music_mood()) {
             if let Err(e) = self.mood(assets, mood) { eprintln!("Scene music unavailable: {e:#}"); }
         }
-        for (path, origin) in self.world_sounds.update(clocks) {
+        for (path, origin) in self.world_sounds.update(clocks).into_iter().filter(|_|emit) {
             // The village introduction declares this cry level-wide. Its camera
             // is high above the playable landing, outside ordinary falloff.
             if path == "sound/character/alice/death_fall.wav" {
@@ -1794,6 +1832,22 @@ pub fn test_output(assets: &mut Assets, name: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn changing_listener_clears_personal_reactions_without_stopping_shared_audio() {
+        let mut audio = Audio::new(true, None);
+        let (voice, _voice_output) = Sink::new_idle();
+        let (swim, _swim_output) = Sink::new_idle();
+        audio.voice = Some(voice);
+        audio.swim_bed = Some(swim);
+        audio.last_sanity = Some(100.);
+        assert!(audio.reaction_gate.accept(reaction::Kind::Death, 2.));
+        audio.pending.push(Request {path:"sound/world/test.wav".into(),origin:None,volume:1.});
+        audio.reset_listener_player();
+        assert!(audio.last_sanity.is_none() && audio.swim_bed.is_none() && audio.reaction.is_none());
+        assert!(audio.reaction_gate.accept(reaction::Kind::Pain, 1.));
+        assert!(audio.voice.is_some());
+        assert_eq!(audio.pending.len(), 1);
+    }
     #[test]
     fn watch_keeps_pcm_playing_but_defers_random_speaker_events() {
         let mut audio = Audio::new(true, None);

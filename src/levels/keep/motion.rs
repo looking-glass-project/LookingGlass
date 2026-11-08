@@ -169,18 +169,21 @@ impl Motion {
             .collect();
         (extra, hide)
     }
-    pub fn advance(
+    pub fn advance(&mut self, dt: f32, map: &Bsp, w: &mut World,
+        p: &mut Player, fixed: &[Collider], s: &mut Saved) -> Result<()> {
+        self.advance_players(dt, map, w, &mut [p], fixed, s)
+    }
+    pub fn advance_players(
         &mut self,
         dt: f32,
         map: &Bsp,
         w: &mut World,
-        p: &mut Player,
+        players: &mut [&mut Player],
         fixed: &[Collider],
         s: &mut Saved,
     ) -> Result<()> {
         let before = s.clone();
-        let mut carry = Vec3::ZERO;
-        let support = self
+        let supports = players.iter().map(|p| self
             .objects
             .iter()
             .find(|o| {
@@ -193,18 +196,20 @@ impl Motion {
                     p.velocity.z <= 1. && !t.start_solid && t.fraction < 1. && t.normal.z > 0.65
                 }
             })
-            .map(|o| o.entity);
+            .map(|o| o.entity)).collect::<Vec<_>>();
         s.elapsed = (s.elapsed + dt).min(5.);
-        if support == Some(70) {
+        if supports.contains(&Some(70)) {
             s.sink = (s.sink + dt * 8.).min(44.);
         } else {
             s.sink = (s.sink - dt * 8.).max(0.);
         }
-        if support == Some(5) {
-            carry.z = 192. * (s.elapsed - before.elapsed) / 5.;
-        } else if support == Some(70) {
-            carry.z = before.sink - s.sink;
-        }
+        let proposed = players.iter().zip(&supports).map(|(p, support)| {
+            p.feet + Vec3::Z * match support {
+                Some(5) => 192. * (s.elapsed - before.elapsed) / 5.,
+                Some(70) => before.sink - s.sink,
+                _ => 0.,
+            }
+        }).collect::<Vec<_>>();
         if let Some(scene) = &s.scene {
             if scene.kind == Kind::Mirror && scene.time >= 1.5 {
                 s.mirror_time = (s.mirror_time + dt).min(5.);
@@ -225,10 +230,18 @@ impl Motion {
         s.doors[4] = approach(s.doors[4], if s.queen_open { 1. } else { 0. }, dt / 6.);
         self.rebuild(map, s)?;
         w.set_dynamic(fixed.to_vec());
-        let feet = p.feet + carry;
-        let sweep = w.sweep(p.feet + PLAYER_CENTER, feet + PLAYER_CENTER, PLAYER_HALF);
+        let mut blocked = players.iter().zip(&proposed).any(|(p, feet)| {
+            let sweep = w.sweep(p.feet + PLAYER_CENTER, *feet + PLAYER_CENTER, PLAYER_HALF);
+            sweep.start_solid || sweep.fraction < 1.
+        });
         w.set_dynamic(fixed.iter().cloned().chain(self.colliders()).collect());
-        if sweep.start_solid || sweep.fraction < 1. || !w.body_clear(feet) {
+        blocked |= proposed.iter().any(|feet| !w.body_clear(*feet));
+        if proposed.len() == 2 {
+            let delta = proposed[0] - proposed[1];
+            blocked |= delta.truncate().length() < crate::coop::separation::DISTANCE - 0.05
+                && delta.z.abs() < PLAYER_HALF.z * 2. - 0.05;
+        }
+        if blocked {
             // Only reverse physical progress; scene/puzzle decisions remain committed.
             s.elapsed = before.elapsed;
             s.sink = before.sink;
@@ -239,7 +252,7 @@ impl Motion {
             self.rebuild(map, s)?;
             w.set_dynamic(fixed.iter().cloned().chain(self.colliders()).collect());
         } else {
-            p.feet = feet;
+            for (p, feet) in players.iter_mut().zip(proposed) { p.feet = feet; }
         }
         Ok(())
     }

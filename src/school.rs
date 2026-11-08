@@ -2,6 +2,7 @@
 //! This is a bounded gameplay translation, not an interpreter for arbitrary script text.
 pub mod cinema;
 pub mod cinema_check;
+pub(crate) mod coop_check;
 mod door_check;
 mod library_check;
 pub(crate) mod return_check;
@@ -115,6 +116,13 @@ struct Motion {
     repeat: bool,
 }
 impl Motion {
+    fn departing(&self, dt: f32) -> bool {
+        self.keys.windows(2).any(|k| {
+            let changed = k[0].1.origin.distance_squared(k[1].1.origin) > 0.000001
+                || k[0].1.angles.distance_squared(k[1].1.angles) > 0.000001;
+            changed && self.time <= k[0].0 && self.time + dt > k[0].0
+        })
+    }
     fn sample(&self, time: f32) -> Pose {
         for k in self.keys.windows(2) {
             if time <= k[1].0 {
@@ -201,6 +209,35 @@ fn path(map: &Bsp, start: &str) -> Vec<Vec3> {
     result
 }
 impl School {
+    /// Read-only support observation for ordinary input replays. Unlike the
+    /// co-op departure gate, it also works while the platform is moving.
+    pub(crate) fn riding_support(&self, name: &str, feet: Vec3) -> bool {
+        self.objects.iter().find(|o| o.name == name).is_some_and(|o|
+            o.enabled && o.solid && crate::moving::aboard(&o.collider, feet))
+    }
+
+    /// Only co-op uses this gate. A trigger request remains pending until every
+    /// living body is supported by the lift; a corpse never blocks boarding.
+    pub(crate) fn boarding_ready(&self, thread: &str, feet: &[Vec3]) -> Option<bool> {
+        let name = match thread.trim_end_matches("()") {
+            "Skool1_Lift_Up" => "library_spiral_lift",
+            "Skool1_Elevator_Up" => "elevator2",
+            "Skool1_OLift_Up" => "observatory_lift",
+            _ => return None,
+        };
+        let lift = self.object(name);
+        if name != "observatory_lift" && lift.motion.is_some() {
+            return None;
+        }
+        Some(
+            lift.enabled
+                && lift.solid
+                && !feet.is_empty()
+                && feet
+                    .iter()
+                    .all(|at| crate::moving::aboard(&lift.collider, *at)),
+        )
+    }
     pub fn sound_state(
         &self,
         loops: &mut Vec<crate::audio::LoopCue>,
@@ -882,6 +919,19 @@ impl School {
         player: &mut Player,
         fixed: &[Collider],
     ) -> Result<()> {
+        self.advance_players(dt, map, world, &mut [player], fixed)
+    }
+    pub(crate) fn advance_players(
+        &mut self,
+        dt: f32,
+        map: &Bsp,
+        world: &mut World,
+        players: &mut [&mut Player],
+        fixed: &[Collider],
+    ) -> Result<()> {
+        if players.is_empty() {
+            return Ok(());
+        }
         if dt <= 0. {
             return Ok(());
         }
@@ -891,64 +941,80 @@ impl School {
             let step = remaining.min(1. / 120.);
             remaining -= step;
             self.clock += step;
-            self.scene_step(step, world, player)?;
-            self.return_step(step, player);
-            if let Some(r) = self.return_visit.as_mut().filter(|r| r.scene.is_none()) {
-                use crate::school_return::Phase as R;
-                r.time += step;
-                if r.phase == R::Opening && r.time >= 5. {
-                    r.enter(R::Drinking);
-                    r.potion = false;
-                }
-                if r.phase == R::Drinking && r.time >= 3.8 {
-                    r.enter(R::Shrinking);
-                }
-                if r.phase == R::Shrinking && r.time >= 2.5 {
-                    r.enter(R::Complete);
-                }
-                if r.cinematic() {
-                    player.velocity = Vec3::ZERO;
-                    player.grounded = true;
-                    if r.phase >= R::Drinking {
-                        let drink = map
-                            .entities
-                            .iter()
-                            .find(|e| e.get("targetname").is_some_and(|n| n == "alice_drink_pos"))
-                            .and_then(|e| e.get("origin"))
-                            .and_then(|s| vector(s))
-                            .unwrap();
-                        player.feet = drink;
-                        if r.phase >= R::Shrinking {
-                            let jump = path(map, "alice_jump");
-                            if !jump.is_empty() {
-                                let t = if r.phase == R::Complete {
-                                    1.
-                                } else {
-                                    (r.time / 2.5).min(1.)
-                                };
-                                let index = t * (jump.len() - 1) as f32;
-                                let a = index.floor() as usize;
-                                player.feet =
-                                    jump[a].lerp(jump[(a + 1).min(jump.len() - 1)], index.fract());
+            {
+                let player = &mut *players[0];
+                self.scene_step(step, world, player)?;
+                self.return_step(step, player);
+                if let Some(r) = self.return_visit.as_mut().filter(|r| r.scene.is_none()) {
+                    use crate::school_return::Phase as R;
+                    r.time += step;
+                    if r.phase == R::Opening && r.time >= 5. {
+                        r.enter(R::Drinking);
+                        r.potion = false;
+                    }
+                    if r.phase == R::Drinking && r.time >= 3.8 {
+                        r.enter(R::Shrinking);
+                    }
+                    if r.phase == R::Shrinking && r.time >= 2.5 {
+                        r.enter(R::Complete);
+                    }
+                    if r.cinematic() {
+                        player.velocity = Vec3::ZERO;
+                        player.grounded = true;
+                        if r.phase >= R::Drinking {
+                            let drink = map
+                                .entities
+                                .iter()
+                                .find(|e| {
+                                    e.get("targetname").is_some_and(|n| n == "alice_drink_pos")
+                                })
+                                .and_then(|e| e.get("origin"))
+                                .and_then(|s| vector(s))
+                                .unwrap();
+                            player.feet = drink;
+                            if r.phase >= R::Shrinking {
+                                let jump = path(map, "alice_jump");
+                                if !jump.is_empty() {
+                                    let t = if r.phase == R::Complete {
+                                        1.
+                                    } else {
+                                        (r.time / 2.5).min(1.)
+                                    };
+                                    let index = t * (jump.len() - 1) as f32;
+                                    let a = index.floor() as usize;
+                                    player.feet = jump[a]
+                                        .lerp(jump[(a + 1).min(jump.len() - 1)], index.fract());
+                                }
                             }
                         }
+                        r.position = player.feet;
                     }
-                    r.position = player.feet;
                 }
             }
             if self.recipe && self.scene_id() != Some(cinema::library::BOOK) {
                 self.recipe_time += step;
             }
             let last_opening = self.books.contains(&Book::Flying)
-                && self.books.iter().all(|b| matches!(b, Book::Flying | Book::Bridge))
-                && self.book_times.iter().copied().fold(f32::INFINITY, f32::min) < 0.55;
+                && self
+                    .books
+                    .iter()
+                    .all(|b| matches!(b, Book::Flying | Book::Bridge))
+                && self
+                    .book_times
+                    .iter()
+                    .copied()
+                    .fold(f32::INFINITY, f32::min)
+                    < 0.55;
             for i in 0..4 {
                 if self.books[i] != Book::Waiting {
                     self.book_times[i] += step;
                 }
             }
-            if last_opening && self.book_times.iter().all(|t| *t >= 0.55)
-                && self.return_visit.is_none() && self.cinema_data.is_some() && !self.cinematic()
+            if last_opening
+                && self.book_times.iter().all(|t| *t >= 0.55)
+                && self.return_visit.is_none()
+                && self.cinema_data.is_some()
+                && !self.cinematic()
             {
                 self.scene_start(cinema::Beat::BookWin);
             }
@@ -970,17 +1036,21 @@ impl School {
                 let old_world = self.bound_pose(o, o.pose);
                 let collider =
                     Collider::model(map, o.model, next_world.origin, next_world.rotation(), true)?;
-                let ground = o.collider.trace(
-                    player.feet + PLAYER_CENTER,
-                    player.feet + PLAYER_CENTER - Vec3::Z * 3.,
-                    PLAYER_HALF,
-                );
-                let riding = o.enabled
-                    && o.solid
-                    && player.velocity.z <= 1.
-                    && !ground.start_solid
-                    && ground.fraction < 1.
-                    && ground.normal.z > 0.65;
+                // At either end, a passenger cannot take a shared lift away
+                // from a partner who is still boarding. Empty return trips
+                // remain available; an underway trip is allowed to finish.
+                if matches!(o.name.as_str(), "library_spiral_lift" | "elevator2")
+                    && players.len() > 1
+                    && motion.departing(step)
+                {
+                    let aboard = players
+                        .iter()
+                        .map(|p| p.velocity.z <= 1. && crate::moving::aboard(&o.collider, p.feet))
+                        .collect::<Vec<_>>();
+                    if aboard.iter().any(|b| *b) && !aboard.iter().all(|b| *b) {
+                        continue;
+                    }
+                }
                 world.set_dynamic(
                     fixed
                         .iter()
@@ -995,36 +1065,24 @@ impl School {
                         .chain(self.pictures.iter().map(|p| p.2.clone()))
                         .collect(),
                 );
-                let mut carried = next_world.origin
-                    + next_world.rotation()
-                        * old_world.rotation().inverse()
-                        * (player.feet - old_world.origin);
-                let mut support_normal = ground.normal;
-                if o.enabled && o.solid {
-                    if riding {
-                        let Some((feet, normal)) = collider.rider_feet(carried) else {
-                            continue;
-                        };
-                        carried = feet;
-                        support_normal = normal;
-                        let trace = world.body_trace(player.feet, carried);
-                        if trace.start_solid || trace.fraction < 1. || !world.body_clear(carried) {
-                            continue;
-                        }
-                    } else if collider.touches(
-                        player.feet + PLAYER_CENTER,
-                        player.feet + PLAYER_CENTER,
-                        PLAYER_HALF,
-                    ) {
-                        continue; // Stop instead of crushing or passing through Alice.
-                    }
+                if !crate::moving::carry(
+                    world,
+                    &o.collider,
+                    &collider,
+                    Transform {
+                        translation: old_world.origin,
+                        rotation: old_world.rotation(),
+                    },
+                    Transform {
+                        translation: next_world.origin,
+                        rotation: next_world.rotation(),
+                    },
+                    o.enabled && o.solid,
+                    players,
+                ) {
+                    continue;
                 }
                 let o = &mut self.objects[i];
-                if riding {
-                    player.feet = carried;
-                    player.grounded = true;
-                    player.ground_normal = support_normal;
-                }
                 o.pose = next;
                 o.collider = collider;
                 let motion = o.motion.as_mut().unwrap();
@@ -1059,22 +1117,26 @@ impl School {
                 {
                     if self.books[i] == Book::Flying {
                         let bridge = self.object(&format!("t{}", 185 - i));
-                        if bridge.collider.touches(
-                            player.feet + PLAYER_CENTER,
-                            player.feet + PLAYER_CENTER,
-                            PLAYER_HALF,
-                        ) {
+                        if players.iter().any(|p| {
+                            bridge.collider.touches(
+                                p.feet + PLAYER_CENTER,
+                                p.feet + PLAYER_CENTER,
+                                PLAYER_HALF,
+                            )
+                        }) {
                             continue;
                         }
                         self.books[i] = Book::Bridge;
                         self.object_mut(&format!("t{}", 185 - i)).enabled = true;
                     } else {
                         let support = self.object(&format!("flyingsupport{}", i + 1));
-                        if support.collider.touches(
-                            player.feet + PLAYER_CENTER,
-                            player.feet + PLAYER_CENTER,
-                            PLAYER_HALF,
-                        ) {
+                        if players.iter().any(|p| {
+                            support.collider.touches(
+                                p.feet + PLAYER_CENTER,
+                                p.feet + PLAYER_CENTER,
+                                PLAYER_HALF,
+                            )
+                        }) {
                             continue;
                         }
                         self.books[i] = Book::Landing;
@@ -1687,7 +1749,9 @@ pub fn check(assets: &mut Assets) -> Result<()> {
 /// Native renderer diagnostic. These staged contacts are separate from the traversal test.
 pub async fn check_render(assets: &mut Assets) -> Result<()> {
     crate::render::check_school_floor(assets).await?;
-    if std::env::var_os("LOOKING_GLASS_SCHOOL_FLOOR_CHECK").is_some() { return Ok(()); }
+    if std::env::var_os("LOOKING_GLASS_SCHOOL_FLOOR_CHECK").is_some() {
+        return Ok(());
+    }
     door_check::render(assets).await?;
     cinema_check::render(assets).await?;
     let mut scene = crate::render::Scene::load(assets, "skool1")?;

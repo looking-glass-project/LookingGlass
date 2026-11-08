@@ -750,12 +750,21 @@ impl Puppet {
         clips: &[&str],
         specs: &BTreeMap<String, texture::MaterialSpec>,
     ) -> Result<Self> {
+        Self::load_colored(assets,name,clips,specs,false)
+    }
+    pub fn load_coop_alice(assets: &mut Assets, clips: &[&str],
+        specs: &BTreeMap<String, texture::MaterialSpec>, player: crate::coop::PlayerId) -> Result<Self> {
+        Self::load_colored(assets,"alice",clips,specs,player == crate::coop::PlayerId::Red)
+    }
+    fn load_colored(assets: &mut Assets, name: &str, clips: &[&str],
+        specs: &BTreeMap<String, texture::MaterialSpec>, red: bool) -> Result<Self> {
         Ok(Self(
-            Model::load(
+            Model::load_colored(
                 assets,
                 name,
                 &clips.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
                 specs,
+                red,
             )?,
             true,
             0.,
@@ -1386,6 +1395,10 @@ impl Model {
         extra: &[String],
         specs: &BTreeMap<String, texture::MaterialSpec>,
     ) -> Result<Self> {
+        Self::load_colored(assets,name,extra,specs,false)
+    }
+    fn load_colored(assets: &mut Assets, name: &str, extra: &[String],
+        specs: &BTreeMap<String, texture::MaterialSpec>, red: bool) -> Result<Self> {
         let data = Data::load(assets, name, extra)?;
         let mut meshes = Vec::new();
         let mut material_layers = Vec::new();
@@ -1421,7 +1434,8 @@ impl Model {
             let tex = if let Some(t) = textures.get(&path) {
                 t.clone()
             } else {
-                let image = texture::decode(assets, &path)?;
+                let mut image = texture::decode(assets, &path)?;
+                if red && name == "alice" { crate::coop::palette::red_clothing(&path, &mut image.pixels); }
                 let t = Texture2D::from_rgba8(image.width, image.height, &image.pixels);
                 t.set_filter(FilterMode::Linear);
                 textures.insert(path, t.clone());
@@ -1923,6 +1937,22 @@ impl Npcs {
             greetings: self.greetings,
             garden: self.garden.as_ref().map(|g|g.saved.clone()),
         }
+    }
+    /// Same-build network state. Keep loaded model indices and render caches;
+    /// save restoration performs legacy migration and clears effects, so it is
+    /// deliberately not used for every incoming network frame.
+    pub fn replicate(&mut self, s: &Snapshot) -> Result<()> {
+        s.validate_replica(&self.actors)?;
+        if let Some(g) = &self.garden { g.validate(s.garden.as_ref())?; }
+        else { ensure!(s.garden.is_none(), "Unexpected co-op garden state"); }
+        for (a, b) in self.actors.iter_mut().zip(&s.actors) {
+            let model = a.model;
+            *a = b.clone();
+            a.model = model;
+        }
+        if let (Some(g), Some(saved)) = (&mut self.garden, &s.garden) { g.saved = saved.clone(); }
+        self.greetings = s.greetings;
+        Ok(())
     }
     pub fn restore(&mut self, s: &Snapshot) -> Result<()> {
         if let Some(g) = &self.garden { g.validate(s.garden.as_ref())?; }
@@ -2570,28 +2600,51 @@ impl Npcs {
         }
     }
     pub fn update(&mut self, dt: f32, world: &World, eye: Vec3) -> combat::Feedback {
+        self.player_targets(None);
+        self.update_targets(dt, world, eye, &[eye], &[Some(eye)])
+    }
+    /// The host advances the cast once, with both live bodies available to each
+    /// enemy. A trigger can be reached by either player in that same step.
+    pub fn update_players(&mut self, dt: f32, world: &World, players: [combat::PlayerTarget; 2]) -> combat::Feedback {
+        self.player_targets(Some(players));
+        let eyes: Vec<_> = players.iter().filter(|p| p.alive).map(|p| p.eye).collect();
+        let eye = eyes.first().copied().unwrap_or(players[0].eye);
+        let escort_eyes = players.map(|p| p.alive.then_some(p.eye));
+        self.update_targets(dt, world, eye, &eyes, &escort_eyes)
+    }
+    fn player_targets(&mut self, players: Option<[combat::PlayerTarget; 2]>) {
+        for a in &mut self.actors {
+            if let Some(p) = &mut a.resident { p.opponents().players = players; }
+            if let Some(p) = &mut a.clock { p.opponents.players = players; }
+            if let Some(p) = &mut a.imp { p.opponents.players = players; }
+            if let Some(p) = &mut a.chess { p.opponents.players = players; }
+            if let Some(p) = &mut a.ant { p.opponents.players = players; }
+            if let Some(p) = &mut a.guard { p.opponents.players = players; }
+        }
+    }
+    fn update_targets(&mut self, dt: f32, world: &World, eye: Vec3, trigger_eyes: &[Vec3], escort_eyes: &[Option<Vec3>]) -> combat::Feedback {
         let mut _profile = crate::frame_profile::span("npcs");
         if dt <= 0. { _profile.cancel(); }
         if let Some(mut actors) = self.actor_world.take() {
             actors.copy_dynamic_from(world);
-            let result = self.update_cast(dt, &actors, eye);
+            let result = self.update_cast(dt, &actors, eye, trigger_eyes, escort_eyes);
             self.actor_world = Some(actors);
             result
         } else {
-            self.update_cast(dt, world, eye)
+            self.update_cast(dt, world, eye, trigger_eyes, escort_eyes)
         }
     }
-    fn update_cast(&mut self, dt: f32, world: &World, eye: Vec3) -> combat::Feedback {
+    fn update_cast(&mut self, dt: f32, world: &World, eye: Vec3, trigger_eyes: &[Vec3], escort_eyes: &[Option<Vec3>]) -> combat::Feedback {
         let mut feedback = combat::Feedback::default();
         if let Some(g)=&mut self.garden {g.update(dt,world,eye,&mut self.actors,&self.models);}
         self.companion_routes
-            .update(&mut self.actors, dt, world, eye, |index, clip| {
+            .update_eyes(&mut self.actors, dt, world, escort_eyes, |index, clip| {
                 let d = &self.models[index].data;
                 d.clips[clip].distance * d.def.scale / d.clips[clip].duration()
             });
         if dt.is_finite() && dt > 0. {
             for ambush in &self.resident_ambushes {
-                if !ambush.touches(eye) {
+                if !trigger_eyes.iter().any(|&eye| ambush.touches(eye)) {
                     continue;
                 }
                 for actor in &mut self.actors {
@@ -2620,7 +2673,7 @@ impl Npcs {
                 }
             }
             for ambush in &self.clock_ambushes {
-                if !ambush.touches(eye) {
+                if !trigger_eyes.iter().any(|&eye| ambush.touches(eye)) {
                     continue;
                 }
                 for actor in &mut self.actors {
@@ -2636,7 +2689,7 @@ impl Npcs {
                 }
             }
             for ambush in &self.imp_ambushes {
-                if !ambush.touches(eye) {
+                if !trigger_eyes.iter().any(|&eye| ambush.touches(eye)) {
                     continue;
                 }
                 for actor in &mut self.actors {
@@ -2652,7 +2705,7 @@ impl Npcs {
                 }
             }
             for ambush in &self.chess_ambushes {
-                if ambush.touches(eye) {
+                if trigger_eyes.iter().any(|&eye| ambush.touches(eye)) {
                     for actor in &mut self.actors {
                         if actor
                             .spawn
@@ -2769,23 +2822,20 @@ impl Npcs {
                 continue;
             }
             if let Some(guard) = &mut actor.guard {
-                let events = guard.advance(
+                let mut events = guard.advance(
                     dt,
                     world,
                     eye,
                     self.models[actor.model].data.combat.unwrap(),
                 );
                 actor.yaw = guard.yaw;
-                feedback.summon_hits.extend(events.summon_hits);
-                feedback.damage += events.damage;
-                feedback.impulse += events.impulse;
-                feedback.spatial_sounds.extend(
+                events.spatial_sounds.extend(
                     events
                         .sounds
-                        .into_iter()
+                        .drain(..)
                         .map(|s| (s, guard.target(0).center)),
                 );
-                feedback.spatial_sounds.extend(events.spatial_sounds);
+                feedback.append(events);
             } else if actor.spawn.name == "return_insane2"
                 && !self.pupil_path.is_empty()
                 && actor.greeting <= 0.
@@ -2866,6 +2916,14 @@ impl Npcs {
                 })
             })
             .collect()
+    }
+    /// Read-only native enemy diagnostics for the opt-in network route fixture.
+    pub(crate) fn snarks(&self) -> impl Iterator<Item=(usize, &crate::snark::Snark, bool)> {
+        self.actors.iter().enumerate().filter_map(|(id,a)| {
+            let resident=a.resident.as_ref()?;
+            let resident::Body::Snark(snark)=&resident.body else { return None; };
+            Some((id,snark,resident.active && resident.awake))
+        })
     }
     pub fn targets(&self) -> Vec<combat::Target> {
         self.actors
@@ -3385,6 +3443,22 @@ pub struct Snapshot {
     greetings: u64,
 }
 impl Snapshot {
+    fn validate_replica(&self, local: &[Actor]) -> Result<()> {
+        ensure!(self.actors.len() <= 4096 && self.actors.len() == local.len(), "Co-op cast changed");
+        for (a, b) in local.iter().zip(&self.actors) {
+            ensure!(a.spawn == b.spawn && a.guard.is_some() == b.guard.is_some()
+                && a.resident.is_some() == b.resident.is_some() && a.ant.is_some() == b.ant.is_some()
+                && a.chess.is_some() == b.chess.is_some() && a.imp.is_some() == b.imp.is_some()
+                && a.clock.is_some() == b.clock.is_some() && a.guide.is_some() == b.guide.is_some(),
+                "Co-op actor identity changed");
+            b.validate_save()?;
+            if let (Some(a), Some(b)) = (&a.guard, &b.guard) {
+                ensure!(a.ranged == b.ranged && a.scale == b.scale, "Co-op guard type changed");
+            }
+            if let (Some(a), Some(b)) = (&a.resident, &b.resident) { b.matches(a)?; }
+        }
+        Ok(())
+    }
     /// The cast-identity half of `Npcs::restore` without loading any model: every saved actor
     /// must still be an authored placement of this visit (the identity old saves rely on), keep
     /// valid timers, and every current placement must be saved unless it is a difficulty
@@ -3533,6 +3607,40 @@ pub fn check_combat(assets: &mut Assets) -> Result<()> {
         );
     }
     println!("PASS club guard: alert/walk/attack/pain/death clips and school floor encounter");
+    let mut coop_results = Vec::new();
+    for fps in [30, 60, 144] {
+        let mut guard = Guard::new(vec3(-1888., 2040., -504.), -std::f32::consts::FRAC_PI_2, 1.);
+        let mut players = [eye, eye + Vec3::Y * 80.].map(|eye|
+            combat::PlayerTarget { eye, alive: true, hidden: false });
+        guard.opponents.players = Some(players);
+        let mut red_damage = 0.;
+        for _ in 0..fps * 12 {
+            let f = guard.advance(1. / fps as f32, &world, eye, timing);
+            ensure!(f.damage == 0. && f.players[0].damage == 0., "Co-op guard damaged the wrong player");
+            red_damage += f.players[1].damage;
+        }
+        ensure!(red_damage > 0., "Co-op guard never reached Red Alice");
+        // A restored actor receives the current roster from the host; it must
+        // not retain a dead victim or target the legacy single-player ID.
+        guard = serde_json::from_slice(&serde_json::to_vec(&guard)?)?;
+        guard.validate_save()?;
+        players[1].alive = false;
+        guard.opponents.players = Some(players);
+        let mut blue_damage = 0.;
+        for _ in 0..fps * 12 {
+            let f = guard.advance(1. / fps as f32, &world, eye, timing);
+            ensure!(f.damage == 0. && f.players[1].damage == 0., "Co-op guard hit a dead player");
+            blue_damage += f.players[0].damage;
+        }
+        ensure!(blue_damage > 0., "Co-op guard did not switch to the surviving Alice");
+        coop_results.push((guard.feet, red_damage, blue_damage));
+        println!("PASS co-op school guard {fps} Hz: Red {red_damage}, survivor Blue {blue_damage}, roundtrip");
+    }
+    for result in &coop_results[1..] {
+        ensure!(result.0.distance(coop_results[0].0) < 0.1
+            && result.1 == coop_results[0].1 && result.2 == coop_results[0].2,
+            "Frame-rate-dependent co-op enemy targeting/damage");
+    }
     Ok(())
 }
 
@@ -4127,6 +4235,20 @@ mod tests {
             footing: None,
             falling: 0.,
         }
+    }
+    #[test]
+    fn coop_replicas_require_exact_cast_and_valid_state_but_use_local_model_indices() {
+        let local = actor();
+        let mut replica = Snapshot { actors: vec![local.clone()], ..Default::default() };
+        replica.actors[0].model = usize::MAX; // Never used: replicate preserves the loaded index.
+        replica.validate_replica(std::slice::from_ref(&local)).unwrap();
+        replica.actors[0].spawn.name = "different".into();
+        assert!(replica.validate_replica(std::slice::from_ref(&local)).is_err());
+        replica.actors[0] = local.clone();
+        replica.actors[0].time = -1.;
+        assert!(replica.validate_replica(std::slice::from_ref(&local)).is_err());
+        replica.actors.clear();
+        assert!(replica.validate_replica(&[local]).is_err());
     }
     fn map(entities: Vec<Entity>) -> Bsp {
         Bsp {

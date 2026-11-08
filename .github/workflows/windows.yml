@@ -22,9 +22,13 @@ jobs:
         run: |
           python -m unittest discover -s tools -p test_source_package.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m unittest discover -s tools -p test_launcher.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m unittest discover -s tools -p test_setup.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m unittest discover -s tools -p test_windows_setup.py
           exit $LASTEXITCODE
+      - name: Co-op fixture regressions (no game data or desktop)
+        run: python tools/test_coop_fixture_scenes.py
       - name: Rust unit tests (no game data)
         run: cargo test --locked

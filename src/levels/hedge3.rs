@@ -1,5 +1,8 @@
 //! Labyrinthine Revenge: saved machine phases, automatic doors and bellows.
 mod check;
+mod coop;
+mod coop_route;
+mod coop_check;
 mod motion;
 mod route;
 use super::{state, Check, Registration, Run};
@@ -36,6 +39,8 @@ struct Saved {
     version: u8,
     machines: Vec<Mechanism>,
     crush: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    coop: Option<[bool; 2]>,
 }
 impl state::State for Saved {
     const VERSION: u8 = 1;
@@ -73,6 +78,7 @@ impl Labyrinth {
             version: 1,
             machines: vec![Mechanism::default(); objects.len()],
             crush: false,
+            coop: None,
         };
         let mut out = Self {
             objects,
@@ -151,10 +157,24 @@ impl LevelController for Labyrinth {
         p: &mut Player,
         fixed: &[Collider],
     ) -> Result<()> {
-        if dt <= 0. {
+        if !dt.is_finite() || dt <= 0. {
             return Ok(());
         }
         self.move_all(dt.min(0.1), w, p, fixed)
+    }
+    fn coop_prepare(&mut self, _: &mut [crate::level::CoopPlayer<'_>; 2]) {
+        self.pair_state();
+    }
+    fn coop_advance_roster(&mut self, dt: f32, _: &Bsp, w: &mut World,
+        players: &mut [crate::level::CoopPlayer<'_>; 2], fixed: &[Collider]) -> Result<()> {
+        self.advance_pair(dt, w, players, fixed)
+    }
+    fn coop_combat_roster(&mut self, dt: f32, _: &World,
+        players: &mut [crate::level::CoopPlayer<'_>; 2]) -> crate::combat::Feedback {
+        self.damage_pair(dt, players)
+    }
+    fn coop_respawned(&mut self, player: usize) {
+        if player < 2 { self.pair_state()[player] = false; }
     }
     fn transforms(&self) -> Vec<(usize, Vec3, Quat)> {
         self.objects
@@ -294,6 +314,16 @@ pub static REGISTRATION: Registration = Registration {
     target_base: None,
     story_beats: &[],
     checks: &[
+        Check {
+            flag: "--hedge3-coop-route-check",
+            help: "Traverse the full paired Labyrinth and rotating machinery into tower3.",
+            run: Run::Windowed(coop_route::check),
+        },
+        Check {
+            flag: "--hedge3-coop-check",
+            help: "Verify paired machinery, personal contacts and saved continuation.",
+            run: Run::Headless(coop_check::check),
+        },
         Check {
             flag: "--hedge3-check",
             help: "Verify Labyrinth machinery, doors, skies and saved movement.",

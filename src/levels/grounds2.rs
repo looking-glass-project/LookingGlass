@@ -1,6 +1,7 @@
 //! Battle Royale: the collapsing entrance and finite, recurring guard companies.
 mod art;
 mod check;
+mod coop_check;
 mod data;
 mod route;
 mod saves;
@@ -233,6 +234,14 @@ impl LevelController for Royale {
     fn prepare_player(&mut self, _: &mut Stats, _: &mut Player) {
         self.saved.initialized = true;
     }
+    fn coop_prepare(&mut self, players: &mut [crate::level::CoopPlayer<'_>; 2]) {
+        for p in players.iter_mut().filter(|p| p.stats.alive()) { self.prepare_player(p.stats, p.player); }
+    }
+    fn coop_combat(&mut self, dt: f32, world: &World,
+        players: [crate::combat::PlayerTarget; 2]) -> crate::combat::Feedback {
+        if !players.iter().any(|p| p.alive) { return Default::default(); }
+        self.step_waves_with(dt, world, players[0].eye, false, None, Some(players))
+    }
     fn advance(
         &mut self,
         dt: f32,
@@ -446,6 +455,10 @@ pub static REGISTRATION: Registration = Registration {
     target_base: Some(BASE),
     story_beats: &[],
     checks: &[
+        Check {flag: "--grounds2-coop-route-check", help: "Play an accelerated normal paired Battle Royale route to Ascension.",
+            run: Run::Windowed(route::coop_check)},
+        Check {flag: "--grounds2-coop-check", help: "Verify paired castle progression and personal combat.",
+            run: Run::Headless(coop_check::check)},
         Check {
             flag: "--grounds2-check",
             help: "Verify Battle Royale arrival, collapse, companies and persistence.",

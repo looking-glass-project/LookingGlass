@@ -4,6 +4,10 @@ mod lever;
 mod route;
 pub(crate) use route::drive as drive_route;
 mod check;
+mod coop;
+mod coop_check;
+mod coop_scene_check;
+mod coop_door_check;
 mod motion;
 mod saves;
 mod scene;
@@ -59,6 +63,8 @@ struct Saved {
     scene: Option<Scene>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pull: Option<lever::Pull>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    coop: Option<coop::State>,
 }
 impl Saved {
     fn new(n: usize) -> Self {
@@ -85,6 +91,7 @@ impl Saved {
             hints: [false; 2],
             scene: None,
             pull: None,
+            coop: None,
         }
     }
     fn both(&self) -> Option<f32> {
@@ -101,6 +108,7 @@ impl state::State for Saved {
     }
     fn validate(&self, _: state::Visit) -> Result<()> {
         if let Some(pull) = &self.pull { pull.validate(self)?; }
+        if let Some(coop) = &self.coop { coop.validate(self)?; }
         state::clock("machinery", self.age, 1e7)?;
         for t in self
             .levers
@@ -193,6 +201,7 @@ struct Clockwork {
     pull_duration: f32,
     cameras: BTreeMap<String, crate::fortress::spline::Spline>,
     floater: crate::fortress::spline::Spline,
+    closing_x: [f32; 2],
 }
 fn at(e: &super::Entity) -> Transform {
     Transform {
@@ -270,6 +279,8 @@ impl Clockwork {
             floater,
             levers: LEVERS.into_iter().map(|i| at(&map.entities[i])).collect(),
             pull_duration: lever::duration(a)?,
+            closing_x: [coop::closing_approach(map, "NORETURN")?,
+                coop::closing_approach(map, "Close_ClockRoom_Door")?],
         };
         o.rebuild(map)?;
         Ok(o)
@@ -440,10 +451,73 @@ impl LevelController for Clockwork {
         }
         Events::default()
     }
+    fn coop_prepare(&mut self, players: &mut [crate::level::CoopPlayer<'_>; 2]) {
+        self.pair_prepare(players);
+    }
+    fn coop_advance_roster(&mut self, dt: f32, map: &Bsp, world: &mut World,
+        players: &mut [crate::level::CoopPlayer<'_>; 2], fixed: &[Collider]) -> Result<()> {
+        self.pair_advance(dt, map, world, players, fixed)
+    }
+    fn coop_contacts(&mut self, _: f32, players: &mut [crate::level::CoopPlayer<'_>; 2]) -> Option<usize> {
+        self.pair_actor(players)
+    }
+    fn coop_update(&mut self, index: usize, world: &mut World, player: &Player, aim: Vec3, pressed: bool) -> Events {
+        let had_pull = self.saved.pull.is_some();
+        let events = self.update(world, player, aim, pressed);
+        if !had_pull && self.saved.pull.is_some() {
+            let lever = self.saved.pull.as_ref().unwrap().lever;
+            let state = self.pair_state();
+            state.actor = Some(index);
+            if lever == 3 { state.port_actor = Some(index); }
+        }
+        events
+    }
+    fn coop_controlled(&self, index: usize) -> bool {
+        self.saved.pull.is_some() && self.saved.coop.as_ref().is_some_and(|s| s.actor == Some(index))
+    }
+    fn coop_hides_player(&self, index: usize) -> bool { self.coop_controlled(index) }
+    fn coop_blocks_weapons(&self, index: usize) -> bool { self.coop_controlled(index) }
+    fn coop_scene_step(&mut self, owner: usize, _: &mut Player, stats: &mut Stats) {
+        let state = self.pair_state();
+        if !state.initialized[owner] && stats.alive() { stats.full_stats(); state.initialized[owner] = true; }
+        state.actor = Some(owner);
+        self.saved.initialized = true;
+    }
+    fn coop_boarding_ready(&self, thread: &str, feet: &[Vec3]) -> Option<bool> {
+        // Both approaches run west, beyond the closing brush. The laboratory
+        // lever alcove is also west of its door but remains outside this gate.
+        let closing = match thread {
+            "NORETURN" => Some(0),
+            "Close_ClockRoom_Door" => Some(1),
+            _ => None,
+        };
+        if let Some(k) = closing {
+            return Some(!feet.is_empty()
+                && feet.iter().all(|p| p.x + PLAYER_HALF.x <= self.closing_x[k]));
+        }
+        let name = match thread {
+            "Lift_Up" => "Lift1",
+            "Start_Floater1" => "floater1",
+            // The lower-area trigger calls the lift down to its boarding floor.
+            // Gating that recall on upper-deck occupancy would prevent boarding.
+            _ => return None,
+        };
+        Some(!feet.is_empty() && feet.iter().all(|p| self.supported_by(name, *p)))
+    }
     fn prompt(&self, w: &World, eye: Vec3, aim: Vec3) -> Option<&'static str> {
         self.use_lever(w, eye, aim)
             .map(|_| "E  Pull lever")
             .or_else(|| self.door_pick(w, eye, aim).map(|_| "E  open door"))
+    }
+    fn route_closed_door(&self, id: crate::entity::Id) -> Option<bool> {
+        self.route_door_closed(id)
+    }
+    fn route_carry_velocity(&self, player: &Player) -> Option<Vec3> {
+        self.route_gear_velocity(player)
+    }
+    fn route_closed_door_in_reach(&self, w: &World, eye: Vec3, aim: Vec3) -> Option<crate::entity::Id> {
+        let k = self.door_pick(w, eye, aim)?;
+        self.route_door_to_open(k)
     }
     fn advance(
         &mut self,
@@ -707,6 +781,8 @@ pub static REGISTRATION: Registration = Registration {
         ),
     ],
     checks: &[
+        Check { flag: "--hatter1-coop-check", help: "Verify paired Clockwork machinery and owned lever actions.", run: Run::Headless(coop_check::check) },
+        Check { flag: "--hatter1-coop-scene-check", help: "Verify paired Clockwork scene ownership and reunion.", run: Run::Headless(coop_scene_check::check) },
         Check {flag:"--hatter1-route-native-check",help:"Verify continuous Clockwork traversal with its native cast.",run:Run::Windowed(route::check)},
         Check {
             flag: "--hatter1-traversal-check",

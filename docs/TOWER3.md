@@ -81,3 +81,22 @@ binding behavior. Directional rotation commands continue
 through 360 degrees, rather than reversing at 180. Native captures are silent;
 audible playback, a manual keyboard playthrough, other difficulties and a full
 campaign-chain run are not claimed.
+
+## Normal paired playable route
+
+Frozen `fcf4979` passes the normal paired course through actual Royal Rage
+arrival: **36,116 ticks**, **301 exact compressed replicas**, and both players
+alive at **22/25 health**, with personal resources carried exactly. Five normal
+revivals each take exactly ten active seconds and return at 25 health. There is
+no team wipe, progression staging, cheat state or changed gameplay balance.
+
+The diagnostic uses live lift/pedal phases, precise pillar landings, single-file
+wheel boarding and independent movement off the final climbing gear. It omits
+the solo route's deliberate fall demonstrations; normal recovery remains active.
+Gameplay, saves and networking are unchanged. All 949 active Rust tests and
+source/package checks pass. Frozen source, executable, arrival and recovery
+evidence is pinned in `private/coop-playable-machinations-default-verified.json`.
+
+Repeat with `tools/test_coop_native_route.py --map tower3`, local data and a
+fresh profile. Internet and rendered-camera evidence remains separate.
+Coverage is **32/39 visits**, **7 remaining**, or **77.9%** overall.

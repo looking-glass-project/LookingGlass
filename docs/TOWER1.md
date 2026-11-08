@@ -1,5 +1,30 @@
 # Airborne Terror
 
+## Co-op playable integration
+
+Build `3e96892` adds the shared co-op face clock. Each gust advances once
+per world step and drives both players, enemy pushes and the existing face
+animation/effects state. Normal contacts can activate and repeat all four
+faces, including the overlapping middle triggers. Shared Watch time now
+uses only living owners and the latest overlapping expiry; machinery,
+combat, client particle clocks and audio use that same calculation.
+
+`--tower1-coop-check` passes 41 native cases: three clock/parity cases,
+twelve trigger/repeat cases, twelve ordinary player-push cases, twelve
+original arrival variants and both exit-trigger owners. Compressed state
+continuation is covered. The ten-case solo log is byte-identical to the
+pre-change `0e5f061` baseline. The production code passes 942 Rust tests;
+the final native run follows fixture-only corrections. Existing saves keep
+their format and shared face phases.
+
+These staged components establish core integration. A normal paired route
+through the level remains part of the playable campaign pass. Detailed
+per-visit recovery/rejoin, visual/audio comparison and difficulty/scene
+permutations belong to the later polishing stage unless they expose a
+normal-play blocker. See [playable milestone](COOP_PLAYABLE.md).
+
+## Existing single-player behavior
+
 `tower1$tower1_start1` has one registered controller for the Cheshire
 introduction and four blow faces. Existing native NPC ownership supplies the
 ten Boojum ambushes; no second combat cast is created. The sealed precache
@@ -55,6 +80,24 @@ separate `--save-check-write` and `--save-check-read` processes. These compare
 saved owner/world/player futures; they are distinct from the full combat routes.
 Staged renders cover Cat appearance/smile and face close/hold/blow/open/idle.
 Private logs and release hashes are under `private/tower1-work/`.
+
+## Normal paired route
+
+`--tower1-coop-route-check` on `fb8a476` passes the original watched arrival,
+face gauntlet and upper updrafts into actual Hedge2 arrival. It uses ordinary
+movement and funded combat, with no progress or resource writes. Each player
+follows the final flight waypoints independently; three narrow approaches use
+single-file path planning. The survivor can continue toward safe revival ground.
+The run takes 17,513 ticks with 146 exact replicas and finishes at 21/62 health.
+Blue's two deaths each count 1,200 active ticks before safe 25-health revival,
+with 966 and 68 additional ticks waiting for suitable footing. No team wipe.
+
+The route also exposed and fixed horizontal contact rewinding airborne height.
+The asset-free regression covers rising/falling bodies in either slot without
+moving the partner or crossing a wall. Battle Royale still completes with the
+same collision fix. Repeat through `tools/test_coop_native_route.py --map tower1`
+using an isolated profile in Anode. Public internet and rendered cameras are
+covered by separate core checks; exhaustive per-visit combinations are deferred.
 
 ## Limits
 

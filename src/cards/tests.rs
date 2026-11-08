@@ -30,6 +30,19 @@ fn floor() -> World {
 fn guard(kind: Kind) -> Guard {
     Guard::new(kind, Vec3::Z * 0.1, 0., 1., 7)
 }
+
+#[test]
+fn coop_nearer_player_in_blind_spot_does_not_hide_visible_partner() {
+    for kind in [Kind::Heart, Kind::Spade] {
+        let mut g = guard(kind);
+        let red = vec3(300., 0., 48.);
+        g.opponents.players = Some([vec3(-80., 0., 48.), red].map(|eye|
+            crate::combat::PlayerTarget { eye, alive: true, hidden: false }));
+        tick(&mut g, &floor(), vec3(-80., 0., 48.), 1);
+        assert_eq!(g.phase, Phase::Alert);
+        assert_eq!(g.last_seen, red);
+    }
+}
 fn tick(g: &mut Guard, w: &World, eye: Vec3, n: usize) -> Feedback {
     let mut f = Feedback::default();
     for _ in 0..n {

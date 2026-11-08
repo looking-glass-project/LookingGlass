@@ -92,6 +92,20 @@ fn steam_damages_each_body_once_and_cannot_reach_through_cover() {
         0.
     );
 }
+
+#[test]
+fn coop_steam_hits_both_players_once_without_sharing_the_hit_mask() {
+    let mut p = clock();
+    p.set(Phase::SteamFire);
+    p.repeat = true;
+    p.opponents.players = Some([vec3(200., 0., 60.), vec3(250., -15., 60.)].map(|eye|
+        crate::combat::PlayerTarget { eye, alive: true, hidden: false }));
+    let out = tick(&mut p, &floor(), Vec3::ZERO, 100, 120.);
+    assert_eq!(out.players[0].damage, 12.);
+    assert_eq!(out.players[1].damage, 12.);
+    assert_eq!(out.damage, 0.);
+    p.validate().unwrap();
+}
 #[test]
 fn fists_are_separate_swept_projectiles_and_do_not_retarget_a_missing_summon() {
     let mut p = clock();

@@ -1,5 +1,27 @@
 # Duchess encounter — version 0.26
 
+## Duchess normal paired route accepted
+
+Frozen `a4f954c` passes the fresh Just Desserts route in **12,502 ticks**:
+actual Jackbomb pickup, original introduction, living boss combat, turtle
+rescue and the real temple departure. **105 exact compressed replicas** agree;
+both players finish alive at **100/25 health**, with no deaths, revivals, team
+wipes, health floors, cheats or forced progression. The watched introduction
+reunites the pair; the original outro carries both into the next visit.
+
+Temple arrival preserves personal resources and pickup history, grants the
+original breathing-shell flag and fills the partner's missing Jackbomb campaign
+milestone. The first attempt reached the exit but failed the diagnostic's
+missing shell-grant allowance; the corrected check passes without changing
+gameplay. The pilot now includes the legacy combat targets used by production.
+
+Evidence: `private/coop-playable-duchess-default-verified.json`. Repeat with
+`tools/test_coop_native_route.py --map potears3`, local data and a fresh profile.
+All **950 active Rust tests** pass on the preceding diagnostic build `148a733`;
+the final build changes only arrival expectations and flag registration.
+Normal coverage is **36/39 visits**, with **3 remaining**, or **80.0%** overall.
+This accelerated Arena check leaves internet/rendered-camera evidence separate.
+
 ## Jackbomb pickup camera repair (2026-10-01)
 
 The expansion camera previously retracted from the boss's final position while
@@ -91,3 +113,19 @@ This is an independently authored encounter, not execution of original AI or cin
 Private test logs and screenshots live under `private/duchess-*`; user save slots were not used. The local source-review archive excludes game data, executables, screenshots and saves.
 
 An actual v0.25/format-7 potears3 save was loaded and resaved in format 8 with identical player/resources and the new encounter/gates initialized. The original fixture remains in `private/duchess-legacy-v7`; logs are `private/duchess-legacy-{write,read}.log`.
+
+## Co-op checks
+
+`--coop-duchess-check` runs staged, headless checks against the real map for both
+players' targets, grabs, personal healing and original scene ownership/replicas.
+`--coop-duchess-arena-check` needs a game window (use Anode); it drives native
+weapon/movement inputs and counts particle output without screenshot inspection.
+Both accept the usual `--data` and isolated `--profile` options.
+
+The shared host owns the fight. A bite locks only its captured player; healing
+cooldowns and visibility are personal. Both modes use the ordinary pickup-volume
+occlusion check so furniture under an essence's base does not prevent contact
+with its reachable upper volume. Original amounts and replenishment times remain.
+See [co-op evidence and remaining scope](COOP.md) and the
+[campaign matrix](COOP_CAMPAIGN.md); these component fixtures do not complete the
+co-op campaign route requirement.

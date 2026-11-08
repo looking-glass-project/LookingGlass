@@ -1,12 +1,12 @@
 use super::*;
 use crate::collision::{PLAYER_CENTER, PLAYER_HALF};
-fn index(name: &str, prefix: &str) -> Option<usize> {
+pub(super) fn index(name: &str, prefix: &str) -> Option<usize> {
     name.strip_prefix(prefix)?
         .parse::<usize>()
         .ok()?
         .checked_sub(1)
 }
-fn axis(i: usize) -> Vec3 {
+pub(super) fn axis(i: usize) -> Vec3 {
     [Vec3::X, Vec3::X, Vec3::Z, Vec3::Y, Vec3::Z][i]
 }
 const SPEED: [f32; 5] = [256., -256., 256., -256., 100.];
@@ -64,6 +64,16 @@ impl Tower {
         p: &mut Player,
         fixed: &[Collider],
     ) -> Result<()> {
+        let crush = self.move_machinery_players(dt, map, w, &mut [p], fixed, false)?;
+        self.saved.machine.as_mut().unwrap().crush |= crush[0];
+        Ok(())
+    }
+    pub(super) fn move_machinery_players(
+        &mut self, dt: f32, map: &Bsp, w: &mut World,
+        players: &mut [&mut Player], fixed: &[Collider], paired: bool,
+    ) -> Result<Vec<bool>> {
+        let mut crush = vec![false; players.len()];
+        let scripted = self.scripted();
         let world_dt = if self.stopped { 0. } else { dt };
         for t in self.saved.stages.iter_mut().flatten() {
             *t = (*t + world_dt).min(8.);
@@ -78,8 +88,11 @@ impl Tower {
             }
             let before = self.machine().clone();
             let old_pose = o.pose;
-            let rider = !name.starts_with("fan") && Self::supported(o, p);
-            let local = old_pose.rotation.inverse() * (p.feet - old_pose.translation);
+            let riders = players.iter().map(|p| !name.starts_with("fan") && Self::supported(o, p))
+                .collect::<Vec<_>>();
+            let rider = riders.iter().any(|r| *r);
+            let locals = players.iter().map(|p| old_pose.rotation.inverse() * (p.feet - old_pose.translation))
+                .collect::<Vec<_>>();
             let m = self.saved.machine.as_mut().unwrap();
             if let Some(i) = index(&name, "flusher") {
                 // The authored speed controls a per-20Hz velocity increment;
@@ -151,14 +164,16 @@ impl Tower {
                         Quat::from_axis_angle(axis(i), angle.to_radians()),
                         true,
                     )?;
-                    let center = p.feet + PLAYER_CENTER;
-                    if c.trace(center, center, PLAYER_HALF).start_solid {
-                        blocked = true;
-                        break;
+                    for (slot, p) in players.iter().enumerate() {
+                        let center = p.feet + PLAYER_CENTER;
+                        if c.trace(center, center, PLAYER_HALF).start_solid {
+                            blocked = true;
+                            crush[slot] |= !scripted;
+                        }
                     }
+                    if blocked { break; }
                 }
                 if blocked {
-                    m.crush |= !self.saved.scene.is_some();
                     continue;
                 }
                 m.fans[i] = (before.fans[i] + SPEED[i] * world_dt).rem_euclid(360.);
@@ -166,33 +181,53 @@ impl Tower {
             self.rebuild(map)?;
             self.sync(w, fixed);
             let o = &self.objects[j];
-            let carried = o.pose.translation + o.pose.rotation * local;
-            let landing = if rider {
-                o.collider.rider_feet(carried)
-            } else {
-                None
-            };
-            let next = landing.map_or(p.feet, |p| p.0);
-            if w.body_clear(next) && (!rider || landing.is_some()) {
-                if let Some((feet, normal)) = landing {
-                    p.feet = feet;
-                    p.grounded = true;
-                    p.ground_normal = normal;
+            let landings = locals.iter().enumerate().map(|(i, local)| {
+                riders[i].then(|| o.collider.rider_feet(o.pose.translation + o.pose.rotation * *local)).flatten()
+            }).collect::<Vec<_>>();
+            let proposed = players.iter().enumerate().map(|(i, p)| landings[i].map_or(p.feet, |p| p.0))
+                .collect::<Vec<_>>();
+            let mut blocked = false;
+            for (slot, p) in players.iter().enumerate() {
+                blocked |= !w.body_clear(proposed[slot]) || (riders[slot] && landings[slot].is_none());
+                if paired && riders[slot] {
+                    // Exclude only this rider's support while checking their full path.
+                    w.set_dynamic(fixed.iter().cloned().chain(self.objects.iter().enumerate()
+                        .filter(|(i, o)| *i != j && o.name != "water").map(|(_, o)| o.collider.clone())).collect());
+                    let trace = w.body_trace(p.feet, proposed[slot]);
+                    blocked |= trace.start_solid || trace.fraction < 1.;
+                    self.sync(w, fixed);
                 }
-            } else {
+            }
+            if paired && proposed.len() == 2 {
+                let delta = proposed[0] - proposed[1];
+                blocked |= delta.truncate().length() < crate::coop::separation::DISTANCE - 0.05
+                    && delta.z.abs() < PLAYER_HALF.z * 2. - 0.05;
+            }
+            if blocked {
                 self.saved.machine = Some(before);
                 self.rebuild(map)?;
                 self.sync(w, fixed);
+            } else {
+                for (p, landing) in players.iter_mut().zip(landings) {
+                    if let Some((feet, normal)) = landing {
+                        p.feet = feet;
+                        p.grounded = true;
+                        p.ground_normal = normal;
+                    }
+                }
             }
         }
-        Ok(())
+        Ok(crush)
     }
     pub(super) fn move_currents(&mut self, dt: f32, p: &mut Player) {
         if self.scripted() {
             return;
         }
-        for (k, current) in self.currents.iter().enumerate() {
-            let timer = &mut self.saved.machine.as_mut().unwrap().currents[k];
+        Self::apply_currents(&self.currents, &mut self.saved.machine.as_mut().unwrap().currents, dt, p);
+    }
+    pub(super) fn apply_currents(currents: &[crate::traversal::Push], timers: &mut [f32; 4], dt: f32, p: &mut Player) {
+        for (k, current) in currents.iter().enumerate() {
+            let timer = &mut timers[k];
             *timer = (*timer - dt).max(0.);
             let c = p.feet + PLAYER_CENTER;
             if *timer <= 0.00001 && current.volume.touches(c, c + p.velocity * dt, PLAYER_HALF) {

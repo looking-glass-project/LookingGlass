@@ -20,6 +20,9 @@ use macroquad::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{any::Any, collections::BTreeMap};
 mod art;
+mod coop;
+mod coop_check;
+mod coop_route;
 mod check;
 pub(crate) use check::drive as drive_route;
 mod data;
@@ -56,6 +59,8 @@ struct Bubble {
 }
 #[derive(Clone, Serialize, Deserialize)]
 struct Saved {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    coop: Option<coop::State>,
     version: u8,
     initialized: bool,
     clock: f64,
@@ -77,6 +82,7 @@ struct Saved {
 impl Default for Saved {
     fn default() -> Self {
         Self {
+            coop: None,
             version: 1,
             initialized: false,
             clock: 0.,
@@ -211,6 +217,10 @@ impl Temple {
     }
     fn guard_state(&self) -> Result<()> {
         let s = &self.saved;
+        if let Some(coop) = &s.coop {
+            coop.validate()?;
+            ensure!(s.initialized, "Paired temple has no arrival initialization");
+        }
         ensure!(
             s.version == 1
                 && s.clock.is_finite()
@@ -376,6 +386,19 @@ impl LevelController for Temple {
     fn upgraded(&mut self) {
         self.saved.initialized = true;
     }
+    fn coop_advance_roster(&mut self, dt: f32, map: &Bsp, world: &mut World,
+        players: &mut [crate::level::CoopPlayer<'_>; 2], fixed: &[Collider]) -> Result<()> {
+        self.advance_roster(dt, map, world, players, fixed)
+    }
+    fn coop_contacts(&mut self, _dt: f32, players: &mut [crate::level::CoopPlayer<'_>; 2]) -> Option<usize> {
+        // The Watch stops the world clock, not a swimmer touching existing air.
+        self.prepare_roster(players);
+        for body in players.iter_mut().filter(|b| b.stats.alive()) { self.breathe(body.player); }
+        None
+    }
+    fn coop_respawned(&mut self, player: usize) {
+        if let Some(coop) = &mut self.saved.coop { coop.respawned(player); }
+    }
     fn advance(
         &mut self,
         dt: f32,
@@ -384,52 +407,11 @@ impl LevelController for Temple {
         p: &mut Player,
         fixed: &[Collider],
     ) -> Result<()> {
-        if dt <= 0. {
+        if !dt.is_finite() || dt <= 0. {
             return Ok(());
         }
         let dt = dt.min(0.1);
-        self.saved.clock = (self.saved.clock + dt as f64).min(86400.);
-        self.saved.crush_cooldown = (self.saved.crush_cooldown - dt).max(0.);
-        if let Some(start) = self.saved.guide {
-            let parameter = self
-                .data
-                .guide
-                .curve
-                .parameter((self.saved.clock - start) as f32);
-            let reached = (parameter.floor() as isize + 1).clamp(0, 159) as usize;
-            if reached >= self.saved.node {
-                for i in self.saved.node..=reached {
-                    let n = self.data.guide.nodes[i].1.clone();
-                    if !n.is_empty() {
-                        self.fire(&n);
-                    }
-                }
-                self.saved.node = reached + 1;
-            }
-        }
-        let old_clams = self.saved.clams;
-        for n in 0..4 {
-            self.saved.pulse[n] = false;
-            if let Some(t) = &mut self.saved.clams[n] {
-                let old = *t;
-                *t = (*t + dt as f64).min(86400.);
-                self.saved.pulse[n] = *t >= 1.
-                    && (old < 1. || ((*t - 1.) / 4.91).floor() > ((old - 1.) / 4.91).floor());
-            }
-        }
-        if let Some(t) = &mut self.saved.fishhead {
-            *t += dt;
-            if *t >= 1.5 {
-                self.saved.fishhead = None;
-            }
-        }
-        let old = self.saved.movers.clone();
-        for t in self.saved.movers.values_mut() {
-            *t = (*t + dt).min(60.);
-        }
-        self.motion.rebuild(map, &self.saved)?;
-        world.set_dynamic(fixed.iter().cloned().chain(self.colliders()).collect());
-        world.set_dynamic_liquids(self.liquids());
+        let (old, old_clams) = self.advance_clock(dt, map, world, fixed)?;
         if !self.scripted() && !world.body_clear(p.feet) {
             let moving = self
                 .motion
@@ -636,6 +618,16 @@ pub static REGISTRATION: super::Registration = super::Registration {
     target_base: None,
     story_beats: &[],
     checks: &[
+        super::Check {
+            flag: "--utemple-coop-route-check",
+            help: "Swim the full temple with both players using ordinary inputs.",
+            run: super::Run::Windowed(|a| Box::pin(coop_route::check(a))),
+        },
+        super::Check {
+            flag: "--utemple-coop-check",
+            help: "Verify both swimmers' breath, machinery contacts and temple exit.",
+            run: super::Run::Headless(coop_check::check),
+        },
         super::Check {
             flag: "--utemple-check",
             help: "Verify temple guide, breath, water, movers and ending.",

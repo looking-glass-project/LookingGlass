@@ -78,6 +78,21 @@ adapter. Particle compositing uses the shared renderer.
 
 ## Verification
 
+- `--garden1-coop-check`: personal arrival resources without repeated healing,
+  dead-partner exclusion and old-save migration; watched/skipped scenes with
+  either Rabbit trigger owner, a frozen waiting partner, pause/restore and safe
+  reunion; paired lily supports at30/60/144Hz, either obstructed rider, independent
+  pad clocks, dead-rider exclusion, stopped-pad restoration/resumption and saved
+  bridge timing/retirement. This focused headless
+  check does not establish full two-client traversal or combat/recovery coverage.
+- `--garden1-coop-route-check`: windowed production-Arena paired course using
+  ordinary movement, rope and weapon controls, with both intended Rabbit arrival
+  orders and watched/skipped scenes. It records private failure states and exact
+  replicated-world comparisons. The course is still being validated; its
+  registration is not evidence of a completed co-op traversal.
+  `LOOKING_GLASS_GARDEN_CONTACT_REPORT=<private capture>` optionally adds an
+  exact offline contact replay to `--garden1-coop-check`; the portable ramp
+  regression also runs in the regular unit suite.
 - `--garden1-check`: original clips, real Rabbit entry via Player movement,
   watched/skipped playback at30/60/144Hz, every line, repeated mid-scene restoration,
   pause, supported handoffs, one-time refill/upgrade, real recovery/exit contacts,

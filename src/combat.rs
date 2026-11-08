@@ -68,9 +68,15 @@ impl Recoil {
         }
     }
     pub fn step(&mut self, dt: f32, world: &World, body: Target) -> Vec3 {
-        if dt <= 0. { return Vec3::ZERO; }
+        if dt <= 0. {
+            return Vec3::ZERO;
+        }
         for push in &world.traversal.actor_pushes {
-            if push.enabled && push.volume.touches(body.center, body.center + self.velocity * dt, body.half) {
+            if push.enabled
+                && push
+                    .volume
+                    .touches(body.center, body.center + self.velocity * dt, body.half)
+            {
                 self.velocity += push.direction * (push.speed - self.velocity.dot(push.direction));
             }
         }
@@ -181,8 +187,38 @@ pub struct Timing {
     pub pain: f32,
     pub death: f32,
 }
+/// Co-op keeps the legacy Alice ID for single-player and self-inflicted hits.
+pub const COOP_BLUE: usize = 5_000_001;
+pub const COOP_RED: usize = 5_000_002;
+pub fn player_slot(id: usize) -> Option<usize> {
+    match id {
+        COOP_BLUE => Some(0),
+        COOP_RED => Some(1),
+        _ => None,
+    }
+}
+pub fn player_id(id: usize) -> bool {
+    id == crate::dice::ALICE || player_slot(id).is_some()
+}
+pub fn opponent_id(id: usize) -> bool {
+    player_id(id) || id == crate::dice::SUMMON
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct PlayerTarget {
+    pub eye: Vec3,
+    pub alive: bool,
+    pub hidden: bool,
+}
+#[derive(Clone, Copy, Default)]
+pub struct PlayerFeedback {
+    pub damage: f32,
+    pub impulse: Vec3,
+    pub will_drain: f32,
+}
 #[derive(Default)]
 pub struct Feedback {
+    pub players: [PlayerFeedback; 2],
     pub will_drain: f32,
     pub cue_sounds: Vec<(String, Vec3)>,
     pub damage: f32,
@@ -192,8 +228,34 @@ pub struct Feedback {
     pub spatial_sounds: Vec<(&'static str, Vec3)>,
 }
 impl Feedback {
+    pub fn append(&mut self, other: Self) {
+        for (a, b) in self.players.iter_mut().zip(other.players) {
+            a.damage += b.damage;
+            a.impulse += b.impulse;
+            a.will_drain += b.will_drain;
+        }
+        self.damage += other.damage;
+        self.impulse += other.impulse;
+        self.will_drain += other.will_drain;
+        self.summon_hits.extend(other.summon_hits);
+        self.sounds.extend(other.sounds);
+        self.spatial_sounds.extend(other.spatial_sounds);
+        self.cue_sounds.extend(other.cue_sounds);
+    }
+    pub fn drain_will(&mut self, id: usize, amount: f32) {
+        if let Some(slot) = player_slot(id) {
+            self.players[slot].will_drain += amount;
+        } else if id == crate::dice::ALICE {
+            self.will_drain += amount;
+        } else {
+            self.strike(id, amount, Vec3::ZERO, DamageKind::Other);
+        }
+    }
     pub fn strike(&mut self, id: usize, damage: f32, impulse: Vec3, kind: DamageKind) {
-        if id == crate::dice::SUMMON {
+        if let Some(slot) = player_slot(id) {
+            self.players[slot].damage += damage;
+            self.players[slot].impulse += impulse;
+        } else if id == crate::dice::SUMMON {
             self.summon_hits.push(Hit {
                 id,
                 damage,
@@ -211,12 +273,31 @@ impl Feedback {
 /// Projectiles always collide with both bodies, independently of current aim.
 #[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct Opponents {
+    /// Live host-owned roster; never persisted into single-player saves.
+    #[serde(skip)]
+    pub players: Option<[PlayerTarget; 2]>,
+    #[serde(skip)]
+    pub(crate) selected_player: Option<usize>,
     #[serde(skip)]
     pub summon: Option<Target>,
     pub demon: bool,
 }
 impl Opponents {
     pub fn bodies(&self, eye: Vec3) -> Vec<Target> {
+        if let Some(players) = self.players {
+            let mut bodies: Vec<_> = players
+                .iter()
+                .enumerate()
+                .filter(|(_, p)| p.alive)
+                .map(|(slot, p)| Target {
+                    id: [COOP_BLUE, COOP_RED][slot],
+                    center: p.eye - Vec3::Z * 20.,
+                    half: crate::collision::PLAYER_HALF,
+                })
+                .collect();
+            bodies.extend(self.summon);
+            return bodies;
+        }
         let mut bodies = vec![Target {
             id: crate::dice::ALICE,
             center: eye - Vec3::Z * 20.,
@@ -233,6 +314,59 @@ impl Opponents {
         notarget: bool,
         committed: bool,
     ) -> (Vec3, bool, usize) {
+        self.aim_with(world, from, eye, notarget, committed, |_| true)
+    }
+    /// Preserve enemy-specific sight cones/home limits during co-op selection.
+    /// Legacy single-player aiming keeps its existing checks in the caller.
+    pub fn aim_with(
+        &mut self,
+        world: &World,
+        from: Vec3,
+        eye: Vec3,
+        notarget: bool,
+        committed: bool,
+        can_see: impl Fn(Vec3) -> bool,
+    ) -> (Vec3, bool, usize) {
+        if let Some(players) = self.players {
+            let eligible = |slot: usize| {
+                let p = players[slot];
+                p.alive && !p.hidden && !notarget
+            };
+            let visible = |slot: usize| {
+                let p = players[slot];
+                if !eligible(slot) || !can_see(p.eye) {
+                    return false;
+                }
+                let trace = world.sweep(from, p.eye, Vec3::splat(0.5));
+                !trace.start_solid && trace.fraction >= 1.
+            };
+            let selected = if committed {
+                self.selected_player.filter(|&i| visible(i))
+            } else {
+                None
+            }
+            .or_else(|| {
+                (0..2).filter(|&i| visible(i)).min_by(|&a, &b| {
+                    from.distance_squared(players[a].eye)
+                        .total_cmp(&from.distance_squared(players[b].eye))
+                })
+            })
+            // Occlusion is not invisibility/death. Let the individual AI
+            // retain its normal last-seen pursuit and perform its own LOS
+            // check; `notarget` would erase that memory immediately.
+            .or_else(|| self.selected_player.filter(|&i| eligible(i)))
+            .or_else(|| {
+                (0..2).filter(|&i| eligible(i)).min_by(|&a, &b| {
+                    from.distance_squared(players[a].eye)
+                        .total_cmp(&from.distance_squared(players[b].eye))
+                })
+            });
+            self.selected_player = selected;
+            if let Some(slot) = selected {
+                return (players[slot].eye, false, [COOP_BLUE, COOP_RED][slot]);
+            }
+            return (eye, true, COOP_BLUE);
+        }
         if self.summon.is_none() {
             self.demon = false;
         }
@@ -541,12 +675,19 @@ impl Guard {
             });
             return;
         }
-        let (eye, notarget, victim) = self.opponents.aim(
+        let center = self.target(0).center;
+        let home = self.home;
+        let ranged = self.ranged;
+        let (eye, notarget, victim) = self.opponents.aim_with(
             world,
             self.target(0).center,
             eye,
             self.notarget,
             self.state == State::Attack,
+            |eye| {
+                eye.distance_squared(center) < if ranged { 900. * 900. } else { 420. * 420. }
+                    && eye.distance_squared(home) < if ranged { 1000. * 1000. } else { 700. * 700. }
+            },
         );
         let delta = eye - self.target(0).center;
         let reach = if victim == crate::dice::SUMMON {
@@ -721,6 +862,96 @@ pub(crate) fn walk_body_liquids(
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn pair(blue: Vec3, red: Vec3) -> [PlayerTarget; 2] {
+        [blue, red].map(|eye| PlayerTarget {
+            eye,
+            alive: true,
+            hidden: false,
+        })
+    }
+    #[test]
+    fn coop_each_enemy_selects_its_nearest_visible_living_player() {
+        let world = World::fixture(&[(vec3(40., -20., 0.), vec3(60., 20., 100.))]);
+        let mut a = Opponents {
+            players: Some(pair(vec3(80., 0., 48.), vec3(0., 200., 48.))),
+            ..Default::default()
+        };
+        // Blue is closer, but hidden behind the wall.
+        assert_eq!(
+            a.aim(&world, Vec3::Z * 48., Vec3::ZERO, false, false).2,
+            COOP_RED
+        );
+        let mut b = a.clone();
+        assert_eq!(
+            b.aim(&world, vec3(120., 0., 48.), Vec3::ZERO, false, false)
+                .2,
+            COOP_BLUE
+        );
+        assert_eq!(a.selected_player, Some(1));
+        a.players.as_mut().unwrap()[1].alive = false;
+        let occluded = a.aim(&world, Vec3::Z * 48., Vec3::ZERO, false, false);
+        assert_eq!(occluded.2, COOP_BLUE);
+        assert!(!occluded.1, "Cover must not erase last-seen pursuit");
+        a.players.as_mut().unwrap()[0].eye = vec3(0., -50., 48.);
+        a.players.as_mut().unwrap()[0].hidden = true;
+        assert!(a.aim(&world, Vec3::Z * 48., Vec3::ZERO, false, false).1);
+        a.players.as_mut().unwrap()[0].hidden = false;
+        assert_eq!(
+            a.aim(&world, Vec3::Z * 48., Vec3::ZERO, false, false).2,
+            COOP_BLUE
+        );
+        assert!(a.aim(&world, Vec3::Z * 48., Vec3::ZERO, true, false).1);
+    }
+    #[test]
+    fn coop_committed_attacks_keep_a_live_target_and_roster_is_not_saved() {
+        let mut a = Opponents {
+            players: Some(pair(vec3(80., 0., 48.), vec3(160., 0., 48.))),
+            ..Default::default()
+        };
+        let from = Vec3::Z * 48.;
+        assert_eq!(a.aim(&floor(), from, Vec3::ZERO, false, false).2, COOP_BLUE);
+        a.players.as_mut().unwrap()[1].eye.x = 40.;
+        assert_eq!(a.aim(&floor(), from, Vec3::ZERO, false, true).2, COOP_BLUE);
+        assert_eq!(a.aim(&floor(), from, Vec3::ZERO, false, false).2, COOP_RED);
+        a.players.as_mut().unwrap()[1].alive = false;
+        assert_eq!(a.aim(&floor(), from, Vec3::ZERO, false, true).2, COOP_BLUE);
+        let encoded = serde_json::to_value(&a).unwrap();
+        assert_eq!(encoded, serde_json::json!({"demon": false}));
+        let restored: Opponents = serde_json::from_value(encoded).unwrap();
+        assert!(restored.players.is_none());
+        assert!(restored.selected_player.is_none());
+    }
+    #[test]
+    fn coop_guard_hits_only_its_victim_but_old_shots_collide_with_either_body() {
+        for slot in 0..2 {
+            let mut g = Guard::new(Vec3::Z * 0.1, 0., 1.);
+            let mut players = pair(vec3(500., 0., 48.), vec3(500., 0., 48.));
+            players[slot].eye = vec3(55., 0., 48.);
+            g.opponents.players = Some(players);
+            let mut out = Feedback::default();
+            for _ in 0..600 {
+                out.append(g.advance(1. / 120., &floor(), players[0].eye, timing()));
+            }
+            assert!(out.players[slot].damage > 0.);
+            assert_eq!(out.players[1 - slot].damage, 0.);
+            assert_eq!(out.damage, 0.);
+            g.validate_save().unwrap();
+        }
+        let a = Opponents {
+            players: Some(pair(vec3(80., 0., 60.), vec3(180., 0., 60.))),
+            ..Default::default()
+        };
+        let mut shot = Bolt {
+            position: Vec3::Z * 40.,
+            direction: Vec3::X,
+            age: 0.,
+        };
+        let mut out = Feedback::default();
+        assert!(!shot.advance(0.3, &floor(), &a.bodies(Vec3::ZERO), &mut out));
+        assert_eq!(out.players[0].damage, 7.);
+        assert_eq!(out.players[1].damage, 0.);
+        assert_eq!(out.damage, 0.);
+    }
     #[test]
     fn guards_retaliate_at_demons_without_redirecting_old_shots_to_alice() {
         let world = floor();
@@ -752,6 +983,7 @@ mod tests {
                 half: Vec3::splat(20.),
             }),
             demon: false,
+            ..Default::default()
         };
         let mut bolt = Bolt {
             position: vec3(0., 0., 40.),

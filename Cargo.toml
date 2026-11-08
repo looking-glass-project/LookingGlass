@@ -1,6 +1,6 @@
 [package]
 name = "looking-glass"
-version = "0.32.0-preview.2"
+version = "0.33.0-preview.1"
 edition = "2021"
 rust-version = "1.86"
 publish = false
@@ -23,6 +23,13 @@ serde = { version = "=1.0.228", features = ["derive"] }
 serde_json = { version = "=1.0.145", features = ["float_roundtrip"] }
 # Enable serialization on the same math types used by Macroquad.
 glam = { version = "=0.27.0", features = ["serde"] }
+sha2 = "=0.10.9"
+tungstenite = { version = "=0.30.0", features = ["native-tls"] }
+getrandom = "=0.3.4"
+# Already present through ZIP; use the same pinned codec for bounded co-op state.
+flate2 = { version = "=1.1.10", default-features = false, features = ["rust_backend"] }
+
+[build-dependencies]
 sha2 = "=0.10.9"
 
 [profile.dev]

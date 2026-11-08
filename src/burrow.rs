@@ -534,7 +534,7 @@ impl Insect {
                     self.die(out);
                     return;
                 }
-                if self.memory == 0. || (self.notarget && victim == crate::dice::ALICE) {
+                if self.memory == 0. || (self.notarget && crate::combat::player_id(victim)) {
                     self.set(Phase::Idle);
                     return;
                 }
@@ -587,7 +587,7 @@ impl Insect {
             }
             Phase::Attach | Phase::Suck => {
                 let target = self.opponents.bodies(eye).into_iter().find(|t| {
-                    Some(t.id) == self.victim && !(t.id == crate::dice::ALICE && self.notarget)
+                    Some(t.id) == self.victim && !(crate::combat::player_id(t.id) && self.notarget)
                 });
                 let Some(target) = target else {
                     self.enter(Phase::Detach, out);
@@ -672,7 +672,7 @@ impl Insect {
             self.victim.is_some() == attached
                 && self
                     .victim
-                    .is_none_or(|v| [crate::dice::ALICE, crate::dice::SUMMON].contains(&v)),
+                    .is_none_or(crate::combat::opponent_id),
             "Invalid larva host"
         );
         ensure!(

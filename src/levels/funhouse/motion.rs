@@ -81,6 +81,25 @@ fn approach(x: f32, y: f32, d: f32) -> f32 {
     }
 }
 impl Funhouse {
+    pub(super) fn surface_goal(&self, entity: usize, requested: Vec3) -> Option<Vec3> {
+        if !requested.is_finite() { return None; }
+        let o = self.objects.iter().find(|o| o.id == entity && o.solid && o.class == "func_fulcrum")?;
+        // Trace the real transformed brush, including the upright body's width.
+        // No support from an unrelated lower floor can satisfy this query.
+        let high = vec3(requested.x, requested.y, o.pose.translation.z + 1024.);
+        let low = high - Vec3::Z * 2048.;
+        let hit = o.collider.trace(high + PLAYER_CENTER, low + PLAYER_CENTER, PLAYER_HALF);
+        (!hit.start_solid && hit.fraction < 1. && hit.normal.z >= 0.65)
+            .then(|| high.lerp(low, hit.fraction))
+    }
+
+    pub(super) fn surface_supports(&self, entity: usize, p: &Player) -> bool {
+        if !p.grounded { return false; }
+        let Some(o) = self.objects.iter().find(|o| o.id == entity && o.solid && o.class == "func_fulcrum") else { return false; };
+        let hit = o.collider.trace(p.feet + PLAYER_CENTER, p.feet + PLAYER_CENTER - Vec3::Z * 3., PLAYER_HALF);
+        !hit.start_solid && hit.fraction < 1. && hit.normal.z >= 0.65
+    }
+
     pub fn rebuild(&mut self, _map: &Bsp) -> Result<()> {
         let s = &self.saved;
         let tube = s
@@ -320,6 +339,11 @@ impl Funhouse {
         p: &mut Player,
         fixed: &[Collider],
     ) -> Result<()> {
+        self.move_world_players(dt,map,w,&mut [p],fixed)
+    }
+    pub(super) fn move_world_players(&mut self,dt:f32,map:&Bsp,w:&mut World,
+        players:&mut [&mut Player],fixed:&[Collider])->Result<()> {
+        if players.is_empty() {return Ok(());}
         // A board that was at rest on the previous frame is about to move.
         // Remove its old hanging-support copy before testing the new pose.
         w.set_settled_supports(vec![]);
@@ -346,10 +370,10 @@ impl Funhouse {
             self.saved.fulcrums = vec![Vec2::ZERO; self.objects.len()];
         }
         let before = self.saved.clone();
-        let mut rider = None;
+        let riders=players.iter().map(|p| {
         if !self.scripted() && p.grounded {
             let c = p.feet + PLAYER_CENTER;
-            rider = self
+            self
                 .objects
                 .iter()
                 .enumerate()
@@ -366,15 +390,19 @@ impl Funhouse {
                         i,
                         o.pose.rotation.conjugate() * (p.feet - o.pose.translation),
                     )
-                });
-        }
+                })
+        } else {None}
+        }).collect::<Vec<_>>();
         self.saved.time += dt;
         for (i, o) in self.objects.iter().enumerate() {
             if o.class == "func_fulcrum" {
                 let speed = num(&map.entities[o.id], "speed", 48.);
                 let limit = num(&map.entities[o.id], "limit", 90.).clamp(0., 90.);
                 let old = self.saved.fulcrums[i];
-                let velocity = if let Some((_, local)) = rider.filter(|(j, _)| *j == i) {
+                let loads=riders.iter().flatten().filter(|(j,_)|*j==i)
+                    .map(|(_,local)|*local).collect::<Vec<_>>();
+                let velocity = if let Some(local) = loads.iter().copied().reduce(|a,b|a+b)
+                    .map(|sum|sum/loads.len() as f32) {
                     let b = &map.models[o.model];
                     let span = b.min.abs().max(b.max.abs()).max(Vec3::ONE);
                     let mut v = vec2(-local.y / span.y, local.x / span.x)
@@ -393,7 +421,7 @@ impl Funhouse {
                         * num(&map.entities[o.id], "dampening", 0.95)
                 };
                 let mut tilt = (old + velocity * dt).clamp(Vec2::splat(-limit), Vec2::splat(limit));
-                if rider.is_none_or(|(j, _)| j != i) && tilt.abs().max_element() < 0.01 {
+                if loads.is_empty() && tilt.abs().max_element() < 0.01 {
                     tilt = Vec2::ZERO;
                 }
                 self.saved.fulcrums[i] = tilt;
@@ -404,10 +432,10 @@ impl Funhouse {
                 && o.flags & 64 != 0
                 && o.flags & (4 | 8 | 32 | 128) == 0
             {
-                let c = p.feet + PLAYER_CENTER;
                 let field = vec3(60., 60., 8.) + PLAYER_HALF;
-                let close = c.cmpge(o.bounds.0 - field).all() && c.cmple(o.bounds.1 + field).all();
-                if close {
+                let close = players.iter().map(|p|p.feet+PLAYER_CENTER)
+                    .find(|c|c.cmpge(o.bounds.0-field).all() && c.cmple(o.bounds.1+field).all());
+                if let Some(c)=close {
                     if self.saved.doors[i] == 0. {
                         // As with the shared doors, choose the side away from the activator.
                         let local = (o.bounds.0 + o.bounds.1) * 0.5 - o.base.translation;
@@ -445,11 +473,12 @@ impl Funhouse {
         // damage; unrelated suction, tube and scene clocks must continue.
         let mut door_blocked = false;
         if !self.scripted() {
-            let c = p.feet + PLAYER_CENTER;
             for (i, o) in self.objects.iter().enumerate() {
                 if matches!(o.class.as_str(), "func_door" | "func_rotatingdoor")
                     && self.saved.doors[i] != before.doors[i]
-                    && o.collider.trace(c, c, PLAYER_HALF).start_solid
+                    && players.iter().any(|p| {
+                        let c=p.feet+PLAYER_CENTER;o.collider.trace(c,c,PLAYER_HALF).start_solid
+                    })
                 {
                     if self.saved.doors[i] < before.doors[i] {
                         self.saved.holds[i] = o.wait.max(1.5);
@@ -463,7 +492,9 @@ impl Funhouse {
             self.rebuild(map)?;
         }
         let mut blocked = false;
-        if let Some((i, local)) = rider {
+        let mut proposed=players.iter().map(|p|(**p).clone()).collect::<Vec<_>>();
+        for (p,rider) in proposed.iter_mut().zip(&riders) {
+        if let Some((i, local)) = *rider {
             let raw = self.objects[i].pose.point(local);
             let tilting = self.objects[i].class == "func_fulcrum"
                 || matches!(self.objects[i].name.as_str(), "pend1" | "pend2" | "pend3");
@@ -494,9 +525,6 @@ impl Funhouse {
                         );
                     }
                 }
-                // The whole saved world step rolls back: an obstructed rider cannot be crushed or detached.
-                self.saved = before.clone();
-                self.rebuild(map)?;
                 blocked = true;
             } else {
                 p.feet = to;
@@ -514,10 +542,23 @@ impl Funhouse {
         }
         if rider.is_none() && !self.scripted() {
             w.set_dynamic(fixed.iter().cloned().chain(self.colliders()).collect());
-            if !w.body_clear(p.feet) && !blocked {
-                self.saved = before.clone();
-                self.rebuild(map)?;
-            }
+            blocked |= !w.body_clear(p.feet);
+        }
+        }
+        // Validate every carried body before committing any of them. Upright
+        // bodies on a rotating support must also retain their personal space.
+        if !self.scripted() {
+            for (i,p) in proposed.iter().enumerate() {for q in &proposed[i+1..] {
+                let d=p.feet-q.feet;
+                blocked |= d.truncate().length()<crate::coop::separation::DISTANCE-0.05
+                    && d.z.abs()<PLAYER_HALF.z*2.-0.05;
+            }}
+        }
+        if blocked {
+            self.saved=before;
+            self.rebuild(map)?;
+        } else {
+            for (p,next) in players.iter_mut().zip(proposed) {**p=next;}
         }
         w.set_dynamic(fixed.iter().cloned().chain(self.colliders()).collect());
         w.set_settled_supports(self.settled_supports());

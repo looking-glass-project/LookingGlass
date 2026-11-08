@@ -144,9 +144,15 @@ impl Pool {
         })
     }
     pub(super) fn advance_boulders(&mut self, dt: f32, player: &mut Player) {
-        if dt <= 0. {
-            return;
-        }
+        let feedback = self.advance_boulders_for(dt, &[Target {
+            id: crate::dice::ALICE, center: player.feet + PLAYER_CENTER, half: PLAYER_HALF,
+        }]);
+        self.state.boulders.as_mut().unwrap().damage += feedback.damage;
+        player.velocity += feedback.impulse;
+    }
+    pub(crate) fn advance_boulders_for(&mut self, dt: f32, players: &[Target]) -> Feedback {
+        let mut feedback = Feedback::default();
+        if !dt.is_finite() || dt <= 0. { return feedback; }
         let c = &self.state.cinema;
         let b = self.state.boulders.as_mut().unwrap();
         let release = c.rocks[2].is_some_and(|start| self.state.age - start + 0.00001 >= 2.);
@@ -164,11 +170,7 @@ impl Pool {
                 }
             }
         }
-        let mut bodies = vec![Target {
-            id: crate::dice::ALICE,
-            center: player.feet + PLAYER_CENTER,
-            half: PLAYER_HALF,
-        }];
+        let mut bodies = players.to_vec();
         bodies.extend(
             b.ants
                 .iter()
@@ -195,9 +197,8 @@ impl Pool {
             b.clocks[i] = self.state.age;
             let out = spec.advance(s, elapsed, &bodies);
             for (id, damage, impulse) in out.hits {
-                if id == crate::dice::ALICE {
-                    b.damage += damage;
-                    player.velocity += impulse;
+                if crate::combat::player_id(id) {
+                    feedback.strike(id, damage, impulse, crate::combat::DamageKind::Other);
                 } else if let Some(index) = ants::IDS.iter().position(|&n| n == id) {
                     b.ants[index].hit(Hit {
                         id,
@@ -214,7 +215,9 @@ impl Pool {
                     }
                 }
                 if spec.flags & 4 != 0 && spec.distance > 0. {
-                    let amount = (1. - position.distance(player.feet) / spec.distance).max(0.);
+                    let amount = players.iter().map(|p|
+                        (1. - position.distance(p.center - PLAYER_CENTER) / spec.distance).max(0.))
+                        .fold(0., f32::max);
                     b.quake = amount * spec.magnitude;
                     b.quake_until = self.state.age + amount * 0.5;
                 }
@@ -223,6 +226,7 @@ impl Pool {
             // newly authored callback at load instead of silently dropping it.
             debug_assert!(out.threads.is_empty());
         }
+        feedback
     }
     pub fn quake_offset(&self) -> Vec3 {
         let b = self.state.boulders.as_ref().unwrap();
@@ -259,6 +263,7 @@ impl Pool {
     pub fn combat(&mut self, ctx: &mut Combat<'_>) -> Feedback {
         let mut out = Feedback::default();
         for a in &mut self.state.boulders.as_mut().unwrap().ants {
+            a.opponents.players = None;
             a.advance(ctx, &self.cinema, &mut out);
         }
         out

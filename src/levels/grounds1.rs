@@ -38,6 +38,11 @@ pub static REGISTRATION: super::Registration = super::Registration {
     ],
     checks: &[
         super::Check {
+            flag: "--grounds1-coop-route-check",
+            help: "Play an accelerated two-player Royal Rage battle, bridge and castle arrival.",
+            run: super::Run::Windowed(|a| jabberwock::coop_route::check(a, Kind::Grounds)),
+        },
+        super::Check {
             flag: "--grounds1-check",
             help: "Verify Royal Rage phases, defeat, drawbridge and saves.",
             run: super::Run::Headless(|a| jabberwock::check::check(a, Kind::Grounds)),

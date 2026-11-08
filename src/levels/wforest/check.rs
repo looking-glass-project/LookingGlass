@@ -299,21 +299,7 @@ pub(super) fn returning(a: &mut Assets) -> Result<()> {
     println!("PASS return visit: Staff-only damage, partial-health restore, Humpty passage, early break, moving hedge doors and exit retry");
     Ok(())
 }
-pub(crate) fn drive(r: &mut crate::route::Route) -> Result<()> {
-    std::fs::create_dir_all("private/wforest-route")?;
-    let returning = r.level().entry.as_deref() == Some("wforest_start2");
-    r.tactics = true;
-    // Retain the earned Staff charge needed at the return wall.
-    r.conserve_will = false;
-    r.ice_stream = false;
-    r.will_reserve = if returning { 25. } else { 0. };
-    r.stop_at_exit = true;
-    r.wait_for_cinematic()?;
-    if returning && r.native_cast.is_some() && r.stats.copies(9) > 0 {
-        // The carried Watch may still be cooling down from the lava crossing.
-        // Wait at the quiet entrance; use its ordinary paid action below.
-        r.wait(r.stats.powers.recharge + 0.1)?;
-    }
+pub(super) fn goals(returning: bool) -> Result<Vec<Vec3>> {
     let goals: Vec<Vec3> = if let Ok(path) = std::env::var("LOOKING_GLASS_WFOREST_ROUTE") {
         serde_json::from_slice(&std::fs::read(path)?)?
     } else if returning {
@@ -358,6 +344,25 @@ pub(crate) fn drive(r: &mut crate::route::Route) -> Result<()> {
             vec3(1800., 4288., 592.),
         ]
     };
+    Ok(goals)
+}
+
+pub(crate) fn drive(r: &mut crate::route::Route) -> Result<()> {
+    std::fs::create_dir_all("private/wforest-route")?;
+    let returning = r.level().entry.as_deref() == Some("wforest_start2");
+    r.tactics = true;
+    // Retain the earned Staff charge needed at the return wall.
+    r.conserve_will = false;
+    r.ice_stream = false;
+    r.will_reserve = if returning { 25. } else { 0. };
+    r.stop_at_exit = true;
+    r.wait_for_cinematic()?;
+    if returning && r.native_cast.is_some() && r.stats.copies(9) > 0 {
+        // The carried Watch may still be cooling down from the lava crossing.
+        // Wait at the quiet entrance; use its ordinary paid action below.
+        r.wait(r.stats.powers.recharge + 0.1)?;
+    }
+    let goals = goals(returning)?;
     for goal in goals {
         let goal = r
             .world

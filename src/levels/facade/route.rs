@@ -2,6 +2,23 @@
 use super::*;
 use crate::{movement::Controls, route::Route};
 
+pub(super) fn coop_check(a: &mut Assets) -> super::super::BoxFuture<'_> {
+    Box::pin(async move {
+        use crate::coop::native_route::{Navigation,Spec};
+        // Ordinary paired inputs: finish ledge climbs, then clear narrow pickup
+        // platforms for the partner. The single-player course stays separate.
+        let commands=serde_json::from_str(include_str!("coop_route_steps.json"))?;
+        crate::coop::native_route::check(a,Spec{map:"facade",entry:"facade_start1",exit:EXIT,commands,
+            navigation:Navigation::LandedPair,
+            verify:|arena,_| {
+                let f=arena.stage.interactions.levels.iter().find_map(|s|s.ctl.downcast_ref::<Facade>()).context("Missing Ascension")?;
+                ensure!(f.saved.ride.as_ref().is_some_and(|r|r.time==DEPART) && f.saved.exit.committed,
+                    "Ascension lift did not complete its normal ride");
+                Ok(())
+            }}).await
+    })
+}
+
 pub(super) fn check(a: &mut Assets) -> super::super::BoxFuture<'_> {
     Box::pin(async move {
         let mut r = if let Ok(path) = std::env::var("LOOKING_GLASS_FACADE_FROM") {

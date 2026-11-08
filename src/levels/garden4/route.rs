@@ -40,11 +40,8 @@ fn walk_one(a: &mut Assets, skip: bool, difficulty: Difficulty) -> Result<()> {
     println!("PASS {difficulty:?} Icy Reception skip={skip}: authored route, Ice Wand and normal Flora arrival");
     Ok(())
 }
-pub(crate) fn drive(r: &mut Route) -> Result<()> {
-    let skip = r.skip_cinematics;
-    let difficulty = r.difficulty;
-    r.stop_at_exit = true;
-    let goals = if let Ok(path) = std::env::var("LOOKING_GLASS_GARDEN4_ROUTE") {
+pub(super) fn goals() -> Result<Vec<[f32; 3]>> {
+    Ok(if let Ok(path) = std::env::var("LOOKING_GLASS_GARDEN4_ROUTE") {
         serde_json::from_slice::<Vec<[f32; 3]>>(&std::fs::read(path)?)?
     } else {
         vec![
@@ -84,7 +81,13 @@ pub(crate) fn drive(r: &mut Route) -> Result<()> {
             [-1632., 5120., -4800.],
             [-1508., 5300., -4730.],
         ]
-    };
+    })
+}
+pub(crate) fn drive(r: &mut Route) -> Result<()> {
+    let skip = r.skip_cinematics;
+    let difficulty = r.difficulty;
+    r.stop_at_exit = true;
+    let goals = goals()?;
     for xyz in goals {
         let guess = Vec3::from_array(xyz);
         if matches!(xyz[0] as i32, -976 | -848) && xyz[1] >= 2700. && xyz[1] <= 3250. {

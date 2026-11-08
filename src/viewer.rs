@@ -52,7 +52,7 @@ struct Entered {
 /// Art owns GPU resources and may contain map-specific geometry. Replace this
 /// whole group on every kind of level change, including the Tab/console chooser.
 #[derive(Default)]
-struct LevelArt {
+pub(crate) struct LevelArt {
     fortress: Option<crate::fortress::cinema::Art>,
     village: Option<crate::village::cinema::Art>,
     school: Option<crate::school::Art>,
@@ -68,6 +68,10 @@ struct LevelArt {
     levels: Vec<Option<Box<dyn crate::level::LevelArt>>>,
 }
 impl LevelArt {
+    pub(crate) fn coop_view(&mut self, local: usize) {
+        if let Some(art) = &mut self.duchess { art.local_player = Some(local); }
+        for art in self.levels.iter_mut().flatten() { art.coop_view(local); }
+    }
     fn handoff_pose(&self) -> Option<&crate::cinematic::ActorPose> {
         self.village
             .as_ref()
@@ -91,7 +95,7 @@ impl LevelArt {
             })
             .or_else(|| self.levels.iter().flatten().find_map(|a| a.handoff_pose()))
     }
-    fn prepare(
+    pub(crate) fn prepare(
         &mut self,
         assets: &mut Assets,
         scene: &Scene,
@@ -148,7 +152,7 @@ impl LevelArt {
         }
         Ok(())
     }
-    fn story_pose(&mut self, story: &crate::story::Story) {
+    pub(crate) fn story_pose(&mut self, story: &crate::story::Story) {
         if let Some(a) = &mut self.school {
             a.first.story_pose(story);
         }
@@ -177,7 +181,7 @@ impl LevelArt {
             art.story_pose(story);
         }
     }
-    fn draw(
+    pub(crate) fn draw(
         &mut self,
         i: &Interactions,
         hints: &crate::cheshire::Hints,
@@ -228,13 +232,19 @@ impl LevelArt {
             }
         }
     }
-    /// Registered controllers' effects, drawn with the particle pass.
-    fn effects(
+    /// Shared legacy and registered effects, drawn once with the particle pass.
+    pub(crate) fn effects(
         &mut self,
         i: &Interactions,
         camera: Vec3,
         atmosphere: &crate::environment::Atmosphere,
     ) {
+        if let (Some(p), Some(art)) = (&i.pandemonium, &mut self.pandemonium) {
+            art.draw_effects(p, camera, atmosphere);
+        }
+        if let (Some(d), Some(art)) = (&i.duchess, &mut self.duchess) {
+            art.effects(d, camera, atmosphere);
+        }
         for (art, slot) in self.levels.iter_mut().zip(&i.levels) {
             if let Some(a) = art {
                 a.effects(&*slot.ctl, camera, atmosphere);
@@ -242,7 +252,8 @@ impl LevelArt {
         }
     }
     /// Registered controllers' HUD elements.
-    fn hud(&mut self, i: &Interactions) {
+    pub(crate) fn hud(&mut self, i: &Interactions) {
+        if let (Some(d), Some(art)) = (&i.duchess, &self.duchess) { art.hud(d); }
         for (art, slot) in self.levels.iter_mut().zip(&i.levels) {
             if let Some(a) = art {
                 a.hud(&*slot.ctl);
@@ -524,6 +535,9 @@ mod start;
 pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
     // Release cursor/audio before Miniquad destroys its native request queue.
     prevent_quit();
+    if let Some(launch) = &options.coop {
+        return crate::coop::preview::run(&mut assets, &options, launch).await.map(|_| ());
+    }
     let ui = crate::ui::Ui::load(&mut assets)?;
     // Explicit native layout diagnostic; never opens or modifies player saves.
     if options.frames.is_some() && std::env::var_os("LOOKING_GLASS_PRESENTATION_CHECK").is_some() {
@@ -546,9 +560,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
         || options.shelf_preview
         || options.start_at.is_some()
         || options.story_preview.is_some());
-    let (save_identity, legacy_identities) = assets.save_fingerprints()?;
-    let store = Store::new(options.save_dir.clone(), save_identity)
-        .with_compatible_fingerprints(legacy_identities);
+    let store = Store::for_assets(options.save_dir.clone(), &mut assets)?;
     let maps = assets.maps();
     let mut audio = Audio::new(options.no_audio, options.audio_capture.clone());
     let mut opening_requested = options.new_game && options.map == "gvillage";
@@ -559,7 +571,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
         );
         Some(store.read(slot)?)
     } else if saves_enabled && !options.new_game && !options.direct_map && options.frames.is_none() {
-        match start::choose(&mut options, &mut escape_menu, &mut preferences,
+        match start::choose(&mut assets, &mut options, &mut escape_menu, &mut preferences,
             &mut input, &mut audio, &store, &maps).await {
             start::Start::Chapter => { opening_requested = false; None }
             start::Start::NewGame => { opening_requested = true; None }
@@ -868,7 +880,9 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
         hud.announce("A saved game could not be read. F9 retries quick load.");
     }
     retry.remember(game_snapshot!());
+    if crate::ui_probe::enabled() { crate::ui_probe::solo("solo-initial", &game_snapshot!()); }
     loop {
+        crate::ui_probe::screen(if paused { "solo-paused" } else { "solo-play" }, &[], "");
         let mut frame_profile = crate::frame_profile::span("frame_cpu");
         input.update(&preferences, window_focused());
         let overlay_before = menu || inventory_menu || console.open || paused;
@@ -906,6 +920,20 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
                 .await;
             use crate::menu::Action;
             match action {
+                Action::Coop => {
+                    audio.update(0., pos, yaw, true, true);
+                    let visit = crate::coop::protocol::Visit {
+                        epoch: 1, map: maps[current].clone(), entry: entry_spawn.clone(),
+                        difficulty: stats.difficulty,
+                        combat_preview: false,
+                    };
+                    let single_player = (saves_enabled && !post_game).then(|| game_snapshot!());
+                    if let Some(game) = &single_player { crate::ui_probe::solo("solo-before-coop", game); }
+                    crate::coop::menu::open(&mut assets, &options, &mut escape_menu, visit, single_player).await;
+                    if crate::ui_probe::enabled() { crate::ui_probe::solo("solo-after-coop", &game_snapshot!()); }
+                    if is_quit_requested() { break; }
+                    escape_menu.open(crate::menu::Page::Main, &preferences, audio.settings);
+                }
                 Action::Resume => {
                     paused = false;
                 }
@@ -2952,12 +2980,6 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
                     b.draw_waves();
                 }
             }
-            if let (Some(p), Some(art)) = (&interactions.pandemonium, &mut level_art.pandemonium) {
-                art.draw_effects(p, camera, &scene.atmosphere);
-            }
-            if let (Some(d), Some(art)) = (&interactions.duchess, &mut level_art.duchess) {
-                art.effects(d, camera, &scene.atmosphere);
-            }
             level_art.effects(&interactions, camera, &scene.atmosphere);
             alice.draw_effects(camera, fullbright, show_alice);
             let can_aim = !interactions.level_blocks_weapons() && !flying
@@ -3253,9 +3275,6 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
             }
             if preferences.subtitles {
                 story.draw(&input.label(&preferences, "E"), &ui);
-            }
-            if let (Some(d), Some(art)) = (&interactions.duchess, &level_art.duchess) {
-                art.hud(d);
             }
             level_art.hud(&interactions);
             if interactions

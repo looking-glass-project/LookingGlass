@@ -1,5 +1,8 @@
 //! Bill and the house ending, inside the existing Hollow Hideaway owner.
 mod check;
+mod coop;
+mod coop_check;
+pub(crate) mod coop_route;
 mod data;
 mod fish;
 mod guards;
@@ -161,6 +164,8 @@ struct Saved {
     pond: transport::State,
     #[serde(default)]
     fish: fish::State,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    coop: Option<coop::Contacts>,
 }
 impl state::State for Saved {
     const VERSION: u8 = 3;
@@ -174,6 +179,7 @@ impl state::State for Saved {
         }
         self.pond.validate()?;
         self.fish.validate()?;
+        if let Some(contacts) = &self.coop { contacts.validate(&self.fish)?; }
         ensure!(
             self.fish.attack.is_none() || self.scene.phase == Phase::Dormant,
             "Overlapping fish and Bill scenes"
@@ -275,6 +281,7 @@ impl PoolTwo {
                 gate_time: 0.,
                 pond: transport::State::default(),
                 fish: fish::State::default(),
+                coop: None,
             },
             bill: data.points["bill_stand"],
             alice: data.points["alice_stand"],
@@ -329,6 +336,46 @@ impl LevelController for PoolTwo {
     fn id(&self) -> &'static str {
         "potears2"
     }
+    fn coop_advance(&mut self, dt: f32, map: &Bsp, world: &mut World,
+        players: &mut [&mut Player], fixed: &[Collider]) -> Result<()> {
+        self.advance_pair(dt, map, world, players, fixed)
+    }
+    fn coop_contacts(&mut self, dt: f32, players: &mut [crate::level::CoopPlayer<'_>; 2]) -> Option<usize> {
+        self.fish_contacts(dt, players)
+    }
+    fn coop_respawned(&mut self, player: usize) {
+        if let Some(c) = &mut self.saved.coop { c.players[player] = fish::State::default(); }
+    }
+    fn coop_scene_step(&mut self, owner: usize, player: &mut Player, stats: &mut crate::inventory::Stats) {
+        self.prepare_player(stats, player);
+        if self.saved.coop.as_ref().is_some_and(|c| c.owner == Some(owner)) && self.saved.fish.killed {
+            self.saved.fish = fish::State::default();
+            let contacts = self.saved.coop.as_mut().unwrap();
+            contacts.owner = None;
+            contacts.players[owner] = fish::State::default();
+            player.script_motion = 0;
+        }
+    }
+    fn coop_boarding_ready(&self, thread: &str, feet: &[Vec3]) -> Option<bool> {
+        let i = match thread { "leaf1startmoving" => 5, "leaf2startmoving" => 6, _ => return None };
+        Some(!feet.is_empty() && feet.iter().all(|at| crate::moving::aboard(&self.pond.pads[i].collider, *at)))
+    }
+    fn hazardous(&self, feet: Vec3) -> bool {
+        self.pond.fish.touches(feet + crate::collision::PLAYER_CENTER,
+            feet + crate::collision::PLAYER_CENTER, crate::collision::PLAYER_HALF)
+    }
+    fn coop_combat(&mut self, dt: f32, world: &World, players: [crate::combat::PlayerTarget; 2]) -> Feedback {
+        let mut out = Feedback::default();
+        if !self.scripted() {
+            for guard in &mut self.saved.guards {
+                guard.opponents.players = Some(players);
+                guard.opponents.summon = None;
+                guard.notarget = false;
+                guard.update(dt, world, players[0].eye, &self.data, &mut out);
+            }
+        }
+        out
+    }
     fn facts(&self) -> Facts {
         let mut f = Facts::default();
         if !self.legacy_program {
@@ -355,7 +402,10 @@ impl LevelController for PoolTwo {
         match thread {
             "leaf1startmoving" | "leaf2startmoving" => {
                 let i = usize::from(thread == "leaf2startmoving");
-                self.saved.pond.leaves[i].get_or_insert(self.saved.pond.age);
+                if self.saved.pond.leaves[i].is_none() {
+                    self.saved.pond.leaves[i] = Some(self.saved.pond.age);
+                    self.saved.pond.pending[i] = true;
+                }
                 return Some(Events::default());
             }
             "fishtrigger" | "ladies1and2" | "ladies3and4" | "ladies5and6" => {
@@ -480,6 +530,12 @@ impl LevelController for PoolTwo {
             return Ok(());
         }
         let dt = dt.min(0.1);
+        // During a paired personal death scene the survivor is frozen in place.
+        // Keep their support there; only the original bite timeline advances.
+        if self.saved.coop.as_ref().is_some_and(|c| c.owner.is_some()) {
+            self.saved.fish.step(dt, true, player);
+            return Ok(());
+        }
         if self.saved.guards.iter().all(|g| g.health == 0.) {
             self.saved.gate_time = (self.saved.gate_time + dt).min(2.);
         }
@@ -716,6 +772,8 @@ pub static REGISTRATION: Registration = Registration {
         Check { flag: "--potears2-store-write-check", help: "Write normal-route transport saves.", run: Run::Windowed(|a|Box::pin(save_check::run(a,true))) },
         Check { flag: "--potears2-store-read-check", help: "Read normal-route saves in a fresh process.", run: Run::Windowed(|a|Box::pin(save_check::run(a,false))) },
         Check { flag: "--potears2-transport-check", help: "Verify pond rides, fish timer, pause and restore.", run: Run::Headless(transport_check::check) },
+        Check { flag: "--potears2-coop-check", help: "Verify paired pond rides, guards and personal fish deaths.", run: Run::Headless(coop_check::check) },
+        Check { flag: "--potears2-coop-route-check", help: "Normal paired pond route to Just Desserts.", run: Run::Windowed(coop_route::check) },
         Check { flag: "--potears2-route-check", help: "Ordinary entrance to Just Desserts.", run: Run::Headless(route::check) },
         Check { flag: "--potears2-route-native-check", help: "Ordinary pond route with the native cast.", run: Run::Windowed(|a|Box::pin(route::render(a))) },
         Check { flag: "--potears2-check", help: "Verify the staged house guard/scene ending; restored pond route has separate checks.", run: Run::Headless(check) },
@@ -758,6 +816,7 @@ mod tests {
             gate_time: 0.,
             pond: transport::State::default(),
             fish: fish::State::default(),
+            coop: None,
         }
     }
     #[test]

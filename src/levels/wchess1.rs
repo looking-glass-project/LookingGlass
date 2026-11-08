@@ -1,6 +1,13 @@
 //! Pale Realm. One owner for chess lessons, factions, gates and water machinery.
 mod art;
 mod cast;
+mod coop;
+mod coop_check;
+mod coop_route;
+mod network_route;
+mod spike_route;
+pub(crate) use network_route::NetworkDriver;
+mod coop_world_check;
 mod check;
 pub(crate) use check::drive as drive_route;
 mod data;
@@ -71,6 +78,8 @@ struct Board {
 }
 #[derive(Clone, Serialize, Deserialize)]
 struct Saved {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    coop: Option<coop::State>,
     #[serde(default)]
     pull: Option<(u8, f32)>,
     #[serde(default)]
@@ -106,6 +115,7 @@ impl state::State for Saved {
         self.version
     }
     fn validate(&self, _: state::Visit) -> Result<()> {
+        if let Some(c) = &self.coop { c.validate(self)?; }
         state::clock("chess age", self.age, 1e7)?;
         for t in [
             self.bell,
@@ -202,6 +212,7 @@ impl Realm {
     fn load(a: &mut Assets, map: &Bsp) -> Result<Self> {
         let data = data::Data::load(a, map)?;
         let saved = Saved {
+            coop: None,
             knight_opened: None,
             pull: None,
             lever_started: [None, None],
@@ -560,6 +571,59 @@ impl LevelController for Realm {
             c.rise = 0.;
         }
     }
+    fn coop_prepare(&mut self, players: &mut [crate::level::CoopPlayer<'_>; 2]) { self.pair_prepare(players); }
+    fn coop_advance_roster(&mut self, dt: f32, map: &Bsp, w: &mut World,
+        players: &mut [crate::level::CoopPlayer<'_>;2], fixed: &[Collider]) -> Result<()> {
+        self.pair_advance(dt,map,w,players,fixed)
+    }
+    fn coop_contacts(&mut self, dt: f32, players: &mut [crate::level::CoopPlayer<'_>;2]) -> Option<usize> {
+        self.pair_contacts(dt,players)
+    }
+    fn coop_focus_player(&self) -> Option<usize> {
+        self.saved.coop.as_ref().filter(|c| self.saved.board.is_some() || c.reunion).and_then(|c| c.actor)
+    }
+    fn coop_defer_reunion(&self) -> bool { self.saved.board.is_some() }
+    fn coop_reunion_limits(&self, player: &Player) -> Option<(f32,f32)> {
+        // A lever can be used from its narrow upper ledge. The original scene
+        // returns its actor there; the partner needs the adjacent lower floor.
+        ["bell_lever","water_lever"].iter().enumerate().any(|(i,name)| {
+            (if i==0 {self.saved.fired.contains("bell_complete")} else {self.saved.water.is_some()})
+                && player.eye().distance(self.data.point(name).point(vec3(36.,0.,26.))) < 176.
+        }).then_some((160.,96.))
+    }
+    fn coop_controlled(&self, index: usize) -> bool {
+        self.coop_focus_player().is_some_and(|i| i != index || self.controlled())
+            || self.saved.pull.is_some() && self.saved.coop.as_ref().is_some_and(|c| c.actor == Some(index))
+    }
+    fn coop_filter_controls(&self, index: usize, c: &mut Controls) {
+        if self.coop_focus_player() == Some(index) { self.filter_controls(c); }
+    }
+    fn coop_hides_player(&self, index: usize) -> bool {
+        self.coop_focus_player().is_some() || self.saved.pull.is_some()
+            && self.saved.coop.as_ref().is_some_and(|c| c.actor == Some(index))
+    }
+    fn coop_blocks_weapons(&self, index: usize) -> bool { self.coop_hides_player(index) }
+    fn coop_update(&mut self, index: usize, w: &mut World, p: &Player, aim: Vec3, use_pressed: bool) -> Events {
+        let before = self.saved.pull;
+        let event = self.update(w,p,aim,use_pressed);
+        if before.is_none() && self.saved.pull.is_some() { self.pair_pose(index,p); }
+        event
+    }
+    fn coop_scene_step(&mut self, owner: usize, p: &mut Player, stats: &mut Stats) {
+        self.prepare_player(stats,p);
+        self.pair_pose(owner,p);
+        if let Some(c) = &mut self.saved.coop { c.reunion = false; c.previous = [None;2]; }
+    }
+    fn coop_respawned(&mut self, index: usize) {
+        if let Some(c) = &mut self.saved.coop { c.previous[index] = None; }
+    }
+    fn coop_boarding_ready(&self, thread: &str, feet: &[Vec3]) -> Option<bool> {
+        matches!(thread,"elevator_up_pause_thread"|"elevator_up_thread")
+            .then(|| !feet.is_empty() && feet.iter().all(|at| self.lift_support(*at)))
+    }
+    fn hazardous(&self, feet: Vec3) -> bool {
+        self.objects.iter().any(|o| o.hazard && o.volume.trace(feet+PLAYER_CENTER,feet+PLAYER_CENTER,PLAYER_HALF).start_solid)
+    }
     fn hides_player(&self) -> bool {
         self.saved.board.is_some() || self.saved.pull.is_some()
     }
@@ -651,6 +715,7 @@ impl LevelController for Realm {
     }
     fn scripted(&self) -> bool {
         self.saved.scene.is_some() || self.saved.pending.is_some()
+            || self.saved.coop.as_ref().is_some_and(|c| c.reunion)
     }
     fn allow_cheshire(&self) -> bool {
         self.saved.board.is_none()
@@ -715,6 +780,17 @@ impl LevelController for Realm {
     }
     fn combat(&mut self, c: &mut crate::level::Combat<'_>) -> crate::combat::Feedback {
         self.fight(c)
+    }
+    fn coop_combat(&mut self, dt: f32, world: &World,
+        players: [crate::combat::PlayerTarget; 2]) -> crate::combat::Feedback {
+        self.fight_pair(dt, world, players)
+    }
+    fn coop_threats(&mut self, threatens: &dyn Fn(&crate::combat::Target) -> bool) {
+        if !self.scripted() {
+            for a in &mut self.saved.cast {
+                a.piece.threatened(threatens(&a.piece.target(a.id())));
+            }
+        }
     }
     fn loot_sources(&self) -> Vec<crate::loot::Source> {
         self.cast_loot()
@@ -843,6 +919,31 @@ pub static REGISTRATION: Registration = Registration {
     target_base: Some(BASE),
     story_beats: &[],
     checks: &[
+        Check {
+            flag: "--wchess1-coop-route-probe",
+            help: "Inspect collision in a captured co-op route report without changing gameplay.",
+            run: Run::Headless(coop_route::probe),
+        },
+        Check {
+            flag: "--wchess1-coop-route-check",
+            help: "Drive both players through the native Pale Realm combat, puzzles and exit.",
+            run: Run::Windowed(coop_route::check),
+        },
+        Check {
+            flag: "--wchess1-coop-render-check",
+            help: "Render both paired chess transformation owners and their restored particle effects.",
+            run: Run::Windowed(coop_world_check::render),
+        },
+        Check {
+            flag: "--wchess1-coop-world-check",
+            help: "Verify paired Pale Realm machinery, original scenes and both chess puzzles.",
+            run: Run::Headless(coop_world_check::check),
+        },
+        Check {
+            flag: "--wchess1-coop-combat-check",
+            help: "Verify paired Pale Realm cast targeting, attacks, duels and death callbacks.",
+            run: Run::Headless(coop_check::check),
+        },
         Check {
             flag: "--wchess1-check",
             help: "Verify Pale Realm puzzles, factions, gates and persistence.",

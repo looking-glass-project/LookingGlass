@@ -52,6 +52,42 @@ fn spider_pursues_last_seen_position_but_does_not_attack_through_cover() {
 fn make(k: Kind) -> Creature {
     Creature::new(k, Vec3::Z * 0.1, 0., 1., 13)
 }
+
+#[test]
+fn coop_phantom_drains_the_closer_players_will_without_damaging_the_other() {
+    let mut p = make(Kind::Phantom);
+    p.set(Phase::Melee);
+    p.opponents.players = Some([vec3(400., 0., 48.), vec3(90., 0., 48.)].map(|eye|
+        crate::combat::PlayerTarget { eye, alive: true, hidden: false }));
+    let out = run(&mut p, &floor(), vec3(400., 0., 48.), 150);
+    assert_eq!(out.players[0].will_drain, 0.);
+    assert_eq!(out.players[1].will_drain, 10.);
+    assert_eq!(out.players[1].damage, 0.);
+    assert_eq!(out.damage, 0.);
+    assert_eq!(out.will_drain, 0.);
+    p.validate().unwrap();
+}
+
+#[test]
+fn coop_spider_keeps_last_seen_pursuit_after_both_players_take_cover() {
+    let mut g = make(Kind::Spider);
+    g.set(Phase::Run);
+    g.opponents.players = Some([vec3(700., 0., 48.), vec3(900., 0., 48.)].map(|eye|
+        crate::combat::PlayerTarget { eye, alive: true, hidden: false }));
+    run(&mut g, &floor(), Vec3::ZERO, 1);
+    assert_eq!(g.memory, 3.);
+    let cover = World::fixture(&[(vec3(-3000., -3000., -20.), vec3(3000., 3000., 0.)),
+        (vec3(300., -200., 0.), vec3(320., 200., 300.))]);
+    let before = g.feet;
+    let out = run(&mut g, &cover, Vec3::ZERO, 120);
+    assert!(g.feet.x > before.x + 50.);
+    assert!(g.memory > 0.);
+    assert_eq!(out.players[0].damage + out.players[1].damage, 0.);
+    g.opponents.players.as_mut().unwrap()[0].alive = false;
+    g.opponents.players.as_mut().unwrap()[1].alive = false;
+    run(&mut g, &cover, Vec3::ZERO, 1);
+    assert_eq!(g.memory, 0.);
+}
 fn run(g: &mut Creature, w: &World, eye: Vec3, n: usize) -> Feedback {
     let mut f = Feedback::default();
     for _ in 0..n {

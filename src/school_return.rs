@@ -45,14 +45,19 @@ impl State {
         self.phase >= Phase::Opening || self.scene.as_ref().is_some_and(|s| s.active)
     }
     pub fn inventory(&mut self, items: &mut Items) {
-        if self.phase >= Phase::Open {
-            items.star = false;
+        self.inventory_many(&mut [items]);
+    }
+    /// Story rewards unlock one shared quest; consumption removes every copy.
+    /// No ordinary personal resource is read or changed here.
+    pub(crate) fn inventory_many(&mut self, inventories: &mut [&mut Items]) {
+        self.star = false;
+        self.potion = false;
+        for items in inventories {
+            if self.phase >= Phase::Open { items.star = false; }
+            if self.phase >= Phase::Drinking { items.potion = false; }
+            self.star |= items.star;
+            self.potion |= items.potion;
         }
-        if self.phase >= Phase::Drinking {
-            items.potion = false;
-        }
-        self.star = items.star;
-        self.potion = items.potion;
     }
     pub fn facts(&self) -> Facts {
         let mut f = Facts::default();
@@ -522,6 +527,33 @@ mod tests {
         }
         assert_eq!(items, Items::default());
         assert!(s.validate().is_ok());
+    }
+    #[test]
+    fn either_player_supplies_story_rewards_and_every_copy_is_consumed() {
+        for reverse in [false, true] {
+            for phase in [Phase::Locked, Phase::Open, Phase::Observatory, Phase::Drinking, Phase::Complete] {
+                let mut items = [
+                    Items {star:true, spice:true, ..Default::default()},
+                    Items {potion:true, lollipop:true, ..Default::default()},
+                ];
+                if reverse { items.reverse(); }
+                let before=items.clone();
+                let mut state=State {phase,..Default::default()};
+                state.inventory_many(&mut items.each_mut());
+                assert_eq!(state.star,phase<Phase::Open);
+                assert_eq!(state.potion,phase<Phase::Drinking);
+                for (after,old) in items.iter().zip(&before) {
+                    assert_eq!(after.star,old.star && phase<Phase::Open);
+                    assert_eq!(after.potion,old.potion && phase<Phase::Drinking);
+                    assert_eq!(after.spice,old.spice);
+                    assert_eq!(after.lollipop,old.lollipop);
+                }
+                let saved=items.clone();
+                let mut restored: State=serde_json::from_value(serde_json::to_value(&state).unwrap()).unwrap();
+                restored.inventory_many(&mut items.each_mut());
+                assert_eq!(items,saved,"A restored shared quest changed item ownership");
+            }
+        }
     }
     #[test]
     fn restart_preserves_return_phase_and_resource_history() {

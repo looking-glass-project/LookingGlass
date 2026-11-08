@@ -703,6 +703,11 @@ impl Story {
     pub fn line(&self) -> Option<&Line> {
         self.current.as_ref().map(|p| &p.sequence.lines[p.index])
     }
+    /// Read-only replicated voice position; clients never tick dialogue locally.
+    pub(crate) fn voice_position(&self) -> Option<(&str, usize, &str, f32)> {
+        self.current.as_ref().map(|p| (p.sequence.id.as_str(), p.index,
+            p.sequence.lines[p.index].path.as_str(), p.elapsed))
+    }
     /// Sample the exact saved dialogue clock; no separate mouth timer can drift.
     pub fn mouth(&self, actors: &[&str]) -> f32 {
         self.current.as_ref().map_or(0., |p| {

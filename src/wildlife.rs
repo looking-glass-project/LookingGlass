@@ -718,11 +718,7 @@ impl Creature {
                     if self.cues == 0 && self.time >= duration * 0.5 {
                         self.cues = 1;
                         if visible && distance <= 125. {
-                            if victim == crate::dice::ALICE {
-                                out.will_drain += 10.;
-                            } else {
-                                out.strike(victim, 10., Vec3::ZERO, DamageKind::Other);
-                            }
+                            out.drain_will(victim, 10.);
                             self.beam = Some(aim);
                         }
                     }

@@ -355,21 +355,7 @@ pub(crate) fn drive(_a: &mut Assets, r: &mut crate::route::Route) -> Result<()> 
         }
     }
     println!("Climb begins at {:?}", r.player.feet);
-    let goals = if let Ok(path) = std::env::var("LOOKING_GLASS_CENTIPEDE2_ROUTE") {
-        serde_json::from_slice::<Vec<Vec3>>(&std::fs::read(path)?)?
-    } else {
-        vec![
-            vec3(-2880., 4080., 2848.),
-            vec3(-2760., 4080., 2956.),
-            vec3(-2728., 4120., 2960.),
-            vec3(-2600., 4320., 3012.),
-            vec3(-2568., 4320., 3016.),
-            vec3(-2328., 4296., 3148.),
-            vec3(-2328., 4210., 3152.),
-            vec3(-2290., 3980., 3268.),
-            vec3(-2184., 3904., 3268.),
-        ]
-    };
+    let goals = climb_goals()?;
     for goal in goals {
         println!("  climb goal {goal:?}");
         walk_goal(r, goal)?;
@@ -395,6 +381,23 @@ pub(crate) fn drive(_a: &mut Assets, r: &mut crate::route::Route) -> Result<()> 
         r.ticks
     );
     Ok(())
+}
+pub(super) fn climb_goals() -> Result<Vec<Vec3>> {
+    Ok(if let Ok(path) = std::env::var("LOOKING_GLASS_CENTIPEDE2_ROUTE") {
+        serde_json::from_slice::<Vec<Vec3>>(&std::fs::read(path)?)?
+    } else {
+        vec![
+            vec3(-2880., 4080., 2848.),
+            vec3(-2760., 4080., 2956.),
+            vec3(-2728., 4120., 2960.),
+            vec3(-2600., 4320., 3012.),
+            vec3(-2568., 4320., 3016.),
+            vec3(-2328., 4296., 3148.),
+            vec3(-2328., 4210., 3152.),
+            vec3(-2290., 3980., 3268.),
+            vec3(-2184., 3904., 3268.),
+        ]
+    })
 }
 fn route_one(a: &mut Assets, difficulty: crate::powerups::Difficulty, skip: bool) -> Result<()> {
     let mut r = crate::route::Route::enter(

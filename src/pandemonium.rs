@@ -554,6 +554,10 @@ impl Pandemonium {
                 e.message = Some("Key secured / return to the Gnome's house".into());
             }
             "alice_leave" => {
+                if !self.state.leaving && !self.state.cinema.return_done {
+                    self.state.cinema.start(Beat::Return);
+                    self.state.grip = None;
+                }
                 self.state.leaving = true;
                 e.message = Some("The Gnome is waiting / enter his house".into());
             }
@@ -746,6 +750,22 @@ impl Pandemonium {
         player: &mut Player,
         fixed: &[Collider],
     ) -> Result<()> {
+        self.advance_with_blockers(dt, map, world, player, fixed, &[])
+    }
+    /// Advance the one machinery clock, considering every living body when a
+    /// quest gate would move. Cinematic transports still use the authored Alice.
+    pub fn advance_players(
+        &mut self, dt: f32, map: &Bsp, world: &mut World,
+        players: &mut [&mut Player], fixed: &[Collider],
+    ) -> Result<()> {
+        let Some((first, others)) = players.split_first_mut() else { return Ok(()); };
+        let blockers = others.iter().map(|p| p.feet).collect::<Vec<_>>();
+        self.advance_with_blockers(dt, map, world, first, fixed, &blockers)
+    }
+    fn advance_with_blockers(
+        &mut self, dt: f32, map: &Bsp, world: &mut World,
+        player: &mut Player, fixed: &[Collider], blockers: &[Vec3],
+    ) -> Result<()> {
         if dt <= 0. {
             return Ok(());
         }
@@ -828,9 +848,11 @@ impl Pandemonium {
         }
         self.rebuild(map)?;
         if !self.cinematic() {
-            let center = player.feet + PLAYER_CENTER;
             let obstructed = |o: &Object| {
-                o.visible && o.solid && o.collider.trace(center, center, PLAYER_HALF).start_solid
+                o.visible && o.solid && std::iter::once(player.feet).chain(blockers.iter().copied()).any(|feet| {
+                    let center = feet + PLAYER_CENTER;
+                    o.collider.trace(center, center, PLAYER_HALF).start_solid
+                })
             };
             let key_blocked = self
                 .objects

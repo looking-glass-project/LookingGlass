@@ -3,6 +3,11 @@ mod art;
 mod audit;
 mod battle;
 mod check;
+mod coop;
+mod coop_check;
+mod coop_route;
+mod network_pilot;
+pub(crate) use network_pilot::NetworkPilot;
 mod data;
 mod effects;
 mod projectile;
@@ -99,6 +104,8 @@ struct Saved {
     alice: Transform,
     grabbed: bool,
     alive: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    coop: Option<coop::State>,
 }
 impl state::State for Saved {
     const VERSION: u8 = 1;
@@ -106,6 +113,10 @@ impl state::State for Saved {
         self.version
     }
     fn validate(&self, _: state::Visit) -> Result<()> {
+        if let Some(c) = &self.coop {
+            c.validate()?;
+            ensure!(!self.grabbed || c.target.is_some(), "Paired Queen grab has no victim");
+        }
         for (n, t, max) in [
             ("scene", self.time, 1000.),
             ("level", self.clock, 86400.),
@@ -216,6 +227,7 @@ struct Queen {
     saved: Saved,
     colliders: Vec<Collider>,
     geometry: Vec<(usize, Vec3, Quat)>,
+    trigger_actor: Option<usize>,
 }
 impl Queen {
     fn load(a: &mut Assets, map: &Bsp) -> Result<Self> {
@@ -265,12 +277,14 @@ impl Queen {
             alice: data.points["qlair_start1"],
             grabbed: false,
             alive: true,
+            coop: None,
         };
         let mut out = Self {
             data,
             saved,
             colliders: Vec::new(),
             geometry: Vec::new(),
+            trigger_actor: None,
         };
         out.rebuild(map)?;
         Ok(out)
@@ -290,6 +304,9 @@ impl Queen {
         self.saved.grab_time = 0.;
         self.saved.grab_arrived = false;
         self.saved.projectiles.clear();
+        if matches!(p, Phase::Queen1 | Phase::Queen2) {
+            if let Some(c) = &mut self.saved.coop { c.essence = [0; 2]; c.wait = [0.; 2]; }
+        }
     }
     fn rebuild(&mut self, map: &Bsp) -> Result<()> {
         let poses = self
@@ -402,6 +419,13 @@ impl LevelController for Queen {
             .filter(|n| (1..=4).contains(n))
         {
             if self.saved.phase == Phase::Queen2 {
+                if let Some(i) = self.trigger_actor {
+                    let c = self.pair_state();
+                    c.platform[i] = if c.platform[i] > 0 { -n } else { n };
+                    let platform = c.platform[i];
+                    if c.target.is_none_or(|target| target == i) { self.select_platform(platform); }
+                    return Some(Events::default());
+                }
                 if self.saved.platform > 0 {
                     self.saved.platform = -n;
                     if self.saved.position != 5 && self.saved.middle == 0. {
@@ -464,13 +488,14 @@ impl LevelController for Queen {
         p: &mut Player,
         fixed: &[Collider],
     ) -> Result<()> {
-        if dt <= 0. || !self.saved.alive {
+        if !dt.is_finite() || dt <= 0. || !self.saved.alive {
             return Ok(());
         }
         let dt = dt.min(0.1);
         self.saved.clock = (self.saved.clock + dt).min(86400.);
         self.saved.time = (self.saved.time + dt).min(1000.);
         self.saved.essence_wait = (self.saved.essence_wait - dt).max(0.);
+        if let Some(c) = &mut self.saved.coop { for wait in &mut c.wait { *wait = (*wait - dt).max(0.); } }
         for impact in &mut self.saved.impacts {
             impact.age += dt;
         }
@@ -500,7 +525,7 @@ impl LevelController for Queen {
         )
     }
     fn controlled(&self) -> bool {
-        self.scripted() || self.saved.grabbed
+        self.scripted() || (self.saved.coop.is_none() && self.saved.grabbed)
     }
     fn scene_id(&self) -> Option<&'static str> {
         match self.saved.phase {
@@ -511,7 +536,7 @@ impl LevelController for Queen {
         }
     }
     fn camera(&self, _: &World) -> Option<crate::cinematic::Camera> {
-        self.scene_camera()
+        if self.saved.coop.is_some() && !self.scripted() { None } else { self.scene_camera() }
     }
     fn fade(&self) -> Option<(Color, f32)> {
         self.scene_fade()
@@ -544,6 +569,38 @@ impl LevelController for Queen {
     }
     fn combat(&mut self, c: &mut Combat<'_>) -> Feedback {
         self.battle(c)
+    }
+    fn coop_prepare(&mut self, players: &mut [crate::level::CoopPlayer<'_>; 2]) {
+        self.prepare_pair(players);
+    }
+    fn coop_advance_roster(&mut self, dt: f32, map: &Bsp, world: &mut World,
+        players: &mut [crate::level::CoopPlayer<'_>; 2], fixed: &[Collider]) -> Result<()> {
+        if !self.scripted() {
+            if let Some(p) = players.iter_mut().find(|p| p.stats.alive()) {
+                self.advance(dt, map, world, p.player, fixed)?;
+            }
+        }
+        Ok(())
+    }
+    fn coop_scene_bound(&mut self, owner: usize, player: &Player) {
+        self.pair_state().actor = owner;
+        self.track_actor(player);
+    }
+    fn coop_scene_step(&mut self, _: usize, player: &mut Player, _: &mut Stats) {
+        self.track_actor(player);
+    }
+    fn coop_trigger_actor(&mut self, player: Option<usize>) { self.trigger_actor = player; }
+    fn coop_personal_thread(&self, thread: &str) -> bool { thread.starts_with("MoveQueen") }
+    fn coop_controlled(&self, player: usize) -> bool {
+        self.saved.grabbed && self.saved.coop.as_ref().is_some_and(|c| c.target == Some(player))
+    }
+    fn coop_blocks_weapons(&self, player: usize) -> bool { self.coop_controlled(player) }
+    fn coop_respawned(&mut self, player: usize) {
+        if self.coop_controlled(player) { self.saved.grabbed = false; }
+    }
+    fn coop_combat_roster(&mut self, dt: f32, world: &World,
+        players: &mut [crate::level::CoopPlayer<'_>; 2]) -> Feedback {
+        self.pair_fight(dt, world, players)
     }
     fn checkpoint_requested(&self) -> bool {
         self.saved.checkpoint && !self.saved.checkpoint_saved
@@ -751,6 +808,16 @@ pub static REGISTRATION: super::Registration = super::Registration {
         BeatSpec::linear("qlair", TALK, "../qlair", TALK, 3),
     ],
     checks: &[
+        super::Check {
+            flag: "--qlair-coop-route-check",
+            help: "Fight both Queen forms with two players through the original ending.",
+            run: super::Run::Windowed(coop_route::check),
+        },
+        super::Check {
+            flag: "--qlair-coop-check",
+            help: "Verify paired Queen targeting, resources, captures and finale progression.",
+            run: super::Run::Windowed(coop_check::windowed),
+        },
         super::Check {
             flag: "--qlair-skip-route-check",
             help: "Fight both Queens with skipped scenes on Normal and Hard.",

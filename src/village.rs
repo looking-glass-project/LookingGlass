@@ -6,9 +6,12 @@ pub mod machinery_render;
 pub fn check(assets: &mut crate::assets::Assets) -> Result<()> {
     machinery::check(assets)
 }
+pub fn check_coop(assets: &mut crate::assets::Assets) -> Result<()> {
+    machinery::check_coop(assets)
+}
 use crate::{
     bsp::Bsp,
-    collision::{Collider, World, PLAYER_CENTER, PLAYER_HALF},
+    collision::{Collider, World},
     interaction::{vector, Events},
     movement::Player,
 };
@@ -416,6 +419,15 @@ impl Village {
             return Ok(());
         }
         self.cinema.advance(dt.min(0.1), player, world)?;
+        self.advance_players(dt, map, world, &mut [player], fixed)
+    }
+    /// Ambient machinery advances once and commits every living rider together.
+    /// Cutscenes still use `advance` with only their one authored Alice.
+    pub fn advance_players(
+        &mut self, dt: f32, map: &Bsp, world: &mut World,
+        players: &mut [&mut Player], fixed: &[Collider],
+    ) -> Result<()> {
+        if dt <= 0. { return Ok(()); }
         let mut remaining = dt.min(0.1);
         while remaining > 0.000001 {
             let step = remaining.min(1. / 120.);
@@ -435,16 +447,6 @@ impl Village {
                 }
                 let collider = Collider::model(map, o.model, next.origin, next.rotation(), true)?;
                 let solid = o.solid && !(o.name == "openthis" && self.hatch_open);
-                let ground = o.collider.trace(
-                    player.feet + PLAYER_CENTER,
-                    player.feet + PLAYER_CENTER - Vec3::Z * 3.,
-                    PLAYER_HALF,
-                );
-                let riding = solid
-                    && player.velocity.z <= 1.
-                    && !ground.start_solid
-                    && ground.fraction < 1.
-                    && ground.normal.z > 0.65;
                 world.set_dynamic(
                     fixed
                         .iter()
@@ -460,31 +462,10 @@ impl Village {
                         )
                         .collect(),
                 );
-                let mut carried = next.origin
-                    + next.rotation() * o.pose.rotation().inverse() * (player.feet - o.pose.origin);
-                if solid {
-                    if riding {
-                        let Some((feet, normal)) = collider.rider_feet(carried) else {
-                            continue;
-                        };
-                        carried = feet;
-                        let trace = world.body_trace(player.feet, carried);
-                        if trace.start_solid || trace.fraction < 1. || !world.body_clear(carried) {
-                            continue;
-                        }
-                        player.ground_normal = normal;
-                    } else if collider.touches(
-                        player.feet + PLAYER_CENTER,
-                        player.feet + PLAYER_CENTER,
-                        PLAYER_HALF,
-                    ) {
-                        continue;
-                    }
-                }
-                if riding {
-                    player.feet = carried;
-                    player.grounded = true;
-                }
+                if !crate::moving::carry(world, &o.collider, &collider,
+                    crate::skeletal::Transform { translation: o.pose.origin, rotation: o.pose.rotation() },
+                    crate::skeletal::Transform { translation: next.origin, rotation: next.rotation() },
+                    solid, players) { continue; }
                 let o = &mut self.objects[i];
                 o.pose = next;
                 o.collider = collider;

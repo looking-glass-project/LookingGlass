@@ -1,8 +1,8 @@
 use super::*;
 use crate::movement::FIXED_DT;
-const BISHOP: &[usize] = &[0, 1, 1, 0, 0, 0, 1, 1, 2, 1, 2, 2, 3, 2, 2, 1, 1, 0, 1, 1];
-const KNIGHT: &[usize] = &[3, 3, 2, 3, 3, 0, 0, 3, 1, 0, 1, 1, 1, 1];
-fn wish(piece: Piece, d: usize) -> Vec2 {
+pub(super) const BISHOP: &[usize] = &[0, 1, 1, 0, 0, 0, 1, 1, 2, 1, 2, 2, 3, 2, 2, 1, 1, 0, 1, 1];
+pub(super) const KNIGHT: &[usize] = &[3, 3, 2, 3, 3, 0, 0, 3, 1, 0, 1, 1, 1, 1];
+pub(super) fn wish(piece: Piece, d: usize) -> Vec2 {
     match piece {
         Piece::Bishop => {
             [vec2(-1., 1.), vec2(1., 1.), vec2(1., -1.), vec2(-1., -1.)][d].normalize()

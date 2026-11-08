@@ -26,6 +26,7 @@ mod clockwork;
 mod collision;
 mod combat;
 mod console;
+mod coop;
 mod decorations;
 mod dice;
 mod dismember;
@@ -64,6 +65,7 @@ mod materials;
 mod menu;
 mod model_detail;
 mod movement;
+mod moving;
 mod movie;
 mod npc;
 mod pandemonium;
@@ -93,6 +95,7 @@ mod school;
 mod school2;
 mod school2_quest;
 mod school2_route;
+mod school2_coop_route;
 mod school_return;
 mod school_return_route;
 mod school_route;
@@ -107,6 +110,7 @@ mod targeting;
 mod texture;
 mod traversal;
 mod ui;
+mod ui_probe;
 mod viewer;
 mod frame_profile;
 mod viewmodel;
@@ -125,6 +129,7 @@ use bsp::Bsp;
 use std::path::PathBuf;
 
 pub struct Options {
+    pub coop: Option<coop::preview::Launch>,
     pub difficulty: powerups::Difficulty,
     pub save_dir: PathBuf,
     pub load: Option<save::Slot>,
@@ -156,7 +161,11 @@ fn main() {
 }
 
 fn run() -> Result<()> {
+    if let Some(result) = coop::check::cli(&std::env::args().skip(1).collect::<Vec<_>>()) {
+        return result;
+    }
     let mut o = Options {
+        coop: None,
         difficulty: Default::default(),
         save_dir: PathBuf::from("private/saves"),
         load: None,
@@ -191,6 +200,55 @@ fn run() -> Result<()> {
     let mut movie_name = String::new();
     while let Some(arg) = args.next() {
         match arg.as_str() {
+            "--coop-host" | "--coop-join" => {
+                o.coop = Some(coop::preview::Launch { host: arg == "--coop-host", internet: true,
+                    invite_file: Some(args.next().context("Co-op requires an invite file")?.into()),
+                    invite: None, start: None, drive: false, death_check: None, scene_check: None, travel_check: false, resume: false, single_player: None, checkpoint_check: false, route_driver: None, conditions: Default::default() });
+            }
+            "--coop-local" => o.coop.as_mut().context("Use --coop-host before --coop-local")?.internet = false,
+            "--coop-drive" => o.coop.as_mut().context("Choose a co-op role before --coop-drive")?.drive = true,
+            "--coop-route-driver" => {
+                let path = args.next().context("--coop-route-driver requires a local command file")?;
+                let launch = o.coop.as_mut().context("Choose a co-op role before --coop-route-driver")?;
+                launch.drive = true;
+                launch.route_driver = Some(path.into());
+            }
+            "--coop-resume" => o.coop.as_mut().context("Choose a co-op host before --coop-resume")?.resume = true,
+            "--coop-checkpoint-check" => {
+                let launch = o.coop.as_mut().context("Choose a co-op role before --coop-checkpoint-check")?;
+                launch.drive = true;
+                launch.checkpoint_check = true;
+            }
+            "--coop-travel-check" => {
+                let launch = o.coop.as_mut().context("Choose a co-op role before --coop-travel-check")?;
+                launch.drive = true;
+                launch.travel_check = true;
+            }
+            "--coop-scene-check" => {
+                let launch = o.coop.as_mut().context("Choose a co-op role before --coop-scene-check")?;
+                launch.drive = true;
+                launch.scene_check = Some(match args.next().as_deref() {
+                    Some("blue") => coop::PlayerId::Blue,
+                    Some("red") => coop::PlayerId::Red,
+                    _ => anyhow::bail!("--coop-scene-check requires blue or red as the first arrival"),
+                });
+            }
+            "--coop-death-check" => {
+                let launch = o.coop.as_mut().context("Choose a co-op role before --coop-death-check")?;
+                launch.drive = true;
+                launch.death_check = Some(match args.next().as_deref() {
+                    Some("blue") => coop::PlayerId::Blue,
+                    Some("red") => coop::PlayerId::Red,
+                    _ => anyhow::bail!("--coop-death-check requires blue or red as the first victim"),
+                });
+            }
+            "--coop-delay-ms" | "--coop-jitter-ms" => {
+                let value: u16 = args.next().context("Co-op network delay requires milliseconds")?.parse()?;
+                anyhow::ensure!(value <= 500, "Co-op test delay must be between 0 and 500 ms");
+                let launch = o.coop.as_mut().context("Choose a co-op role before network test conditions")?;
+                if arg == "--coop-delay-ms" { launch.conditions.delay_ms = value; }
+                else { launch.conditions.jitter_ms = value; }
+            }
             "--difficulty" => {
                 o.difficulty = powerups::Difficulty::parse(
                     &args.next().context("--difficulty requires a name")?,
@@ -198,6 +256,11 @@ fn run() -> Result<()> {
             }
             "--save-dir" => {
                 o.save_dir = args.next().context("--save-dir requires a folder")?.into()
+            }
+            "--profile" => {
+                let profile = PathBuf::from(args.next().context("--profile requires a folder")?);
+                o.save_dir = profile.join("saves");
+                std::env::set_var("LOOKING_GLASS_SETTINGS_DIR", profile);
             }
             "--load" => {
                 o.load = Some(save::Slot::parse(
@@ -364,6 +427,21 @@ fn run() -> Result<()> {
             "--mallet-jack-render-check" => mode = "mallet-jack-render",
             "--weapon-input-check" => mode = "weapon-input",
             "--world-check" => mode = "world",
+            "--coop-world-check" => mode = "coop-world",
+            "--coop-pool-check" => mode = "coop-pool",
+            "--coop-duchess-check" => mode = "coop-duchess",
+            "--coop-duchess-arena-check" => mode = "coop-duchess-arena",
+            "--potears3-coop-route-check" => mode = "coop-duchess-route",
+            "--skool2-coop-route-check" => mode = "coop-school2-route",
+            "--potears1-coop-route-check" => mode = "coop-pool-route",
+            "--coop-encounter-check" => mode = "coop-encounter",
+            "--coop-import-check" => mode = "coop-import",
+            "--coop-campaign-check" => mode = "coop-campaign",
+            "--coop-village-check" => mode = "coop-village",
+            "--coop-pandemonium-check" => mode = "coop-pandemonium",
+            "--coop-pandemonium-route-check" => mode = "coop-pandemonium-route",
+            "--coop-fortress-check" => mode = "coop-fortress",
+            "--coop-beyond-check" => mode = "coop-beyond",
             "--school-check" => mode = "school",
             "--footing-check" => mode = "footing",
             "--shelf-preview" => o.shelf_preview = true,
@@ -570,6 +648,19 @@ fn run() -> Result<()> {
     if mode == "events" {
         return event_check::check(&mut assets);
     }
+    if mode == "coop-world" {
+        interaction::coop::check(&mut assets)?;
+        school::coop_check::check(&mut assets)?;
+        village::check_coop(&mut assets)?;
+        return coop::stage::check(&mut assets);
+    }
+    if mode == "coop-pool" {
+        return pool::coop_check::check(&mut assets);
+    }
+    if mode == "coop-duchess" { return duchess::coop_check::check(&mut assets); }
+    if mode == "coop-campaign" { return coop::campaign::check(&mut assets); }
+    if mode == "coop-fortress" { return fortress::coop_check::check(&mut assets); }
+    if mode == "coop-beyond" { return beyond::coop_check::check(&mut assets); }
     if mode == "dice" {
         return dice::check(&mut assets);
     }
@@ -1164,6 +1255,87 @@ fn run() -> Result<()> {
         macroquad::Window::from_config(viewer::config(), async move {
             if let Err(e) = fortress::check::render_check(&mut assets).await {
                 eprintln!("Fortress cinema render failed: {e:#}");
+                std::process::exit(1);
+            }
+        });
+        return Ok(());
+    }
+    if mode == "coop-pandemonium-route" {
+        macroquad::Window::from_config(viewer::config(), async move {
+            if let Err(e) = coop::pandemonium_route::check(&mut assets).await {
+                eprintln!("Co-op Pandemonium route failed: {e:#}");
+                std::process::exit(1);
+            }
+        });
+        return Ok(());
+    }
+    if mode == "coop-pandemonium" {
+        macroquad::Window::from_config(viewer::config(), async move {
+            if let Err(e) = coop::pandemonium_check::check(&mut assets).await {
+                eprintln!("Co-op Pandemonium check failed: {e:#}");
+                std::process::exit(1);
+            }
+        });
+        return Ok(());
+    }
+    if mode == "coop-pool-route" {
+        macroquad::Window::from_config(viewer::config(), async move {
+            if let Err(e) = pool::coop_route::check(&mut assets).await {
+                eprintln!("Co-op Pool of Tears route failed: {e:#}");
+                std::process::exit(1);
+            }
+        });
+        return Ok(());
+    }
+    if mode == "coop-school2-route" {
+        macroquad::Window::from_config(viewer::config(), async move {
+            if let Err(e) = school2_coop_route::check(&mut assets).await {
+                eprintln!("Co-op School Two route failed: {e:#}");
+                std::process::exit(1);
+            }
+        });
+        return Ok(());
+    }
+    if mode == "coop-duchess-route" {
+        macroquad::Window::from_config(viewer::config(), async move {
+            if let Err(e) = duchess::coop_route::check(&mut assets).await {
+                eprintln!("Co-op Duchess route failed: {e:#}");
+                std::process::exit(1);
+            }
+        });
+        return Ok(());
+    }
+    if mode == "coop-duchess-arena" {
+        macroquad::Window::from_config(viewer::config(), async move {
+            if let Err(e) = duchess::coop_check::arena_check(&mut assets).await {
+                eprintln!("Co-op Duchess arena check failed: {e:#}");
+                std::process::exit(1);
+            }
+        });
+        return Ok(());
+    }
+    if mode == "coop-encounter" {
+        macroquad::Window::from_config(viewer::config(), async move {
+            if let Err(e) = coop::encounter_check::check(&mut assets).await {
+                eprintln!("Co-op encounter replay failed: {e:#}");
+                std::process::exit(1);
+            }
+        });
+        return Ok(());
+    }
+    if mode == "coop-import" {
+        macroquad::Window::from_config(viewer::config(), async move {
+            if let Err(e) = coop::solo_check::check(&mut assets, &o).await {
+                eprintln!("Co-op solo import failed: {e:#}");
+                std::process::exit(1);
+            }
+        });
+        return Ok(());
+    }
+    if mode == "coop-village" {
+        macroquad::Window::from_config(viewer::config(), async move {
+            if let Err(e) = coop::village_check::check(&mut assets).await {
+                eprintln!("Co-op village route failed: {e:#}");
                 std::process::exit(1);
             }
         });

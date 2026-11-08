@@ -1,6 +1,9 @@
 //! Two visits, one map: independent scene, collectible and passage ownership.
 mod art;
 mod check;
+mod coop;
+mod coop_check;
+mod coop_route;
 pub(crate) use check::drive as drive_route;
 mod data;
 mod motion;
@@ -58,6 +61,8 @@ struct Saved {
     essence: u8,
     essence_delay: f32,
     exit: ExitState,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    coop: Option<coop::State>,
 }
 impl Saved {
     fn new(returning: bool) -> Self {
@@ -82,6 +87,7 @@ impl Saved {
             essence: 0,
             essence_delay: 0.,
             exit: ExitState::default(),
+            coop: None,
         }
     }
 }
@@ -92,6 +98,7 @@ impl state::State for Saved {
     }
     fn validate(&self, v: state::Visit) -> Result<()> {
         ensure!(v.returning == self.returning, "WForest visit mismatch");
+        if let Some(c) = &self.coop { c.validate(self.returning)?; }
         state::clock("world", self.clock, 1e6)?;
         state::clock("cave gate", self.cave, 4.)?;
         state::clock("chess gate", self.chess, 4.2)?;
@@ -396,6 +403,33 @@ impl LevelController for Forest {
             ..Default::default()
         }
     }
+    fn coop_prepare(&mut self, players: &mut [crate::level::CoopPlayer<'_>; 2]) {
+        self.prepare_pair(players);
+    }
+    fn coop_advance_roster(&mut self, dt: f32, map: &Bsp, world: &mut World,
+        players: &mut [crate::level::CoopPlayer<'_>; 2], fixed: &[Collider]) -> Result<()> {
+        if !dt.is_finite() || dt <= 0. || self.scripted() || !players.iter().any(|p| p.stats.alive()) { return Ok(()); }
+        self.prepare_pair(players);
+        let dt=dt.min(0.1);
+        self.advance_clocks(dt);
+        let mut living=players.iter_mut().filter(|p|p.stats.alive()).map(|p|&mut *p.player).collect::<Vec<_>>();
+        self.motion.advance_players(dt,map,world,&mut living,fixed,&mut self.saved)
+    }
+    fn coop_contacts(&mut self, dt: f32, players: &mut [crate::level::CoopPlayer<'_>; 2]) -> Option<usize> {
+        if !dt.is_finite() || dt<=0. { return None; }
+        self.contacts_pair(players)
+    }
+    fn coop_respawned(&mut self, player: usize) {
+        if let Some(c)=&mut self.saved.coop { c.previous[player]=None; }
+    }
+    fn coop_scene_step(&mut self, _: usize, _: &mut Player, _: &mut Stats) {
+        if let Some(c)=&mut self.saved.coop { c.previous=[None;2]; }
+    }
+    fn coop_reunion_limits(&self, player: &Player) -> Option<(f32,f32)> {
+        (!self.saved.returning && self.saved.done[1]
+            && player.feet.distance(self.data.at("alice_eyestaff_pos1").translation)<1.)
+            .then_some((256.,256.))
+    }
     fn transition_failed(&mut self, e: &(String, Option<String>)) {
         if self.exit_spec().matches(e) {
             self.saved.exit.failed();
@@ -413,13 +447,7 @@ impl LevelController for Forest {
             return Ok(());
         }
         let dt = dt.min(0.1);
-        self.saved.clock = (self.saved.clock + dt).min(1e6);
-        self.saved.exit.advance(dt);
-        self.saved.wall_cooldown = (self.saved.wall_cooldown - dt).max(0.);
-        self.saved.essence_delay = (self.saved.essence_delay - dt).max(0.);
-        if let Some(t) = &mut self.saved.blunder {
-            *t = (*t + dt).min(3600.);
-        }
+        self.advance_clocks(dt);
         self.motion.advance(dt, map, w, p, fixed, &mut self.saved)?;
         self.advance_scene(dt, w, p)?;
         Ok(())
@@ -697,6 +725,16 @@ pub static REGISTRATION: Registration = Registration {
     story_beats: BEATS,
     checks: &[
         Check {
+            flag: "--wforest-coop-route-check",
+            help: "Walk paired Caterpillar's Plot through the original chess departure.",
+            run: Run::Windowed(coop_route::first),
+        },
+        Check {
+            flag: "--wforest-coop-check",
+            help: "Verify both WForest visits with paired movers, personal pickups and scene owners.",
+            run: Run::Headless(coop_check::check),
+        },
+        Check {
             flag: "--wforest-check",
             help: "Verify first-visit scenes, altar and gates.",
             run: Run::Headless(check::first),
@@ -754,6 +792,11 @@ pub static RETURN_REGISTRATION: Registration = Registration {
             flag: "--wforest-return-check",
             help: "Verify return wall, secret and route gates.",
             run: Run::Headless(check::returning),
+        },
+        Check {
+            flag: "--wforest-return-coop-route-check",
+            help: "Walk paired return forest through the Staff wall and original maze departure.",
+            run: Run::Windowed(coop_route::returning),
         },
         Check {
             flag: "--wforest-return-route-check",

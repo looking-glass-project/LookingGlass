@@ -351,9 +351,30 @@ impl Encounters {
         }
     }
     pub fn update(&mut self, dt: f32, world: &World, eye: Vec3) -> combat::Feedback {
+        self.player_targets(None);
+        self.update_targets(dt, world, eye)
+    }
+    /// Trigger-owned enemies share the same live roster as placed NPCs. Their
+    /// authored activation and saved hostility remain owned by this encounter.
+    pub fn update_players(&mut self, dt: f32, world: &World, players: [combat::PlayerTarget; 2]) -> combat::Feedback {
+        self.player_targets(Some(players));
+        self.notarget(false); // Visibility/invisibility is individual in the live roster.
+        let eye = players.iter().find(|p| p.alive).unwrap_or(&players[0]).eye;
+        self.update_targets(dt, world, eye)
+    }
+    fn player_targets(&mut self, players: Option<[combat::PlayerTarget; 2]>) {
+        for actor in &mut self.actors {
+            match &mut actor.enemy {
+                Enemy::Guard(g) => g.opponents.players = players,
+                Enemy::Boojum(b) => b.opponents.players = players,
+                Enemy::Ladybug(b) => b.opponents.players = players,
+            }
+        }
+    }
+    fn update_targets(&mut self, dt: f32, world: &World, eye: Vec3) -> combat::Feedback {
         let mut out = combat::Feedback::default();
         for a in self.actors.iter_mut().filter(|a| a.active && a.enabled) {
-            let f = match &mut a.enemy {
+            let mut f = match &mut a.enemy {
                 Enemy::Guard(g) => g.advance(
                     dt,
                     world,
@@ -363,17 +384,14 @@ impl Encounters {
                 Enemy::Boojum(b) => b.advance(dt, world, eye, self.boojum),
                 Enemy::Ladybug(b) => b.advance(dt, world, eye, self.ladybug.unwrap()),
             };
-            out.summon_hits.extend(f.summon_hits);
-            out.damage += f.damage;
-            out.impulse += f.impulse;
             let origin = match &a.enemy {
                 Enemy::Guard(g) => g.target(0).center,
                 Enemy::Boojum(b) => b.target(0).center,
                 Enemy::Ladybug(b) => b.target(0).center,
             };
-            out.spatial_sounds
-                .extend(f.sounds.into_iter().map(|s| (s, origin)));
-            out.spatial_sounds.extend(f.spatial_sounds);
+            f.spatial_sounds
+                .extend(f.sounds.drain(..).map(|s| (s, origin)));
+            out.append(f);
         }
         out
     }
@@ -403,6 +421,50 @@ pub struct Art {
     material: crate::character::SkinMaterial,
     ladybug: crate::ladybug::Art,
     pub school_staging: bool,
+}
+
+#[cfg(test)]
+mod coop_tests {
+    use super::*;
+    fn cast() -> Encounters {
+        let timing = Timing { sever: None, alert: 0.3, attack: 0.8, hit: 0.4, pain: 0.3, death: 1. };
+        Encounters {
+            identities: vec![crate::entity::Id(7)],
+            actors: vec![Actor { enabled: true, name: "guard".into(), active: false,
+                enemy: Enemy::Guard(Guard::new(vec3(0., 0., 0.04), 0., 1.)) }],
+            activated: BTreeSet::new(), club: timing, diamond: timing,
+            boojum: boojum::Timing { frame: 0.05, attack: 1., pain: 0.3, death: 1. }, ladybug: None,
+        }
+    }
+    #[test]
+    fn scripted_activation_uses_both_players_and_never_damages_the_distant_partner() {
+        let world = World::fixture(&[(vec3(-1000.,-1000.,-20.),vec3(1000.,1000.,0.))]);
+        for victim in 0..2 {
+            let mut cast = cast();
+            let mut players = [combat::PlayerTarget { eye: vec3(500.,0.,48.), alive: true, hidden: false }; 2];
+            players[victim].eye = vec3(55.,0.,48.);
+            for _ in 0..120 {
+                let f = cast.update_players(1./120., &world, players);
+                assert!(f.players.iter().all(|p| p.damage == 0.));
+            }
+            cast.activate("guard");
+            let mut total = combat::Feedback::default();
+            for _ in 0..240 { total.append(cast.update_players(1./120., &world, players)); }
+            assert!(total.players[victim].damage > 0.);
+            assert_eq!(total.players[1-victim].damage, 0.);
+            assert_eq!(total.damage, 0.);
+            let saved = serde_json::to_vec(&cast.snapshot()).unwrap();
+            cast.restore(&serde_json::from_slice(&saved).unwrap()).unwrap();
+            let Enemy::Guard(guard) = &cast.actors[0].enemy else { unreachable!() };
+            assert!(guard.opponents.players.is_none());
+            players[victim].alive = false;
+            let f = cast.update_players(1./120., &world, players);
+            assert_eq!(f.players[victim].damage, 0.);
+            cast.update(0., &world, players[0].eye);
+            let Enemy::Guard(guard) = &cast.actors[0].enemy else { unreachable!() };
+            assert!(guard.opponents.players.is_none(), "Single-player update retained a co-op roster");
+        }
+    }
 }
 impl Art {
     pub fn load(assets: &mut Assets) -> Result<Self> {

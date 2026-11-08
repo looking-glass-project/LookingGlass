@@ -2,6 +2,7 @@ use super::*;
 use crate::{npc::Puppet, weapons::Prop};
 use std::collections::BTreeMap;
 pub(super) struct Art {
+    local_player: Option<usize>,
     ui: std::rc::Rc<crate::ui::Ui>,
     puppets: BTreeMap<String, Puppet>,
     props: BTreeMap<String, Prop>,
@@ -96,6 +97,7 @@ impl Art {
             );
         }
         Ok(Self {
+            local_player: None,
             ui: crate::ui::Ui::load(a)?,
             effects: effects::Art::load(a, o)?,
             puppets,
@@ -133,6 +135,7 @@ impl Art {
     }
 }
 impl LevelArt for Art {
+    fn coop_view(&mut self, local: usize) { self.local_player = Some(local.min(1)); }
     fn story_pose(&mut self, s: &Story) {
         for (name, actor) in [
             ("alice", "alice"),
@@ -312,8 +315,8 @@ impl LevelArt for Art {
                 fullbright,
             );
         }
-        if matches!(s.phase, Phase::Queen1 | Phase::Queen2) && s.essence_wait == 0. {
-            self.essence.draw(if s.phase == Phase::Queen1 { crate::loot::Grade::Medium } else { crate::loot::Grade::Large }, o.essence_pose().translation, atmosphere, camera, s.clock);
+        if let Some(at) = o.personal_essence(self.local_player) {
+            self.essence.draw(if s.phase == Phase::Queen1 { crate::loot::Grade::Medium } else { crate::loot::Grade::Large }, at.translation, atmosphere, camera, s.clock);
         }
         for p in &s.projectiles {
             if p.end.is_none() {

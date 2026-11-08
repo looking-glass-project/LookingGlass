@@ -53,7 +53,9 @@ pub fn step_grip(
         let next = feet.lerp(end, hit.fraction);
         if world.body_clear(next) {
             *feet = next;
-            *length = feet.distance(center);
+            // World-coordinate rounding can turn a clamped 32-unit grip into
+            // 31.999992, which makes the next saved/network player invalid.
+            *length = feet.distance(center).clamp(32., max_length);
         }
     }
 
@@ -107,6 +109,15 @@ pub fn grip_facing(anchor: Vec3, feet: Vec3, facing: f32, dt: f32) -> f32 {
     facing + delta.clamp(-dt * 6., dt * 6.)
 }
 
+#[derive(Clone, Copy)]
+pub struct Grip {
+    pub physical: Vec3,
+    pub hand: Vec3,
+}
+impl Grip {
+    pub fn at(point: Vec3) -> Self { Self { physical: point, hand: point } }
+}
+
 pub struct Strand {
     pub model: usize,
     pub anchor: Vec3,
@@ -115,6 +126,7 @@ pub struct Strand {
     previous: Vec<Vec3>,
     remaining: f32,
     grip: Option<Vec3>,
+    display_grips: Vec<Grip>,
 }
 impl Strand {
     pub fn new(r: &Rope) -> Self {
@@ -130,12 +142,14 @@ impl Strand {
             points,
             remaining: 0.,
             grip: None,
+            display_grips: Vec::new(),
         }
     }
     pub fn update(&mut self, dt: f32, grip: Option<Vec3>, world: &World) {
         if !dt.is_finite() || dt <= 0. {
             return;
         }
+        self.display_grips.clear();
         let count = self.points.len() - 1;
         let spacing = self.length / count as f32;
         if grip.is_some() && self.grip.is_none() {
@@ -216,11 +230,66 @@ impl Strand {
         }
         self.grip = grip;
     }
+    /// The free tail uses the existing simulation below the lowest holder. The
+    /// visible loaded span passes through every hand, including two players on
+    /// the same rope, without changing either authoritative grip or body.
+    pub fn update_many(&mut self, dt: f32, grips: &[Grip], world: &World) {
+        if !dt.is_finite() || dt <= 0. { return; }
+        let mut grips = grips.iter().copied().filter(|p| p.physical.is_finite() && p.hand.is_finite()).collect::<Vec<_>>();
+        // Radial lengths can cross when players swing at different angles. The
+        // loose tail belongs below the lower body, independent of hand animation.
+        grips.sort_by(|a, b| b.physical.z.total_cmp(&a.physical.z)
+            .then(a.physical.distance_squared(self.anchor).total_cmp(&b.physical.distance_squared(self.anchor)))
+            .then(a.physical.x.total_cmp(&b.physical.x)).then(a.physical.y.total_cmp(&b.physical.y)).then(a.physical.z.total_cmp(&b.physical.z))
+            .then(a.hand.x.total_cmp(&b.hand.x)).then(a.hand.y.total_cmp(&b.hand.y)).then(a.hand.z.total_cmp(&b.hand.z)));
+        grips.dedup_by(|a, b| a.physical.distance_squared(b.physical) < 0.0001 && a.hand.distance_squared(b.hand) < 0.0001);
+        // Animation must not inject velocity into the free tail. Its simulation
+        // follows the checked pendulum; only the drawn attachment follows skin.
+        self.update(dt, grips.last().map(|g| g.physical), world);
+        if grips.len() > 1 || grips.iter().any(|g| g.physical.distance_squared(g.hand) > 0.0001) {
+            self.display_grips = grips;
+        }
+    }
+    fn display_points(&self) -> Vec<(f32, Vec3)> {
+        let mut points = self.points.iter().enumerate().map(|(i, &p)|
+            (i as f32 / (self.points.len() - 1) as f32 * self.length, p)).collect::<Vec<_>>();
+        if self.display_grips.is_empty() { return points; }
+        let last = self.display_grips.last().unwrap();
+        let last_along = last.physical.distance(self.anchor).min(self.length);
+        let mut pins = vec![(0., self.anchor)];
+        let mut previous = self.anchor;
+        let mut span = 0.;
+        for grip in &self.display_grips {
+            span += grip.physical.distance(previous);
+            pins.push((span, grip.hand));
+            previous = grip.physical;
+        }
+        // Distribute the loaded samples along the ordered path; using each
+        // hand's radius independently can reverse two adjacent mesh rings.
+        for (along, _) in &mut pins { *along *= last_along / span.max(0.0001); }
+        for (along, point) in &mut points {
+            if let Some(pair) = pins.windows(2).find(|pair| *along <= pair[1].0) {
+                *point = pair[0].1.lerp(pair[1].1,
+                    ((*along - pair[0].0) / (pair[1].0 - pair[0].0).max(0.0001)).clamp(0., 1.));
+            } else {
+                // Join the visible hand to the simulated tail over four usual
+                // segments without moving the particles or their collision state.
+                *point += (last.hand - last.physical) * (1. - (*along - last_along) / 64.).max(0.);
+            }
+        }
+        // Explicit rings at the hands avoid losing a grip between two material
+        // samples while climbing. Indices follow the resulting ring count.
+        points.extend(pins.into_iter().skip(1));
+        points.sort_by(|a, b| a.0.total_cmp(&b.0));
+        points.dedup_by(|a, b| a.1.distance_squared(b.1) < 0.0001);
+        points
+    }
     pub fn vertices(&self, origin: Vec3, rotation: Quat) -> Vec<Vertex> {
         let mut vertices = Vec::new();
-        for (i, &p) in self.points.iter().enumerate() {
-            let tangent = (self.points[(i + 1).min(self.points.len() - 1)]
-                - self.points[i.saturating_sub(1)])
+        let points = self.display_points();
+        for (i, &(along, p)) in points.iter().enumerate() {
+            let tangent = (points[(i + 1).min(points.len() - 1)].1
+                - points[i.saturating_sub(1)].1)
             .normalize_or_zero();
             let axis = if tangent.x.abs() < 0.8 {
                 Vec3::X
@@ -229,7 +298,6 @@ impl Strand {
             };
             let right = tangent.cross(axis).normalize_or_zero();
             let up = tangent.cross(right);
-            let along = i as f32 / (self.points.len() - 1) as f32 * self.length;
             for side in 0..=8 {
                 let angle = side as f32 / 8. * std::f32::consts::TAU;
                 let radius = 1.25 * (1. + 0.1 * (angle * 3. + along * 0.8).sin());
@@ -246,7 +314,7 @@ impl Strand {
     }
     pub fn indices(&self) -> Vec<u16> {
         let mut out = Vec::new();
-        for i in 0..self.points.len() - 1 {
+        for i in 0..self.display_points().len() - 1 {
             for s in 0..8 {
                 let a = (i * 9 + s) as u16;
                 out.extend([a, a + 9, a + 1, a + 1, a + 9, a + 10]);
@@ -258,6 +326,56 @@ impl Strand {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn swinging_grips_keep_the_tail_below_the_lower_body() {
+        let world = World::fixture(&[]);
+        let rope = fixture();
+        let upper = Grip::at(rope.anchor + vec3(150., 0., -80.));
+        let lower = Grip::at(rope.anchor - Vec3::Z * 120.);
+        assert!(upper.physical.distance(rope.anchor) > lower.physical.distance(rope.anchor));
+        let mut strand = Strand::new(&rope);
+        strand.update_many(1. / 60., &[lower, upper], &world);
+        assert_eq!(strand.grip, Some(lower.physical));
+        let points = strand.display_points();
+        let at = |hand| points.iter().position(|p| p.1.distance(hand) < 0.001).unwrap();
+        assert!(at(upper.hand) < at(lower.hand));
+        assert!(points.iter().skip(at(lower.hand) + 1).all(|p| p.1.z < lower.hand.z));
+    }
+    #[test]
+    fn two_visible_grips_are_order_independent_and_either_can_release() {
+        let world = World::fixture(&[]);
+        let rope = fixture();
+        let mut a = Strand::new(&rope);
+        let mut b = Strand::new(&rope);
+        let mut physical = Strand::new(&rope);
+        for tick in 0..240 {
+            let t = tick as f32 / 120.;
+            let grips = [vec3(25. * t.sin(), 0., 240. - t * 35.), vec3(-20., 15., 90. + t * 25.)]
+                .map(|p| Grip { physical: p, hand: p + vec3(4. * (t * 9.).sin(), 0., 24. + 12. * (t * 6.).sin()) });
+            a.update_many(1. / 120., &grips, &world);
+            b.update_many(1. / 120., &[grips[1], grips[0]], &world);
+            physical.update_many(1. / 120., &grips.map(|g| Grip::at(g.physical)), &world);
+            assert_eq!(a.points, physical.points, "Hand animation changed rope physics");
+            let points = a.display_points();
+            assert_eq!(points, b.display_points());
+            assert_eq!(points[0].1, rope.anchor);
+            for grip in grips { assert!(points.iter().any(|p| p.1.distance(grip.hand) < 0.001)); }
+            let vertices = a.vertices(Vec3::ZERO, Quat::IDENTITY);
+            assert!(vertices.iter().all(|v| v.position.is_finite()));
+            assert!(a.indices().iter().all(|&i| usize::from(i) < vertices.len()));
+        }
+        let paused = a.display_points();
+        a.update_many(0., &[], &world);
+        assert_eq!(a.display_points(), paused);
+        for hand in [vec3(30., 0., 200.), vec3(-20., 10., 100.)] {
+            let mut solo = Strand::new(&rope);
+            solo.update(1. / 60., Some(hand), &world);
+            a.update_many(1. / 60., &[Grip::at(hand)], &world);
+            assert!(a.display_grips.is_empty());
+            let at = (hand.distance(rope.anchor) / 16.).floor() as usize;
+            assert!(a.points[at].distance(solo.points[at]) < 0.001);
+        }
+    }
     #[test]
     fn particles_slide_along_contacts_and_keep_tangential_inertia() {
         let world = World::fixture(&[
@@ -277,6 +395,26 @@ mod tests {
         assert!(escaped.x < p.x - 4.9 && escaped.z > p.z + 4.9);
     }
 
+    #[test]
+    fn climbing_to_the_minimum_grip_length_preserves_valid_saved_players() {
+        use crate::movement::{Controls, Player, RopeGrip};
+        let mut world = World::fixture(&[]);
+        let anchor = vec3(-2412., -636., 168.);
+        world.traversal.ropes.push(Rope {
+            id: crate::entity::Id(482), model: 1, enabled: true,
+            origin: Vec3::ZERO, anchor, length: 456.,
+        });
+        let mut player = Player::new(vec3(-2412.392, -634.8853, 94.470856));
+        player.velocity = vec3(-4.9506273, 15.44209, 0.5712693);
+        player.rope = Some(RopeGrip {id:crate::entity::Id(482), length:33.549957, rise:1.});
+        for tick in 0..120 {
+            player.tick(&world, Controls {rise:1., ..Default::default()});
+            player.validate_save().unwrap_or_else(|e| panic!("tick{tick} grip{:?}: {e}",player.rope));
+            let length = player.rope.as_ref().unwrap().length;
+            assert!((32. ..=456.).contains(&length));
+            assert!((player.feet.distance(anchor-Vec3::Z*40.)-length).abs()<0.001);
+        }
+    }
     #[test]
     fn grip_can_climb_slide_and_escape_while_pushing_against_a_wall() {
         let world = World::fixture(&[(vec3(40., -500., -100.), vec3(60., 500., 500.))]);

@@ -13,6 +13,9 @@ use anyhow::{ensure, Context, Result};
 use macroquad::prelude::*;
 use std::collections::BTreeMap;
 mod intro_check;
+mod coop;
+pub(crate) mod coop_check;
+pub(crate) mod coop_route;
 pub use intro_check::{check as check_intro, render as render_intro};
 pub const ID: usize = 4_000_000;
 pub const INTRO: &str = "potears3_dialog";
@@ -71,6 +74,8 @@ pub struct Burst {
 }
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct State {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    coop: Option<coop::State>,
     #[serde(default)]
     intro_camera: Option<(usize, f32)>,
     #[serde(default)]
@@ -306,6 +311,7 @@ impl Duchess {
             state: State {
                 intro_camera: None,
                 opponents: Default::default(),
+                coop: None,
                 stage: Stage::Waiting,
                 time: 0.,
                 action: Action::Chase,
@@ -345,6 +351,7 @@ impl Duchess {
         self.state.clone()
     }
     pub fn restore(&mut self, s: &State, map: &Bsp) -> Result<()> {
+        if let Some(coop) = &s.coop { coop.validate(s)?; }
         ensure!(
             s.intro_camera.is_none_or(|(shot, time)| shot < 4
                 && time.is_finite()
@@ -440,6 +447,9 @@ impl Duchess {
     }
     fn action(&mut self, action: Action) {
         self.state.action = action;
+        if action != Action::Bite {
+            if let Some(coop) = &mut self.state.coop { coop.grab = None; }
+        }
         self.state.clock = 0.;
         self.state.cue = 0;
     }
@@ -751,9 +761,7 @@ impl Duchess {
             self.state.essence[i] = (self.state.essence[i] - dt).max(0.);
             let pos = self.essence_origins[i];
             if self.state.essence[i] == 0.
-                && (player.feet - pos).truncate().length() < 38.
-                && (player.feet.z + 32. - pos.z).abs() < 80.
-                && world.sweep(player.eye(), pos, Vec3::ZERO).fraction >= 1.
+                && crate::inventory::touches_pickup(player.feet, pos, world)
                 && stats.apply(PickupKind::Essence, 25.)
             {
                 self.state.essence[i] = 10.;
@@ -767,15 +775,28 @@ impl Duchess {
         self.state.wait = (self.state.wait - STEP).max(0.);
         self.state.dodge_wait = (self.state.dodge_wait - STEP).max(0.);
         let bodies = self.state.opponents.bodies(player.eye());
-        let (eye, notarget, victim) = self.state.opponents.aim(
+        let (mut eye, mut notarget, mut victim) = self.state.opponents.aim(
             world,
             self.state.feet + Vec3::Z * 64.,
             player.eye(),
             self.state.notarget,
             self.state.action != Action::Chase,
         );
+        if let Some(index) = self.state.coop.as_ref().and_then(|c| c.grab)
+            .filter(|_| self.state.action == Action::Bite) {
+            if let Some(players) = self.state.opponents.players {
+                if players[index].alive {
+                    eye = players[index].eye;
+                    victim = [combat::COOP_BLUE, combat::COOP_RED][index];
+                    notarget = false;
+                    self.state.opponents.selected_player = Some(index);
+                }
+            }
+        }
         let target_feet = if victim == crate::dice::SUMMON {
             eye - Vec3::Z * self.state.opponents.summon.unwrap().half.z
+        } else if combat::player_slot(victim).is_some() {
+            eye - Vec3::Z * crate::movement::EYE_HEIGHT
         } else {
             player.feet
         };
@@ -855,7 +876,7 @@ impl Duchess {
             Action::Chase => {
                 if visible && self.state.wait <= 0. {
                     let a = if distance < 110. {
-                        if self.state.attacks % 2 == 0 && victim == crate::dice::ALICE {
+                        if self.state.attacks % 2 == 0 && combat::player_id(victim) {
                             Action::Grab
                         } else {
                             Action::Smack
@@ -939,6 +960,9 @@ impl Duchess {
                     if distance < 120. && visible {
                         self.state.home = player.feet;
                         self.action(Action::Bite);
+                        if let Some(coop) = &mut self.state.coop {
+                            coop.grab = combat::player_slot(victim);
+                        }
                     } else {
                         self.action(Action::Chase);
                         self.state.wait = 0.8;
@@ -949,6 +973,7 @@ impl Duchess {
                 let front = vec3(self.state.yaw.cos(), self.state.yaw.sin(), 0.);
                 let hold = self.state.feet + front * 65. + Vec3::Z * 35.;
                 if self.state.clock < self.timing.frame(Action::Bite, 64.) && world.body_clear(hold)
+                    && self.coop_hold_clear(victim, hold)
                 {
                     player.feet = hold;
                     player.velocity = Vec3::ZERO;
@@ -960,7 +985,7 @@ impl Duchess {
                     && self.state.clock >= self.timing.frame(Action::Bite, frames[self.state.cue])
                 {
                     if self.state.cue < 3 {
-                        out.damage += 5.;
+                        out.strike(victim, 5., Vec3::ZERO, combat::DamageKind::Other);
                     } else {
                         player.velocity = Vec3::ZERO;
                         player.knockback(
@@ -1126,6 +1151,7 @@ impl PhaseTrail {
     }
 }
 pub struct Art {
+    pub(crate) local_player: Option<usize>,
     ui: std::rc::Rc<crate::ui::Ui>,
     duchess: crate::npc::Puppet,
     bill: crate::npc::Puppet,
@@ -1222,6 +1248,7 @@ impl Art {
             });
         }
         let mut art = Self {
+            local_player: None,
             ui: crate::ui::Ui::load(a)?,
             duchess,
             bill,
@@ -1409,7 +1436,7 @@ impl Art {
         }
         if d.state.stage == Stage::Fighting {
             for (i, &pos) in d.essence_origins.iter().enumerate() {
-                if d.state.essence[i] == 0. {
+                if d.essence_cooldown(self.local_player, i) == 0. {
                     self.essence.draw(
                         crate::loot::Grade::Medium,
                         pos,
@@ -1770,6 +1797,7 @@ mod tests {
             state: State {
                 intro_camera: None,
                 opponents: Default::default(),
+                coop: None,
                 stage: Stage::Fighting,
                 time: 0.,
                 action: Action::Chase,

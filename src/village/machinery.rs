@@ -221,6 +221,47 @@ pub(super) fn check(assets: &mut Assets) -> Result<()> {
     Ok(())
 }
 
+/// The original machinery clock is shared by both bodies. Rider/collision
+/// atomicity is covered by moving::tests; this fixture keeps both bodies at the
+/// valid entrance and checks authored poses, pause and saved continuation.
+pub(super) fn check_coop(assets: &mut Assets) -> Result<()> {
+    use crate::{collision::World, movement::{Player, FIXED_DT}};
+    let map = Bsp::parse(&assets.read("maps/gvillage.bsp")?)?;
+    let mut village = Village::load(assets, &map)?;
+    let mut single = Village::load(assets, &map)?;
+    let mut mirror = Village::load(assets, &map)?;
+    let mut world = World::from_bsp(&map)?;
+    let mut single_world = World::from_bsp(&map)?;
+    let mut mirror_world = World::from_bsp(&map)?;
+    world.set_dynamic(village.colliders().collect());
+    let mut players = [vec3(-4168.,6160.,18.03125),vec3(-4120.,6160.,18.03125)].map(Player::new);
+    ensure!(players.iter().all(|p| world.body_clear(p.feet)), "Invalid paired village fixture entrance");
+    let mut solo = players[0].clone();
+    let before = serde_json::to_value(village.snapshot())?;
+    village.advance_players(0., &map, &mut world, &mut players.each_mut(), &[])?;
+    ensure!(before == serde_json::to_value(village.snapshot())?, "Paused village advanced");
+    for tick in 0..960 {
+        let restore = tick % 120 == 0;
+        let mut copies = players.clone();
+        if restore {
+            mirror.restore(&serde_json::from_slice(&serde_json::to_vec(&village.snapshot())?)?, &map)?;
+            mirror.advance_players(FIXED_DT, &map, &mut mirror_world, &mut copies.each_mut(), &[])?;
+        }
+        village.advance_players(FIXED_DT, &map, &mut world, &mut players.each_mut(), &[])?;
+        single.advance(FIXED_DT, &map, &mut single_world, &mut solo, &[])?;
+        let state = serde_json::to_value(village.snapshot())?;
+        ensure!(state == serde_json::to_value(single.snapshot())?, "Village clock or pose depends on player count");
+        if restore {
+            ensure!(state == serde_json::to_value(mirror.snapshot())?
+                && copies.each_ref().map(|p|p.feet) == players.each_ref().map(|p|p.feet),
+                "Restored village machinery diverged");
+        }
+        ensure!(players.iter().all(|p| world.body_clear(p.feet)), "Village machinery embedded an entrance body");
+    }
+    println!("PASS co-op village machinery: 960 shared ticks match single-player poses, paused clock and restored continuation");
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

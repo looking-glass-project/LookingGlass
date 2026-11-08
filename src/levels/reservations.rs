@@ -204,7 +204,7 @@ pub static RESERVATIONS: [Reservation; 39] = [
         "skool2",
         VisitFlags {
             contract: &["--school2-check", "--gym-check"],
-            route: &["--school2-route-check"],
+            route: &["--school2-route-check", "--skool2-coop-route-check"],
             skip: &[],
             render: &["--school2-render-check"],
         },
@@ -228,7 +228,7 @@ pub static RESERVATIONS: [Reservation; 39] = [
         "potears1",
         VisitFlags {
             contract: &["--pool-check", "--ladybug-check"],
-            route: &["--potears1-route-check"],
+            route: &["--potears1-route-check", "--potears1-coop-route-check"],
             skip: &["--potears1-skip-route-check"],
             render: &[
                 "--potears1-render-check",
@@ -242,10 +242,11 @@ pub static RESERVATIONS: [Reservation; 39] = [
             contract: &[
                 "--potears2-check",
                 "--potears2-transport-check",
+                "--potears2-coop-check",
                 "--potears2-store-write-check",
                 "--potears2-store-read-check",
             ],
-            route: &["--potears2-route-check", "--potears2-route-native-check"],
+            route: &["--potears2-route-check", "--potears2-route-native-check", "--potears2-coop-route-check"],
             skip: &["--potears2-skip-route-check"],
             render: &["--potears2-render-check"],
         }),
@@ -257,24 +258,40 @@ pub static RESERVATIONS: [Reservation; 39] = [
         "potears3",
         VisitFlags {
             contract: &["--duchess-check"],
-            route: &["--duchess-check"],
+            route: &["--duchess-check", "--potears3-coop-route-check"],
             skip: &["--duchess-check"],
             render: &["--duchess-render"],
         },
     ),
-    visit(11, "utemple"),
     Reservation { flags: Some(VisitFlags {
-        contract: &["--garden1-check", "--garden1-world-check", "--garden1-cast-check", "--garden1-path-check"],
-        route: &["--garden1-route-check"], skip: &["--garden1-skip-route-check"],
+        contract: &["--utemple-check", "--utemple-coop-check"],
+        route: &["--utemple-route-check", "--utemple-coop-route-check"], skip: &["--utemple-skip-route-check"],
+        render: &["--utemple-render-check"],
+    }), ..visit(11, "utemple") },
+    Reservation { flags: Some(VisitFlags {
+        contract: &["--garden1-check", "--garden1-world-check", "--garden1-cast-check", "--garden1-path-check", "--garden1-coop-check"],
+        route: &["--garden1-route-check", "--garden1-coop-route-check"], skip: &["--garden1-skip-route-check"],
         render: &["--garden1-render-check"],
     }), ..visit(12, "garden1") },
-    visit(13, "garden2"),
-    visit(14, "garden3"),
-    visit(15, "garden4"),
+    Reservation { flags: Some(VisitFlags {
+        contract: &["--garden2-check", "--garden2-coop-check"],
+        route: &["--garden2-route-check", "--garden2-coop-route-check"], skip: &["--garden2-skip-route-check"],
+        render: &["--garden2-render-check"],
+    }), ..visit(13, "garden2") },
+    Reservation { flags: Some(VisitFlags {
+        contract: &["--garden3-check", "--garden3-coop-check"],
+        route: &["--garden3-route-check", "--garden3-coop-route-check"], skip: &["--garden3-skip-route-check"],
+        render: &["--garden3-render-check"],
+    }), ..visit(14, "garden3") },
+    Reservation { flags: Some(VisitFlags {
+        contract: &["--garden4-check", "--garden4-coop-check"],
+        route: &["--garden4-route-check", "--garden4-coop-route-check"], skip: &["--garden4-skip-route-check"],
+        render: &["--garden4-render-check"],
+    }), ..visit(15, "garden4") },
     Reservation {
         flags: Some(VisitFlags {
-            contract: &["--centipede1-check", "--centipede1-save-write", "--centipede1-save-read"],
-            route: &["--centipede1-route-check"],
+            contract: &["--centipede1-check", "--centipede1-coop-check", "--centipede1-save-write", "--centipede1-save-read"],
+            route: &["--centipede1-route-check", "--centipede1-coop-route-check"],
             skip: &["--centipede1-skip-route-check"],
             render: &["--centipede1-render-check"],
         }),
@@ -282,89 +299,130 @@ pub static RESERVATIONS: [Reservation; 39] = [
     },
     Reservation {
         flags: Some(VisitFlags {
-            contract: &["--centipede2-check", "--centipede2-save-write", "--centipede2-save-read"],
-            route: &["--centipede2-route-check"],
+            contract: &["--centipede2-check", "--centipede2-coop-check", "--centipede2-coop-arena-check", "--centipede2-save-write", "--centipede2-save-read"],
+            route: &["--centipede2-route-check", "--centipede2-coop-route-check"],
             skip: &["--centipede2-skip-route-check"],
             render: &["--centipede2-render-check"],
         }),
         ..visit(17, "centipede2")
     },
-    visit(18, "wforest"),
+    Reservation { flags: Some(VisitFlags {
+        contract: &["--wforest-check", "--wforest-coop-check"],
+        route: &["--wforest-route-check", "--wforest-coop-route-check"], skip: &["--wforest-skip-route-check"],
+        render: &["--wforest-render-check"],
+    }), ..visit(18, "wforest") },
     Reservation {
         flags: Some(VisitFlags {
-            contract: &["--wchess1-check", "--wchess1-floor-survey"],
+            contract: &["--wchess1-check", "--wchess1-floor-survey", "--wchess1-coop-combat-check", "--wchess1-coop-world-check", "--wchess1-coop-route-probe"],
             route: &["--wchess1-route-check", "--wchess1-route"],
             skip: &["--wchess1-skip-route-check", "--wchess1-route-skip-check"],
-            render: &["--wchess1-render-check"],
+            render: &["--wchess1-render-check", "--wchess1-coop-render-check", "--wchess1-coop-route-check"],
         }),
         ..visit(19, "wchess1")
     },
     Reservation { flags: Some(VisitFlags {
-        contract: &["--wchess2-check", "--wchess2-floor-survey"], route: &["--wchess2-route-check"],
+        contract: &["--wchess2-check", "--wchess2-floor-survey", "--wchess2-coop-cast-check", "--wchess2-coop-world-check"], route: &["--wchess2-route-check", "--wchess2-coop-route-check"],
         skip: &["--wchess2-skip-route-check", "--wchess2-route-skip-check"], render: &["--wchess2-render-check"],
     }), ..visit(20, "wchess2") },
-    visit(21, "rchess1"),
     Reservation { flags: Some(VisitFlags {
-        contract: &["--funhouse-check", "--funhouse-traversal-probe"],
+        contract: &["--rchess1-check", "--rchess1-coop-check"],
+        route: &["--rchess1-route-check"], skip: &["--rchess1-skip-route-check"],
+        render: &["--rchess1-render-check"],
+    }), ..visit(21, "rchess1") },
+    Reservation { flags: Some(VisitFlags {
+        contract: &["--funhouse-check", "--funhouse-traversal-probe", "--funhouse-coop-check", "--funhouse-coop-world-check", "--funhouse-coop-scene-check"],
         route: &["--funhouse-route-check"], skip: &["--funhouse-skip-route-check"],
         render: &["--funhouse-render-check"],
     }), ..visit(22, "funhouse") },
     Reservation {flags:Some(VisitFlags {
-        contract:&["--hatter1-check", "--hatter1-traversal-check"],
+        contract:&["--hatter1-check", "--hatter1-traversal-check", "--hatter1-coop-check", "--hatter1-coop-scene-check"],
         route:&["--hatter1-route-check", "--hatter1-route-native-check"], skip:&["--hatter1-skip-route-check"],
         render:&["--hatter1-render-check"],
     }), ..visit(23, "hatter1")},
-    visit(24, "hatter2"),
     Reservation { flags: Some(VisitFlags {
-        contract: &["--jlair1-check", "--jlair1-traversal-check"],
+        contract: &["--hatter2-check", "--hatter2-coop-combat-check", "--hatter2-coop-check", "--hatter2-coop-scene-check"],
+        route: &["--hatter2-route-check"], skip: &["--hatter2-skip-route-check"],
+        render: &["--hatter2-render-check"],
+    }), ..visit(24, "hatter2") },
+    Reservation { flags: Some(VisitFlags {
+        contract: &["--jlair1-check", "--jlair1-traversal-check", "--jlair1-coop-check"],
         route: &["--jlair1-route-check"], skip: &["--jlair1-skip-route-check"],
         render: &["--jlair1-render-check"],
     }), ..visit(25, "jlair1") },
-    visit(26, "jlair2"),
+    Reservation { flags: Some(VisitFlags {
+        contract: &["--jlair2-check", "--jlair2-coop-check", "--jlair2-coop-world-check", "--jlair2-coop-scene-check"],
+        route: &["--jlair2-route-check", "--jlair2-coop-route-check"], skip: &["--jlair2-skip-route-check"],
+        render: &["--jlair2-render-check"],
+    }), ..visit(26, "jlair2") },
     returning(
         27,
         "wforest-return",
         "wforest",
         "wforest_start2",
         false,
-        None,
+        Some(VisitFlags {
+            contract: &["--wforest-return-check"],
+            route: &["--wforest-return-route-check", "--wforest-return-coop-route-check"],
+            skip: &["--wforest-return-skip-route-check"],
+            render: &["--wforest-return-render-check"],
+        }),
     ),
     Reservation {flags:Some(VisitFlags {
-        contract:&["--hedge1-check", "--hedge1-save-write", "--hedge1-save-read"],
-        route:&["--hedge1-route-check"], skip:&["--hedge1-skip-route-check"],
+        contract:&["--hedge1-check", "--hedge1-coop-check", "--hedge1-coop-cast-check", "--hedge1-save-write", "--hedge1-save-read"],
+        route:&["--hedge1-route-check", "--hedge1-coop-route-check"], skip:&["--hedge1-skip-route-check"],
         render:&["--hedge1-render-check"],
     }), ..visit(28, "hedge1")},
     Reservation { flags: Some(VisitFlags {
-        contract: &["--tower1-check", "--tower1-actors-check"],
-        route: &["--tower1-route-check", "--tower1-probe"],
+        contract: &["--tower1-check", "--tower1-actors-check", "--tower1-coop-check"],
+        route: &["--tower1-route-check", "--tower1-coop-route-check", "--tower1-probe"],
         skip: &["--tower1-skip-route-check"],
         render: &["--tower1-render-check"],
     }), ..visit(29, "tower1") },
-    visit(30, "hedge2"),
+    Reservation { flags: Some(VisitFlags {
+        contract: &["--hedge2-check", "--hedge2-coop-check"],
+        route: &["--hedge2-route-check", "--hedge2-coop-route-check"], skip: &["--hedge2-skip-route-check"],
+        render: &["--hedge2-render-check"],
+    }), ..visit(30, "hedge2") },
     Reservation {flags:Some(VisitFlags {
-        contract:&["--tower2-check", "--tower2-cast-check"],
-        route:&["--tower2-route-check"], skip:&["--tower2-skip-route-check"],
+        contract:&["--tower2-check", "--tower2-cast-check", "--tower2-coop-check"],
+        route:&["--tower2-route-check", "--tower2-coop-route-check"], skip:&["--tower2-skip-route-check"],
         render:&["--tower2-render-check"],
     }), ..visit(31, "tower2")},
-    visit(32, "hedge3"),
-    visit(33, "tower3"),
-    visit(34, "grounds1"),
     Reservation { flags: Some(VisitFlags {
-        contract: &["--grounds2-check", "--grounds2-save-check"],
-        route: &["--grounds2-route-check"], skip: &["--grounds2-skip-route-check"],
+        contract: &["--hedge3-check", "--hedge3-coop-check"],
+        route: &["--hedge3-route-check", "--hedge3-coop-route-check"], skip: &["--hedge3-skip-route-check"],
+        render: &["--hedge3-render-check"],
+    }), ..visit(32, "hedge3") },
+    Reservation { flags: Some(VisitFlags {
+        contract: &["--tower3-check", "--tower3-coop-check"],
+        route: &["--tower3-route-check", "--tower3-coop-route-check"], skip: &["--tower3-skip-route-check"],
+        render: &["--tower3-render-check"],
+    }), ..visit(33, "tower3") },
+    Reservation { flags: Some(VisitFlags {
+        contract: &["--grounds1-check"],
+        route: &["--grounds1-route-check", "--grounds1-coop-route-check"], skip: &[],
+        render: &["--grounds1-render-check"],
+    }), ..visit(34, "grounds1") },
+    Reservation { flags: Some(VisitFlags {
+        contract: &["--grounds2-check", "--grounds2-save-check", "--grounds2-coop-check"],
+        route: &["--grounds2-route-check", "--grounds2-coop-route-check"], skip: &["--grounds2-skip-route-check"],
         render: &["--grounds2-render-check"],
     }), ..visit(35, "grounds2") },
     Reservation { flags: Some(VisitFlags {
-        contract: &["--facade-check"],
-        route: &["--facade-route-check", "--facade-route-native-check"],
+        contract: &["--facade-check", "--facade-coop-check"],
+        route: &["--facade-route-check", "--facade-route-native-check", "--facade-coop-route-check"],
         skip: &["--facade-skip-route-check"],
         render: &["--facade-render-check"],
     }), ..visit(36, "facade") },
-    visit(37, "keep"),
+    Reservation { flags: Some(VisitFlags {
+        contract: &["--keep-check", "--keep-coop-check"],
+        route: &["--keep-route-check", "--keep-coop-route-check"], skip: &["--keep-skip-route-check"],
+        render: &["--keep-render-check"],
+    }), ..visit(37, "keep") },
     Reservation {
         flags: Some(VisitFlags {
-            contract: &["--qlair-check", "--qlair-save-write", "--qlair-save-read"],
-            route: &["--qlair-route-check", "--qlair-second-route-check"],
+            contract: &["--qlair-coop-check", "--qlair-check", "--qlair-save-write", "--qlair-save-read"],
+            route: &["--qlair-route-check", "--qlair-second-route-check", "--qlair-coop-route-check"],
             skip: &["--qlair-skip-route-check"],
             render: &["--qlair-render-check"],
         }),
@@ -636,7 +694,9 @@ mod tests {
             flags("garden3"),
             [
                 "--garden3-check",
+                "--garden3-coop-check",
                 "--garden3-route-check",
+                "--garden3-coop-route-check",
                 "--garden3-skip-route-check",
                 "--garden3-render-check"
             ]
@@ -646,6 +706,7 @@ mod tests {
             [
                 "--wforest-return-check",
                 "--wforest-return-route-check",
+                "--wforest-return-coop-route-check",
                 "--wforest-return-skip-route-check",
                 "--wforest-return-render-check"
             ]

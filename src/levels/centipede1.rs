@@ -1,6 +1,8 @@
 //! Fungiferous Flora: hidden speaker, ambush, live Ant waves and a story-owned departure.
 mod art;
 mod check;
+mod coop_check;
+mod coop_route;
 pub(crate) use check::drive as drive_route;
 mod data;
 mod saves;
@@ -46,6 +48,10 @@ struct Soldier {
     ant: Ant,
     group: u8,
 }
+#[derive(Clone, Default, Serialize, Deserialize)]
+struct Coop {
+    scene_owner: Option<usize>,
+}
 #[derive(Clone, Serialize, Deserialize)]
 struct Saved {
     version: u8,
@@ -59,6 +65,8 @@ struct Saved {
     ants: Vec<Soldier>,
     wave: u8,
     exit: crate::level::exit::ExitState,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    coop: Option<Coop>,
 }
 impl state::State for Saved {
     const VERSION: u8 = 1;
@@ -88,6 +96,8 @@ impl state::State for Saved {
             self.exit.committed == (self.phase == Phase::Done),
             "Premature Flora departure"
         );
+        ensure!(self.coop.as_ref().and_then(|c|c.scene_owner).is_none_or(|i|i<2),
+            "Invalid Flora scene owner");
         ensure!(
             matches!(self.phase, Phase::Countdown | Phase::Done) || self.wave == 0,
             "Waves before ambush"
@@ -130,6 +140,7 @@ impl Flora {
                 ants,
                 wave: 0,
                 exit: Default::default(),
+                coop: None,
             },
             data,
             alive: true,
@@ -164,10 +175,15 @@ impl Flora {
         self.phase(Phase::Countdown);
         self.saved.speech = 0.;
         self.saved.reveal_end = 0.;
-        self.spawn_wave(w, p.feet + Vec3::Z * 32.);
+        // In co-op the partner reunites after this commit. Use both final
+        // positions for the first spawn on the next free shared update.
+        if self.saved.coop.is_none() { self.spawn_wave(w, p.feet + Vec3::Z * 32.); }
     }
     fn spawn_wave(&mut self, w: &World, eye: Vec3) {
-        if self.saved.wave >= 4 {
+        self.spawn_wave_for(w,&[eye]);
+    }
+    fn spawn_wave_for(&mut self, w: &World, eyes: &[Vec3]) {
+        if self.saved.wave >= 4 || eyes.is_empty() {
             return;
         }
         // Both original loops consult the live brave group, including the killer-loop quirk.
@@ -182,13 +198,14 @@ impl Flora {
             for (group, chain) in [(1, &self.data.braves), (2, &self.data.killers)] {
                 if let Some(node) = chain
                     .iter()
-                    .find(|node| w.sweep(node.translation, eye, Vec3::ZERO).fraction < 1.)
+                    .find(|node| eyes.iter().all(|eye|w.sweep(node.translation, *eye, Vec3::ZERO).fraction < 1.))
                 {
                     let id = 1000 + self.saved.wave as usize * 2 + (group - 1) as usize;
                     let feet =
                         w.actor_footing(node.translation, Vec3::Z * 36., Vec3::splat(36.), 256.);
                     if let Some(feet) = feet {
-                        let direction = eye - feet;
+                        let eye=eyes.iter().min_by(|a,b|a.distance_squared(feet).total_cmp(&b.distance_squared(feet))).unwrap();
+                        let direction = *eye - feet;
                         let mut ant = Ant::new(id, false, feet, direction.y.atan2(direction.x));
                         ant.phase = crate::ant::Phase::Chase;
                         self.saved.ants.push(Soldier { ant, group });
@@ -197,6 +214,21 @@ impl Flora {
             }
         }
         self.saved.wave += 1;
+    }
+    fn advance_clock(&mut self, dt: f64) {
+        self.saved.time = (self.saved.time + dt).min(86400.);
+        self.saved.clock = (self.saved.clock + dt).min(86400.);
+        self.saved.exit.advance(dt as f32);
+    }
+    fn countdown(&mut self, w: &World, eyes: &[Vec3]) {
+        if eyes.is_empty() {return;}
+        while self.saved.wave < 4 && self.saved.time + 1e-6 >= f64::from(self.saved.wave) * 3.1 {
+            self.spawn_wave_for(w,eyes);
+        }
+        if self.saved.time + 1e-6 >= COUNTDOWN {
+            self.phase(Phase::Done);
+            self.saved.exit.committed = true;
+        }
     }
     fn boss_clip(&self) -> (&'static str, f32, bool) {
         let t = self.shot_time();
@@ -273,6 +305,33 @@ impl LevelController for Flora {
             };
         }
     }
+    fn coop_prepare(&mut self, players: &mut [crate::level::CoopPlayer<'_>; 2]) {
+        self.alive = players.iter().any(|p|p.stats.alive());
+        let coop=self.saved.coop.get_or_insert_with(Coop::default);
+        if self.saved.phase==Phase::Explore {coop.scene_owner=None;}
+        for p in players {
+            p.stats.minimum_sanity=if matches!(self.saved.phase,Phase::Countdown|Phase::Done) {10.} else {0.};
+        }
+    }
+    fn coop_scene_step(&mut self, owner: usize, player: &mut Player, stats: &mut Stats) {
+        let coop=self.saved.coop.get_or_insert_with(Coop::default);
+        if coop.scene_owner.is_none() && matches!(self.saved.phase,Phase::Rush|Phase::Reveal|Phase::Outro) {
+            coop.scene_owner=Some(owner);
+            self.saved.alice=Transform{translation:player.feet,rotation:Quat::from_rotation_z(player.script_facing)};
+        }
+        self.prepare_player(stats,player);
+    }
+    fn coop_advance_roster(&mut self, dt: f32, _: &Bsp, world: &mut World,
+        players: &mut [crate::level::CoopPlayer<'_>; 2], _: &[Collider]) -> Result<()> {
+        self.coop_prepare(players);
+        if !dt.is_finite() || dt<=0. || !self.alive || self.scripted() {return Ok(());}
+        self.advance_clock(f64::from(dt.min(0.1)));
+        if self.saved.phase==Phase::Countdown {
+            let eyes=players.iter().filter(|p|p.stats.alive()).map(|p|p.player.feet+Vec3::Z*32.).collect::<Vec<_>>();
+            self.countdown(world,&eyes);
+        }
+        Ok(())
+    }
     fn advance(
         &mut self,
         dt: f32,
@@ -281,13 +340,15 @@ impl LevelController for Flora {
         p: &mut Player,
         _: &[Collider],
     ) -> Result<()> {
-        if dt <= 0. || !self.alive {
+        // A skipped co-op scene can reach Countdown before Stage releases its
+        // owner. Only the paired free update may start waves or consume that
+        // countdown; waiting for a safe reunion must not use the ten seconds.
+        if dt <= 0. || !self.alive
+            || self.saved.coop.is_some() && self.saved.phase==Phase::Countdown {
             return Ok(());
         }
         let dt = f64::from(dt.min(0.1));
-        self.saved.time = (self.saved.time + dt).min(86400.);
-        self.saved.clock = (self.saved.clock + dt).min(86400.);
-        self.saved.exit.advance(dt as f32);
+        self.advance_clock(dt);
         match self.saved.phase {
             Phase::Rush => {
                 for s in &mut self.saved.ants {
@@ -315,15 +376,7 @@ impl LevelController for Flora {
                 }
             }
             Phase::Countdown => {
-                while self.saved.wave < 4
-                    && self.saved.time + 1e-6 >= f64::from(self.saved.wave) * 3.1
-                {
-                    self.spawn_wave(w, p.feet + Vec3::Z * 32.);
-                }
-                if self.saved.time + 1e-6 >= COUNTDOWN {
-                    self.phase(Phase::Done);
-                    self.saved.exit.committed = true;
-                }
+                self.countdown(w,&[p.feet+Vec3::Z*32.]);
             }
             _ => {}
         }
@@ -487,6 +540,18 @@ impl LevelController for Flora {
         }
         out
     }
+    fn coop_combat(&mut self, dt: f32, world: &World, players: [crate::combat::PlayerTarget; 2]) -> Feedback {
+        let mut out=Feedback::default();
+        if !dt.is_finite() || dt<=0. || self.scripted() {return out;}
+        let eye=players.iter().find(|p|p.alive).map_or(Vec3::ZERO,|p|p.eye);
+        for s in self.saved.ants.iter_mut().filter(|s|s.ant.enabled) {
+            s.ant.notarget=false;
+            s.ant.opponents.players=Some(players);
+            s.ant.opponents.summon=None;
+            s.ant.update(dt.min(0.1),world,eye,&self.data,&mut out);
+        }
+        out
+    }
     fn loot_sources(&self) -> Vec<crate::loot::Source> {
         self.saved
             .ants
@@ -591,6 +656,16 @@ pub static REGISTRATION: super::Registration = super::Registration {
         BeatSpec::linear("centipede1", BEAT, "centipede1_cinematics", AMBUSH, 1),
     ],
     checks: &[
+        super::Check {
+            flag: "--centipede1-coop-route-check",
+            help: "Walk paired Flora through its ant ambush and original Sanctum departure.",
+            run: super::Run::Windowed(coop_route::check),
+        },
+        super::Check {
+            flag: "--centipede1-coop-check",
+            help: "Verify paired Flora Ants, shared waves/countdown and scene ownership.",
+            run: super::Run::Headless(coop_check::check),
+        },
         super::Check {
             flag: "--centipede1-check",
             help: "Verify Fungiferous Flora ambush, waves, skip and exit.",

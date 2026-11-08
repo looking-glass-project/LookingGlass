@@ -78,8 +78,87 @@ Evidence and captures are retained privately under `private/wforest-visits`.
 Project-wide strict Clippy currently reports unrelated existing warnings; no
 WForest diagnostics were reported.
 
+## Co-op adapter
+
+Both visits have an explicit paired update for the cave/chess gates, Humpty's
+secret door, wall destruction and hedge doors. The world clock advances once;
+each living rider is checked before the shared mover commits. An obstructed
+rider pauses the movement for everyone, and dead bodies do not stop it.
+These gates are passages, not shared passenger lifts.
+
+The Staff altar chooses the earliest living swept contact and binds its original
+single-Alice scene to that player. The quest component is shared progression;
+health, Will, usable weapons and ordinary pickups remain personal. On the return
+visit, each player has their own alternating essence station and ten-second
+cooldown, with the local view displaying that player's available station.
+Saved paired fields are optional, leaving existing single-player saves intact.
+
+The Staff scene ends on a narrow pillar. Its completed co-op handoff explicitly
+permits a partner landing within 256 horizontal units and 256 units below the
+actor when the usual nearby search fails. The actor stays at the original
+handoff; the fallback retains clear body paths, full footprint support and hazard
+rejection. Other scenes and ordinary death revival retain their smaller search.
+
+`--wforest-coop-check` stages native checks for shared mover clocks at
+30/60/144 Hz, individual healing, saved altar sweeps, blocked/living/dead riders,
+both scene owners, watched/skipped scenes, frozen partners and safe reunion.
+This fixture is image-free. Full traversal, independent internet clients,
+rendered effects and the gameplay death/wipe/rejoin matrix remain separate gates;
+component runtime results must be recorded before crediting this adapter.
+
+Source `2990c668baa25eeece66fa585dcca9f88ec8d65facc94a12b0564d2181e9155e`
+passes all **62 staged co-op cases** in about five seconds without a window or
+image inspection. Six compare native shared gate/destruction clocks with the
+single-player controller at 30/60/144 Hz, including pause and saved continuation.
+Eight cover both individual healing slots and both saved Staff arrival slots,
+with a living or dead partner. Forty run the five original scenes with either
+owner, watched/skipped outcomes and a living/dead waiting partner; they verify
+compressed state restoration, frozen partners, personal resources and reunion.
+The other eight isolate the native chess-gate mover/collider to test both rider
+slots, obstruction and dead-body exclusion. Its top is inside the authored
+tunnel ceiling, so these isolated carry tests do not claim a playable gate ride.
+Evidence: `private/coop-wforest-components-2990c66.log`.
+
+The scene matrix exposed an actual paired handoff deadlock on source `ed0a5c1`:
+the Staff scene and cave gate completed, but the original pillar position left
+no landing within the usual reunion search. The actor remained at
+`(5358, 1182, 216.03125)` and the scene owner never released. The bounded,
+Staff-perch-only fallback above resolves all four living-partner Staff variants;
+the captured failing state remains in
+`private/coop-wforest-staff-perch-ed0a5c1.json`. It does not alter ordinary death
+revival, other scene searches, or single-player handoffs. Full paired traversal,
+combat, independent internet clients, rendered effects and recovery remain open
+for both visits.
+
+The same source passes **813 active unit tests** (one existing ignored test),
+including bounded perch placement rejecting walls, hazards and invalid limits
+while ordinary revival retains its previous range. The locked release build
+passes. Both single-player component suites and both full route logs are
+identical to pre-adapter source `bb4d83b` after decoding/line-ending normalization.
+Evidence: `private/coop-wforest-unit-final.log`, `private/coop-wforest-build5.log`
+and the four `private/coop-wforest-{first,return}[-route]-2990c66.log` files.
+The paired suite does not exercise native enemies, actual optional Blunderbuss
+collection or an independent rendered guest. Both campaign rows stay partial;
+the verified shared progression adds 0.25 points per visit, taking the weighted
+overall estimate from 44.6% to **45.1%**.
+
 The integrated build passed 616 unit tests, both scene contracts, both walking
 routes (including Humpty's optional reward), and the Centipede2, Garden4, Queen,
 swimming, world, loadout, event and heavy-weapon checks. The older all-map
 `--story-check` still stops at `garden2/Garden2_Cat_End`, identically to the prior
 published build. WForest's own voice and trigger checks pass independently.
+
+## Both Caterpillar's Plot visits accepted
+
+The first visit (`841dcd6`) reaches Pale Realm in 33,869 ticks with
+283 exact replicas and four watched scene reunions. The return
+(`d199822`) reaches the maze in 9,720 ticks with 81 replicas
+after its original wall scene and ordinary Staff destruction. Both courses
+finish with two living players, without deaths, wipes or progression staging.
+Personal resources carry correctly, including the return's normal optional
+weapon arrival grant. The automated controls changed; gameplay did not.
+Coverage is **26/39 visits**, with **13** remaining and **74.8%** overall.
+Use `tools/test_coop_native_route.py --map wforest` or `--map wforest-return`
+with the required frozen executable, local data and fresh-profile arguments.
+Internet/camera evidence is reused separately; optional pickup completion and
+exhaustive scene/recovery permutations remain polishing.

@@ -22,6 +22,8 @@ pub(super) struct Course {
     pub marble: Option<f64>,
     pub marble_done: bool,
     pub previous: Option<Vec3>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub coop_previous: Option<[Option<Vec3>; 2]>,
     pub damage: f32,
     pub impulse: Vec3,
     pub contacts: u32,
@@ -43,6 +45,7 @@ impl Course {
             marble: None,
             marble_done: false,
             previous: None,
+            coop_previous: None,
             damage: 0.,
             impulse: Vec3::ZERO,
             contacts: 0,
@@ -74,6 +77,8 @@ impl Course {
                 && (0. ..=1000.).contains(&self.damage),
             "Invalid course contact"
         );
+        ensure!(self.coop_previous.iter().flatten().flatten()
+            .all(|p|p.is_finite() && p.abs().max_element()<100000.), "Invalid paired ice contact");
         Ok(())
     }
 }
@@ -113,7 +118,7 @@ impl Garden {
     pub(super) fn course_mut(&mut self) -> &mut Course {
         self.saved.course.as_mut().unwrap()
     }
-    fn activate_rock(&mut self, k: usize) {
+    pub(super) fn activate_rock(&mut self, k: usize) {
         let s = &mut self.saved.course.as_mut().unwrap().rocks[k];
         self.data.rocks[k].activate(s);
         if matches!(k, 2 | 3 | 4) {
@@ -173,75 +178,17 @@ impl Garden {
             self.course_event("Ice_Fall3");
         }
         self.course_mut().previous = Some(p.feet);
-        self.course_mut().age += f64::from(dt);
-        if self
-            .course()
-            .altar
-            .is_some_and(|t| self.course().age - t >= 1.)
-        {
-            self.activate_rock(3);
-        }
-        if self.marble_time().is_some_and(|t| t >= 0.5) {
-            self.activate_rock(6);
-        }
-        let cinematic = self.marble_time().is_some();
         let body = crate::combat::Target {
             id: crate::dice::ALICE,
             center: p.feet + crate::collision::PLAYER_CENTER,
             half: crate::collision::PLAYER_HALF,
         };
-        let mut callbacks = Vec::new();
-        for k in 0..7 {
-            let s = self.saved.course.as_mut().unwrap();
-            if !s.rocks[k].visible {
-                continue;
-            }
-            let out = self.data.rocks[k].advance(
-                &mut s.rocks[k],
-                dt,
-                if cinematic {
-                    &[]
-                } else {
-                    std::slice::from_ref(&body)
-                },
-            );
-            if !out.arrivals.is_empty() {
-                s.bounce = Some(s.age);
-            }
-            for (_, damage, impulse) in out.hits {
-                s.damage = s.damage.max(damage);
-                s.impulse = impulse;
-                s.contacts += 1;
-            }
-            callbacks.extend(out.threads);
-        }
-        for n in callbacks {
+        let hits = self.course_targets(dt, if self.marble_time().is_some() { &[] }
+            else { std::slice::from_ref(&body) })?;
+        for (_, damage, impulse) in hits {
             let s = self.course_mut();
-            match n.as_str() {
-                "Garden4_CrushIce1" => {
-                    s.crushed[0].get_or_insert(s.age);
-                }
-                "Garden4_CrushIce2" => {
-                    s.crushed[1].get_or_insert(s.age);
-                }
-                "Garden4_CrushIce3" => {
-                    s.crushed[2].get_or_insert(s.age);
-                }
-                "Garden4_CrushIce4" => {
-                    s.crushed[3].get_or_insert(s.age);
-                }
-                "Garden4_End_SmashWall" => {
-                    s.wall.get_or_insert(s.age);
-                }
-                _ => anyhow::bail!("Unreviewed garden rock callback {n}"),
-            }
-        }
-        for k in 0..4 {
-            if self.course().crushed[k].is_some_and(|t| self.course().age - t >= 8.5) {
-                let rock = &mut self.course_mut().rocks[k];
-                rock.visible = false;
-                rock.solid = false;
-            }
+            s.damage = s.damage.max(damage);
+            s.impulse = impulse;
         }
         if let Some(t) = self.marble_time() {
             p.cancel_climb();
@@ -280,6 +227,69 @@ impl Garden {
             }
         }
         self.rebuild(map)
+    }
+    /// One world clock and callback stream, with hit identities supplied by the caller.
+    pub(super) fn course_targets(&mut self, dt: f32, bodies: &[crate::combat::Target])
+        -> Result<Vec<(usize, f32, Vec3)>> {
+        self.course_mut().age += f64::from(dt);
+        if self
+            .course()
+            .altar
+            .is_some_and(|t| self.course().age - t >= 1.)
+        {
+            self.activate_rock(3);
+        }
+        if self.marble_time().is_some_and(|t| t >= 0.5) {
+            self.activate_rock(6);
+        }
+        let mut hits = Vec::new();
+        let mut callbacks = Vec::new();
+        for k in 0..7 {
+            let s = self.saved.course.as_mut().unwrap();
+            if !s.rocks[k].visible {
+                continue;
+            }
+            let out = self.data.rocks[k].advance(
+                &mut s.rocks[k],
+                dt,
+                bodies,
+            );
+            if !out.arrivals.is_empty() {
+                s.bounce = Some(s.age);
+            }
+            s.contacts += out.hits.len() as u32;
+            hits.extend(out.hits);
+            callbacks.extend(out.threads);
+        }
+        for n in callbacks {
+            let s = self.course_mut();
+            match n.as_str() {
+                "Garden4_CrushIce1" => {
+                    s.crushed[0].get_or_insert(s.age);
+                }
+                "Garden4_CrushIce2" => {
+                    s.crushed[1].get_or_insert(s.age);
+                }
+                "Garden4_CrushIce3" => {
+                    s.crushed[2].get_or_insert(s.age);
+                }
+                "Garden4_CrushIce4" => {
+                    s.crushed[3].get_or_insert(s.age);
+                }
+                "Garden4_End_SmashWall" => {
+                    s.wall.get_or_insert(s.age);
+                }
+                _ => anyhow::bail!("Unreviewed garden rock callback {n}"),
+            }
+        }
+        for k in 0..4 {
+            if self.course().crushed[k].is_some_and(|t| self.course().age - t >= 8.5) {
+                let rock = &mut self.course_mut().rocks[k];
+                rock.visible = false;
+                rock.solid = false;
+            }
+        }
+        Ok(hits)
     }
     pub(super) fn rebuild(&mut self, map: &Bsp) -> Result<()> {
         let s = self.saved.course.as_ref().unwrap();

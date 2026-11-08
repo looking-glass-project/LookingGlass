@@ -1,6 +1,10 @@
 //! Dry Landing scenes, physical lily/clip movers, river and optional bridge.
 mod art;
 mod check;
+mod coop;
+mod coop_check;
+mod coop_route;
+pub(crate) use coop_route::{CourseReport, NetworkDriver};
 mod data;
 mod route;
 pub(crate) use route::drive as drive_route;
@@ -263,6 +267,13 @@ impl Garden {
 impl LevelController for Garden {
     fn id(&self) -> &'static str {
         "garden1"
+    }
+    fn coop_prepare(&mut self, players: &mut [crate::level::CoopPlayer<'_>; 2]) {
+        self.prepare_roster(players);
+    }
+    fn coop_advance_roster(&mut self, dt: f32, map: &Bsp, world: &mut World,
+        players: &mut [crate::level::CoopPlayer<'_>; 2], fixed: &[Collider]) -> Result<()> {
+        self.advance_roster(dt, map, world, players, fixed)
     }
     fn facts(&self) -> Facts {
         let mut f = Facts::default();
@@ -595,6 +606,16 @@ pub static REGISTRATION: Registration = Registration {
     target_base: Some(7_200_000),
     story_beats: BEATS,
     checks: &[
+        Check {
+            flag: "--garden1-coop-route-check",
+            help: "Traverse Garden with both players, production combat and ordinary controls.",
+            run: Run::Windowed(|a| Box::pin(coop_route::check(a))),
+        },
+        Check {
+            flag: "--garden1-coop-check",
+            help: "Verify paired Garden arrivals, scenes, lily supports and saved machinery.",
+            run: Run::Headless(coop_check::check),
+        },
         Check {
             flag: "--garden1-path-check",
             help: "Movement-only route diagnostics; excludes combat.",

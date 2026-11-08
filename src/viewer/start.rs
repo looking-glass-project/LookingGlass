@@ -10,6 +10,7 @@ pub enum Start {
 }
 
 pub async fn choose(
+    assets: &mut Assets,
     options: &mut Options,
     menu: &mut Menu,
     preferences: &mut crate::preferences::Preferences,
@@ -25,6 +26,17 @@ pub async fn choose(
             .run(preferences, audio, store, Vec3::ZERO, 0., input)
             .await
         {
+            Action::Coop => {
+                audio.update(0., Vec3::ZERO, 0., true, true);
+                let visit = crate::coop::protocol::Visit {
+                    combat_preview: false,
+                    epoch: 1, map: "gvillage".into(), entry: None,
+                    difficulty: options.difficulty,
+                };
+                crate::coop::menu::open(assets, options, menu, visit, None).await;
+                if is_quit_requested() { return Start::Quit; }
+                menu.open(Page::Main, preferences, audio.settings);
+            }
             Action::Chapters => {
                 let current = maps.iter().position(|m| m == "gvillage").unwrap_or(0);
                 match menu

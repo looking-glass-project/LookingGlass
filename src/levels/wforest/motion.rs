@@ -30,6 +30,11 @@ pub(super) struct Motion {
     objects: Vec<Object>,
 }
 impl Motion {
+    /// The opt-in carry fixture isolates one native object from neighbouring
+    /// authored blockers; normal level loading always keeps the complete set.
+    pub(super) fn isolate_for_check(&mut self,model:usize) {
+        self.objects.retain(|o|o.model==model);
+    }
     pub fn load(map: &Bsp) -> Result<Self> {
         let objects = map
             .entities
@@ -95,8 +100,12 @@ impl Motion {
         fixed: &[Collider],
         s: &mut Saved,
     ) -> Result<()> {
+        self.advance_players(dt,map,w,&mut [p],fixed,s)
+    }
+    pub fn advance_players(&mut self,dt:f32,map:&Bsp,w:&mut World,
+        players:&mut [&mut Player],fixed:&[Collider],s:&mut Saved)->Result<()> {
         let old = s.clone();
-        let rider = self
+        let riders = players.iter().map(|p| self
             .objects
             .iter()
             .find(|o| {
@@ -110,7 +119,7 @@ impl Motion {
                 );
                 !t.start_solid && t.fraction < 1. && t.normal.z > 0.65
             })
-            .map(|o| (o.model, o.pose));
+            .map(|o| (o.model, o.pose))).collect::<Vec<_>>();
         if s.done[1]
             || s.scene
                 .as_ref()
@@ -132,14 +141,20 @@ impl Motion {
             *t = (*t + dt).min(5.5);
         }
         self.rebuild(map, s)?;
-        let feet = rider.map_or(p.feet, |(id, old)| {
+        let feet = players.iter().zip(riders).map(|(p,rider)|rider.map_or(p.feet, |(id, old)| {
             let new = self.objects.iter().find(|o| o.model == id).unwrap().pose;
             new.translation + new.rotation * old.rotation.conjugate() * (p.feet - old.translation)
-        });
+        })).collect::<Vec<_>>();
         w.set_dynamic(fixed.to_vec());
-        let sweep = w.sweep(p.feet + PLAYER_CENTER, feet + PLAYER_CENTER, PLAYER_HALF);
+        let swept_clear=players.iter().zip(&feet).all(|(p,feet)| {
+            let sweep=w.sweep(p.feet+PLAYER_CENTER,*feet+PLAYER_CENTER,PLAYER_HALF);
+            !sweep.start_solid && sweep.fraction==1.
+        });
         w.set_dynamic(fixed.iter().cloned().chain(self.colliders(s)).collect());
-        if sweep.start_solid || sweep.fraction < 1. || !w.body_clear(feet) {
+        let separated=feet.iter().enumerate().all(|(i,a)|feet.iter().skip(i+1).all(|b| {
+            let d=*a-*b; d.truncate().length()>=crate::coop::separation::DISTANCE || d.z.abs()>=PLAYER_HALF.z*2.
+        }));
+        if !swept_clear || feet.iter().any(|at|!w.body_clear(*at)) || !separated {
             // Pause moving solids when Alice is in their sweep; destruction remains committed.
             s.cave = old.cave;
             s.chess = old.chess;
@@ -150,7 +165,7 @@ impl Motion {
             self.rebuild(map, s)?;
             w.set_dynamic(fixed.iter().cloned().chain(self.colliders(s)).collect());
         } else {
-            p.feet = feet;
+            for (p,feet) in players.iter_mut().zip(feet) {p.feet=feet;}
         }
         Ok(())
     }

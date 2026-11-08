@@ -464,6 +464,9 @@ fn random(seed: &mut u32) -> f32 {
     (*seed >> 8) as f32 / 16777216.
 }
 impl Steam {
+    pub fn counts(&self) -> (usize, usize, usize) {
+        (self.emitters.len(), self.emitters.iter().filter(|e|e.enabled).count(), self.puffs.len())
+    }
     /// Emission and living puffs for a placed entity, used by mechanism checks.
     pub fn emission(&self, id: crate::entity::Id) -> Option<(bool, usize)> {
         self.emitters.iter().any(|e|e.id==id.0).then(|| (
@@ -1144,6 +1147,12 @@ pub struct Attached {
     age: f32,
 }
 impl Attached {
+    /// Begin another instance of an effect without reusing old world-space births.
+    pub(crate) fn restart(&mut self) {
+        self.births.clear();
+        self.steam.puffs.clear();
+        self.age = 0.;
+    }
     /// Item sprites use their image dimensions as the unscaled billboard size.
     /// Keep this opt-in: older effect owners retain their existing size tuning.
     pub(crate) fn use_sprite_dimensions(&mut self) {
@@ -1546,6 +1555,20 @@ mod tests {
             parse("originemitter e\n(\nno_deadtime\nspawnrate 1\nmodel steam.spr\n)\n")[0]
                 .no_deadtime
         );
+    }
+    #[test]
+    fn restarted_attached_burst_uses_new_owner_at_the_same_effect_age() {
+        let mut emitter = attached_fixture(1);
+        emitter.steam.emitters[0].spec.burst = Some((0., 30));
+        emitter.steam.emitters[0].spec.life = Range::fixed(1.);
+        let pose = |x| crate::skeletal::Transform { translation: Vec3::X*x, rotation: Quat::IDENTITY };
+        emitter.sample(0.3, 1., |_,_| pose(10.), |_,_,_| true);
+        assert_eq!(emitter.steam.puffs.len(), 30);
+        assert!(emitter.steam.puffs.iter().all(|p| p.position.x == 10.));
+        emitter.restart();
+        emitter.sample(0.3, 1., |_,_| pose(1000.), |_,_,_| true);
+        assert_eq!(emitter.steam.puffs.len(), 30);
+        assert!(emitter.steam.puffs.iter().all(|p| p.position.x == 1000.));
     }
     #[test]
     fn attached_bursts_keep_exact_birth_count_and_time_on_rebuild() {

@@ -1,5 +1,79 @@
 # Water Logged
 
+## Normal paired route (2026-11-07)
+
+Frozen `b278fdc` completes the ordinary co-op course through all three flushers,
+the underwater passages and actual Labyrinthine Revenge arrival. Both players
+finish at 55 health with their resources carried exactly. The run records
+28,247 ticks, 236 matching compressed replicas and the original arrival/reunion.
+Red revives twice and Blue once, each after exactly 1,200 active ticks at
+25 health. No team wipe, cheats or world-progression staging is used.
+
+Run `tools/test_coop_native_route.py --map tower2 --exe <frozen-executable>
+--data <base-folder> --profile <new-folder>` in Anode. The native entry point is
+`--tower2-coop-route-check`. The diagnostic uses normal Blade/Cards, the owned
+Watch, independent fan-gap timing and single-file swimming through the final
+narrow inlet. It follows actual footing after a vacated tray springs back.
+No gameplay or save behavior changes. The locked release, all 949 active Rust
+tests and source/package checks pass. Exact evidence is pinned privately in
+`coop-playable-waterlogged-default-verified.json`; public-invite, presentation
+and additional recovery permutations retain their separate evidence/backlog.
+
+## Co-op core integration (2026-11-06)
+
+Build `d06ded3c2ec57c42176358b727ad37c3e9e4fa4b28ab710653bc3269d4f4d553`
+adds the shared machinery adapter. Water, lids and fans advance once per world
+step. Either living Alice can weigh down a flusher, with the original boolean
+weight/acceleration rule. Every supported living rider moves atomically; if
+either path or proposed body is blocked, neither rider moves and the affected
+brush rolls back. Dead bodies neither ride nor obstruct the machinery.
+
+Each Alice has her own four current cooldowns and pending fan-hit flags.
+Blades retain their original angular sweep and lethal contact damage, delivered
+only to the struck player through the normal co-op feedback path. Either
+living player's Watch freezes water/lids/fans, while weighted trays and native
+current pulses retain their ordinary behavior. Shell preparation and air-source
+refresh apply independently to living players. Revival clears the returning
+player's stale current waits and pending hits.
+
+The optional paired state preserves existing solo saves and their stage-derived
+machinery. A pending solo fan hit belongs to Blue, while both players inherit
+the saved current waits without a reset. Compressed restores preserve moving
+machinery and individual timers; invalid timers or missing paired machinery
+are rejected before changing live state. The original single-Alice arrival
+camera/story keeps the partner frozen and uses the shared safe reunion.
+
+`--tower2-coop-check` passes 66 supplied-map cases. These include both riders
+and either dead partner on all three trays, both obstructed-rider slots, all
+three lids, both victims and dead-body variants for all five fans, all four
+currents in either arrival order, and personal air refresh. Both ordinary-input
+swimming orders cross the live drain with exact saved continuation. Twelve
+Stage introduction variants cover both owners, watched/early/late skip,
+pause/restore and dead partners; six staged pressure courses use real body
+physics and native contacts to activate every flusher as either Alice.
+The original 16-case solo check produces byte-identical output to `291af36`.
+
+These checks are headless and stage the entry prerequisites of each component
+course. They do not certify full two-client traversal, native combat through
+the whole visit, rendered effects, or the per-visit rejoin/death/wipe matrix.
+Build `0e5f061` adds placement exclusion around each fan's complete rotation,
+derived from native local model bounds and the full player body. Checkpoints,
+solo conversion, reunion and revival use the existing hazard predicate;
+ordinary movement and lethal blade-contact damage remain unchanged. Watch
+and the saved blade angle cannot temporarily remove this exclusion.
+
+The paired check now passes 75 cases. Five new native fan cases reject
+currently clear gaps for either checkpoint slot and sample a complete
+rotation. Four staged revival cases cover both players, the real 1200-tick
+countdown, spectator selection, compressed countdown continuation, safe
+25-health placement and waiting for a safe location after the timer expires.
+Both bodies remain clear through a full fan cycle after Watch is released.
+The held case stages the survivor's later position; it is not a traversal or
+internet reconnect test. The solo 16-case log still exactly matches `291af36`.
+All 941 active Rust tests, 450 Python guards and seven package checks pass.
+
+## Existing single-player behavior and evidence
+
 `tower2$tower2_start1` retains save envelope 12 and controller state version 1.
 One owner drives the three weighted flushers, three lids, five fans, moving
 liquid and the opening Cheshire scene. Rendered and collision poses come from

@@ -1,6 +1,9 @@
 //! Herbaceous Border's scenes, bridges and scripted encounters.
 mod art;
 mod check;
+mod coop;
+mod coop_check;
+mod coop_route;
 mod data;
 mod encounters;
 mod motion;
@@ -566,18 +569,17 @@ impl LevelController for Garden {
         }
         if !self.scripted() {
             self.advance_fulcrum(dt, map, w, p, fixed)?;
-            for l in &mut self.saved.ladies {
-                if let Some(t) = &mut l.delay {
-                    *t = (*t - dt).max(0.);
-                    if *t == 0. {
-                        l.enabled = true;
-                        l.actor.patrol_started = true;
-                        l.delay = None;
-                    }
-                }
-            }
+            self.advance_spawns(dt);
         }
         Ok(())
+    }
+    fn coop_advance(&mut self, dt: f32, map: &Bsp, world: &mut World,
+        players: &mut [&mut Player], fixed: &[Collider]) -> Result<()> {
+        self.advance_pair(dt, map, world, players, fixed)
+    }
+    fn coop_combat(&mut self, dt: f32, world: &World,
+        players: [crate::combat::PlayerTarget; 2]) -> crate::combat::Feedback {
+        self.combat_pair(dt, world, players)
     }
     fn skip(&mut self, _: &Bsp, _: &mut World, p: &mut Player, story: &mut Story) -> Result<bool> {
         let Some(s) = &mut self.saved.scene else {
@@ -786,6 +788,16 @@ pub static REGISTRATION: Registration = Registration {
     target_base: Some(BASE),
     story_beats: BEATS,
     checks: &[
+        Check {
+            flag: "--garden2-coop-route-check",
+            help: "Run both Herbaceous players through ordinary controls; save exact failure states.",
+            run: Run::Windowed(coop_route::check),
+        },
+        Check {
+            flag: "--garden2-coop-check",
+            help: "Verify paired Herbaceous platform, enemies and scene handoffs; staged component checks.",
+            run: Run::Headless(coop_check::check),
+        },
         Check {
             flag: "--garden2-route-check",
             help: "Walk the underworld with the native enemy cast and saved continuation.",

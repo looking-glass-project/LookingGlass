@@ -11,6 +11,7 @@ use crate::{
 use anyhow::{Context, Result};
 use macroquad::prelude::*;
 use std::collections::BTreeMap;
+mod coop_check;
 
 pub fn supported(e: &BTreeMap<String, String>) -> bool {
     e.get("classname").is_some_and(|c| c == "script_object")
@@ -115,7 +116,19 @@ impl Gym {
         player: &mut Player,
         fixed: &[Collider],
     ) -> Result<()> {
-        if dt <= 0. || !self.used {
+        self.advance_players(dt, map, world, &mut [player], fixed)
+    }
+    /// Advance each step once. Commit its motion and every carried body only
+    /// when no living player would be embedded or pushed through another solid.
+    pub(crate) fn advance_players(
+        &mut self,
+        dt: f32,
+        map: &Bsp,
+        world: &mut World,
+        players: &mut [&mut Player],
+        fixed: &[Collider],
+    ) -> Result<()> {
+        if dt <= 0. || !dt.is_finite() || !self.used {
             return Ok(());
         }
         let mut remaining = dt.min(0.1);
@@ -133,15 +146,15 @@ impl Gym {
                 let origin =
                     s.base - Vec3::X * s.distance * ((time - 1.) / s.duration).clamp(0., 1.);
                 let next = Collider::model(map, s.model, origin, Quat::IDENTITY, true)?;
-                let ground = s.collider.trace(
-                    player.feet + PLAYER_CENTER,
-                    player.feet + PLAYER_CENTER - Vec3::Z * 3.,
-                    PLAYER_HALF,
-                );
-                let riding = player.velocity.z <= 1.
-                    && !ground.start_solid
-                    && ground.fraction < 1.
-                    && ground.normal.z > 0.65;
+                let riding = players.iter().map(|player| {
+                    let ground = s.collider.trace(
+                        player.feet + PLAYER_CENTER,
+                        player.feet + PLAYER_CENTER - Vec3::Z * 3.,
+                        PLAYER_HALF,
+                    );
+                    player.velocity.z <= 1. && !ground.start_solid
+                        && ground.fraction < 1. && ground.normal.z > 0.65
+                }).collect::<Vec<_>>();
                 world.set_dynamic(
                     fixed
                         .iter()
@@ -155,26 +168,27 @@ impl Gym {
                         )
                         .collect(),
                 );
-                let carried = player.feet + origin - s.origin;
-                if riding {
-                    let trace = world.body_trace(player.feet, carried);
-                    if trace.start_solid || trace.fraction < 1. || !world.body_clear(carried) {
-                        continue;
+                let delta = origin - s.origin;
+                let blocked = players.iter().zip(&riding).any(|(player, riding)| {
+                    if *riding {
+                        let carried = player.feet + delta;
+                        let trace = world.body_trace(player.feet, carried);
+                        trace.start_solid || trace.fraction < 1. || !world.body_clear(carried)
+                    } else {
+                        next.touches(player.feet + PLAYER_CENTER,
+                                     player.feet + PLAYER_CENTER, PLAYER_HALF)
                     }
-                } else if next.touches(
-                    player.feet + PLAYER_CENTER,
-                    player.feet + PLAYER_CENTER,
-                    PLAYER_HALF,
-                ) {
-                    continue;
-                }
+                });
+                if blocked { continue; }
                 let s = &mut self.steps[i];
                 s.time = time;
                 s.origin = origin;
                 s.collider = next;
-                if riding {
-                    player.feet = carried;
-                    player.grounded = true;
+                for (player, riding) in players.iter_mut().zip(riding) {
+                    if riding {
+                        player.feet += delta;
+                        player.grounded = true;
+                    }
                 }
             }
         }
@@ -310,7 +324,9 @@ pub fn check(assets: &mut Assets) -> Result<()> {
         // Real geometry: approach the fully extended lowest step and walk up the tiers.
         player = Player::new(vec3(2180., -2560., 16.1));
         let mut clock = FixedClock::default();
-        for _ in 0..fps * 2 {
+        // Use the current ordinary walk speed, with a bounded completion wait.
+        // The former two-second deadline assumed an older, faster walk.
+        for _ in 0..fps * 4 {
             clock.advance(
                 1. / fps as f64,
                 &world,
@@ -321,6 +337,7 @@ pub fn check(assets: &mut Assets) -> Result<()> {
                 },
             );
             anyhow::ensure!(world.body_clear(player.feet), "Bleachers embedded player");
+            if player.feet.z >= 190. { break; }
         }
         anyhow::ensure!(
             player.feet.z >= 190.,
@@ -362,5 +379,6 @@ pub fn check(assets: &mut Assets) -> Result<()> {
         "Bleachers did not resume"
     );
     println!("PASS gym obstruction stops and resumes without crushing Alice");
+    coop_check::check(assets, &map)?;
     Ok(())
 }

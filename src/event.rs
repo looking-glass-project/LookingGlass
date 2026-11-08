@@ -449,6 +449,11 @@ impl Runtime {
             && r.condition
                 .evaluate(derived, &self.state.facts, &self.state.entities)
     }
+    /// Committed dispatch history, including repeatable rules and solo saves.
+    /// Rejected contacts never consume an event.
+    pub fn has_fired(&self, event: &Event) -> bool {
+        self.rules.iter().any(|r| r.event == *event && self.state.usage[&r.key].count > 0)
+    }
     pub fn post(&mut self, event: Event, delay: f64) -> Result<()> {
         validate_event(&event, &self.registry)?;
         ensure!(
@@ -695,6 +700,24 @@ mod tests {
     }
     fn signal(s: &str) -> Event {
         Event::Signal(s.into())
+    }
+    #[test]
+    fn committed_event_history_survives_restore_without_consuming_rejected_contacts() {
+        let mut facts=Facts::default();facts.flag("ready",false);
+        let rules=vec![rule("gate",signal("cross"),Condition::flag("ready"),false,vec![])];
+        let mut world=Runtime::new(registry(),rules.clone(),Facts::default(),facts.clone()).unwrap();
+        world.fire(signal("cross"),&facts).unwrap();
+        assert!(!world.has_fired(&signal("cross")));
+        facts.flag("ready",true);
+        world.fire(signal("cross"),&facts).unwrap();
+        assert!(world.has_fired(&signal("cross")));
+        assert!(world.allowed(&signal("cross"),&facts),"History must not change solo repeatability");
+        let saved=world.snapshot();
+        facts.flag("ready",false);
+        let mut restored=Runtime::new(registry(),rules,Facts::default(),facts).unwrap();
+        restored.restore(&saved).unwrap();
+        assert!(restored.has_fired(&signal("cross")));
+        assert!(!restored.has_fired(&signal("different")));
     }
     #[test]
     fn explicitly_rearmed_shots_keep_history_without_relaxing_other_rules() {

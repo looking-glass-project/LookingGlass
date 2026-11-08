@@ -30,9 +30,13 @@ pub(super) struct Shot {
     pub syringe: bool,
     pub id: u32,
     pub ended: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub player: Option<usize>,
 }
 #[derive(Clone, Serialize, Deserialize)]
 pub(super) struct Boss {
+    #[serde(skip)]
+    pub opponents: combat::Opponents,
     pub at: Vec3,
     pub yaw: f32,
     pub health: f32,
@@ -49,6 +53,7 @@ pub(super) struct Boss {
 impl Boss {
     pub fn new(p: Transform) -> Self {
         Self {
+            opponents: Default::default(),
             at: p.translation,
             yaw: p.rotation.to_euler(EulerRot::ZYX).0,
             health: 2600.,
@@ -143,11 +148,8 @@ impl Boss {
         stopped: bool,
         out: &mut Feedback,
     ) {
-        let target = Target {
-            id: 0,
-            center: eye - Vec3::Z * 20.,
-            half: crate::collision::PLAYER_HALF,
-        };
+        let bodies = self.opponents.bodies(eye);
+        let paired = self.opponents.players.is_some();
         self.shots.retain_mut(|s| {
             if stopped && !s.syringe {
                 return true;
@@ -157,14 +159,27 @@ impl Boss {
                 return s.age - end < 0.4;
             }
             if s.syringe {
-                let desired = (target.center - s.at).normalize_or_zero();
-                let dir = s.velocity.normalize_or_zero();
-                let angle = dir.dot(desired).clamp(-1., 1.).acos();
-                if angle > 0.00001 {
-                    s.velocity = dir
-                        .lerp(desired, (90_f32.to_radians() * dt / angle).min(1.))
-                        .normalize_or_zero()
-                        * 500.;
+                let target = if paired {
+                    s.player.and_then(|slot| {
+                        bodies
+                            .iter()
+                            .find(|b| combat::player_slot(b.id) == Some(slot))
+                    })
+                } else {
+                    bodies.first()
+                };
+                // A fired syringe keeps its original living target. It can
+                // still collide with either body if the other Alice crosses it.
+                if let Some(target) = target {
+                    let desired = (target.center - s.at).normalize_or_zero();
+                    let dir = s.velocity.normalize_or_zero();
+                    let angle = dir.dot(desired).clamp(-1., 1.).acos();
+                    if angle > 0.00001 {
+                        s.velocity = dir
+                            .lerp(desired, (90_f32.to_radians() * dt / angle).min(1.))
+                            .normalize_or_zero()
+                            * 500.;
+                    }
                 }
             } else {
                 s.velocity.z -= 640. * dt;
@@ -174,16 +189,21 @@ impl Boss {
             let hit = combat::contact_box(
                 &combat::Context {
                     world: w,
-                    targets: &[target],
+                    targets: &bodies,
                 },
                 s.at,
                 next,
                 Vec3::splat(8.),
             );
-            if let Some((_, f)) = hit {
+            if let Some((victim, f)) = hit {
                 s.at = s.at.lerp(next, f);
                 s.ended = Some(s.age);
-                out.damage += if s.syringe { 20. } else { 10. };
+                out.strike(
+                    victim,
+                    if s.syringe { 20. } else { 10. },
+                    Vec3::ZERO,
+                    combat::DamageKind::Other,
+                );
             } else if wall.start_solid
                 || wall.fraction < 1.
                 || s.age >= if s.syringe { 5. } else { 3. }
@@ -260,6 +280,16 @@ impl Boss {
             }
             return;
         }
+        let (eye, notarget, victim) = self.opponents.aim(
+            w,
+            self.at + Vec3::Z * 110.,
+            eye,
+            notarget,
+            matches!(
+                self.action,
+                Action::Cane | Action::Slap | Action::Rocket | Action::Cup
+            ),
+        );
         let to = eye - (self.at + Vec3::Z * 100.);
         let distance = to.truncate().length();
         let trace = w.sweep(self.at + Vec3::Z * 110., eye, Vec3::ZERO);
@@ -301,8 +331,12 @@ impl Boss {
                     && vec2(self.yaw.cos(), self.yaw.sin()).dot(to.truncate().normalize_or_zero())
                         > 0.5
                 {
-                    out.damage += 15.;
-                    out.impulse += to.normalize_or_zero() * 300.;
+                    out.strike(
+                        victim,
+                        15.,
+                        to.normalize_or_zero() * 300.,
+                        combat::DamageKind::Other,
+                    );
                 }
             } else if self.shots.len() < 24 {
                 let syringe = self.action == Action::Rocket;
@@ -328,6 +362,7 @@ impl Boss {
                     syringe,
                     id: self.serial,
                     ended: None,
+                    player: combat::player_slot(victim),
                 });
             }
         }
@@ -432,6 +467,10 @@ impl Boss {
                         .is_none_or(|t| t.is_finite() && t >= 0. && t <= s.age)
                     && ids.insert(s.id),
                 "Invalid Hatter projectile"
+            );
+            ensure!(
+                s.player.is_none_or(|slot| slot < 2),
+                "Invalid saved syringe player"
             );
         }
         Ok(())

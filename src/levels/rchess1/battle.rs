@@ -36,6 +36,38 @@ mod tests {
         }
     }
     #[test]
+    fn paired_sustained_knockback_keeps_the_king_supported_and_inside_the_arena() {
+        for wall in [false, true] {
+            let mut boxes = vec![(vec3(-1000., -1000., -64.), vec3(100., 1000., 0.))];
+            if wall { boxes.push((vec3(100., -1000., 0.), vec3(120., 1000., 240.))); }
+            let world = World::fixture(&boxes);
+            let mut b = king();
+            b.at.z = 0.03125;
+            b.opponents.players = Some([combat::PlayerTarget {
+                eye: vec3(-200., 0., 48.), alive: true, hidden: false,
+            }; 2]);
+            for tick in 0..2400 {
+                if tick % 30 == 0 {
+                    // Two ordinary damage events, including upward impulse.
+                    for _ in 0..2 { b.hit(Hit { damage: 7., knockback: vec3(30., 0., 60.),
+                        ..hit(DamageKind::Cards, Vec3::ZERO) }); }
+                }
+                if tick == 1200 {
+                    let mut restored: Boss = serde_json::from_value(serde_json::to_value(&b).unwrap()).unwrap();
+                    restored.opponents.players = b.opponents.players;
+                    restored.step_recoil(&world);
+                    b.step_recoil(&world);
+                    assert_eq!(serde_json::to_value(&b).unwrap(), serde_json::to_value(restored).unwrap());
+                } else { b.step_recoil(&world); }
+                assert!(b.at.z.abs() < 0.05, "Knockback lifted the King: {:?}", b.at);
+                assert!(b.at.x <= 77. && b.at.x >= 0., "Knockback escaped the supported arena: {:?}", b.at);
+                assert!(!world.sweep(b.target().center, b.target().center, b.target().half).start_solid);
+            }
+            assert!(b.at.x > 5., "Grounded recoil removed horizontal knockback");
+            assert_eq!(b.health, 180., "Grounded recoil changed incoming damage");
+        }
+    }
+    #[test]
     fn counter_guard_has_direction_and_an_expiring_window() {
         let mut b = king();
         b.set(Action::Shield);
@@ -98,6 +130,92 @@ mod tests {
         }
         assert!(b.validate().is_err());
     }
+    fn projectile(kind: Kind, player: Option<usize>) -> Shot {
+        Shot { id:1,kind,at:vec3(0.,0.,28.),velocity:Vec3::X*300.,age:0.,ended:None,player }
+    }
+    fn paired(first: usize) -> [combat::PlayerTarget;2] {
+        std::array::from_fn(|slot|combat::PlayerTarget {
+            eye:vec3(if slot==first {40.} else {100.},0.,48.),alive:true,hidden:false,
+        })
+    }
+    #[test]
+    fn paired_projectiles_hit_the_first_body_and_do_not_double_damage_it() {
+        for first in 0..2 {for kind in [Kind::Ball,Kind::Seeker,Kind::Diamond] {
+            let mut b=king();b.opponents.players=Some(paired(first));
+            b.shots.push(projectile(kind,Some(1-first)));
+            let world=World::fixture(&[]);let mut out=Feedback::default();
+            for _ in 0..60 {
+                b.projectiles(&world,Vec3::ZERO,&mut out);
+                if b.shots[0].ended.is_some() {break;}
+            }
+            assert!(b.shots[0].ended.is_some(),"{kind:?} missed first body");
+            assert_eq!(out.damage,0.);
+            assert_eq!(out.players[first].damage,if kind==Kind::Diamond {7.} else {5.});
+            if kind==Kind::Diamond {
+                assert_eq!(out.players[1-first].damage,0.);
+                assert!((out.players[first].impulse.length()-150.).abs()<0.001);
+            } else {assert!(out.players[1-first].damage>0. && out.players[1-first].damage<90.);}
+            let before=out.players.map(|p|(p.damage,p.impulse));
+            let sounds=out.spatial_sounds.len();
+            for _ in 0..20 {b.projectiles(&world,Vec3::ZERO,&mut out);}
+            assert_eq!(out.players.map(|p|(p.damage,p.impulse)),before);
+            assert_eq!(out.spatial_sounds.len(),sounds);
+        }}
+    }
+    #[test]
+    fn paired_explosion_respects_walls_and_dead_bodies() {
+        let world=World::fixture(&[(vec3(60.,-40.,0.),vec3(70.,40.,100.))]);
+        for first in 0..2 {
+            let mut b=king();b.opponents.players=Some(paired(first));
+            b.shots.push(projectile(Kind::Ball,Some(1-first)));
+            let mut out=Feedback::default();
+            for _ in 0..30 {b.projectiles(&world,Vec3::ZERO,&mut out);}
+            assert_eq!(out.players[first].damage,5.);
+            assert_eq!(out.players[1-first].damage,0.,"Splash crossed the wall");
+            let mut b=king();let mut people=paired(first);people[first].alive=false;
+            b.opponents.players=Some(people);b.shots.push(projectile(Kind::Diamond,Some(first)));
+            let mut out=Feedback::default();
+            for _ in 0..60 {b.projectiles(&World::fixture(&[]),Vec3::ZERO,&mut out);}
+            assert_eq!(out.players[first].damage,0.);
+            assert_eq!(out.players[1-first].damage,7.,"Dead body blocked the living partner");
+        }
+    }
+    #[test]
+    fn seeker_retains_saved_owner_and_does_not_retarget_after_death() {
+        for owner in 0..2 {
+            let mut b=king();let mut people=paired(1-owner);
+            people[owner].eye=vec3(0.,200.,48.);
+            b.player=Some(owner);b.opponents.players=Some(people);
+            b.shots.push(projectile(Kind::Seeker,Some(owner)));
+            b.projectiles(&World::fixture(&[]),Vec3::ZERO,&mut Feedback::default());
+            assert!(b.shots[0].velocity.y>0.,"Seeker followed the closer other body");
+            let saved=serde_json::to_value(&b).unwrap();
+            let mut restored:Boss=serde_json::from_value(saved.clone()).unwrap();
+            assert_eq!(restored.player,Some(owner));
+            assert_eq!(restored.shots[0].player,Some(owner));
+            restored.opponents.players=Some(people);
+            b.projectiles(&World::fixture(&[]),Vec3::ZERO,&mut Feedback::default());
+            restored.projectiles(&World::fixture(&[]),Vec3::ZERO,&mut Feedback::default());
+            assert_eq!(serde_json::to_value(&b).unwrap(),serde_json::to_value(&restored).unwrap());
+            people[owner].alive=false;restored.opponents.players=Some(people);
+            let velocity=restored.shots[0].velocity;
+            restored.projectiles(&World::fixture(&[]),Vec3::ZERO,&mut Feedback::default());
+            assert_eq!(restored.shots[0].velocity,velocity);
+        }
+    }
+    #[test]
+    fn optional_player_targets_preserve_legacy_saves_and_validate_slots() {
+        let mut b=king();b.shots.push(projectile(Kind::Ball,None));
+        let value=serde_json::to_value(&b).unwrap();
+        assert!(value.get("player").is_none() && value.get("opponents").is_none());
+        assert!(value["shots"][0].get("player").is_none());
+        let mut restored:Boss=serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(serde_json::to_value(&restored).unwrap(),value);
+        restored.player=Some(2);assert!(restored.validate().is_err());
+        restored.player=Some(1);restored.shots[0].player=Some(2);
+        assert!(restored.validate().is_err());
+        restored.shots[0].player=Some(0);assert!(restored.validate().is_ok());
+    }
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Kind {
@@ -113,6 +231,8 @@ pub struct Shot {
     pub velocity: Vec3,
     pub age: f32,
     pub ended: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub player: Option<usize>,
 }
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Beam {
@@ -122,6 +242,10 @@ pub struct Beam {
 }
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Boss {
+    #[serde(skip)]
+    pub opponents: combat::Opponents,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub player: Option<usize>,
     pub at: Vec3,
     pub yaw: f32,
     pub health: f32,
@@ -143,6 +267,8 @@ pub struct Boss {
 impl Boss {
     pub fn new(p: Transform) -> Self {
         Self {
+            opponents: Default::default(),
+            player: None,
             at: p.translation,
             yaw: p.rotation.to_euler(EulerRot::ZYX).0,
             health: 1300.,
@@ -300,7 +426,19 @@ impl Boss {
             velocity,
             age: 0.,
             ended: None,
+            player: self.player,
         });
+    }
+    fn step_recoil(&mut self, world: &World) {
+        let push = self.recoil.step(STEP, world, self.target());
+        if self.opponents.players.is_some() {
+            // Sustained paired hits otherwise accumulate height indefinitely:
+            // this walking boss has no airborne gravity step. Keep the original
+            // impulse/damping, but commit displacement through supported motion.
+            self.at = combat::walk_body(world, self.at, push.truncate().extend(0.), self.target().half);
+        } else {
+            self.at += push;
+        }
     }
     pub fn step(
         &mut self,
@@ -311,6 +449,12 @@ impl Boss {
         d: &Data,
         out: &mut Feedback,
     ) {
+        self.opponents.selected_player = self.player;
+        let from = self.at + Vec3::Z * 112.;
+        let (eye, notarget, victim) = self.opponents.aim_with(w, from, eye, notarget,
+            !matches!(self.action, Action::Idle | Action::Walk | Action::Fast),
+            |at| (at-from).truncate().length() < 800.);
+        if self.opponents.players.is_some() { self.player = self.opponents.selected_player; }
         let old = self.time;
         self.time = (self.time + STEP).min(60.);
         self.pain_wait = (self.pain_wait - STEP).max(0.);
@@ -339,7 +483,7 @@ impl Boss {
         if self.health == 0. {
             return;
         }
-        self.at += self.recoil.step(STEP, &d.arena, self.target());
+        self.step_recoil(&d.arena);
         let to = eye - (self.at + Vec3::Z * 96.);
         let distance = to.truncate().length();
         let trace = w.sweep(self.at + Vec3::Z * 112., eye, Vec3::ZERO);
@@ -370,7 +514,7 @@ impl Boss {
             && vec2(self.yaw.cos(), self.yaw.sin()).dot(to.truncate().normalize_or_zero()) > 0.5
         {
             // The two authored contact frames share one damage-once window.
-            out.damage += 10.;
+            out.strike(victim, 10., Vec3::ZERO, DamageKind::Other);
             self.fired = true;
         }
         if clear {
@@ -391,22 +535,17 @@ impl Boss {
                     let end = from + (eye - from).normalize_or_zero() * 500.;
                     let tr = w.sweep(from, end, Vec3::ZERO);
                     let to = from.lerp(end, tr.fraction);
-                    if combat::contact(
+                    if let Some((victim, _)) = combat::contact(
                         &combat::Context {
                             world: w,
-                            targets: &[Target {
-                                id: 0,
-                                center: eye - Vec3::Z * 20.,
-                                half: crate::collision::PLAYER_HALF,
-                            }],
+                            targets: &self.opponents.bodies(eye),
                         },
                         from,
                         end,
                         2.,
                     )
-                    .is_some()
                     {
-                        out.damage += 2.;
+                        out.strike(victim, 2., Vec3::ZERO, DamageKind::Other);
                     }
                     if self.beams.len() < 4 {
                         self.beams.push(Beam { from, to, age: 0. });
@@ -440,11 +579,8 @@ impl Boss {
         }
     }
     pub fn projectiles(&mut self, w: &World, eye: Vec3, out: &mut Feedback) {
-        let target = Target {
-            id: 0,
-            center: eye - Vec3::Z * 20.,
-            half: crate::collision::PLAYER_HALF,
-        };
+        let targets = self.opponents.bodies(eye);
+        let paired = self.opponents.players.is_some();
         self.shots.retain_mut(|s| {
             s.age += STEP;
             if let Some(end) = s.ended {
@@ -454,14 +590,20 @@ impl Boss {
                 s.velocity.z -= 640. * STEP;
             }
             if s.kind == Kind::Seeker {
-                let desired = (target.center - s.at).normalize_or_zero();
-                let dir = s.velocity.normalize_or_zero();
-                let angle = dir.dot(desired).clamp(-1., 1.).acos();
-                if angle > 0.0001 {
-                    s.velocity = dir
-                        .lerp(desired, (90_f32.to_radians() * STEP / angle).min(1.))
-                        .normalize_or_zero()
-                        * 300.;
+                let target = if paired {
+                    s.player.and_then(|slot| targets.iter().find(|t|
+                        combat::player_slot(t.id) == Some(slot)))
+                } else { targets.first() };
+                if let Some(target) = target {
+                    let desired = (target.center - s.at).normalize_or_zero();
+                    let dir = s.velocity.normalize_or_zero();
+                    let angle = dir.dot(desired).clamp(-1., 1.).acos();
+                    if angle > 0.0001 {
+                        s.velocity = dir
+                            .lerp(desired, (90_f32.to_radians() * STEP / angle).min(1.))
+                            .normalize_or_zero()
+                            * 300.;
+                    }
                 }
             }
             let next = s.at + s.velocity * STEP;
@@ -469,19 +611,18 @@ impl Boss {
             let direct = combat::contact_box(
                 &combat::Context {
                     world: w,
-                    targets: &[target],
+                    targets: &targets,
                 },
                 s.at,
                 next,
                 Vec3::splat(8.),
             );
             let expired = s.age >= if s.kind == Kind::Diamond { 5. } else { 2. };
-            if let Some((_, f)) = direct {
+            if let Some((victim, f)) = direct {
                 s.at = s.at.lerp(next, f);
-                out.damage += if s.kind == Kind::Diamond { 7. } else { 5. };
-                if s.kind == Kind::Diamond {
-                    out.impulse += s.velocity.normalize_or_zero() * 150.;
-                }
+                let diamond = s.kind == Kind::Diamond;
+                out.strike(victim, if diamond { 7. } else { 5. },
+                    if diamond { s.velocity.normalize_or_zero()*150. } else { Vec3::ZERO }, DamageKind::Other);
                 s.ended = Some(s.age);
             } else if expired || wall.start_solid || (wall.fraction < 1. && s.kind != Kind::Ball) {
                 s.at = s.at.lerp(next, wall.fraction);
@@ -497,14 +638,15 @@ impl Boss {
                     out.spatial_sounds
                         .push(("sound/character/army_ant_corp/grenade.wav", s.at));
                     // Shared Explosion convention: radius defaults to damage + 60; direct victims do not take it twice.
-                    let offset = target.center - s.at;
-                    let distance = offset.length();
-                    let ray = w.sweep(s.at, target.center, Vec3::ZERO);
-                    if direct.is_none() && distance < 150. && !ray.start_solid && ray.fraction >= 1.
-                    {
-                        let f = 1. - distance / 150.;
-                        out.damage += 90. * f;
-                        out.impulse += offset.normalize_or_zero() * 100. * f;
+                    for target in &targets {
+                        let offset = target.center - s.at;
+                        let distance = offset.length();
+                        let ray = w.sweep(s.at, target.center, Vec3::ZERO);
+                        if direct.is_none_or(|(victim,_)|victim != target.id) && distance < 150.
+                            && !ray.start_solid && ray.fraction >= 1. {
+                            let f = 1. - distance / 150.;
+                            out.strike(target.id, 90.*f, offset.normalize_or_zero()*100.*f, DamageKind::Other);
+                        }
                     }
                 } else {
                     out.spatial_sounds
@@ -523,6 +665,7 @@ impl Boss {
                 && self.recoil.valid(),
             "Invalid Red King body"
         );
+        ensure!(self.player.is_none_or(|slot|slot<2), "Invalid King player target");
         for (n, t, m) in [
             ("action", self.time, 60.),
             ("pain", self.pain, 1300.),
@@ -543,6 +686,7 @@ impl Boss {
         for s in &self.shots {
             ensure!(
                 ids.insert(s.id)
+                    && s.player.is_none_or(|slot|slot<2)
                     && s.at.is_finite()
                     && s.at.abs().max_element() < 100000.
                     && s.velocity.is_finite()

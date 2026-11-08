@@ -658,7 +658,7 @@ pub fn collect_with(
     messages
 }
 
-fn touches_pickup(feet: Vec3, origin: Vec3, world: &World) -> bool {
+pub(crate) fn touches_pickup(feet: Vec3, origin: Vec3, world: &World) -> bool {
     // The original item box is (-16,-16,0)..(16,16,64). Test it against
     // Alice's body, including the corners, rather than a smaller centre radius.
     let reach = crate::collision::PLAYER_HALF.truncate() + Vec2::splat(16.);

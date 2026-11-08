@@ -953,11 +953,16 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                 }
             }
             set_default_camera();
-            if performance_open { ui.toast(&performance_text, screen_height() - 76.); }
-            ui.toast(if playing { "Co-op preview" }
-                else if started_playing.is_some() { "Your partner left. Share the invite to rejoin." }
-                else { "Waiting for the other player to finish loading..." }, screen_height() - 110.);
-            ui.toast(if menu { "Esc: resume / Q: leave co-op" } else if launch.host { "Esc: menu / F8: copy invite" } else { "Esc: menu" }, screen_height() - 50.);
+            let hint_y = |offset| screen_height() - offset * crate::ui::overlay_scale();
+            if performance_open && playing {
+                ui.toast(&performance_text, hint_y(120.));
+                ui.toast(&renderer, hint_y(180.));
+            } else {
+                ui.toast(if playing { "Co-op preview" }
+                    else if started_playing.is_some() { "Your partner left. Share the invite to rejoin." }
+                    else { "Waiting for the other player to finish loading..." }, hint_y(120.));
+            }
+            ui.toast(if menu { "Esc: resume / Q: leave co-op" } else if launch.host { "Esc: menu / F8: copy invite" } else { "Esc: menu" }, hint_y(60.));
             if let Some((at, message)) = &checkpoint_message {
                 if !menu && at.elapsed() < Duration::from_secs(6) { ui.toast(message, 90.); }
             }

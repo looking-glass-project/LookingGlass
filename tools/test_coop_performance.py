@@ -23,22 +23,9 @@ class Exercise:
         self.desktop.send([Input(1, Payload(key=Key(0, self.desktop.user.MapVirtualKeyW(key, 0), 8 if down else 10, 0, 0)))])
 
     def update(self, process):
-        from test_coop_menu import Input, Payload, Mouse, wait
+        from test_coop_menu import Input, Payload, Mouse
         if self.started is None:
-            hwnd = wait(lambda: self.desktop.window(process.pid), label='owned guest window')
-            if os.environ.get('ANODE_LEASE_TOKEN'):
-                # Use the seat's focus operation when Windows denies a job
-                # process foreground activation. Keep the caller's existing lease.
-                def anode(*args):
-                    return json.loads(subprocess.check_output(['anode', *args, '--json'],
-                        creationflags=subprocess.CREATE_NO_WINDOW, timeout=15))
-                windows = anode('windows', '--pid', str(process.pid))['windows']
-                window = next(w for w in windows if w['className'] == 'MINIQUADAPP')
-                anode('window', window['windowId'], 'focus')
-                wait(lambda: self.desktop.user.GetForegroundWindow() == hwnd, 3, 'guest focus')
-                self.hwnd = hwnd
-            else:
-                self.hwnd = self.desktop.focus(process)
+            self.hwnd = self.desktop.focus(process)
             self.started = time.monotonic()
         assert self.desktop.user.GetForegroundWindow() == self.hwnd, 'Guest lost focus or left gameplay; inspect host.log and guest.log'
         elapsed = time.monotonic() - self.started

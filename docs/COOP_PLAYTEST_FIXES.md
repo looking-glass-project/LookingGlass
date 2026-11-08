@@ -3,8 +3,9 @@
 This work addresses the first remote two-player playtest of preview.1.
 Both players must use the same candidate executable. Save formats and game-data
 requirements are unchanged.
-The packaged preview.2 candidate contains the first batch below; the network
-follow-up is a newer development build pending a replacement package.
+The preview.3 test candidate combines the first batch below with the network
+follow-up. Both players need preview.3; older candidates have different co-op
+build identities. F11 displays frame timing and the active graphics renderer.
 
 ## Changes
 
@@ -154,3 +155,16 @@ checks observed movement and camera rotation. Pass the active Anode lease
 environment to use its verified window-focus operation. No screenshots or
 game-state edits are needed. Compact reports also record delivered snapshot
 counts, bytes and age; frame rate alone cannot prove responsive gameplay.
+
+## Preview.3 package checks
+
+The preview.3 executable also passed the public-invite menu acceptance checks:
+host difficulty, both aim renderers, both Tab/console overlays and shared chapter
+travel. The guest rendered at exactly 2560 x 1600. F11 reported its active GPU,
+and its labels were visually checked after fixing overlap at larger UI scales.
+The version build passed the 978-test suite; the final overlay layout was rebuilt
+and checked in the native client. Seven source-package tests passed.
+
+Final preview.3 executable SHA-256:
+`3bba8bea872a31efc83b2a4027f442d81fa4fdfe20af6f1da9fbf6c9cca1a2ec`.
+This remains a test candidate for the remote laptop, not a published release.

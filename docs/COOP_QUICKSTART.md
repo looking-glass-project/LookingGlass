@@ -24,7 +24,7 @@ is available to both players. Type `help` for supported co-op commands; the host
 controls shared map changes, restart and checkpoint saving. These overlays do
 not pause the other player.
 
-**F11** toggles a frame-rate overlay and a small `private/coop-performance.json`
+**F11** toggles a frame-rate/active-GPU overlay and a small `private/coop-performance.json`
 report (inside the selected profile when using `--profile`). It records every
 frame in each reporting interval, including stalls. Detailed world reports are
 disabled in normal play; automated tests can opt in with

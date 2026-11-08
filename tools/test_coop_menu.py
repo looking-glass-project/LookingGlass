@@ -94,6 +94,16 @@ class Desktop:
         assert process.poll() is None, 'Owned game exited'
         hwnd = wait(lambda: self.window(process.pid), label='owned game window')
         self.user.SetForegroundWindow(hwnd)
+        if self.user.GetForegroundWindow() != hwnd and os.environ.get('ANODE_LEASE_TOKEN'):
+            # Job processes can be denied foreground activation. Ask the seat
+            # to focus this freshly observed owned window using the same lease.
+            def anode(*args):
+                return json.loads(subprocess.check_output(['anode', *args, '--json'],
+                    creationflags=subprocess.CREATE_NO_WINDOW, timeout=15))
+            windows = anode('windows', '--pid', str(process.pid))['windows']
+            window = next(w for w in windows if w['className'] == 'MINIQUADAPP')
+            anode('window', window['windowId'], 'focus')
+            wait(lambda: self.user.GetForegroundWindow() == hwnd, 3, 'owned window focus')
         if self.user.GetForegroundWindow() != hwnd:
             # Windows may reject programmatic foreground activation. Raise our
             # own window and click its observed title bar, as a user would.

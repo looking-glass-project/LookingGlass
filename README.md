@@ -11,7 +11,7 @@ options. It uses your own compatible game files and runs independently of the
 original game executable, gameplay DLL and Alice: Madness Returns.
 
 [Visit the Looking Glass website](https://looking-glass-project.github.io/LookingGlass/) ·
-**[Download for Windows — play the full campaign](https://github.com/looking-glass-project/LookingGlass/releases/download/v0.33.0-preview.1/LookingGlass-Windows-x64-v0.33.0-preview.1.zip)** ·
+**[Download for Windows — play the full campaign](https://github.com/looking-glass-project/LookingGlass/releases/download/v0.33.0-preview.4/LookingGlass-Windows-x64-v0.33.0-preview.4.zip)** ·
 [Watch the 78-second story showcase](#gameplay-showcase) ·
 [Report a bug](https://github.com/looking-glass-project/LookingGlass/issues/new/choose)
 
@@ -27,6 +27,10 @@ content remains with EA and its respective rights holders.** Looking Glass claim
 no ownership of that content. [Rights and distribution notice](LEGAL.md).
 
 ## Two-player co-op
+
+Both players need **v0.33.0-preview.4**. It includes the latest setup, menu and
+latency fixes; remote guest stutter and post-cutscene lag are still being
+verified. See the [playtest fixes and evidence](docs/COOP_PLAYTEST_FIXES.md).
 
 Open the regular **Launch.cmd**, then choose **Co-op** from the main menu or
 ESC. **Host** creates an internet invite link; **Join** accepts it. Blue and red
@@ -128,7 +132,7 @@ Full videos are 720p. [Recording details](docs/media/gameplay/README.md).
 
 ## Install and play
 
-1. **[Download for Windows](https://github.com/looking-glass-project/LookingGlass/releases/download/v0.33.0-preview.1/LookingGlass-Windows-x64-v0.33.0-preview.1.zip)**. This downloads the one ZIP you need.
+1. **[Download for Windows](https://github.com/looking-glass-project/LookingGlass/releases/download/v0.33.0-preview.4/LookingGlass-Windows-x64-v0.33.0-preview.4.zip)**. This downloads the one ZIP you need.
 2. Right-click the ZIP, choose **Extract All**, and open the extracted folder.
    Keep it somewhere writable, such as `Documents\LookingGlass`.
 3. Double-click **Launch.cmd**. Setup defaults to game files already on your
@@ -163,7 +167,7 @@ and setup's integrity checks do not establish permission to download or use it.
 See the [game-data and media notice](LEGAL.md#what-the-project-distributes).
 
 See [installation and troubleshooting](docs/INSTALL.md), including updates and
-building from source. [Release notes and checksums](https://github.com/looking-glass-project/LookingGlass/releases/tag/v0.33.0-preview.1)
+building from source. [Release notes and checksums](https://github.com/looking-glass-project/LookingGlass/releases/tag/v0.33.0-preview.4)
 describe the exact package and its verification limits.
 
 Use the in-game settings to view or change controls. **Esc** opens the menu,

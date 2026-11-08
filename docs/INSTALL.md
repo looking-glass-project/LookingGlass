@@ -12,7 +12,7 @@ setup is busy finishes installation before closing; use **Cancel** to stop it.
 installation has not finished. Downloads are kept under `private/downloads` in
 the extracted Looking Glass folder, and installed files under `private/game-data`.
 
-**[Download for Windows — ZIP](https://github.com/looking-glass-project/LookingGlass/releases/download/v0.33.0-preview.1/LookingGlass-Windows-x64-v0.33.0-preview.1.zip)**
+**[Download for Windows — ZIP](https://github.com/looking-glass-project/LookingGlass/releases/download/v0.33.0-preview.4/LookingGlass-Windows-x64-v0.33.0-preview.4.zip)**
 
 This link downloads the one package you need. The other GitHub release files
 are optional developer, verification or video files; you do not need them to play.

@@ -1,4 +1,24 @@
-# Co-op preview
+# Co-op fixes and latency update
+
+**v0.33.0-preview.4**, 8 November 2026, is the current
+[experimental prerelease](https://github.com/looking-glass-project/LookingGlass/releases/tag/v0.33.0-preview.4).
+The repository, installation guide and website download links select this build.
+Both co-op players need the same version.
+
+It fixes setup persistence, adds 2560 x 1600, restores each player's aim glow,
+and provides difficulty selection, Tab and supported console commands in co-op.
+Snapshot deltas, bounded flow control and stable update schedules reduce
+avoidable network delay. It passed 985 Rust tests (six ignored), Windows CI,
+native public-invite menu, save/rejoin, particle and stall-recovery checks.
+Remote guest stutter and post-cutscene lag remain unverified on the affected
+laptop; local performance results do not establish that those reports are fixed.
+See [the evidence and remaining limits](COOP_PLAYTEST_FIXES.md).
+
+The release tag and tested executable correspond to source commit
+`fe4f38171bb5f465cd4fda1145d0f6e963502289`, now merged into `main`.
+The package, source manifest and checksums are unchanged by the merge.
+
+## First co-op preview (historical record)
 
 **v0.33.0-preview.1**, 8 November 2026, brings two-player internet co-op to the
 regular **Launch.cmd** and main/ESC menus. Host shares an invite link; Join uses

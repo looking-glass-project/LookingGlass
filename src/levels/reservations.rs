@@ -246,7 +246,7 @@ pub static RESERVATIONS: [Reservation; 39] = [
                 "--potears2-store-write-check",
                 "--potears2-store-read-check",
             ],
-            route: &["--potears2-route-check", "--potears2-route-native-check"],
+            route: &["--potears2-route-check", "--potears2-route-native-check", "--potears2-coop-route-check"],
             skip: &["--potears2-skip-route-check"],
             render: &["--potears2-render-check"],
         }),

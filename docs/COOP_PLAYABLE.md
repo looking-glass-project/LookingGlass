@@ -56,6 +56,33 @@ a normal-play blocker, data loss, or a missing requested core feature.
 Report playable readiness and the polishing backlog separately. Do not label
 the game 100% playable while a level or requested core flow remains blocked.
 
+## Hollow Hideaway normal paired route accepted
+
+Frozen `5fd9df4` passes the complete normal paired visit in **33,897 ticks**,
+with **283 exact compressed replicas**, the original Bill scene and reunion,
+and actual Just Desserts arrival. Both players finish alive at **78.70/26 health**.
+Red dies once and revives at **25 health after exactly 1,200 active ticks**;
+there are no team wipes, health floors, cheats or forced progression.
+
+The input pilot takes narrow banks in single file, boards both large leaves,
+and steers around obstacles using swept collision queries. Both players make
+an ordinary diagonal jump from lily four to the house bank. Lily five's carry
+retains its existing component evidence; its alternative landing route is not
+claimed by this run. Combat, world machinery, scenes and saves are unchanged.
+
+The accepted course is pinned in `private/coop-playable-hollow-course-verified.json`.
+The default diagnostic on `b88c6c7` exactly matches the accepted commands, players,
+world and arrival; its pin is `private/coop-playable-hollow-default-verified.json`.
+Repeat with
+`tools/test_coop_native_route.py --map potears2`, local game data and a new profile.
+All 951 active Rust tests pass on `20e7894`; subsequent changes affect only
+diagnostic inputs and geometry inspection. Source/package checks pass.
+
+Normal route coverage is now **38/39 visits**, or **81.0%** under the existing
+overall weighting. Pool of Tears is the remaining normal visit. The actual
+two-client ending film/credits handoff is still required. The thirteen public
+save/rejoin core groups remain accepted on unchanged `0b5bca3`.
+
 ## School Two normal paired route accepted
 
 Frozen `b925e5c` passes the complete main quest in **53,696 ticks**, with

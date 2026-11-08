@@ -21,7 +21,7 @@ impl Clock {
     }
 }
 #[derive(Clone, Copy, Default)]
-pub(super) struct Walker { pub cursor: usize, age: u64, jumped: bool }
+pub(super) struct Walker { pub cursor: usize, age: u64, jumped: bool, last: Option<Vec3> }
 impl Walker {
     pub(super) fn input(&mut self, player:&crate::movement::Player, steps:&[Step], partner_done:bool,
         clock:Option<bool>, boarding:Option<&machine::Pose>)->Controls {
@@ -29,17 +29,20 @@ impl Walker {
         let goal=Vec3::from_array(step.at);
         let delta=boarding.map_or(goal,|pose|pose.center+pose.rotation*goal)-player.feet;
         let close=if self.cursor+1==steps.len() && partner_done {70.}else{22.};
+        let steering=step.mode=="steer";
         let done=if let Some(ready)=clock {ready}
         else if let Some(pose)=boarding {pose.supports(player)}
         else if step.mode=="rise" {player.grounded && player.feet.z>=goal.z}
         else if step.mode=="wait" {self.age>=step.ticks} else {
-            delta.truncate().length()<close && delta.z.abs()<64.
-                && (step.mode=="air" || player.grounded || player.swimming)
+            delta.truncate().length()<close && delta.z.abs()<(if steering {48.}else{64.})
+                && (steering || step.mode=="air" || player.grounded || player.swimming)
         };
-        if done {self.cursor+=1;self.age=0;self.jumped=false;return Controls::default();}
+        if done {self.cursor+=1;self.age=0;self.jumped=false;self.last=None;return Controls::default();}
+        let stuck=steering && self.age%120==119 && self.last.is_some_and(|at|player.feet.distance(at)<18.);
+        if self.age%120==0 {self.last=Some(player.feet);}
         self.age+=1;
         if clock.is_some() || matches!(step.mode.as_str(),"wait"|"rise") {return Controls::default();}
-        let jump=player.ledge.as_ref().is_some_and(|h|!h.pulling) || player.grounded
+        let jump=stuck || player.ledge.as_ref().is_some_and(|h|!h.pulling) || player.grounded
             && (boarding.is_some() && !self.jumped || step.mode=="hop"
                 || matches!(step.mode.as_str(),"jump"|"air"|"precise") && (!self.jumped || delta.z>24.));
         self.jumped|=jump;
@@ -48,7 +51,7 @@ impl Walker {
         } else if step.mode=="precise" || step.mode=="air" && delta.truncate().length()<30. {
             (delta.truncate()*3.-player.velocity.truncate()*0.7).clamp_length_max(320.)/320.
         } else {delta.truncate().normalize_or_zero()},swim:delta.normalize_or_zero(),
-            rise:delta.z.signum(),run:true,jump,..Default::default()}
+            rise:if steering {if player.immersion.level>0 {1.}else{0.}}else{delta.z.signum()},run:true,jump,..Default::default()}
     }
     pub(super) fn rejoin(&mut self, partner:Self) { *self=Self{cursor:partner.cursor,..Default::default()}; }
 }

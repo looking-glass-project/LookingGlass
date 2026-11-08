@@ -2,6 +2,7 @@
 mod check;
 mod coop;
 mod coop_check;
+pub(crate) mod coop_route;
 mod data;
 mod fish;
 mod guards;
@@ -772,6 +773,7 @@ pub static REGISTRATION: Registration = Registration {
         Check { flag: "--potears2-store-read-check", help: "Read normal-route saves in a fresh process.", run: Run::Windowed(|a|Box::pin(save_check::run(a,false))) },
         Check { flag: "--potears2-transport-check", help: "Verify pond rides, fish timer, pause and restore.", run: Run::Headless(transport_check::check) },
         Check { flag: "--potears2-coop-check", help: "Verify paired pond rides, guards and personal fish deaths.", run: Run::Headless(coop_check::check) },
+        Check { flag: "--potears2-coop-route-check", help: "Normal paired pond route to Just Desserts.", run: Run::Windowed(coop_route::check) },
         Check { flag: "--potears2-route-check", help: "Ordinary entrance to Just Desserts.", run: Run::Headless(route::check) },
         Check { flag: "--potears2-route-native-check", help: "Ordinary pond route with the native cast.", run: Run::Windowed(|a|Box::pin(route::render(a))) },
         Check { flag: "--potears2-check", help: "Verify the staged house guard/scene ending; restored pond route has separate checks.", run: Run::Headless(check) },

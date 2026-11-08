@@ -1,6 +1,6 @@
 # Co-op progress
 
-Updated 8 November 2026. Branch: `coop`. **Estimated overall completion: 80.5%.**
+Updated 8 November 2026. Branch: `coop`. **Estimated overall completion: 81.0%.**
 The target is now [100% playable co-op](COOP_PLAYABLE.md), followed by a
 separate polishing stage. Complete normal progression and core flows first;
 batch implementation and reuse passing evidence. The historical exhaustive
@@ -41,7 +41,7 @@ foundation point credited the missing import feature. The current additional
 Internet Host/Join point credits completed public core consolidation on `0b5bca3`;
 no additional campaign visit is credited.
 
-Thirty-seven of 39 visits now have credited normal paired route evidence. Six retain
+Thirty-eight of 39 visits now have credited normal paired route evidence. Six retain
 the historical combined designation; the broader matrix still labels 33 as
 partial because it includes polishing cases. The next priority is normal paired campaign
 pass, fixing progression blockers and checking core recovery at representative
@@ -55,8 +55,35 @@ remain in the polishing backlog.
 | Two players, movement and presentation | 11.75 | 15 |
 | Combat, individual resources and death | 13.5 | 20 |
 | Scenes, transport and progression | 16 | 20 |
-| Campaign playability | 18.97 | 20 |
-| **Total** | **80.4744, rounded to 80.5** | **100** |
+| Campaign playability | 19.49 | 20 |
+| **Total** | **80.9872, rounded to 81.0** | **100** |
+
+## Hollow Hideaway normal paired route accepted
+
+Frozen `5fd9df4` passes the complete normal paired visit in **33,897 ticks**,
+with **283 exact compressed replicas**, the original Bill scene and reunion,
+and actual Just Desserts arrival. Both players finish alive at **78.70/26 health**.
+Red dies once and revives at **25 health after exactly 1,200 active ticks**;
+there are no team wipes, health floors, cheats or forced progression.
+
+The input pilot takes narrow banks in single file, boards both large leaves,
+and steers around obstacles using swept collision queries. Both players make
+an ordinary diagonal jump from lily four to the house bank. Lily five's carry
+retains its existing component evidence; its alternative landing route is not
+claimed by this run. Combat, world machinery, scenes and saves are unchanged.
+
+The accepted course is pinned in `private/coop-playable-hollow-course-verified.json`.
+The default diagnostic on `b88c6c7` exactly matches the accepted commands, players,
+world and arrival; its pin is `private/coop-playable-hollow-default-verified.json`.
+Repeat with
+`tools/test_coop_native_route.py --map potears2`, local game data and a new profile.
+All 951 active Rust tests pass on `20e7894`; subsequent changes affect only
+diagnostic inputs and geometry inspection. Source/package checks pass.
+
+Normal route coverage is now **38/39 visits**, or **81.0%** under the existing
+overall weighting. Pool of Tears is the remaining normal visit. The actual
+two-client ending film/credits handoff is still required. The thirteen public
+save/rejoin core groups remain accepted on unchanged `0b5bca3`.
 
 ## School Two normal paired route accepted
 

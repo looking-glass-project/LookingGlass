@@ -25,6 +25,10 @@ use tungstenite::{
 pub const MAX_INPUT: usize = 8 * 1024;
 pub const MAX_STATE: usize = 8 * 1024 * 1024;
 const QUEUE: usize = 4;
+// Delay injection needs room for packets in flight, not just a render-frame
+// burst. Four small messages at 200 ms would otherwise cap traffic at 20 Hz.
+const DELAY_PACKETS: usize = 256;
+const DELAY_BYTES: usize = QUEUE * MAX_STATE;
 const IDLE: Duration = Duration::from_secs(15);
 const READY_PROBE: &str = "x-looking-glass-probe";
 const READY_REPLY: &str = "x-looking-glass-ready";
@@ -556,6 +560,10 @@ fn exchange<S: Read + Write>(
     let mut received_at = Instant::now();
     let mut ping_at = Instant::now();
     let mut pending = VecDeque::<(Instant, Vec<u8>)>::new();
+    let mut pending_bytes = 0;
+    let pending_limit = if conditions.delay_ms != 0 || conditions.jitter_ms != 0 {
+        DELAY_PACKETS
+    } else { QUEUE };
     let mut random = 0x41872_u32;
     let generation = shared.generation.load(Ordering::Acquire);
     let mut waiting_input = None;
@@ -573,7 +581,9 @@ fn exchange<S: Read + Write>(
                 );
             }
         }
-        if pending.len() < QUEUE {
+        // Leave room for the largest allowed packet before reading the channel.
+        // Large snapshots retain the old memory bound even during simulation.
+        if pending.len() < pending_limit && pending_bytes <= DELAY_BYTES - MAX_STATE {
             match outgoing.try_recv() {
                 Ok((packet_generation, data)) => {
                     if packet_generation != generation {
@@ -584,6 +594,7 @@ fn exchange<S: Read + Write>(
                     let due = Instant::now()
                         + Duration::from_millis(u64::from(conditions.delay_ms) + u64::from(jitter));
                     let due = pending.back().map_or(due, |(last, _)| due.max(*last));
+                    pending_bytes += data.len();
                     pending.push_back((due, data));
                 }
                 Err(TryRecvError::Disconnected) => return Ok(()),
@@ -595,6 +606,7 @@ fn exchange<S: Read + Write>(
             .is_some_and(|(due, _)| *due <= Instant::now())
         {
             let (_, data) = pending.pop_front().unwrap();
+            pending_bytes -= data.len();
             if let Err(e) = socket.write(Message::Binary(data.into())) {
                 if !would_block(&e) {
                     bail!("The connection cannot keep up with game updates.");
@@ -1049,6 +1061,37 @@ mod tests {
         assert_eq!(guest.state(), State::Connected);
         assert!(!guest.send(vec![0; MAX_INPUT + 1]).is_ok());
     }
+    #[test]
+    fn simulated_latency_does_not_turn_regular_input_traffic_into_a_bandwidth_limit() {
+        let conditions=Conditions{delay_ms:160,jitter_ms:50};
+        let (host, invite)=host(conditions).unwrap();
+        let guest=join(invite,conditions).unwrap();
+        wait_connected(&host,&guest);
+        let started=Instant::now();
+        let (mut sent,mut received)=(0_u64,0_u64);
+        let mut worst=Duration::ZERO;
+        // Thirty input samples plus snapshot receipts can exceed 40 messages
+        // per second. Injecting latency must preserve that ordinary throughput.
+        while received<120 {
+            let now=Instant::now();
+            if sent<120 && now.duration_since(started)>=Duration::from_millis(sent*25)
+                && guest.send(sent.to_le_bytes().to_vec()).unwrap() { sent+=1; }
+            while let Some(bytes)=host.receive() {
+                assert_eq!(bytes,received.to_le_bytes(),"Delay injection reordered input");
+                let generated=started+Duration::from_millis(received*25);
+                let elapsed=Instant::now().duration_since(generated);
+                assert!(elapsed>=Duration::from_millis(160),"Packet bypassed injected latency");
+                worst=worst.max(elapsed);
+                received+=1;
+            }
+            assert_eq!(host.state(),State::Connected);
+            assert!(started.elapsed()<Duration::from_secs(12),"Delay injector stalled");
+            thread::sleep(Duration::from_millis(1));
+        }
+        assert!(worst<Duration::from_millis(650),
+            "160-210 ms latency accumulated a {worst:?} queue under ordinary input traffic");
+    }
+
     #[test]
     fn ignored_updates_and_slow_readers_have_bounded_backpressure() {
         let (host, invite) = host(Conditions::default()).unwrap();

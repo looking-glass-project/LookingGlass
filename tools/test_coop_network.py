@@ -14,11 +14,13 @@ import uuid
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def run(exe, internet=False, delay=0, jitter=0, join_delay=0):
+def run(exe, internet=False, delay=0, jitter=0, join_delay=0, reply_bytes=0):
     folder = ROOT / 'private' / 'coop' / ('network-test-' + uuid.uuid4().hex)
     folder.mkdir(parents=True)
     invite = folder / 'invite.txt'
     common = ['--invite-file', str(invite), '--seconds', '90', '--delay-ms', str(delay), '--jitter-ms', str(jitter)]
+    if reply_bytes:
+        common.extend(['--reply-bytes', str(reply_bytes)])
     flags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
     with (folder / 'host.log').open('w') as host_log, (folder / 'guest.log').open('w') as guest_log:
         host = subprocess.Popen([str(exe), '--coop-probe-host', '--profile', str(folder / 'host'), *common,
@@ -48,6 +50,9 @@ def run(exe, internet=False, delay=0, jitter=0, join_delay=0):
                 assert settings == saves == {'role': role, 'pid': report['pid']}
             print(f'PASS {"internet" if internet else "loopback"}: two processes, isolated profiles, 16 exchanges, {delay} ms delay + {jitter} ms jitter per sender; initial join delay {join_delay}s.')
             print('Private evidence:', folder)
+            if 'round_trip_ms' in reports[1]:
+                times = reports[1]['round_trip_ms']
+                print('Round trips (ms):', json.dumps(dict(small=times[::2], large=times[1::2])))
         finally:
             for process in (guest, host):
                 if process is not None and process.poll() is None:
@@ -67,5 +72,7 @@ if __name__ == '__main__':
     parser.add_argument('--delay-ms', type=int, default=0)
     parser.add_argument('--jitter-ms', type=int, default=0)
     parser.add_argument('--join-delay-seconds', type=int, default=0, choices=range(61))
+    parser.add_argument('--reply-bytes', type=int, default=0,
+                        help='Alternate tiny replies and padded replies of this size to diagnose snapshot delivery')
     args = parser.parse_args()
-    run(args.exe.resolve(), args.internet, args.delay_ms, args.jitter_ms, args.join_delay_seconds)
+    run(args.exe.resolve(), args.internet, args.delay_ms, args.jitter_ms, args.join_delay_seconds, args.reply_bytes)

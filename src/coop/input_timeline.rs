@@ -9,6 +9,16 @@ const MAX_SPAN_MICROS: u64 = 2_000_000;
 const TICK_UNITS: u128 = 1_000_000;
 const SETTLED_IDLE_UNITS: u128 = 30 * TICK_UNITS;
 
+/// Valid controls arrived too late to replay within the bounded timeline.
+/// The session can recover through its ordered reset barrier; invalid clocks
+/// and action counters remain ordinary protocol errors.
+#[derive(Debug)]
+pub struct InputBacklog;
+impl std::fmt::Display for InputBacklog {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { f.write_str("Player controls are too far ahead of the host.") }
+}
+impl std::error::Error for InputBacklog {}
+
 #[derive(Clone, Copy)]
 pub struct SampledInput {
     pub input: Input,
@@ -121,12 +131,11 @@ impl TimedInput {
             // a current one in the same poll. Replaying seconds of that idle
             // only adds latency; it contains no movement or action to retain.
             // Active intervals, changed edges and forged clocks remain bounded.
-            ensure!(input.wish==Vec2::ZERO && input.swim==Vec3::ZERO && input.rise==0.
+            if !(input.wish==Vec2::ZERO && input.swim==Vec3::ZERO && input.rise==0.
                 && !input.primary && !input.alternate && !input.skip_scene
                 && counters(input)==counters(previous) && pending.iter().all(|&n|n==0)
                 && self.current.is_none_or(|s|s.input==input)
-                && self.queued.iter().all(|s|s.input==input),
-                "Player controls are too far ahead of the host.");
+                && self.queued.iter().all(|s|s.input==input)) { return Err(InputBacklog.into()); }
             self.current=None; self.queued.clear(); self.elapsed=0;
         }
         let sample=Sample{sequence,input,at:sampled_micros};
@@ -148,7 +157,7 @@ impl TimedInput {
                 self.elapsed=self.elapsed.max(confirmed);
             }
         } else {
-            ensure!(self.queued.len()<MAX_SAMPLES,"Too many pending co-op controls.");
+            if self.queued.len()>=MAX_SAMPLES { return Err(InputBacklog.into()); }
             self.queued.push_back(sample);
         }
         self.origin.get_or_insert((sampled_micros, now));

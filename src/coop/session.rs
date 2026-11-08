@@ -19,6 +19,7 @@ const FRAMES_IN_FLIGHT: usize = 4;
 /// channels are small. Receipt feedback bounds the entire path to the guest.
 #[derive(Default)]
 struct SnapshotWindow {
+    base: Option<Vec<u8>>,
     pending: VecDeque<u64>,
     sent: Option<u64>,
     seen: Option<u64>,
@@ -144,14 +145,16 @@ impl Host {
             "Host snapshot is out of order.");
         frame.validate()?;
         let tick = frame.tick;
-        let sent = self.peer.send(super::codec::encode(&serde_json::to_vec(
+        let serialized = serde_json::to_vec(
             &FromHost::Frame {
                 frame: Box::new(frame),
             },
-        )?)?)?;
+        )?;
+        let sent = self.peer.send(super::codec::encode_snapshot(&serialized, self.frames.base.as_deref())?)?;
         if sent {
             self.frames.pending.push_back(tick);
             self.frames.sent = Some(tick);
+            self.frames.base = Some(serialized);
         }
         Ok(sent)
     }
@@ -300,7 +303,16 @@ impl Host {
                     );
                     // In-flight input from a departing visit is ordinary, not an error.
                     if epoch == self.visit.epoch && self.phase == Phase::Playing {
-                        self.input.accept(sequence, controls, sampled_micros, now)?;
+                        if let Err(error) = self.input.accept(sequence, controls, sampled_micros, now) {
+                            if !error.is::<super::protocol::InputBacklog>() { return Err(error); }
+                            // A real internet stall can deliver seconds of valid
+                            // movement together. Cancel that stale interval and
+                            // consume its edges through the existing ordered
+                            // barrier instead of disconnecting or replaying it.
+                            self.cancel_controls()?;
+                            self.input.accept(sequence, controls, sampled_micros, now)?;
+                            eprintln!("Co-op input backlog: synchronizing fresh controls.");
+                        }
                         // Inputs ahead of the ordered reset reply were sampled
                         // while the host was suspended. Validate their counters
                         // without applying or retaining their movement intervals.
@@ -408,6 +420,11 @@ pub struct Guest {
     latest_controls: Input,
     control_reset: u64,
     input_round_trip_ms: Option<f32>,
+    received_frames: u64,
+    received_frame_bytes: u64,
+    received_frame_at: Option<Instant>,
+    frame_base: Option<Vec<u8>>,
+    frame_gap_ms: Option<f32>,
     frame: Option<super::world::Frame>,
     last_tick: Option<u64>,
     receipt: Option<u64>,
@@ -432,6 +449,11 @@ impl Guest {
             latest_controls: Input::default(),
             control_reset: 0,
             input_round_trip_ms: None,
+            received_frames: 0,
+            received_frame_bytes: 0,
+            received_frame_at: None,
+            frame_base: None,
+            frame_gap_ms: None,
             frame: None,
             last_tick: None,
             receipt: None,
@@ -458,6 +480,10 @@ impl Guest {
             "sent_input": self.sequence,
             "queued_input_samples": self.queued_controls.len(),
             "round_trip_ms": self.input_round_trip_ms,
+            "received_frames": self.received_frames,
+            "received_frame_bytes": self.received_frame_bytes,
+            "last_snapshot_gap_ms": self.frame_gap_ms,
+            "snapshot_age_ms": self.received_frame_at.map(|at| at.elapsed().as_secs_f32()*1000.),
             "oldest_pending_ms": self.sent_inputs.front().map(|(_, at)| at.elapsed().as_secs_f32()*1000.),
         })
     }
@@ -503,7 +529,7 @@ impl Guest {
                 bytes.len() <= MAX_STATE,
                 "Host session message exceeds its limit."
             );
-            let decoded = super::codec::decode(&bytes)?;
+            let decoded = super::codec::decode_snapshot(&bytes, self.frame_base.as_deref())?;
             let message: FromHost = serde_json::from_slice(&decoded)
                 .map_err(|_| anyhow::anyhow!("The host sent an invalid session message."))?;
             match message {
@@ -535,6 +561,11 @@ impl Guest {
                     self.latest_controls = Input::default(); self.control_reset = 0;
                     self.sent_inputs.clear();
                     self.input_round_trip_ms = None;
+                    self.received_frames = 0;
+                    self.received_frame_bytes = 0;
+                    self.received_frame_at = None;
+                    self.frame_base = None;
+                    self.frame_gap_ms = None;
                     self.frame = None;
                     self.last_tick = None;
                     self.receipt = None;
@@ -586,6 +617,10 @@ impl Guest {
                         "Host snapshot is out of order."
                     );
                     frame.validate()?;
+                    self.received_frames += 1;
+                    self.received_frame_bytes += bytes.len() as u64;
+                    self.frame_gap_ms = self.received_frame_at.map(|at| now.saturating_duration_since(at).as_secs_f32()*1000.);
+                    self.received_frame_at = Some(now);
                     if let Some((_, sent)) = self.sent_inputs.iter().find(|(sequence, _)| *sequence == frame.acknowledged_input) {
                         self.input_round_trip_ms = Some(sent.elapsed().as_secs_f32()*1000.);
                     }
@@ -595,6 +630,7 @@ impl Guest {
                     self.last_tick = Some(frame.tick);
                     self.receipt = Some(frame.tick);
                     self.frame = Some(*frame);
+                    self.frame_base = Some(decoded.into_owned());
                 }
             }
         }
@@ -643,7 +679,9 @@ impl Guest {
             })?)? { break; }
             self.queued_controls.pop();
             self.sequence=sequence;
-            if self.sent_inputs.len()==128 { self.sent_inputs.pop_front(); }
+            // Cover the 15-second transport watchdog at the normal 30 Hz input
+            // rate, so an old queue is not reported as only four seconds old.
+            if self.sent_inputs.len()==512 { self.sent_inputs.pop_front(); }
             self.sent_inputs.push_back((sequence,Instant::now()));
         }
         Ok(())
@@ -657,6 +695,35 @@ mod tests {
     use crate::coop::transport::{self, Conditions};
     use macroquad::prelude::Vec2;
     use std::thread;
+
+    #[test]
+    fn a_long_active_input_burst_resets_without_disconnect_or_replaying_stale_actions() {
+        let (mut host, mut guest, _) = pair(); play(&mut host, &mut guest);
+        let now = Instant::now();
+        let started = now-Duration::from_secs(5);
+        let run = Input{wish:Vec2::X,run:true,..Default::default()};
+        // Model two old samples emerging from a stalled path. The next real
+        // serialized guest packet is current and exceeds the playback budget.
+        host.input.accept(1,run,0,started).unwrap();
+        host.input.accept(2,run,1_000_000,now).unwrap();
+        assert_eq!(host.controls(now).0.wish,Vec2::X);
+        guest.sequence = 2; guest.input_started = started;
+        guest.controls(Input{jumps:1,attack_presses:[1,0],..run}).unwrap();
+        until(&mut host,&mut guest,|h,_|h.control_reset==1 && !h.awaiting_controls);
+        assert_eq!(host.phase(),Phase::Playing);
+        assert_eq!(guest.phase(),Phase::Playing);
+        for _ in 0..120 {
+            let (motion, buttons) = host.controls(Instant::now());
+            assert_eq!(motion.wish,Vec2::ZERO);
+            assert!(!motion.jump && !buttons.primary);
+        }
+        let before = host.acknowledged_input();
+        guest.controls(Input{wish:Vec2::Y,jumps:2,attack_presses:[1,0],..run}).unwrap();
+        until(&mut host,&mut guest,|h,_|h.acknowledged_input()>before);
+        let fresh = host.controls(Instant::now()).0;
+        assert_eq!(fresh.wish,Vec2::Y); assert!(fresh.jump);
+        assert!(!host.controls(Instant::now()).0.jump);
+    }
 
     #[test]
     fn suspended_host_uses_an_ordered_barrier_before_fresh_controls() {

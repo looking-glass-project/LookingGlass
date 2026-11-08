@@ -30,6 +30,7 @@ struct Options {
     invite: PathBuf,
     seconds: u64,
     conditions: Conditions,
+    reply_bytes: usize,
 }
 
 pub fn cli(args: &[String]) -> Option<Result<()>> {
@@ -48,11 +49,13 @@ fn parse(args: &[String]) -> Result<Options> {
         invite: PathBuf::new(),
         seconds: 90,
         conditions: Conditions::default(),
+        reply_bytes: 0,
     };
     let mut iter = args.iter().skip(1);
     while let Some(arg) = iter.next() {
         match arg.as_str() {
             "--internet" => o.internet = true,
+            "--reply-bytes" => o.reply_bytes = iter.next().context("--reply-bytes requires a size")?.parse()?,
             "--profile" => o.profile = iter.next().context("--profile requires a folder")?.into(),
             "--invite-file" => {
                 o.invite = iter.next().context("--invite-file requires a file")?.into()
@@ -90,6 +93,7 @@ fn parse(args: &[String]) -> Result<Options> {
         o.conditions.delay_ms <= 2000 && o.conditions.jitter_ms <= 2000,
         "Probe delay is limited to two seconds."
     );
+    ensure!(o.reply_bytes <= transport::MAX_STATE, "Probe reply exceeds the packet limit.");
     Ok(o)
 }
 
@@ -174,7 +178,11 @@ fn host(o: &Options) -> Result<()> {
                 pending.is_none(),
                 "Guest sent another request before its reply."
             );
-            pending = Some(serde_json::to_vec(&probe)?);
+            let mut reply = serde_json::to_vec(&probe)?;
+            // Alternate tiny receipts and snapshot-sized replies on the same
+            // connection. JSON permits trailing whitespace; no game data is used.
+            if probe.sequence % 2 == 1 { reply.resize(reply.len().max(o.reply_bytes), b' '); }
+            pending = Some(reply);
         }
         if let Some(data) = &pending {
             if peer.send(data.clone())? {
@@ -191,6 +199,7 @@ fn host(o: &Options) -> Result<()> {
         serde_json::to_vec_pretty(&serde_json::json!({
             "passed": true, "role": "host", "pid": std::process::id(), "peer_pid": guest_pid,
             "exchanges": received, "internet": o.internet,
+            "large_reply_bytes": o.reply_bytes,
         }))?,
     )?;
     println!(
@@ -237,7 +246,9 @@ fn guest(o: &Options) -> Result<()> {
     };
     println!("Guest connected; exchanging authenticated packets.");
     let mut host_pid = None;
+    let mut round_trip_ms = Vec::new();
     for sequence in 0..ROUNDS {
+        let sent_at = Instant::now();
         let probe = Probe {
             sequence,
             guest_pid: std::process::id(),
@@ -265,6 +276,7 @@ fn guest(o: &Options) -> Result<()> {
                     "The host is not a stable, separate process."
                 );
                 host_pid = Some(pid);
+                round_trip_ms.push(sent_at.elapsed().as_secs_f64()*1000.);
                 break;
             }
             thread::sleep(Duration::from_millis(2));
@@ -286,6 +298,7 @@ fn guest(o: &Options) -> Result<()> {
         serde_json::to_vec_pretty(&serde_json::json!({
             "passed": true, "role": "guest", "pid": std::process::id(), "peer_pid": host_pid,
             "exchanges": ROUNDS, "internet": invite.origin().starts_with("https://"),
+            "round_trip_ms": round_trip_ms,
         }))?,
     )?;
     println!("PASS guest: {ROUNDS} ordered exchanges and clean shutdown.");

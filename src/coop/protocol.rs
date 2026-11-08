@@ -210,7 +210,7 @@ pub struct RemoteInput {
 
 #[path = "input_timeline.rs"]
 mod input_timeline;
-pub use input_timeline::{InputOutbox, TimedInput};
+pub use input_timeline::{InputBacklog, InputOutbox, TimedInput};
 impl RemoteInput {
     pub(crate) fn cancel(&mut self) {
         self.pending_jumps = 0; self.pending_uses = 0;

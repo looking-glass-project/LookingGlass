@@ -12,6 +12,9 @@ fn main() {
             "-Wl,--stack,8388608"
         };
         println!("cargo:rustc-link-arg={arg}");
+        if std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc") {
+            println!("cargo:rustc-link-arg=/EXPORT:NvOptimusEnablement,DATA");
+        }
     }
 }
 

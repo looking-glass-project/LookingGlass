@@ -4,6 +4,10 @@ use super::transport::MAX_STATE;
 use anyhow::{ensure, Result};
 use flate2::{write::ZlibEncoder, Compression, Decompress, FlushDecompress, Status};
 use std::{borrow::Cow, io::Write};
+mod delta;
+
+pub fn encode_snapshot(bytes: &[u8], base: Option<&[u8]>) -> Result<Vec<u8>> { delta::encode(bytes, base) }
+pub fn decode_snapshot<'a>(bytes: &'a [u8], base: Option<&[u8]>) -> Result<Cow<'a, [u8]>> { delta::decode(bytes, base) }
 
 const MAGIC: &[u8; 5] = b"LGCF1";
 const HEADER: usize = 9;

@@ -153,6 +153,14 @@ pub struct Options {
     pub shelf_preview: bool,
 }
 
+// NVIDIA's documented Optimus preference for applications without a driver
+// profile. Explicit user/OS GPU selection still takes precedence.
+// https://developer.download.nvidia.com/devzone/devcenter/gamegraphics/files/OptimusRenderingPolicies.pdf
+#[cfg(all(target_os = "windows", target_env = "msvc"))]
+#[no_mangle]
+#[used]
+pub static NvOptimusEnablement: u32 = 1;
+
 fn main() {
     if let Err(error) = run() {
         eprintln!("Looking Glass: {error:#}");

@@ -231,6 +231,7 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
         let report_writer = detailed_reports.then(|| super::diagnostics::Writer::new(crate::preferences::path("coop-live.json")));
         let mut performance_open = std::env::var("LOOKING_GLASS_COOP_METRICS").as_deref() == Ok("1");
         let mut performance_writer = None;
+        let renderer = super::diagnostics::renderer();
         let mut performance_frames = super::diagnostics::Frames::default();
         let mut performance_text = String::new();
         let mut menu_selected = 0;
@@ -392,7 +393,9 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                     performance_text = format!("{:.0} FPS / worst frame {:.1} ms", timing["fps"].as_f64().unwrap_or(0.), timing["max_ms"].as_f64().unwrap_or(0.));
                     let writer = performance_writer.get_or_insert_with(|| super::diagnostics::Writer::new(crate::preferences::path("coop-performance.json")));
                     if let Ok(bytes) = serde_json::to_vec(&serde_json::json!({"build":env!("LOOKING_GLASS_BUILD"),
-                        "pid":std::process::id(),"host":launch.host,"playing":playing,"map":visit.map,
+                        "pid":std::process::id(),"host":launch.host,"playing":playing,"map":visit.map,"renderer":renderer,
+                        "local_view":display.as_ref().map(|f| serde_json::json!({
+                            "feet":f.players[local.index()].player.feet,"yaw":yaw,"pitch":pitch})),
                         "scene":arena.stage.busy(),"timing":timing,"network":guest.as_ref().map(Guest::input_timing)
                             .or_else(|| host.as_ref().map(Host::input_timing))})) { writer.write(bytes); }
                 }

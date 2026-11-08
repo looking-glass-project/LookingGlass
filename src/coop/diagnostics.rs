@@ -1,6 +1,14 @@
 //! Optional diagnostics never wait for a disk writer on the render thread.
 use std::{path::PathBuf, sync::mpsc::{self, SyncSender}, thread};
 
+/// Call on the window thread after its OpenGL context has been initialized.
+pub fn renderer() -> String {
+    // GL_RENDERER describes the active context, unlike enumerating installed GPUs.
+    let name = unsafe { macroquad::miniquad::gl::glGetString(0x1F01) };
+    if name.is_null() { return "Unknown renderer".into(); }
+    unsafe { std::ffi::CStr::from_ptr(name.cast()) }.to_string_lossy().into_owned()
+}
+
 pub struct Writer(SyncSender<Vec<u8>>);
 impl Writer {
     pub fn new(path: PathBuf) -> Self {

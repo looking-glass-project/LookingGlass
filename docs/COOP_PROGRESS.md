@@ -1,14 +1,13 @@
 # Co-op progress
 
-Updated 8 November 2026. Branch: `coop`. **Playable readiness: 95%. Historical full-matrix completion: 81.5%.**
-The target is now [100% playable co-op](COOP_PLAYABLE.md), followed by a
-separate polishing stage. Complete normal progression and core flows first;
-batch implementation and reuse passing evidence. The historical exhaustive
+Updated 8 November 2026. Branch: `coop`. **Playable readiness: 100%. Historical full-matrix completion: 81.5%.**
+The [100% playable co-op milestone](COOP_PLAYABLE.md) is complete. The next
+stage is polishing; normal progression and requested core flows are accepted. The historical exhaustive
 matrix below also tracks polishing work and does not all gate playability.
 
 Playable scoring now assigns 40 points to requested core flows, 55 to normal
-campaign coverage and 5 to the two-client ending handoff. The first 95 points
-are accepted; ending presentation is still open. The historical full-matrix
+campaign coverage and 5 to the two-client ending handoff. All 100 points
+are accepted, including both rendered movies and credits. The historical full-matrix
 score below retains deferred polishing work and is reported separately.
 
 The older 42% reports are historical. This percentage measures delivered and
@@ -20,7 +19,7 @@ selected core groups have public-invite passes, covering personal resources,
 fresh processes, rejoining, backup recovery, shared wipes and unchanged solo
 saves. Both requested save paths are included in the
 [core acceptance checklist](COOP_CORE_TESTS.md#current-saverejoin-acceptance).
-The overall all-level goal remains active. Majestic Maze now has its missing
+The agreed all-level playable goal is complete. Majestic Maze now has its missing
 shared plate/gate and escort integration, with native component evidence on
 `c6f580e`. Both Jabberwock encounters now have shared combat and personal healing
 on `7c3ca24`, verified by 58 staged component cases. Build `ccd6cd1` adds their
@@ -33,7 +32,7 @@ checkpoint/revival placement and nine native recovery checks. The [machinery bat
 Labyrinthine Revenge and Machinations. The [castle batch](COOP_CASTLE.md) adds Battle Royale, Ascension and Castle
 Keep. The [Queen finale](COOP_QUEEN.md) now closes the last missing explicit
 paired adapter on `c8a041e`. All 39 visits have component evidence; normal paired
-campaign progression remains required for the remaining visits. Burning
+campaign progression is now accepted for every visit. Burning
 Curiosity now has a complete verified normal save chain.
 
 The fresh pre-change checkpoint run on 5 November passed staged shared travel,
@@ -48,9 +47,7 @@ no additional campaign visit is credited.
 
 All 39 visits now have credited normal paired route evidence. Six retain
 the historical combined designation; the broader matrix still labels 33 as
-partial because it includes polishing cases. The next priority is normal paired campaign
-pass, fixing progression blockers and checking core recovery at representative
-points. Exhaustive scene-owner, recovery, network and presentation permutations
+partial because it includes polishing cases. The next stage is polishing and hands-on playtesting. Exhaustive scene-owner, recovery, network and presentation permutations
 remain in the polishing backlog.
 
 | Area | Credited points | Maximum |
@@ -62,6 +59,39 @@ remain in the polishing backlog.
 | Scenes, transport and progression | 16 | 20 |
 | Campaign playability | 20 | 20 |
 | **Historical full-matrix total** | **81.5** | **100** |
+
+## Playable milestone complete — 8 November 2026
+
+**100% of the agreed playable scope is accepted on `coop`.**
+[Start co-op or run two clients on one PC](COOP_QUICKSTART.md).
+
+| Playable milestone | Accepted points |
+| --- | ---: |
+| Requested core controls, Host/Join, resources, scenes, death, saves and rejoining | 40/40 |
+| Normal paired progression through all 39 campaign visits | 55/55 |
+| Actual public two-client ending movie and credits handoff | 5/5 |
+| **Playable readiness** | **100/100** |
+
+Frozen `cddd820` completes the final public test from the unchanged, normally
+earned Queen2 checkpoint. Both clients finish actual combat and present the
+ending movie and credits, using the public invite path with 40 ms delay and
+20 ms jitter. Ordinary focus/resume and held Enter skip inputs take each film
+to credits. **3,445 matching sent/restored player, world and NPC states** agree.
+The original checkpoint and host's playable checkpoint remain byte-for-byte
+unchanged. Evidence: `private/coop-playable-finale-public-verified.json`.
+
+The build passes **951 active Rust tests** (five ignored), the release build,
+source audits and seven packaging checks. The final Pool default reproduces
+its accepted route exactly. The thirteen earlier public save/rejoin groups
+remain accepted; both solo-save conversion and co-op continuation are covered.
+The final changes add test inputs and presentation logs, not combat assistance.
+
+This is the playable milestone, not a claim that every bug or fidelity gap is
+resolved. Polishing retains the broader frame-rate/difficulty/device matrix,
+scene-owner and skip permutations, per-visit recovery/network edge cases,
+visual/audio comparisons and hands-on tuning. A normal-play blocker or data
+loss found there takes priority. The historical full matrix remains at 81.5%
+as a separate record; it is not the playable milestone's denominator.
 
 ## Pool of Tears normal paired route accepted
 

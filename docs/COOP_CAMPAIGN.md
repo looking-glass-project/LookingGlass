@@ -9,7 +9,8 @@ all six scenes, both lifts, personal Mallets and actual School Two arrival.
 Unchanged checkpoint hashes join 15,852 matching network states. The Queen
 normal paired ending state is also accepted. Normal paired coverage is
 **39/39 visits**, with **no normal routes remaining**. Playable readiness is
-**95%** pending the two-client ending; the historical full matrix is **81.5%**.
+**100%**, including the public two-client ending; the historical full matrix
+remains a separate polishing record at **81.5%**.
 Hollow Hideaway now passes its normal paired route on `5fd9df4`: 33,897 ticks,
 283 exact replicas, both large leaf rides, the Bill reunion and actual arrival.
 Red also revives at 25 health after exactly ten seconds. Pool of Tears now
@@ -22,15 +23,15 @@ Just Desserts now passes its normal paired pickup, boss fight, rescue and temple
 arrival on `a4f954c`: 12,502 ticks, 105 exact replicas, both alive at 100/25.
 Majestic Maze also passes its complete normal paired escort, held gate and
 actual onward arrival on `845bb52` (33,270 ticks, both alive at 98/100 health). Rendered finale film/credits
-handoff remains a separate acceptance item. The broader historical statuses
+handoff now passes on `cddd820`, with 3,445 matching public network states and
+both clients presenting their credits. The broader historical statuses
 below also include deferred polishing cases.
 
 Airborne Terror core update: `3e96892` passes 41 paired component cases
 and an unchanged ten-case solo baseline. The machinery batch `11d47f8` adds
 paired component evidence for hedge2, hedge3 and tower3. Current status totals:
 six combined and thirty-three partial after the finale batch
-`c8a041e`. See [finale evidence](COOP_QUEEN.md). A normal paired campaign pass remains
-required for playable coverage beyond the established routes.
+`c8a041e`. See [finale evidence](COOP_QUEEN.md). All normal paired routes are now accepted for the playable milestone.
 
 Source: `campaign::route()` in `src/campaign.rs`. Return visits are separate requirements.
 The village, Pandemonium, both Fortress visits, Beyond and return school have the complete combined co-op evidence below.

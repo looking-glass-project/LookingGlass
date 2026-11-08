@@ -129,6 +129,9 @@ struct Command {
     /// Ordinary Ice Wand primary fire when owned, funded, dry and in range.
     #[serde(default)]
     prefer_ice: bool,
+    /// Ordinary Queen2 checkpoint combat, planned from this client's own view.
+    #[serde(default)]
+    queen_finale: bool,
     /// Opt-in ordinary-input combat planning: actual melee reach, led throws
     /// and safe strafing while a route command waits without a movement goal.
     #[serde(default)]
@@ -1178,6 +1181,7 @@ pub struct Driver {
     castling_course: Option<crate::levels::wchess2::NetworkDriver>,
     funhouse_exit: Option<crate::levels::funhouse::NetworkExit>,
     funhouse_pendulums: Option<crate::levels::funhouse::NetworkPendulums>,
+    queen_finale: Option<crate::levels::qlair::NetworkPilot>,
     location: Option<(u64, u64, u64)>,
     pub report: Report,
 }
@@ -1256,7 +1260,7 @@ impl Driver {
             navigation_clock:NavigationClock::new(now), jumped: false, rope_used: false,
             control_used: false, switch_aim:SwitchAim::default(), combat_aim:CombatAim::default(),combat_home:None,combat_location:None,
             step_height: None, swim_goal: None, swim_worker: None,
-            garden_course: None, sanctum_course: None, chess_course: None, castling_course: None, funhouse_exit:None, funhouse_pendulums:None, location: None, report: Report::default() }
+            garden_course: None, sanctum_course: None, chess_course: None, castling_course: None, funhouse_exit:None, funhouse_pendulums:None, queen_finale:None, location: None, report: Report::default() }
     }
     pub fn poll(&mut self, now: Instant) {
         if now.duration_since(self.polled) < Duration::from_millis(50) { return; }
@@ -1279,6 +1283,7 @@ impl Driver {
                     self.chess_course=None;self.report.chess_course=None;
                 }
                 if self.command.as_ref().is_none_or(|old| old.id != command.id || old.shoot_switch!=command.shoot_switch) {
+                    self.queen_finale=None;
                     self.funhouse_exit=None;self.report.funhouse_exit=None;
                     self.funhouse_pendulums=None;self.report.funhouse_pendulums=None;
                     self.plan.clear(); self.planning_hold=None; self.segment_landing=None; self.ledge_goal=None; self.landing_feedback=LandingFeedback::default(); self.jumped = false; self.rope_used = false; self.location = None;
@@ -1688,7 +1693,15 @@ impl Driver {
             self.report.phase = phase; self.report.reached = reached;
             if keys.wish.length() > 0. { keys.yaw = keys.wish.y.atan2(keys.wish.x); keys.pitch = 0.; }
         }
-        if command.attack {
+        let queen_goal=if command.queen_finale {
+            let pilot=self.queen_finale.get_or_insert_with(Default::default);
+            match pilot.sample(frame,arena,world,local,keys) {
+                Ok(Some(goal))=>Some(goal),
+                Ok(None)=>{self.report.phase="Queen finale combat";self.report.reached=true;return;},
+                Err(error)=>{self.report.error=Some(error.to_string());return;},
+            }
+        }else{None};
+        if command.attack && !command.queen_finale {
             if command.combat_tactics && body.stats.copies(0)>0 {
                 let interactions=&arena.stage.interactions;
                 let npcs=arena.npcs.targets();
@@ -1786,7 +1799,7 @@ impl Driver {
                 Some(goal) => Some(goal),
                 None => { self.report.error = Some(format!("Missing route marker {marker}")); return; }
             }
-        } else { command.goal };
+        } else { queen_goal.or(command.goal) };
         let Some(goal) = goal else { return; };
         let surface = command.surface.and_then(|id| arena.stage.interactions.levels.iter().find_map(|s|
             crate::levels::funhouse::route_surface(s.ctl.as_ref(), id, goal,

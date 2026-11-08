@@ -3,11 +3,11 @@
 Development branch: `coop`, based on public main `0220970`.
 For the concise current status, see [Co-op progress](COOP_PROGRESS.md).
 
-This is work in progress. A policy test or a connected pair of windows does not
-establish campaign support. Single-player behavior and saves must remain supported.
+The agreed playable co-op milestone is complete; broader polishing continues.
+See [setup and save instructions](COOP_QUICKSTART.md).
 
-Current milestone: **95% playable readiness; all 39/39 normal paired routes are
-credited.** The two-client ending handoff remains. The historical full-matrix
+Current milestone: **100% playable readiness; all 39/39 normal paired routes and
+the public two-client movie/credits handoff are accepted.** The historical full-matrix
 score is 81.5%, including deferred polishing. The historical exhaustive matrix retains six combined visits and
 33 partial visits because it includes deferred polishing cases. The [Queen finale](COOP_QUEEN.md)
 closes the last missing explicit paired adapter. The [playable milestone](COOP_PLAYABLE.md)

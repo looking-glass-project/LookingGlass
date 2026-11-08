@@ -34,7 +34,7 @@ verification; the full campaign and requested gameplay features remain in scope.
 4. Make the playable build available for hands-on testing. Publishing a release
    or merging still requires the user's later request.
 
-The remaining controller audit is tracked in COOP_CORE_TESTS.md. A visit is not
+The core acceptance evidence is tracked in COOP_CORE_TESTS.md. A visit is not
 proven playable by having an adapter alone: its normal progression must work.
 The broader historical matrix in COOP_CAMPAIGN.md remains useful evidence, but
 its exhaustive combinations do not all gate the playable milestone.
@@ -55,6 +55,39 @@ a normal-play blocker, data loss, or a missing requested core feature.
 
 Report playable readiness and the polishing backlog separately. Do not label
 the game 100% playable while a level or requested core flow remains blocked.
+
+## Playable milestone complete — 8 November 2026
+
+**100% of the agreed playable scope is accepted on `coop`.**
+[Start co-op or run two clients on one PC](COOP_QUICKSTART.md).
+
+| Playable milestone | Accepted points |
+| --- | ---: |
+| Requested core controls, Host/Join, resources, scenes, death, saves and rejoining | 40/40 |
+| Normal paired progression through all 39 campaign visits | 55/55 |
+| Actual public two-client ending movie and credits handoff | 5/5 |
+| **Playable readiness** | **100/100** |
+
+Frozen `cddd820` completes the final public test from the unchanged, normally
+earned Queen2 checkpoint. Both clients finish actual combat and present the
+ending movie and credits, using the public invite path with 40 ms delay and
+20 ms jitter. Ordinary focus/resume and held Enter skip inputs take each film
+to credits. **3,445 matching sent/restored player, world and NPC states** agree.
+The original checkpoint and host's playable checkpoint remain byte-for-byte
+unchanged. Evidence: `private/coop-playable-finale-public-verified.json`.
+
+The build passes **951 active Rust tests** (five ignored), the release build,
+source audits and seven packaging checks. The final Pool default reproduces
+its accepted route exactly. The thirteen earlier public save/rejoin groups
+remain accepted; both solo-save conversion and co-op continuation are covered.
+The final changes add test inputs and presentation logs, not combat assistance.
+
+This is the playable milestone, not a claim that every bug or fidelity gap is
+resolved. Polishing retains the broader frame-rate/difficulty/device matrix,
+scene-owner and skip permutations, per-visit recovery/network edge cases,
+visual/audio comparisons and hands-on tuning. A normal-play blocker or data
+loss found there takes priority. The historical full matrix remains at 81.5%
+as a separate record; it is not the playable milestone's denominator.
 
 ## Pool of Tears normal paired route accepted
 

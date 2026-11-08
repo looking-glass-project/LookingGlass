@@ -1,19 +1,20 @@
 # Interactive, two-process development launcher. Each player has separate settings.
-# Campaign co-op is unfinished; this opens the movement/combat preview.
+# Uses the release build and the same public invite path as separate computers.
 param(
     [Parameter(Mandatory = $true)][string]$Data,
-    [string]$Map = 'skool1',
+    [string]$Map = 'gvillage',
+    [string]$Exe,
     [switch]$Local,
     [switch]$Menu,
     [switch]$Combat
 )
 $ErrorActionPreference = 'Stop'
 if ($Menu -and $Local) { throw 'The in-game Host menu creates internet invites. Omit -Local when using -Menu.' }
-if ($Combat -and ($Menu -or $Map -ne 'skool1')) { throw 'The staged combat test uses skool1. Omit -Menu and use the default map with -Combat.' }
+if ($Combat -and ($Menu -or $Map -ne 'skool1')) { throw 'The staged combat test uses skool1. Omit -Menu and use -Map skool1 with -Combat.' }
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$executable = Join-Path $projectRoot 'target\debug\looking-glass.exe'
+$executable = if ($Exe) { (Resolve-Path -LiteralPath $Exe).Path } else { Join-Path $projectRoot 'target\release\looking-glass.exe' }
 if (-not (Test-Path -LiteralPath $executable)) {
-    throw 'Build Looking Glass first with cargo build --locked.'
+    throw 'Build Looking Glass first with cargo build --release --locked, or supply -Exe.'
 }
 $dataPath = (Resolve-Path -LiteralPath $Data).Path
 $sessionFolder = Join-Path $projectRoot ('private\coop\manual-' + [guid]::NewGuid().ToString('N'))
@@ -51,7 +52,7 @@ try {
         Write-Host 'Two clients are open: Blue is the host; Red is the guest.'
     }
     Write-Host 'Focus a window to control that Alice. ESC opens its menu; Q leaves co-op.'
-    Write-Host 'This is a movement/combat preview. Campaign co-op remains unfinished.'
+    Write-Host 'Each player has an independent profile. The host owns the shared campaign save.'
     Write-Host "Profiles and diagnostics: $sessionFolder"
     while (@($owned | Where-Object { -not $_.HasExited }).Count -gt 0) {
         Start-Sleep -Milliseconds 200

@@ -273,6 +273,7 @@ pub async fn play(
     let soundtrack = audio.movie_sound(assets, &format!("video/{name}.mp3"))?;
     let mut elapsed = 0_f64;
     let mut paused = false;
+    let mut presented = false;
     let mut skip = crate::cinematic::Skip::default();
     input.suppress();
     // Clear the menu confirmation press before arming the movie's skip control.
@@ -351,6 +352,10 @@ pub async fn play(
             });
         }
         next_frame().await;
+        if !presented {
+            println!("Story movie {name}: first frame presented");
+            presented = true;
+        }
     }
     if let Some(s) = &soundtrack {
         s.stop();

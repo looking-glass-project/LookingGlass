@@ -6,6 +6,8 @@ mod check;
 mod coop;
 mod coop_check;
 mod coop_route;
+mod network_pilot;
+pub(crate) use network_pilot::NetworkPilot;
 mod data;
 mod effects;
 mod projectile;

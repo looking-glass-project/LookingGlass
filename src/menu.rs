@@ -403,6 +403,7 @@ impl Menu {
         self.open(Page::Credits, prefs, audio::Settings::default());
         self.message = "Campaign complete / Host Resume replays your last co-op checkpoint".into();
         input.suppress();
+        let mut presented = false;
         loop {
             let focused = crate::look::window_focused();
             input.update(prefs, focused);
@@ -426,6 +427,10 @@ impl Menu {
             }
             self.draw(Page::Credits, &self.buttons(Page::Credits));
             next_frame().await;
+            if !presented {
+                println!("Finale credits: first frame presented");
+                presented = true;
+            }
         }
         self.close();
     }

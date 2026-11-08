@@ -558,19 +558,27 @@ impl Character {
         }
     }
     pub fn restore(&mut self, s: &Snapshot) -> Result<()> {
+        self.apply_snapshot(s, false)
+    }
+    /// Live snapshots retain particle caches; disk restores reset presentation.
+    pub fn replicate(&mut self, s: &Snapshot) -> Result<()> {
+        self.apply_snapshot(s, true)
+    }
+    fn apply_snapshot(&mut self, s: &Snapshot, replica: bool) -> Result<()> {
         s.validate(self.skeleton.bones.len())?;
         self.power_pose.state = s.power.clone();
         self.foot_state = s.feet.clone();
         self.actions.restore(&s.actions)?;
         self.acting.restore(&s.acting)?;
-        self.visuals.restore(&s.projectiles)?;
+        if replica { self.visuals.replicate(&s.projectiles)?; }
+        else { self.visuals.restore(&s.projectiles)?; }
         self.animator.restore(&s.animator);
         self.face_time = s.face_time;
         self.mouth = 0.;
         self.facing = s.facing;
         self.anchors = s.anchors;
         self.viewmodel = s.viewmodel.clone();
-        self.water_art.reset();
+        if !replica { self.water_art.reset(); }
         Ok(())
     }
     pub fn die(&mut self) {

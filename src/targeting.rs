@@ -60,6 +60,7 @@ pub struct Pointer {
     previous: Option<(usize, Vec3)>,
 }
 impl Pointer {
+    pub(crate) fn visible(&self) -> bool { self.previous.is_some() }
     pub fn load(assets: &mut Assets) -> Result<Self> {
         let mut rules = Vec::new();
         for (name, _) in crate::inventory::WEAPONS {

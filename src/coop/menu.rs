@@ -69,6 +69,11 @@ pub async fn open(assets: &mut Assets, options: &Options, backdrop: &mut Menu, v
     let mut link = LinkInput::default();
     let mut joining = false;
     let mut hosting = false;
+    let mut choosing = false;
+    let maps = assets.maps();
+    let choices = crate::campaign::level_choices(&maps);
+    let mut chapters = crate::chapters::Chapters::default();
+    let mut difficulty = visit.difficulty;
     let mut selected = 0;
     let mut message = String::new();
     show_mouse(false);
@@ -81,7 +86,9 @@ pub async fn open(assets: &mut Assets, options: &Options, backdrop: &mut Menu, v
         let focused = crate::look::window_focused();
         input.update(&prefs, focused);
         if focused && input.ui(KeyCode::Escape) {
-            if joining || hosting {
+            if choosing {
+                choosing = false;
+            } else if joining || hosting {
                 joining = false;
                 hosting = false;
                 selected = 0;
@@ -116,7 +123,22 @@ pub async fn open(assets: &mut Assets, options: &Options, backdrop: &mut Menu, v
         }
         panel(&ui, if joining { "Join co-op" } else if hosting { "Host co-op" } else { "Co-op" });
         let mut launch = None;
-        if joining {
+        if choosing {
+            let action = chapters.update(&input, choices.len(), &mut difficulty);
+            chapters.draw(&ui, &choices, &maps, difficulty, focused, input.using_pad,
+                &crate::chapters::Labels::default());
+            crate::ui_probe::screen("coop-chapters", &[], "");
+            if action == Some(crate::chapters::Hit::Back) {
+                choosing = false;
+            } else if !choices.is_empty() && (action == Some(crate::chapters::Hit::Begin)
+                || focused && input.ui(KeyCode::Enter)) {
+                let choice = &choices[chapters.selected];
+                let start = Visit { epoch: 1, map: maps[choice.map].clone(),
+                    entry: choice.entry.map(str::to_owned), difficulty, combat_preview: false };
+                launch = Some(host_launch(&start, false));
+                choosing = false;
+            }
+        } else if joining {
             text(
                 &ui,
                 "Paste the complete invite link from your friend.",
@@ -203,17 +225,22 @@ pub async fn open(assets: &mut Assets, options: &Options, backdrop: &mut Menu, v
                 "Host this game keeps your current progress."
             } else { "To host a solo save, load it first, then open Co-op from ESC." }, 148., 14.);
             text(&ui, "Each new session creates a fresh invite link.", 192., 14.);
-            let choices = host_choices(single_player.is_some(), super::checkpoint::Store::available());
-            let labels = choices.iter().map(|c| c.label()).collect::<Vec<_>>();
+            let host_options = host_choices(single_player.is_some(), super::checkpoint::Store::available());
+            let labels = host_options.iter().map(|c| c.label()).collect::<Vec<_>>();
             if let Some(choice) = buttons(&ui, &input, &mut selected, &labels, 224.) {
-                match choices[choice] {
+                match host_options[choice] {
                     HostChoice::Back => { hosting = false; selected = 0; message.clear(); }
                     HostChoice::Current => {
                         let mut current = host_launch(&visit, false);
                         current.single_player = single_player.clone();
                         launch = Some(current);
                     }
-                    choice => launch = Some(host_launch(&visit, choice == HostChoice::Saved)),
+                    HostChoice::Chapter => {
+                        choosing = true;
+                        let selected = maps.iter().position(|m| m == &visit.map).unwrap_or(0);
+                        chapters.open(crate::campaign::choice_position(&choices, selected, visit.entry.as_deref()), choices.len());
+                    }
+                    HostChoice::Saved => launch = Some(host_launch(&visit, true)),
                 }
             }
         } else {
@@ -244,7 +271,7 @@ pub async fn open(assets: &mut Assets, options: &Options, backdrop: &mut Menu, v
             }
             text(
                 &ui,
-                "Development build: campaign co-op is still in progress.",
+                "Both players need the same co-op build.",
                 378.,
                 12.,
             );

@@ -96,6 +96,37 @@ class GuidedSetupTests(unittest.TestCase):
         self.assertTrue(imported.is_relative_to(self.root / 'private/game-data'))
         self.assertEqual((imported / 'pak0.pk3').read_bytes(), (self.data / 'Alice1/bin/base/pak0.pk3').read_bytes())
 
+    def test_closing_setup_finishes_install_without_starting_game(self):
+        probe = r'''
+    $script:worker = [Diagnostics.Process]::GetCurrentProcess()
+    $script:currentJob = Join-Path $root 'private/job'
+    $playAfter.Checked = $true
+    $closing = New-Object Windows.Forms.FormClosingEventArgs([Windows.Forms.CloseReason]::UserClosing, $false)
+    Add-Type -ReferencedAssemblies System.Windows.Forms -TypeDefinition @'
+public static class SetupCloseProbe {
+    public static void Raise(System.Windows.Forms.Form form, System.Windows.Forms.FormClosingEventArgs e) {
+        typeof(System.Windows.Forms.Form).GetMethod("OnFormClosing", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).Invoke(form, new object[] {e});
+    }
+}
+'@
+    [SetupCloseProbe]::Raise($form, $closing)
+    if (-not $closing.Cancel -or -not $script:closeWhenDone -or $playAfter.Checked) { throw 'Close did not wait for installation without play' }
+    if (Test-Path -LiteralPath (Join-Path $script:currentJob 'cancel')) { throw 'Closing cancelled extraction/configuration' }
+    Request-Cancel
+    if (-not (Test-Path -LiteralPath (Join-Path $script:currentJob 'cancel'))) { throw 'Explicit cancellation stopped working' }
+    $script:worker = $null
+    Write-Output 'Close preserves installation'
+'''
+        script = self.script.replace('[void]$form.ShowDialog()', probe).replace(
+            "[void][Windows.Forms.MessageBox]::Show($_.Exception.Message, 'Looking Glass - Setup')",
+            'Write-Error $_.Exception.Message')
+        path = self.root / 'tools/windows_setup.ps1'
+        path.write_text(script, encoding='utf-8')
+        result = subprocess.run(['powershell.exe', '-NoProfile', '-STA', '-ExecutionPolicy', 'Bypass',
+                                 '-File', str(path)], capture_output=True, timeout=30)
+        self.assertEqual(result.returncode, 0, (result.stdout + result.stderr).decode(errors='replace'))
+        self.assertIn(b'Close preserves installation', result.stdout)
+
     def test_setup_actions_remain_visible_on_short_displays(self):
         # Construct the actual form without showing a window or starting setup.
         # A 620-pixel client area fits a 720p desktop with its taskbar/title bar.
@@ -103,7 +134,7 @@ class GuidedSetupTests(unittest.TestCase):
     foreach ($height in @(620, 760)) {
         $form.ClientSize = New-Object Drawing.Size(660, $height)
         $form.PerformLayout()
-        foreach ($button in @($go, $applyLanguage, $cancel)) {
+        foreach ($button in @($openFiles, $go, $applyLanguage, $cancel)) {
             $top = $button.Top
             $parent = $button.Parent
             while ($parent -ne $form) { $top += $parent.Top; $parent = $parent.Parent }
@@ -266,6 +297,17 @@ class GuidedSetupTests(unittest.TestCase):
             self.finish(self.start(download=True, confirmed=True, script=self.download_script(url, payload)), 0)
         self.assertTrue((self.root / self.config.read_text().strip() / 'pak0.pk3').is_file())
         self.assertEqual((self.root / 'private/downloads/Alice1_2011_vanilla.7z').read_bytes(), payload)
+        # No game was launched after download. A fresh launcher process must
+        # still find the persisted installation, even from another directory.
+        launch = self.script.replace("    $exe = Join-Path $root 'looking-glass.exe'",
+            "    Write-Output 'PERSISTED_INSTALLATION_READY'; return\n    $exe = Join-Path $root 'looking-glass.exe'")
+        launch = launch.replace("[void][Windows.Forms.MessageBox]::Show($_.Exception.Message, 'Looking Glass - Setup')", 'Write-Error $_.Exception.Message')
+        path = self.root / 'tools/windows_setup.ps1'
+        path.write_text(launch, encoding='utf-8')
+        result = subprocess.run(['powershell.exe', '-NoProfile', '-STA', '-ExecutionPolicy', 'Bypass',
+            '-File', str(path), '-Mode', 'Play'], cwd=self.root.parent, capture_output=True, timeout=30)
+        self.assertEqual(result.returncode, 0, (result.stdout + result.stderr).decode(errors='replace'))
+        self.assertIn(b'PERSISTED_INSTALLATION_READY', result.stdout)
 
     def test_confirmed_download_imports_only_the_missing_language(self):
         self.finish(self.start(self.data, language='en'), 0)

@@ -159,7 +159,10 @@ class Pair:
         process = self.processes.pop('guest')
         subprocess.run(['taskkill', '/PID', str(process.pid), '/T', '/F'], capture_output=True, check=True)
         process.wait(timeout=10)
-        time.sleep(.5)
+        # The public relay can keep the old socket open briefly after a crash.
+        # Observe the host's real disconnect before claiming the vacant slot;
+        # a fixed half-second wait races the normal connection watchdog.
+        self.until(lambda: (read(self.folder / 'host/coop-live.json') or {}).get('session_phase') == 'Waiting', 25)
         self.start('guest', rejoin=True)
         self.until(lambda: 'guest' in self.reports)
 

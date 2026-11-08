@@ -13,6 +13,7 @@ mod clock;
 pub(crate) mod placement;
 pub(crate) mod separation;
 mod effects;
+mod diagnostics;
 pub(crate) mod codec;
 pub mod hosting;
 pub mod invite;

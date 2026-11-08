@@ -89,7 +89,7 @@ impl Arena {
         self.stage.restore(&s.stage, map, world)?;
         self.npcs.replicate(&s.npcs)?;
         for (c, state) in self.characters.iter_mut().zip(&s.characters) {
-            c.restore(state)?;
+            c.replicate(state)?;
         }
         self.sync_cast();
         Ok(())

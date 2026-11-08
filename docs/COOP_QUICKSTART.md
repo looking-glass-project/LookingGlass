@@ -14,6 +14,23 @@ Current acceptance and deferred polish are tracked in [playable status](COOP_PLA
 2. Choose the game to host and copy the invite link.
 3. The other player opens **Co-op > Join**, pastes the link and joins.
 
+**Start chapter** opens the chapter and difficulty chooser. Click the difficulty
+or press D to cycle Easy, Normal, Hard and Nightmare before starting. Hosting a
+loaded game or continuing a checkpoint keeps that game's saved difficulty.
+
+During play, **Tab** opens the chapter browser on either client; the host can
+start a fresh shared visit with the selected difficulty. The **` / ~** console
+is available to both players. Type `help` for supported co-op commands; the host
+controls shared map changes, restart and checkpoint saving. These overlays do
+not pause the other player.
+
+**F11** toggles a frame-rate overlay and a small `private/coop-performance.json`
+report (inside the selected profile when using `--profile`). It records every
+frame in each reporting interval, including stalls. Detailed world reports are
+disabled in normal play; automated tests can opt in with
+`LOOKING_GLASS_COOP_DIAGNOSTICS=1`. Both report writers avoid disk waits on the
+render thread. Diagnostics contain no invite token.
+
 The invite works over the internet without configuring router ports. The host
 owns the shared campaign save; both players keep their own health and resources.
 To resume later, the host chooses **Continue co-op** and shares the new invite.

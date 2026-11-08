@@ -166,6 +166,7 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
         level_art.prepare(assets, &scene, &arena.stage.interactions, false)?;
         let mut effects = super::effects::Effects::load(assets, &scene.map)?;
         let hud = crate::hud::Hud::load(assets)?;
+        let mut aim_pointer = crate::targeting::Pointer::load(assets)?;
         let mut pickup_art = crate::powerups::Art::load(assets)?;
         let (eye, initial_yaw) = crate::interaction::spawn(&scene.map, visit.entry.as_deref());
         let eye = options.start_at.map_or(eye, |p| p + Vec3::Z * crate::movement::EYE_HEIGHT);
@@ -218,6 +219,20 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
         let mut local_sequence = 0;
         let mut simulation_clock = super::clock::Clock::default();
         let mut menu = false;
+        let mut chapters_open = false;
+        let maps = assets.maps();
+        let choices = crate::campaign::level_choices(&maps);
+        let mut chapters = crate::chapters::Chapters::default();
+        let mut chapter_difficulty = visit.difficulty;
+        let mut console = crate::console::Console::new();
+        let mut camera_distance = 180.;
+        let detailed_reports = launch.drive || crate::ui_probe::enabled()
+            || std::env::var("LOOKING_GLASS_COOP_DIAGNOSTICS").as_deref() == Ok("1");
+        let report_writer = detailed_reports.then(|| super::diagnostics::Writer::new(crate::preferences::path("coop-live.json")));
+        let mut performance_open = std::env::var("LOOKING_GLASS_COOP_METRICS").as_deref() == Ok("1");
+        let mut performance_writer = None;
+        let mut performance_frames = super::diagnostics::Frames::default();
+        let mut performance_text = String::new();
         let mut menu_selected = 0;
         let mut copied_at: Option<Instant> = None;
         let mut rejected_guest = String::new();
@@ -272,7 +287,10 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
             if let Some(host) = &mut host {
                 // A bad/incompatible guest is disconnected by Host::poll.
                 // Keep the host and its invite available for a valid rejoin.
-                if let Err(error) = host.poll(now) { rejected_guest = error.to_string(); }
+                if let Err(error) = host.poll(now) {
+                    eprintln!("Co-op guest rejected: {error}");
+                    rejected_guest = error.to_string();
+                }
                 if host.phase() == Phase::Playing { rejected_guest.clear(); }
             }
             if let Some(guest) = &mut guest {
@@ -318,7 +336,13 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                 let mut next_art = crate::viewer::LevelArt::default();
                 next_art.prepare(assets, &next_scene, &next_arena.stage.interactions, false)?;
                 let (eye, facing) = crate::interaction::spawn(&next_scene.map, next.entry.as_deref());
-                let arrived = roster.as_ref().map(|old| old.arrive_with(&next_scene.world, eye, facing, &next.map, next.entry.as_deref(), |at| !next_arena.stage.interactions.hazardous(at))).transpose()?;
+                let arrived = if let Some(old) = &roster {
+                    Some(old.arrive_with(&next_scene.world, eye, facing, &next.map, next.entry.as_deref(), |at| !next_arena.stage.interactions.hazardous(at))?)
+                } else if launch.host {
+                    let mut stats = Stats::for_level(&next.map, next.entry.as_deref());
+                    stats.difficulty = next.difficulty;
+                    Some(Roster::new_with(&next_scene.world, eye, facing, stats, |at| !next_arena.stage.interactions.hazardous(at))?)
+                } else { None };
                 if let Some(arrived) = &arrived { next_arena.reset_characters(&arrived.players); }
                 if let Some(leaving) = leaving_visit.take() { campaign.departed(leaving)?; }
                 roster = arrived;
@@ -362,9 +386,98 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
             if playing { started_playing.get_or_insert(now); }
             let elapsed = get_frame_time().clamp(0., 0.1);
             let focused = crate::look::window_focused();
+            if focused && is_key_pressed(KeyCode::F11) { performance_open = !performance_open; }
+            if performance_open && playing {
+                if let Some(timing) = performance_frames.sample(get_frame_time()) {
+                    performance_text = format!("{:.0} FPS / worst frame {:.1} ms", timing["fps"].as_f64().unwrap_or(0.), timing["max_ms"].as_f64().unwrap_or(0.));
+                    let writer = performance_writer.get_or_insert_with(|| super::diagnostics::Writer::new(crate::preferences::path("coop-performance.json")));
+                    if let Ok(bytes) = serde_json::to_vec(&serde_json::json!({"build":env!("LOOKING_GLASS_BUILD"),
+                        "pid":std::process::id(),"host":launch.host,"playing":playing,"map":visit.map,
+                        "scene":arena.stage.busy(),"timing":timing,"network":guest.as_ref().map(Guest::input_timing)
+                            .or_else(|| host.as_ref().map(Host::input_timing))})) { writer.write(bytes); }
+                }
+            }
             controls.update(&prefs, focused);
-            if focused && controls.ui(KeyCode::Escape) { menu = !menu; menu_selected = 0; }
+            let mut chars = std::iter::from_fn(get_char_pressed).collect::<Vec<_>>();
+            chars.reverse();
+            let toggle_console = focused && (is_key_pressed(KeyCode::GraveAccent)
+                || chars.iter().any(|c| matches!(c, '`' | '~' | '\u{00ac}')));
+            if toggle_console {
+                console.open = !console.open; menu = false; chapters_open = false;
+                controls.suppress(); chars.clear();
+            } else if focused && controls.ui(KeyCode::Escape) {
+                if console.open { console.open = false; }
+                else if chapters_open { chapters_open = false; }
+                else { menu = !menu; menu_selected = 0; }
+                controls.suppress();
+            }
+            if focused && !console.open && controls.key(&prefs, KeyCode::Tab, true) {
+                chapters_open = !chapters_open; menu = false;
+                chapter_difficulty = visit.difficulty;
+                let selected = maps.iter().position(|m| m == &visit.map).unwrap_or(0);
+                chapters.open(crate::campaign::choice_position(&choices, selected, visit.entry.as_deref()), choices.len());
+            }
             if is_quit_requested() || menu && focused && is_key_pressed(KeyCode::Q) { break; }
+            let mut travel = None;
+            if console.open && focused {
+                if let Some(command) = console.input(&chars) {
+                    use crate::console::Command;
+                    match command {
+                        Err(error) => console.print(error),
+                        Ok(Command::Help) => {
+                            console.print("help clear version status maplist cg_cameradist quit");
+                            console.print("Host: map <level[$entrance]> restart save");
+                            console.print("Tab opens chapters and difficulty. Continue co-op in the main menu loads the shared save.");
+                        }
+                        Ok(Command::Clear) => console.clear(),
+                        Ok(Command::Version) => console.print(format!("Looking Glass {} / co-op", env!("CARGO_PKG_VERSION"))),
+                        Ok(Command::Status) => console.print(format!("{} / {} / {}", visit.map, visit.difficulty.name(), if launch.host { "Host (Blue)" } else { "Guest (Red)" })),
+                        Ok(Command::Maps) => for choice in &choices {
+                            console.print(format!("{}{}", maps[choice.map], choice.entry.map_or(String::new(), |e| format!("${e}"))));
+                        },
+                        Ok(Command::CameraDistance(value)) => {
+                            if let Some(value) = value { camera_distance = value.clamp(32., 600.); }
+                            console.print(format!("Co-op camera distance: {camera_distance}"));
+                        }
+                        Ok(Command::Quit) => break,
+                        Ok(Command::Map(map, entry)) if launch.host => {
+                            if choices.iter().any(|c| maps[c.map] == map && c.entry == entry.as_deref()) {
+                                travel = Some((map, entry, visit.difficulty));
+                            } else { console.print("Unknown chapter or entrance. Use maplist."); }
+                        }
+                        Ok(Command::Restart) if launch.host => travel = Some((visit.map.clone(), visit.entry.clone(), visit.difficulty)),
+                        Ok(Command::Save) if launch.host => {
+                            match roster.as_mut().context("Wait for chapter loading to finish")
+                                .and_then(|r| checkpoint_store.save(&visit, r, &mut arena, &scene.world, &campaign)) {
+                                Ok(()) => { checkpoint_pending = false; console.print("Co-op checkpoint saved for both players."); }
+                                Err(error) => console.print(format!("Save failed: {error}")),
+                            }
+                        }
+                        Ok(Command::Map(..) | Command::Restart | Command::Save) => console.print("The host controls shared chapters and checkpoints."),
+                        Ok(_) => console.print("This command is unavailable in co-op. Type help for supported commands."),
+                    }
+                }
+            }
+            if chapters_open && focused {
+                let action = chapters.update(&controls, choices.len(), &mut chapter_difficulty);
+                if action == Some(crate::chapters::Hit::Back) { chapters_open = false; }
+                else if !choices.is_empty() && (action == Some(crate::chapters::Hit::Begin) || controls.ui(KeyCode::Enter)) {
+                    if launch.host {
+                        let choice = &choices[chapters.selected];
+                        travel = Some((maps[choice.map].clone(), choice.entry.map(str::to_owned), chapter_difficulty));
+                    } else { checkpoint_message = Some((now, "Ask the host to start a shared chapter.".into())); }
+                }
+            }
+            if let Some((map, entry, difficulty)) = travel {
+                host.as_mut().unwrap().enter(map, entry, difficulty, now)?;
+                pending_visit = Some(host.as_ref().unwrap().visit().clone());
+                roster = None; leaving_visit = None; campaign = Default::default();
+                menu = false; console.open = false; chapters_open = false;
+                controls.suppress();
+                next_frame().await;
+                continue;
+            }
+            let overlay = menu || chapters_open || console.open;
             if focused && is_key_pressed(KeyCode::F8) {
                 if let Some(invite) = &invite { miniquad::window::clipboard_set(&invite.link()); copied_at = Some(now); }
             }
@@ -377,11 +490,11 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                     local_location = Some(location);
                 }
             }
-            look.update(focused && !menu && !launch.drive && playing, &mut yaw, &mut pitch);
+            look.update(focused && !overlay && !launch.drive && playing, &mut yaw, &mut pitch);
             let flat = vec2(yaw.cos(), yaw.sin());
             let right = vec2(yaw.sin(), -yaw.cos());
             let direction = vec3(yaw.cos() * pitch.cos(), yaw.sin() * pitch.cos(), pitch.sin());
-            let input_active = focused && !menu && playing && !launch.drive;
+            let input_active = focused && !overlay && playing && !launch.drive;
             let held = |key| input_active && controls.key(&prefs, key, false);
             let pressed = |key| input_active && controls.key(&prefs, key, true);
             let axes = if input_active { controls.movement() } else { Vec2::ZERO };
@@ -711,7 +824,7 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                 let camera_subject_feet = watched_body.player.feet;
                 let subject = (watched, watched_body.spawned_at, watched_body.warped_at);
                 if camera_subject != Some(subject) { camera.reset(); camera_subject = Some(subject); }
-                let (follow_eye, follow_target, show_local) = camera.update(&scene.world, watched_body.player.feet, direction, 180., elapsed);
+                let (follow_eye, follow_target, show_local) = camera.update(&scene.world, watched_body.player.feet, direction, camera_distance, elapsed);
                 let scripted = arena.stage.camera(&scene.world);
                 let (camera_eye, target, up) = scripted.map_or((follow_eye, follow_target, Vec3::Z), |c| (c.eye, c.target, c.up));
                 let listening = target - camera_eye;
@@ -755,6 +868,23 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                 }
                 arena.npcs.draw(camera_eye, (target - camera_eye).normalize_or_zero(), &scene.atmosphere, false);
                 let personal = &frame.players[local.index()].stats;
+                let body = &visual.players[local.index()];
+                let can_aim = !overlay && playing && personal.alive() && scripted.is_none()
+                    && !arena.stage.busy() && !arena.stage.story.busy()
+                    && !arena.stage.interactions.level_blocks_weapons()
+                    && body.player.script_motion == 0 && body.player.ledge.is_none()
+                    && !body.player.climbing();
+                let mut targets = arena.npcs.targets();
+                if let Some(encounters) = &arena.stage.interactions.encounters { targets.extend(encounters.targets()); }
+                if let Some(school) = &arena.stage.interactions.school2 { targets.extend(school.targets()); }
+                if let Some(pool) = &arena.stage.interactions.pool { targets.extend(pool.targets()); }
+                targets.extend(arena.stage.interactions.duchess.as_ref().and_then(|d| d.target()));
+                targets.extend(crate::level::targets(&arena.stage.interactions.levels));
+                targets.extend(arena.stage.interactions.shot_targets());
+                aim_pointer.draw(&crate::combat::Context { world: &scene.world, targets: &targets },
+                    crate::targeting::Sight { eye: body.player.eye(), direction,
+                        weapon: can_aim.then(|| personal.equipped()).flatten() },
+                    elapsed, camera_eye, &scene.atmosphere);
                 hud.draw_pickups(&arena.pickups, personal, camera_eye, frame.tick as f32 * FIXED_DT);
                 pickup_art.draw(&arena.pickups, personal, &arena.visit_key, &scene.atmosphere, camera_eye, frame.tick as f32 * FIXED_DT);
                 if let Some(loot) = personal.loot.get(&arena.visit_key) {
@@ -789,12 +919,10 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                     ui.toast(&message, screen_height() * 0.4);
                 }
                 let draw_ms=drawing.elapsed().as_secs_f32()*1000.;
-                if report_at.elapsed() >= Duration::from_millis(200) {
+                if detailed_reports && report_at.elapsed() >= Duration::from_millis(200) {
                     let observing=Instant::now();
                     if let Some(driver) = &mut route_driver { driver.observe(frame, &arena, &scene.world); }
                     let observe_ms=observing.elapsed().as_secs_f32()*1000.;
-                    let path = crate::preferences::path("coop-live.json");
-                    if let Some(parent) = path.parent() { let _ = std::fs::create_dir_all(parent); }
                     // Diagnostics are optional. A reader/virus scanner can
                     // briefly hold this file on Windows; never end gameplay.
                     if let Ok(bytes) = serde_json::to_vec(&serde_json::json!({ "role": if launch.host { "host" } else { "guest" },
@@ -804,7 +932,7 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                         "camera_player": watched, "camera": camera_eye, "camera_target": target,
                         "camera_subject_feet": camera_subject_feet,
                         "audio": audio.report,
-                        "presentation": { "visible_players": visible_players,
+                        "presentation": { "visible_players": visible_players, "aim_glow": aim_pointer.visible(),
                             "player_feet": presented.as_ref().map(|p| p.players.each_ref().map(|b| b.player.feet)),
                             "previous_players": presentation_previous, "elapsed": elapsed,
                             "particles": effects.steam.counts(), "effect_batches": effect_batches },
@@ -816,12 +944,13 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                             "simulation_debt_ms": simulation_clock.deferred_ms()},
                         "combat": arena.snapshot(), "visit": visit, "completed_visits": if launch.host { Some(campaign.completed()) } else { None },
                         "route_driver": route_driver.as_ref().map(|d| &d.report) })) {
-                        let _ = std::fs::write(path, bytes);
+                        report_writer.as_ref().unwrap().write(bytes);
                     }
                     report_at = now;
                 }
             }
             set_default_camera();
+            if performance_open { ui.toast(&performance_text, screen_height() - 76.); }
             ui.toast(if playing { "Co-op preview" }
                 else if started_playing.is_some() { "Your partner left. Share the invite to rejoin." }
                 else { "Waiting for the other player to finish loading..." }, screen_height() - 110.);
@@ -847,7 +976,8 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                 super::menu::text(&ui, message, 128., 16.);
                 let labels: &[&str] = if playing {
                     if launch.host { &["Resume", "Save checkpoint", "Copy invite", "Leave co-op"] } else { &["Resume", "Leave co-op"] }
-                } else if launch.host { &["Copy invite", "Save checkpoint", "Leave co-op"] } else { &["Leave co-op"] };
+                } else if launch.host && roster.is_some() { &["Copy invite", "Save checkpoint", "Leave co-op"] }
+                else if launch.host { &["Copy invite", "Leave co-op"] } else { &["Leave co-op"] };
                 menu_selected = menu_selected.min(labels.len() - 1);
                 if let Some(choice) = super::menu::buttons(&ui, &controls, &mut menu_selected, labels, 208.) {
                     match labels[choice] {
@@ -872,6 +1002,14 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
                 }
                 if focused { ui.cursor(); }
                 super::menu::capture();
+            } else if chapters_open {
+                chapters.draw(&ui, &choices, &maps, chapter_difficulty, focused, controls.using_pad,
+                    &crate::chapters::Labels::default());
+                if focused { ui.cursor(); }
+                crate::ui_probe::screen("coop-chapters", &[], "");
+            } else if console.open {
+                console.draw(&ui);
+                crate::ui_probe::screen("coop-console", &[], "");
             } else {
                 crate::ui_probe::screen("coop-play", &[], "");
             }

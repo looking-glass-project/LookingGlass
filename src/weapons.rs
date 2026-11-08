@@ -1387,8 +1387,18 @@ impl Visuals {
     }
     pub fn restore(&mut self, s: &ProjectileSave) -> Result<()> {
         s.validate()?;
-        let s = s.migrated();
         self.clear();
+        self.replicate(s)
+    }
+    /// Keep effect emitters between live updates. Each art renderer already
+    /// retires emitter IDs absent from the current authoritative state.
+    pub fn replicate(&mut self, s: &ProjectileSave) -> Result<()> {
+        s.validate()?;
+        let s = s.migrated();
+        self.hits.clear();
+        self.spatial_sounds.clear();
+        self.ice_refund = 0.;
+        self.ice_drain = false;
         self.heavy = s.heavy;
         self.ice = s.ice;
         self.jacks = s.jacks;

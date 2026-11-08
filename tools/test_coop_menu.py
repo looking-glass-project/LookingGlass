@@ -122,10 +122,12 @@ class Desktop:
         self.focus(process)
         keys = ([0x11] if control else []) + [vk]
         for key in keys:
-            self.send([Input(1, Payload(key=Key(0, self.user.MapVirtualKeyW(key, 0), 8, 0, 0)))])
+            extended = int(key in (0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x2D, 0x2E))
+            self.send([Input(1, Payload(key=Key(0, self.user.MapVirtualKeyW(key, 0), 8 | extended, 0, 0)))])
         time.sleep(hold)
         for key in reversed(keys):
-            self.send([Input(1, Payload(key=Key(0, self.user.MapVirtualKeyW(key, 0), 10, 0, 0)))])
+            extended = int(key in (0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x2D, 0x2E))
+            self.send([Input(1, Payload(key=Key(0, self.user.MapVirtualKeyW(key, 0), 10 | extended, 0, 0)))])
         time.sleep(.12)
 
     def type_burst(self, process, text):

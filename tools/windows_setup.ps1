@@ -112,7 +112,7 @@ if ($Mode -eq 'Worker') {
                             $received += $count
                             if ($received -gt $downloadBytes) { throw 'The download has changed. Use Choose archive or Choose folder instead.' }
                             if ($clock.ElapsedMilliseconds -gt 300) {
-                                Report ('Downloading game files: {0:N0} of 933 MB' -f ($received / 1MB)) ([Math]::Min(100, [int](100 * $received / $downloadBytes)))
+                                Report ('Downloading game files: {0:N0} of 933 MB. Installation follows.' -f ($received / 1MB)) ([Math]::Min(80, [int](80 * $received / $downloadBytes)))
                                 $clock.Restart()
                             }
                         }
@@ -120,12 +120,12 @@ if ($Mode -eq 'Worker') {
                 } finally { $response.Close() }
                 Check-Cancel
                 if ((Get-Item -LiteralPath $partial).Length -ne $downloadBytes) { throw 'The download is incomplete. Please try again, or choose a local archive.' }
-                Report 'Checking the downloaded file...'
+                Report 'Download complete. Checking the file before installation...' 85
                 if ((Download-Hash $partial) -ne $downloadHash) { throw 'The download did not pass its integrity check. It has not been installed.' }
                 Check-Cancel
                 [IO.File]::Move($partial, $source)
             } else {
-                Report 'Checking the previously downloaded file...'
+                Report 'Using the saved download. Checking it before installation...' 85
                 if ((Download-Hash $source) -ne $downloadHash) { throw 'The saved download did not pass its integrity check. Choose a different archive or folder.' }
             }
         }
@@ -208,6 +208,8 @@ try {
     $form.Controls.Add($languages)
     $languageHint = Label 'Languages come from the selected source and the saved language packs. Saved packs take priority.' 26 365 605 45
     $installationLabel = Label '' 26 410 605 54
+    $installationLabel.AutoEllipsis = $true
+    $locationTip = New-Object Windows.Forms.ToolTip
     $languageStatus = Label '' 26 470 605 60
     $script:configured = Read-ConfiguredData
     $activeCode = if ($script:configured) { Get-ActiveLanguage $script:configured } else { 'en' }
@@ -225,6 +227,7 @@ try {
     $progress.SetBounds(26, 572, 605, 20); $form.Controls.Add($progress)
     $statusLabel = Label 'Choose an option above, then select Set up.' 26 602 605 45
     $operationNote = Label '' 26 655 605 40
+    $openFiles = Button 'Open files folder' 26 704 170
     $go = Button 'Set up' 216 704 140
     $applyLanguage = Button 'Apply language' 366 704 160
     $cancel = Button 'Close' 536 704 95
@@ -239,7 +242,7 @@ try {
     $content.Dock = 'Fill'; $content.AutoScroll = $true
     $content.AutoScrollMinSize = New-Object Drawing.Size(0, 696)
     foreach ($control in @($form.Controls)) {
-        if (@($go, $applyLanguage, $cancel) -contains $control) {
+        if (@($openFiles, $go, $applyLanguage, $cancel) -contains $control) {
             $control.Top = 14
             $footer.Controls.Add($control)
         } else {
@@ -316,8 +319,12 @@ try {
         if ($script:configured) {
             $activeName = $languageNames[[Array]::IndexOf($languageCodes, $active)]
             $installationLabel.Text = "Installed language: $activeName. Language changes apply to:`r`n$script:configured"
+            $locationTip.SetToolTip($installationLabel, $script:configured)
         } else {
-            $installationLabel.Text = 'No complete installation is configured. Use Set up to install game files first.'
+            $cached = Join-Path $root ('private\downloads\' + $archiveName)
+            $installationLabel.Text = if (Test-Path -LiteralPath $cached) { "Download saved at:`r`n$cached" } else {
+                'No complete installation is configured. Use Set up to install game files first.' }
+            $locationTip.SetToolTip($installationLabel, $cached)
         }
         if ($packError) {
             $languageStatus.Text = "Required pack cannot be used: $packError No source pack will silently replace a saved variant."
@@ -480,8 +487,22 @@ try {
         $cancel.Enabled = $false
     }
     $cancel.Add_Click({ if ($script:worker) { Request-Cancel } else { $form.Close() } })
+    $openFiles.Add_Click({
+        $folder = Read-ConfiguredData
+        if (-not $folder) { $folder = Join-Path $root 'private\downloads' }
+        if (-not (Test-Path -LiteralPath $folder -PathType Container)) { $folder = $root }
+        [void][Diagnostics.Process]::Start('explorer.exe', ('"' + $folder + '"'))
+    })
     $form.Add_FormClosing({
-        if ($script:worker) { $_.Cancel = $true; $script:closeWhenDone = $true; Request-Cancel }
+        if ($script:worker) {
+            # Download completion is not installation completion. Closing the
+            # window must not discard the following extraction/configuration.
+            # The explicit Cancel button still cancels safely.
+            $_.Cancel = $true
+            $script:closeWhenDone = $true
+            $playAfter.Checked = $false
+            $statusLabel.Text = 'Finishing setup before closing. Use Cancel if you want to stop installation.'
+        }
     })
     $timer.Add_Tick({
         $statePath = Join-Path $script:currentJob 'status.json'
@@ -500,7 +521,7 @@ try {
             $script:worker.Dispose(); $script:worker = $null
             $progress.Style = 'Continuous'; $cancel.Enabled = $true; $cancel.Text = 'Close'
             Refresh-Inputs
-            if ($code -eq 0) {
+            if ($code -eq 0 -and (Read-ConfiguredData)) {
                 $script:configured = Read-ConfiguredData
                             if ($script:configured) {
                     # Changing the selection fires a UI refresh, never a worker.
@@ -511,7 +532,7 @@ try {
                 Start-SourceScan
                 Refresh-Language
                 $progress.Value = 100
-                $statusLabel.Text = if ($script:currentAction -eq 'language') { 'Language changed. Base game files and settings were kept. Use Launch to play.' } else { 'Ready to play. Next time, just open Launch.' }
+                $statusLabel.Text = if ($script:currentAction -eq 'language') { 'Language changed. Base game files and settings were kept. Use Launch to play.' } else { 'Installation saved. You can close this window; next time, open Launch.cmd.' }
                 if ($script:currentAction -eq 'setup' -and $desktop.Checked) {
                     try {
                         $linkPath = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Looking Glass.lnk'
@@ -529,6 +550,8 @@ try {
                     catch { $statusLabel.Text = $_.Exception.Message }
                 }
             } else {
+                $script:ready = $false
+                if ($code -eq 0) { $statusLabel.Text = 'Installation is not ready yet. Your archive is kept in private\downloads; choose it to finish setup.' }
                 if ($workerError) { $statusLabel.Text = 'Setup could not finish. Please try again or choose an existing archive or folder.' }
                 $log = Join-Path $script:currentJob 'setup.log'
                 if (Test-Path -LiteralPath $log) {
@@ -550,7 +573,7 @@ try {
     [void]$form.ShowDialog()
     $sourceTimer.Stop(); $sourceTimer.Dispose()
     if ($script:sourceScan) { $script:sourceScan.Stop(); $script:sourceScan.Dispose() }
-    $timer.Dispose(); $form.Dispose()
+    $timer.Dispose(); $locationTip.Dispose(); $form.Dispose()
 } catch {
     [void][Windows.Forms.MessageBox]::Show($_.Exception.Message, 'Looking Glass - Setup')
     exit 1

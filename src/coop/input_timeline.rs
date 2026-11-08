@@ -48,6 +48,7 @@ struct Sample {
 #[derive(Default)]
 pub struct TimedInput {
     latch: RemoteInput,
+    origin: Option<(u64, Instant)>,
     accepted: Option<Sample>,
     received: Option<Instant>,
     current: Option<Sample>,
@@ -99,6 +100,10 @@ impl TimedInput {
         input.validate()?;
         let previous=self.accepted.map_or(Input::default(),|s|s.input);
         ensure!(self.accepted.is_none_or(|s|sampled_micros>=s.at),"Input clock moved backwards.");
+        let (first_sample, first_received) = self.origin.unwrap_or((sampled_micros, now));
+        ensure!(u128::from(sampled_micros-first_sample)
+            <= now.saturating_duration_since(first_received).as_micros()+u128::from(MAX_SPAN_MICROS),
+            "Player input clock is too far ahead of real time.");
         let pending=[self.latch.pending_jumps,self.latch.pending_uses,
             self.latch.pending_attacks[0],self.latch.pending_attacks[1],
             self.latch.pending_rope[0],self.latch.pending_rope[1]];
@@ -111,7 +116,19 @@ impl TimedInput {
         let first=self.current.or_else(||self.queued.front().copied());
         let ahead=first.map_or(0,|s|u128::from(sampled_micros-s.at)*120)
             .saturating_sub(self.elapsed);
-        ensure!(ahead<=u128::from(MAX_SPAN_MICROS)*120,"Player controls are too far ahead of the host.");
+        if ahead>u128::from(MAX_SPAN_MICROS)*120 {
+            // After a network stall, an old neutral sample can be followed by
+            // a current one in the same poll. Replaying seconds of that idle
+            // only adds latency; it contains no movement or action to retain.
+            // Active intervals, changed edges and forged clocks remain bounded.
+            ensure!(input.wish==Vec2::ZERO && input.swim==Vec3::ZERO && input.rise==0.
+                && !input.primary && !input.alternate && !input.skip_scene
+                && counters(input)==counters(previous) && pending.iter().all(|&n|n==0)
+                && self.current.is_none_or(|s|s.input==input)
+                && self.queued.iter().all(|s|s.input==input),
+                "Player controls are too far ahead of the host.");
+            self.current=None; self.queued.clear(); self.elapsed=0;
+        }
         let sample=Sample{sequence,input,at:sampled_micros};
         if self.queued.back().is_some_and(|s|s.input==input) {
             self.queued.back_mut().unwrap().sequence=sequence;
@@ -134,6 +151,7 @@ impl TimedInput {
             ensure!(self.queued.len()<MAX_SAMPLES,"Too many pending co-op controls.");
             self.queued.push_back(sample);
         }
+        self.origin.get_or_insert((sampled_micros, now));
         self.accepted=Some(sample); self.received=Some(now);
         Ok(())
     }
@@ -166,6 +184,37 @@ impl TimedInput {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn a_stalled_idle_burst_resumes_without_disconnect_or_delaying_fresh_controls() {
+        let mut stream=TimedInput::default(); let start=Instant::now();
+        stream.accept(1,Input::default(),0,start).unwrap();
+        for tick in 0..600 { stream.sample(start+Duration::from_micros(tick*1_000_000/120)); }
+        let resumed=start+Duration::from_secs(5);
+        // The transport releases a stale idle followed immediately by a fresh
+        // idle, a run-up and its jump. Only the empty interval can be collapsed.
+        stream.accept(2,Input::default(),1_000_000,resumed).unwrap();
+        stream.accept(3,Input::default(),4_500_000,resumed).unwrap();
+        let run=Input{wish:Vec2::X,run:true,..Default::default()};
+        stream.accept(4,run,4_600_000,resumed).unwrap();
+        stream.accept(5,Input{jumps:1,..run},4_800_000,resumed).unwrap();
+        for tick in 0..37 {
+            let controls=stream.sample(resumed+Duration::from_micros(tick*1_000_000/120)).0;
+            assert_eq!(controls.wish,if tick<12 {Vec2::ZERO} else {Vec2::X});
+            assert_eq!(controls.jump,tick==36);
+        }
+    }
+
+    #[test]
+    fn long_active_backlogs_and_idle_clock_forgery_are_still_rejected() {
+        let start=Instant::now(); let run=Input{wish:Vec2::X,..Default::default()};
+        let mut stream=TimedInput::default();
+        stream.accept(1,run,0,start).unwrap();
+        stream.accept(2,run,1_000_000,start+Duration::from_secs(5)).unwrap();
+        assert!(stream.accept(3,run,4_500_000,start+Duration::from_secs(5)).is_err());
+        let mut idle=TimedInput::default();
+        idle.accept(1,Input::default(),0,start).unwrap();
+        assert!(idle.accept(2,Input::default(),4_500_000,start+Duration::from_millis(10)).is_err());
+    }
     #[test]
     fn a_delayed_burst_keeps_the_runup_before_its_jump() {
         let mut stream=TimedInput::default();

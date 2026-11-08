@@ -11,7 +11,7 @@ pub fn path(name: &str) -> PathBuf {
         .join(name)
 }
 
-pub const SIZES: [(u32, u32); 8] = [
+pub const SIZES: [(u32, u32); 9] = [
     (800, 600),
     (1024, 768),
     (1200, 680),
@@ -20,6 +20,7 @@ pub const SIZES: [(u32, u32); 8] = [
     (1920, 1080),
     (2560, 1440),
     (3840, 2160),
+    (2560, 1600),
 ];
 // Keep the first eight indices stable when migrating preferences from 0.31.
 pub const BINDINGS: &[(&str, &str)] = &[

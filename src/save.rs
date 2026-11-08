@@ -226,6 +226,10 @@ pub struct Store {
     compatible_fingerprints: Vec<String>,
 }
 impl Store {
+    pub(crate) fn for_assets(directory: PathBuf, assets: &mut crate::assets::Assets) -> Result<Self> {
+        let (identity, legacy) = assets.save_fingerprints()?;
+        Ok(Self::new(directory, identity).with_compatible_fingerprints(legacy))
+    }
     pub fn new(directory: PathBuf, fingerprint: String) -> Self {
         Self {
             directory,

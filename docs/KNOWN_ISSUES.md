@@ -1,7 +1,13 @@
 # Prerelease limitations
 
-These limitations apply to **v0.32.0-preview.2**, the experimental Windows public preview.
+These limitations apply to **v0.33.0-preview.1**, the experimental Windows public preview.
 
+- Co-op has accepted normal paired progression across all 39 visits, plus public
+  joining, save/rejoin and ending checks. Broader visual/audio, difficulty/device
+  and per-level network/recovery combinations remain in the polishing backlog.
+- Public hosting downloads a pinned, verified Cloudflare tunnel helper on first
+  use and needs its service to be available. Invites expire when the host leaves;
+  share the new link after resuming. Both players need this co-op build.
 - Five automated campaign lineages complete all 39 visits; only one is an
   uninterrupted fresh run. This is route evidence, not a full visual/audio
   comparison. See [the campaign audit](CAMPAIGN_RUN_AUDIT.md).

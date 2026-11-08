@@ -85,7 +85,7 @@ pub async fn run(assets: &mut Assets, options: &Options, launch: &Launch) -> Res
         let imported = if let Some(game) = &launch.single_player {
             Some(super::solo::convert(assets, game.clone())?)
         } else if let Some(slot) = from_slot {
-            let store = crate::save::Store::new(options.save_dir.clone(), identity.game_data.clone());
+            let store = crate::save::Store::for_assets(options.save_dir.clone(), assets)?;
             Some(super::solo::convert(assets, store.read(slot)?.game)?)
         } else { None };
         let resumed = if let Some(checkpoint) = imported {

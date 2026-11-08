@@ -8,7 +8,8 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 PLAYER_FILES = ('Launch.cmd', 'Setup.cmd', 'tools/windows_setup.ps1', 'LICENSE-MIT', 'LEGAL.md',
                 'docs/INSTALL.md', 'docs/KNOWN_ISSUES.md', 'docs/CONTROLS.md',
-                'docs/CAMPAIGN_RUN_AUDIT.md', 'docs/SAVES.md')
+                'docs/CAMPAIGN_RUN_AUDIT.md', 'docs/SAVES.md', 'docs/COOP_QUICKSTART.md',
+                'docs/COOP_PLAYABLE.md', 'docs/COOP_CORE_TESTS.md')
 QUICK_START = r"""LOOKING GLASS - WINDOWS PREVIEW
 
 1. Extract the whole ZIP (right-click > Extract All).
@@ -22,6 +23,11 @@ To change game files: open Setup.cmd.
 No commands, Rust, Python, separate 7-Zip installation or administrator rights
 are needed. Use a writable folder such as Documents\LookingGlass. Allow 3 GB
 of free space; the optional game-data download is about 933 MB.
+
+CO-OP
+Open Co-op in the main menu or ESC. Host creates an internet invite; Join accepts
+it. Continue co-op resumes the host checkpoint. To use a solo save, load it first
+and choose ESC > Co-op > Host > Host this game. See docs/COOP_QUICKSTART.md.
 
 GAME FILES
 Use files you are entitled to use. The engine ZIP includes no original game data.

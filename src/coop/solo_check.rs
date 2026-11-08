@@ -66,7 +66,9 @@ pub async fn check(assets: &mut Assets, options: &Options) -> Result<()> {
         view: View { position: player.eye(), yaw: 1.2, pitch: 0.23, third_person: true,
             flying: false, fullbright: false, spawn_landing: false },
         recovery: Default::default(), character: alice.snapshot() };
-    let store = Store::new(options.save_dir.clone(), assets.fingerprint()?);
+    // Exercise the current ordinary-save format, including its language-neutral
+    // identity. Import must accept this as well as legacy identities.
+    let store = Store::for_assets(options.save_dir.clone(), assets)?;
     store.write(Slot::One, &game)?;
     let path = options.save_dir.join("slot1.json");
     let original = std::fs::read(&path)?;

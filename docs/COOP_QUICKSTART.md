@@ -1,7 +1,11 @@
-# Trying the co-op branch
+# Playing co-op
 
-Build `coop` with `cargo build --release --locked`, then run
-`target/release/looking-glass.exe` with your compatible local game data.
+Extract the Windows release and open the regular **Launch.cmd**. Co-op is part
+of the main game; choose **Co-op** from the main menu or ESC. Both players need
+this release and their own compatible game files.
+
+When building from source, use `cargo build --release --locked`, then open
+**Launch.cmd**. The source launcher uses the current release build.
 Current acceptance and deferred polish are tracked in [playable status](COOP_PLAYABLE.md).
 
 ## Host and join

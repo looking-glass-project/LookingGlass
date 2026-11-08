@@ -560,9 +560,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
         || options.shelf_preview
         || options.start_at.is_some()
         || options.story_preview.is_some());
-    let (save_identity, legacy_identities) = assets.save_fingerprints()?;
-    let store = Store::new(options.save_dir.clone(), save_identity)
-        .with_compatible_fingerprints(legacy_identities);
+    let store = Store::for_assets(options.save_dir.clone(), &mut assets)?;
     let maps = assets.maps();
     let mut audio = Audio::new(options.no_audio, options.audio_capture.clone());
     let mut opening_requested = options.new_game && options.map == "gvillage";

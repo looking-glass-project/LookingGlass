@@ -64,6 +64,14 @@ The guest's worst frame was 36 ms during the opening and 21.5 ms after it.
 Earlier runs exposed and retained evidence of the stale-idle rejection above.
 This stress test does not establish low end-to-end input latency.
 
+A follow-up audit of the same run found guest input acknowledgements reaching
+3.35 seconds and the oldest pending input reaching 3.50 seconds despite smooth
+rendering. Post-cutscene p95 values were 3.18 and 3.42 seconds respectively.
+These measurements include the injected delay and public relay; they are not
+the cousin's measured latency. Guest responsiveness and post-cutscene recovery
+therefore remain open. The performance runner now summarizes network timing
+alongside frame timing, including separate scene and post-scene intervals.
+
 The remote player's severe camera stutter has not been reproduced on the test
 PC. Removing synchronous diagnostics and repeated particle resets addresses
 avoidable render-thread work, but a local two-process run with injected delay

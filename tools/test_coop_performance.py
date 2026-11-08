@@ -8,6 +8,17 @@ import time
 import uuid
 from test_coop_play import ROOT, read
 
+def network_summary(rows):
+    result = {}
+    for key in ('round_trip_ms', 'oldest_pending_ms', 'buffered_control_ms',
+                'queued_input_samples', 'unacknowledged_frames'):
+        values = sorted(r['network'][key] for r in rows
+                        if r.get('network') and r['network'].get(key) is not None)
+        if values:
+            result[key] = dict(median=values[len(values)//2],
+                p95=values[int(len(values)*.95)], maximum=values[-1])
+    return result
+
 def run(args):
     folder = ROOT / 'private/coop' / ('performance-' + uuid.uuid4().hex)
     folder.mkdir(parents=True)
@@ -68,6 +79,7 @@ def run(args):
                 values = sorted(r['timing'][key] for r in rows)
                 timings[key] = dict(median=values[len(values)//2], p95=values[int(len(values)*.95)], maximum=values[-1])
             summary[role] = dict(samples=len(rows), timings=timings,
+                network=network_summary(rows),
                 scene_samples=sum(bool(r['scene']) for r in rows))
             if args.metrics_only:
                 assert not (folder / role / 'coop-live.json').exists(), 'Full-world diagnostics enabled in normal gameplay'
@@ -76,6 +88,7 @@ def run(args):
                 for name, in_scene in [('cutscene', True), ('after_cutscene', False)]:
                     subset = [r for r in rows if bool(r['scene']) == in_scene]
                     summary[role][name] = dict(windows=len(subset),
+                        network=network_summary(subset),
                         frames=sum(r['timing']['frames'] for r in subset),
                         frames_over_50_ms=sum(r['timing']['over_50_ms'] for r in subset),
                         worst_ms=max((r['timing']['max_ms'] for r in subset), default=None))

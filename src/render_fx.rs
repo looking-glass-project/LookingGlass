@@ -1010,7 +1010,10 @@ pub async fn check(assets: &mut Assets) -> Result<()> {
                 ensure!(dropped == 0, "Queue budget exceeded in {name}");
                 unsafe {
                     get_internal_gl().flush();
-                    macroquad::miniquad::gl::glFinish();
+                    #[cfg(not(target_os = "freebsd"))]
+                    if !get_internal_gl().quad_context.info().gl_version_string.starts_with("Vulkan") {
+                        macroquad::miniquad::gl::glFinish();
+                    }
                 }
                 if i > 1 {
                     let ms = start.elapsed().as_secs_f64() * 1000.;

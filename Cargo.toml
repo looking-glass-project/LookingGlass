@@ -9,6 +9,8 @@ description = "Local Rust compatibility research for user-supplied Alice game da
 [dependencies]
 anyhow = "1.0"
 macroquad = "=0.4.14"
+# Same version macroquad uses; named here to turn on the vendored Vulkan backend.
+miniquad = { version = "=0.4.8", features = ["vulkan"] }
 zip = { version = "=0.6.6", default-features = false, features = ["deflate"] }
 image = { version = "=0.24.9", default-features = false, features = ["tga", "jpeg", "png"] }
 # Macroquad's newer fontdue patch needs a newer compiler than the user's Rust 1.86.
@@ -24,7 +26,7 @@ serde_json = { version = "=1.0.145", features = ["float_roundtrip"] }
 # Enable serialization on the same math types used by Macroquad.
 glam = { version = "=0.27.0", features = ["serde"] }
 sha2 = "=0.10.9"
-tungstenite = { version = "=0.30.0", features = ["native-tls"] }
+tungstenite = { version = "=0.30.0", features = ["rustls-tls-webpki-roots"] }
 getrandom = "=0.3.4"
 # Already present through ZIP; use the same pinned codec for bounded co-op state.
 flate2 = { version = "=1.1.10", default-features = false, features = ["rust_backend"] }
@@ -37,3 +39,13 @@ opt-level = 1
 
 [profile.release]
 lto = "thin"
+
+[target.'cfg(target_os = "freebsd")'.dependencies]
+# PS5 std glue (kevent/stat/getrandom shims) from neokuze/ps5-rust 19a6ac0 (GPL-3.0-or-later),
+# vendored with one change: PS5_STD_RT_TITLE=1 skips its bundled libc copy (see vendor/ps5-std-rt/PS5_PORT.md).
+ps5-std-rt = { path = "vendor/ps5-std-rt" }
+
+[patch.crates-io]
+cpal = { path = "vendor/cpal" }
+miniquad = { path = "vendor/miniquad" }
+macroquad = { path = "vendor/macroquad" }

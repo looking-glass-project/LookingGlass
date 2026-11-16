@@ -1720,13 +1720,14 @@ impl Scene {
 pub fn depth_read_only(draw: impl FnOnce()) {
     unsafe {
         get_internal_gl().flush();
-        macroquad::miniquad::gl::glDepthMask(0);
+        // Backend-neutral glDepthMask (vendored miniquad hook; GL and Vulkan).
+        get_internal_gl().quad_context.set_depth_write_override(Some(false));
     }
     struct Restore;
     impl Drop for Restore {
         fn drop(&mut self) {
             unsafe {
-                macroquad::miniquad::gl::glDepthMask(1);
+                get_internal_gl().quad_context.set_depth_write_override(None);
             }
         }
     }
@@ -1750,9 +1751,11 @@ pub fn depth_pipeline(color_blend: Option<BlendState>) -> PipelineParams {
 /// first-person toy its own depth layer, then draw only the 2-D HUD afterwards.
 pub fn clear_view_depth() {
     unsafe {
-        get_internal_gl().flush();
-        macroquad::miniquad::gl::glDepthMask(1);
-        macroquad::miniquad::gl::glClear(macroquad::miniquad::gl::GL_DEPTH_BUFFER_BIT);
+        let mut gl = get_internal_gl();
+        gl.flush();
+        gl.quad_context.set_depth_write_override(None);
+        // Same as the glClear it replaces: depth only, within the current scissor.
+        gl.quad_context.clear(None, Some(1.0), None);
     }
 }
 

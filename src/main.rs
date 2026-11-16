@@ -127,6 +127,10 @@ use anyhow::{bail, Context, Result};
 use assets::Assets;
 use bsp::Bsp;
 use std::path::PathBuf;
+#[cfg(target_os = "freebsd")]
+use ps5_std_rt as _; // PS5 std glue must be linked
+#[cfg(target_os = "freebsd")]
+mod ps5_shims;
 
 pub struct Options {
     pub coop: Option<coop::preview::Launch>,
@@ -161,7 +165,16 @@ pub struct Options {
 #[used]
 pub static NvOptimusEnablement: u32 = 1;
 
+/// The PS5 title's folder (ShadowMountPlus layout). Put the game data in it as
+/// `Alice1/bin/base` (copied from your own install); settings and saves go to `private/`.
+#[cfg(target_os = "freebsd")]
+const PS5_TITLE_DIR: &str = "/data/homebrew/PPSA99641";
+
 fn main() {
+    #[cfg(target_os = "freebsd")]
+    if let Err(error) = std::env::set_current_dir(PS5_TITLE_DIR) {
+        eprintln!("Looking Glass: cannot enter {PS5_TITLE_DIR}: {error}");
+    }
     if let Err(error) = run() {
         eprintln!("Looking Glass: {error:#}");
         std::process::exit(1);
@@ -182,7 +195,7 @@ fn run() -> Result<()> {
             .ok()
             .filter(|path| !path.trim().is_empty())
             .map(|path| PathBuf::from(path.trim()))
-            .unwrap_or_else(|| PathBuf::from("alice_202106/Alice1/bin/base")),
+            .unwrap_or_else(|| PathBuf::from(if cfg!(target_os = "freebsd") { "Alice1/bin/base" } else { "alice_202106/Alice1/bin/base" })),
         map: "skool1".into(),
         direct_map: false,
         entry: None,

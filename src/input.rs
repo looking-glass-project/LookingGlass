@@ -211,7 +211,26 @@ fn read_pad(index: u32) -> Option<RawPad> {
         // Fixed C layout, writable state, index checked by XInput; Windows 10+ system API.
         (unsafe { XInputGetState(index, &mut state) } == 0).then_some(state.pad)
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "freebsd")]
+    {
+        // PS5: the DualSense, translated to XInput's layout so every binding and menu path
+        // below works unchanged (Cross=A, Circle=B, Square=X, Triangle=Y, OPTIONS=Start,
+        // touch pad click=Back).
+        use macroquad::miniquad::native::ps5::{button as b, pad};
+        let p = pad(index as usize)?;
+        let map = [
+            (b::UP, 0x0001u16), (b::DOWN, 0x0002), (b::LEFT, 0x0004), (b::RIGHT, 0x0008),
+            (b::OPTIONS, 0x0010), (b::TOUCH_PAD, 0x0020), (b::L3, 0x0040), (b::R3, 0x0080),
+            (b::L1, 0x0100), (b::R1, 0x0200), (b::CROSS, 0x1000), (b::CIRCLE, 0x2000),
+            (b::SQUARE, 0x4000), (b::TRIANGLE, 0x8000),
+        ];
+        let buttons = map.iter().filter(|(ds, _)| p.buttons & ds != 0).fold(0u16, |a, (_, x)| a | x);
+        // 0..255 with 128 at rest and y down-positive -> XInput's -32768..32767, y up-positive.
+        let axis = |v: u8| ((v as i32 - 128) * 256).clamp(-32768, 32767) as i16;
+        let flip = |v: u8| ((128 - v as i32) * 256).clamp(-32768, 32767) as i16;
+        Some(RawPad { buttons, lt: p.l2, rt: p.r2, lx: axis(p.left_x), ly: flip(p.left_y), rx: axis(p.right_x), ry: flip(p.right_y) })
+    }
+    #[cfg(not(any(windows, target_os = "freebsd")))]
     {
         let _ = index;
         None

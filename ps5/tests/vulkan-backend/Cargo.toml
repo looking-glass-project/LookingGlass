@@ -1,0 +1,15 @@
+# Renders one frame through miniquad with GL or Vulkan and writes rt_<backend>.ppm / grab_<backend>.ppm,
+# to compare the Vulkan backend with GL (render-to-texture, depth, blending, scissor, uniform arrays,
+# texture upload, screen grab, read-back).
+#   cargo run --release                                   # GL (needs a display or xvfb-run)
+#   MINIQUAD_BACKEND=vulkan cargo run --release           # Vulkan (any driver, e.g. lavapipe)
+[package]
+name = "vulkan-backend-test"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+miniquad = { path = "../../../vendor/miniquad", features = ["vulkan"] }
+
+[workspace]

@@ -490,7 +490,7 @@ fn connect(invite: &Invite, shared: &Shared, readiness: bool)
     );
     match socket.get_ref() {
         MaybeTlsStream::Plain(tcp) => tcp.0.set_nonblocking(true)?,
-        MaybeTlsStream::NativeTls(tls) => tls.get_ref().0.set_nonblocking(true)?,
+        MaybeTlsStream::Rustls(tls) => tls.get_ref().0.set_nonblocking(true)?,
         _ => bail!("Unsupported TLS connection"),
     }
     Ok(Some(socket))

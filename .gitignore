@@ -38,3 +38,12 @@ __pycache__/
 *.pem
 *.key
 *.log
+
+# PS5 port: build output and anything from the game
+/target-*/
+/ps5/build/
+/ps5/dist/
+*.pk3
+*.PK3
+/Alice1/
+/private/

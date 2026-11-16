@@ -4,6 +4,8 @@ use std::{path::PathBuf, sync::mpsc::{self, SyncSender}, thread};
 /// Call on the window thread after its OpenGL context has been initialized.
 pub fn renderer() -> String {
     // GL_RENDERER describes the active context, unlike enumerating installed GPUs.
+    let info = unsafe { macroquad::window::get_internal_gl().quad_context.info().gl_version_string };
+    if info.starts_with("Vulkan") { return info; }
     let name = unsafe { macroquad::miniquad::gl::glGetString(0x1F01) };
     if name.is_null() { return "Unknown renderer".into(); }
     unsafe { std::ffi::CStr::from_ptr(name.cast()) }.to_string_lossy().into_owned()

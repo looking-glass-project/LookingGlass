@@ -37,16 +37,39 @@ SECRET = re.compile(
 )
 
 
+# PS5 port (ps5/README.md).
+PS5_FILES = {"ps5/.gitignore", "ps5/sce_sys/icon0.png", "vendor/README.md"}
+# Binary files of the port, by exact content: the title's icon (PS5_VulkanTemplate's placeholder)
+# and the resources macroquad embeds with include_bytes!.
+PINNED_BINARIES = {
+    "ps5/sce_sys/icon0.png": "902be3702d17039ffc6320cf53f94d54abd393d26c2e19fa91a5548a613b5417",
+    "vendor/macroquad/src/ProggyClean.ttf": "527d2a443ce051f93f7e77b855609722b8cb220a9f104b4aa037be5c90b71324",
+    "vendor/macroquad/src/font.png": "634ed3801b905c8fa55b3abd3ff3c319d629712599928b62128061c8823cce78",
+    "vendor/macroquad/src/ui/combobox.img": "881379bc94e541ee0e1f912ec609edacdb99571f2957036cd330f6748c027d50",
+}
+VENDORED = {"miniquad", "macroquad", "cpal", "ps5-std-rt"}
+VENDOR_LICENCES = {"LICENSE", "LICENSE-MIT", "LICENSE-APACHE"}
+VENDOR_RESOURCES = set(PINNED_BINARIES)
+
+
 def allowed(path):
     p = PurePosixPath(path)
     if p.is_absolute() or ".." in p.parts or "\\" in path:
         return False
-    if path in GAMEPLAY_MEDIA or path in SITE_FILES:
+    if path in GAMEPLAY_MEDIA or path in SITE_FILES or path in PS5_FILES:
         return True
     if len(p.parts) == 1:
         return path in ROOT_FILES or (path.startswith("Launch") and p.suffix == ".cmd")
     if p.parts[0] in SUFFIXES:
         return p.suffix in SUFFIXES[p.parts[0]] and "__pycache__" not in p.parts
+    if p.parts[0] == "ps5" and len(p.parts) > 1:
+        # PS5 port: scripts, docs, the title's metadata/icon and the backend test program.
+        return path in PS5_FILES or (p.suffix in {".sh", ".md", ".json", ".toml", ".rs"} and "__pycache__" not in p.parts)
+    if p.parts[0] == "vendor" and len(p.parts) > 2 and p.parts[1] in VENDORED:
+        # Patched third-party crates (vendor/README.md): source, manifests, licences, and
+        # the few binary resources the crates themselves include at compile time.
+        return (p.suffix in {".rs", ".toml", ".md", ".c", ".h", ".js", ".java", ".lock"}
+                or p.name in VENDOR_LICENCES or path in VENDOR_RESOURCES)
     return p.parts[:2] in {(".github", "workflows"), (".github", "ISSUE_TEMPLATE")} and p.suffix in {".yml", ".yaml", ".md"}
 
 
@@ -63,6 +86,9 @@ def audit_data(path, data):
     if path in GAMEPLAY_MEDIA:
         if hashlib.sha256(data).hexdigest() != GAMEPLAY_MEDIA[path]:
             errors.append(f"Unreviewed gameplay media content: {path}")
+    elif path in PINNED_BINARIES:
+        if hashlib.sha256(data).hexdigest() != PINNED_BINARIES[path]:
+            errors.append(f"Unreviewed binary content: {path}")
     elif b"\0" in data:
         errors.append(f"Binary content in source file: {path}")
     if SECRET.search(data):

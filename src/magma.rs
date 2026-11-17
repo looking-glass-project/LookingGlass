@@ -328,7 +328,10 @@ impl Magma {
         );
         let delta = aim - b.center;
         let distance = delta.length();
-        let trace = world.sweep(b.center, aim, Vec3::splat(0.5));
+        // Sight comes from head height: a low puddle in a sunken pool would otherwise be
+        // hidden behind the bank and never notice anyone standing at its edge.
+        let sight = b.center + Vec3::Z * 40. * self.scale;
+        let trace = world.sweep(sight, aim, Vec3::splat(0.5));
         let visible = !notarget && distance < 800. && !trace.start_solid && trace.fraction >= 1.;
         if visible && matches!(self.phase, Phase::Idle | Phase::Walk | Phase::Alert) {
             let angle = (delta.y.atan2(delta.x) - self.yaw + std::f32::consts::PI)

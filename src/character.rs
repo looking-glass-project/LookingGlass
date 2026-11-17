@@ -2811,7 +2811,7 @@ mod tests {
                     elapsed += span.end - span.start;
                 }
                 assert!(
-                    (elapsed / (2. * fraction) - 1.).abs() < 0.02,
+                    (elapsed / fraction - 1.).abs() < 0.02,
                     "{} at {fraction} speed advanced {elapsed} seconds",
                     CLIPS[index]
                 );

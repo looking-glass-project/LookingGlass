@@ -8,7 +8,8 @@ use macroquad::prelude::{Vec2, Vec3};
 pub const EYE_HEIGHT: f32 = 48.;
 pub const FIXED_DT: f32 = 1. / 120.;
 // Brisk walk: about two authored strides per second (51.3-51.7 units each).
-pub const WALK_SPEED: f32 = 104.;
+pub const WALK_SPEED: f32 = 52.;
+pub const RUN_SPEED: f32 = 173.;
 pub(crate) const STEP_HEIGHT: f32 = 18.;
 pub const GRAVITY: f32 = 800.;
 // Local Player jump event: half gravity in the ordinary, unpowered state.
@@ -471,7 +472,7 @@ impl Player {
         let jump = input.jump && self.grounded;
         let wish = input.wish.clamp_length_max(1.);
         let target = wish
-            * if input.run { 320. } else { WALK_SPEED }
+            * if input.run { RUN_SPEED } else { WALK_SPEED }
             * if self.tea { 2. } else { 1. }
             * if self.immersion.level > 0 { 0.7 } else { 1. };
         let mut horizontal = self.velocity.truncate();
@@ -914,7 +915,7 @@ mod tests {
     #[test]
     fn brisk_walking_speed_and_running_are_stable() {
         let world = floor();
-        for (run, fraction, expected) in [(false, 1., 104.), (false, 0.125, 13.), (true, 1., 320.)]
+        for (run, fraction, expected) in [(false, 1., 52.), (false, 0.125, 6.5), (true, 1., 173.)]
         {
             let mut p = Player::new(Vec3::Z * 0.04);
             let input = Controls {
@@ -1031,7 +1032,7 @@ mod tests {
         ]);
         let mut p = Player::new(vec3(0., 0., 0.1));
         // Allow the brisk walking speed to reach and slide along the wall.
-        for _ in 0..360 {
+        for _ in 0..720 {
             p.tick(
                 &world,
                 Controls {
@@ -1052,8 +1053,8 @@ mod tests {
                 (vec3(50., -100., 0.), vec3(500., 100., height)),
             ]);
             let mut p = Player::new(vec3(0., 0., 0.1));
-            // Walk far enough to exercise the same step geometry at 104 units/s.
-            for _ in 0..240 {
+            // Walk far enough to exercise the same step geometry at 52 units/s.
+            for _ in 0..480 {
                 p.tick(
                     &world,
                     Controls {
@@ -1138,7 +1139,7 @@ mod tests {
     fn follows_slope_up_and_down_and_can_jump_while_climbing() {
         let world = World::ramp_fixture();
         let mut p = Player::new(vec3(0., 0., 8.));
-        for _ in 0..200 {
+        for _ in 0..400 {
             p.tick(
                 &world,
                 Controls {
@@ -1172,7 +1173,7 @@ mod tests {
         }
         assert!(p.grounded);
         let before = p.feet;
-        for _ in 0..60 {
+        for _ in 0..120 {
             p.tick(
                 &world,
                 Controls {

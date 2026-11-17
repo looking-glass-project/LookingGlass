@@ -2978,6 +2978,9 @@ impl Npcs {
             })
             .collect()
     }
+    pub fn model_name(&self, id: usize) -> Option<&str> {
+        self.actors.get(id).map(|a| a.spawn.model.as_str())
+    }
     pub fn hit(&mut self, hit: combat::Hit) -> Option<(String, &'static str)> {
         let actor = self.actors.get_mut(hit.id)?;
         if let Some(p) = &mut actor.resident {

@@ -708,6 +708,8 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
     let mut follow_camera = crate::camera::Follow::default();
     let mut camera_handoff = crate::camera::Handoff::default();
     let frozen_orbit = crate::camera::FrozenOrbit::load(&mut assets)?;
+    let mut blood = crate::blood::Blood::default();
+    let blood_specs = crate::texture::read_materials(&mut assets)?;
     let mut rail_camera = crate::camera::Follow::default();
     let mut clock = FixedClock::default();
     let mut recovery = Recovery::default();
@@ -2668,7 +2670,13 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
                 }
                 continue;
             }
+            let bleeds = hit.damage > 0. && hit.kind.means() != crate::combat::DamageKind::Ice;
             if let Some((message, sound)) = npcs.hit(hit) {
+                if bleeds {
+                    if let Some(model) = npcs.model_name(hit.id).map(str::to_owned) {
+                        blood.spawn(&mut assets, &blood_specs, &model, hit_origin);
+                    }
+                }
                 hud.announce(message);
                 audio.world_effect_at(sound, hit_origin);
             }
@@ -2964,6 +2972,8 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
             &scene.atmosphere,
             fullbright,
         );
+        blood.update(if active { dt } else { 0. });
+        blood.draw(camera, &scene.atmosphere);
         level_art.story_pose(&story);
         level_art.draw(&interactions, &hints, &scene.atmosphere, camera, fullbright);
         power_art.draw(

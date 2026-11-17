@@ -1308,7 +1308,7 @@ mod tests {
         until(&mut host, &mut guest, |_, g| g.frame.is_some());
         let received = guest.take_frame().unwrap();
         assert!(received.players[0].player.feet.y.abs() < 0.1);
-        assert!((received.players[1].player.feet.y - start.y - 104.).abs() < 5.);
+        assert!((received.players[1].player.feet.y - start.y - 52.).abs() < 5.);
         assert_eq!(
             received.players[1].player.feet,
             roster.players[1].player.feet

@@ -3,6 +3,12 @@ use crate::collision::World;
 use macroquad::prelude::*;
 pub(crate) mod navigation;
 
+/// The original Actor constructor (fgamex86 0x100195e0) sets `max_inactive_time`
+/// to 30 s (float at 0x1015ce5c). Per its event text, this is also how long an actor
+/// keeps hunting an enemy it can no longer see; `GetCloseToEnemy` heads for the
+/// enemy itself, not the last sighting.
+pub const MAX_INACTIVE_TIME: f32 = 30.;
+
 #[derive(Clone, Copy, Debug)]
 pub struct Target {
     pub id: usize,
@@ -853,11 +859,13 @@ pub(crate) fn walk_body_liquids(
     }
     let next =
         (raised + delta).lerp(raised + delta - Vec3::Z * 34., down.fraction) - Vec3::Z * half.z;
+    // Every hull corner needs ground, but within two stair treads: an 18-unit
+    // probe refused each descending stair (a 32-unit hull spans two 16-unit
+    // treads), stalling enemies at the top of steps. Real drops still stop them.
     for x in [-half.x + 1., half.x - 1.] {
         for y in [-half.y + 1., half.y - 1.] {
             let p = next + vec3(x, y, 2.);
-            // A hull straddling a legal step still needs support on its lower side.
-            let support = world.sweep(p, p - Vec3::Z * 18., Vec3::ZERO);
+            let support = world.sweep(p, p - Vec3::Z * 36., Vec3::ZERO);
             if support.start_solid || support.fraction >= 1. || support.normal.z < 0.65 {
                 return feet;
             }

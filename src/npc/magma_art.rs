@@ -73,12 +73,12 @@ impl Model {
         let time = g.sample_time(&self.data);
         let pose = self.data.clips[g.clip()].sample(time, g.loops());
         let skins = self.magma_skins.as_ref().unwrap();
-        // Hot (form 0) is fully opaque; each cooler skin fades in over the previous one.
-        let passes: &[(usize, f32)] = match g.form {
-            0 => &[(0, 1.)],
-            1 => &[(0, 1.), (1, (g.cooling / 6. - 1.).clamp(0., 1.))],
-            _ => &[(2, 1.)],
-        };
+        // aaron.shader: each skin's last stage is `alphaGen fromEntity`, the crust of
+        // the next cooler form. The entity alpha is the cooling progress within the
+        // current form (0 = molten orange, 1 = fully crusted); the base and lava
+        // stages stay opaque. Feeding 1 here buried the hot body under grey crust.
+        let within = (g.cooling - 6. * g.form as f32) / 6.;
+        let passes: &[(usize, f32)] = &[(g.form.min(2) as usize, if g.form >= 2 { 1. } else { within.clamp(0., 1.) })];
         for &(skin_form, alpha) in passes {
             let mut original = Vec::new();
             let mut removed = Vec::new();

@@ -287,3 +287,56 @@ mod tests {
         assert_eq!(target.z, 54.);
     }
 }
+
+/// `camera bulletcam 0 0 0 1 damped animate waterice` (alice_torso.st FROZEN):
+/// an `fx_bulletcam` (scale 1.7) at Alice's origin and facing plays
+/// models/camera/waterice.tan; the view sits on `tag_camera` and looks at
+/// `tag_target`, orbiting and closing in while she is encased.
+pub struct FrozenOrbit {
+    camera: Vec<Vec3>,
+    target: Vec<Vec3>,
+    frame_time: f32,
+}
+impl FrozenOrbit {
+    const SCALE: f32 = 1.7;
+    pub fn load(assets: &mut crate::assets::Assets) -> anyhow::Result<Self> {
+        let tan = crate::tan::Model::parse(&assets.read("models/camera/waterice.tan")?)?;
+        let tag = |name: &str| {
+            tan.tags
+                .get(name)
+                .cloned()
+                .ok_or_else(|| anyhow::anyhow!("waterice.tan lacks {name}"))
+        };
+        Ok(Self {
+            camera: tag("tag_camera")?,
+            target: tag("tag_target")?,
+            frame_time: tan.frame_time,
+        })
+    }
+    fn sample(points: &[Vec3], frame_time: f32, time: f32) -> Vec3 {
+        let last = points.len() - 1;
+        let at = (time.max(0.) / frame_time).min(last as f32);
+        let i = (at.floor() as usize).min(last);
+        points[i].lerp(points[(i + 1).min(last)], at - i as f32)
+    }
+    pub fn camera(
+        &self,
+        world: &World,
+        time: f32,
+        origin: Vec3,
+        yaw: f32,
+    ) -> crate::cinematic::Camera {
+        let rotation = Quat::from_rotation_z(yaw);
+        let place = |p: Vec3| origin + rotation * (p * Self::SCALE);
+        let target = place(Self::sample(&self.target, self.frame_time, time));
+        let wanted = place(Self::sample(&self.camera, self.frame_time, time));
+        // Keep the lens out of walls: pull it in along the line to the target.
+        let hit = world.sweep(target, wanted, HALF);
+        let eye = if hit.start_solid {
+            target
+        } else {
+            target.lerp(wanted, hit.fraction)
+        };
+        crate::cinematic::Camera::look(eye, target)
+    }
+}

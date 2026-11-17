@@ -382,6 +382,8 @@ impl Piece {
                 if *delay == 0. {
                     self.active = true;
                     self.spawn_delay = None;
+                    // Script spawns call attackplayer: they start with the player as enemy.
+                    self.memory = crate::combat::MAX_INACTIVE_TIME;
                 }
                 continue;
             }
@@ -440,10 +442,14 @@ impl Piece {
         let visible =
             !notarget && delta.length() < 800. && !sight.start_solid && sight.fraction >= 1.;
         if visible {
-            self.memory = 3.;
+            self.memory = crate::combat::MAX_INACTIVE_TIME;
             self.last_seen = eye;
         } else {
             self.memory = (self.memory - dt).max(0.);
+            if self.memory > 0. && !notarget {
+                // GetCloseToEnemy: keep heading for the enemy while hunting.
+                self.last_seen = eye;
+            }
         }
         if notarget {
             self.memory = 0.;
@@ -589,8 +595,6 @@ impl Piece {
                             data.speed(self.kind.model(), self.clip()) * dt,
                             true,
                         );
-                    } else if !visible {
-                        self.memory = 0.;
                     }
                     // Loop the rendered clip, but retain the short attack decision timer.
                     self.time = self.time.min(10.);
@@ -651,7 +655,7 @@ impl Piece {
                 && self.recoil.valid()
                 && self.detour.valid()
                 && self.last_seen.is_finite()
-                && (0. ..=3.).contains(&self.memory)
+                && (0. ..=crate::combat::MAX_INACTIVE_TIME).contains(&self.memory)
                 && (0. ..=2.).contains(&self.block_cooldown)
                 && (0. ..=800.).contains(&self.falling)
                 && (0. ..=0.01).contains(&self.accumulator)

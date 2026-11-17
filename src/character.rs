@@ -582,6 +582,9 @@ pub struct Character {
     actions: Actions,
     visuals: Visuals,
     upper: Vec<bool>,
+    /// models/alice.tik `burn` (torso, ON_FIRE in alice_torso.st STAND): arms flail
+    /// while she burns; its entry plays burn_scream.wav.
+    burn: Burn,
     tags: [usize; 3],
     anchors: [Transform; 3],
     viewmodel: crate::viewmodel::ViewModel,
@@ -660,6 +663,7 @@ impl Character {
     pub fn load_for_player(assets: &mut Assets, player: crate::coop::PlayerId) -> Result<Self> {
         let def = Definition::alice(assets)?;
         let skeleton = Skeleton::parse(&assets.read(&format!("{}/{}", def.path, def.model))?)?;
+        let bone_count = skeleton.bones.len();
         let mut clips = Vec::new();
         for name in CLIPS {
             let path = format!("{}/{name}.ska", def.path);
@@ -779,6 +783,14 @@ impl Character {
             actions,
             visuals,
             upper,
+            burn: Burn {
+                clip: Animation::parse(&assets.read(&format!("{}/burn.ska", def.path))?, bone_count)
+                    .context("Alice burn.ska")?,
+                time: 0.,
+                weight: 0.,
+                scream: false,
+                was_burning: false,
+            },
             tags,
             anchors: [Transform {
                 rotation: Quat::IDENTITY,
@@ -987,6 +999,12 @@ impl Character {
         if dt > 0. || self.animator.unarmed {
             self.acting.apply(&mut self.actions.pose, &self.upper, idle);
         }
+        self.burn.apply(
+            dt,
+            self.water_art.burning() && !player.swimming,
+            &mut self.actions.pose,
+            &self.upper,
+        );
         let mut power_mask = self.upper.clone();
         if let Some(i) = self.skeleton.bones.iter().position(|b| b.name == "tag_03") {
             power_mask[i] = true;
@@ -1077,6 +1095,9 @@ impl Character {
     pub fn ice_locked(&self) -> bool {
         self.visuals.ice_locked()
     }
+    pub fn frozen(&self) -> Option<(f32, Vec3, f32)> {
+        self.visuals.frozen()
+    }
     /// A Phantasmagoria ice chain reached Alice: encase her in an fx_iceball block.
     pub fn phantasm_freeze(&mut self, feet: Vec3) -> bool {
         self.visuals.phantasm_freeze(feet, self.facing)
@@ -1101,6 +1122,13 @@ impl Character {
     }
     pub fn take_audio(&mut self) -> Vec<crate::audio::events::Cue> {
         let mut cues = self.acting.take_audio();
+        if std::mem::take(&mut self.burn.scream) {
+            // `entry sound sound/character/alice/burn_scream.wav 1 .7 384`
+            cues.push(crate::audio::events::Cue {
+                path: "sound/character/alice/burn_scream.wav".into(),
+                volume: 1.,
+            });
+        }
         let Some((index, span)) = self.animator.sound_span.take() else {
             return cues;
         };
@@ -3199,5 +3227,36 @@ mod tests {
             "legacy Alice blocks checked: {checked} of {}",
             LEGACY_FIXTURES.len()
         );
+    }
+}
+
+struct Burn {
+    clip: Animation,
+    time: f32,
+    weight: f32,
+    scream: bool,
+    was_burning: bool,
+}
+impl Burn {
+    /// Overlay the looping `burn` torso clip on the upper body while Alice is on fire.
+    fn apply(&mut self, dt: f32, burning: bool, pose: &mut [Transform], upper: &[bool]) {
+        if burning && !self.was_burning {
+            self.time = 0.;
+            self.scream = true;
+        }
+        self.was_burning = burning;
+        let target = if burning { 1. } else { 0. };
+        self.weight += (target - self.weight).clamp(-dt / 0.2, dt / 0.15);
+        if burning {
+            self.time += dt;
+        }
+        if self.weight <= 0. {
+            return;
+        }
+        for (i, sample) in self.clip.sample(self.time, true).into_iter().enumerate() {
+            if upper.get(i).copied().unwrap_or(false) {
+                pose[i] = pose[i].blend(sample, self.weight);
+            }
+        }
     }
 }

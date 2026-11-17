@@ -707,6 +707,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
     let mut third_person = true;
     let mut follow_camera = crate::camera::Follow::default();
     let mut camera_handoff = crate::camera::Handoff::default();
+    let frozen_orbit = crate::camera::FrozenOrbit::load(&mut assets)?;
     let mut rail_camera = crate::camera::Follow::default();
     let mut clock = FixedClock::default();
     let mut recovery = Recovery::default();
@@ -2782,9 +2783,15 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
             .as_ref()
             .and_then(|s| s.return_visit.as_ref())
             .and_then(|s| s.camera());
-        let scripted_camera = pand_camera.or_else(|| {
-            cinematic_camera.map(|(eye, target, _)| crate::cinematic::Camera::look(eye, target))
-        });
+        let frozen_camera = alice
+            .frozen()
+            .map(|(time, origin, yaw)| frozen_orbit.camera(&scene.world, time, origin, yaw));
+        let scripted_camera = pand_camera
+            .or_else(|| {
+                cinematic_camera
+                    .map(|(eye, target, _)| crate::cinematic::Camera::look(eye, target))
+            })
+            .or(frozen_camera);
         let (eye, aim, gameplay_alice) = if third_person && !flying {
             follow_camera.update(
                 &scene.world,
@@ -2849,6 +2856,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
         let (camera, target) = (view.eye + quake, view.target + quake);
         let show_alice = !interactions.level_hides_player() && if scripted_camera.is_some() {
             rage_scene.is_some_and(|(_, finished)| !finished)
+                || frozen_camera.is_some()
                 || (cinematic_camera.is_some_and(|(_, _, show)| show) && pand_camera.is_none())
         } else {
             gameplay_alice && camera.distance(player.feet + Vec3::Z * 32.) > 30.

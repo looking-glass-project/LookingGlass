@@ -1347,6 +1347,9 @@ impl Visuals {
     pub fn stop_ice(&mut self) {
         self.ice.stop();
     }
+    pub fn frozen(&self) -> Option<(f32, Vec3, f32)> {
+        self.ice.frozen()
+    }
     pub fn phantasm_freeze(&mut self, feet: Vec3, yaw: f32) -> bool {
         self.ice.phantasm(feet, yaw)
     }

@@ -387,6 +387,14 @@ impl State {
             s.age >= start && s.age < end
         })
     }
+    /// FROZEN (alice_torso.st): while the block holds Alice the original plays the
+    /// `fx_bulletcam` `waterice` orbit. Returns (time since lock, origin, yaw).
+    pub fn frozen(&self) -> Option<(f32, Vec3, f32)> {
+        self.shell.as_ref().and_then(|s| {
+            let (start, end, _) = s.lock();
+            (s.age >= start && s.age < end).then_some(((s.age - start) as f32, s.origin, s.yaw))
+        })
+    }
     /// Encase the player after a Phantasmagoria chain reaches them. An existing
     /// block (including the underwater shell) is never restarted.
     pub fn phantasm(&mut self, origin: Vec3, yaw: f32) -> bool {

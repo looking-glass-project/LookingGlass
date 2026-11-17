@@ -216,7 +216,7 @@ impl Guard {
             return;
         }
         self.last_seen = eye;
-        self.memory = 6.;
+        self.memory = combat::MAX_INACTIVE_TIME;
         if self.phase == Phase::Idle {
             self.set(Phase::Chase);
         }
@@ -364,7 +364,7 @@ impl Guard {
         self.health = (self.health - hit.damage).max(0.);
         self.opponents.demon |= hit.kind.is_demon();
         self.recoil.hit(hit.knockback, 200.);
-        self.memory = 6.;
+        self.memory = combat::MAX_INACTIVE_TIME;
         if self.health == 0. {
             self.variant = self.random() % 12;
             self.frozen = hit.kind.means() == DamageKind::Ice;
@@ -552,7 +552,10 @@ impl Guard {
                         -0.766
                     });
         if visible {
-            self.memory = 6.;
+            self.memory = combat::MAX_INACTIVE_TIME;
+            self.last_seen = aim;
+        } else if self.memory > 0. && !notarget {
+            // GetCloseToEnemy: keep heading for the enemy while hunting.
             self.last_seen = aim;
         }
         let movement = if self.phase == Phase::Flee {
@@ -738,7 +741,7 @@ impl Guard {
                 && (0. ..=86400.).contains(&self.time)
                 && self.variant < 12
                 && (0. ..=1.).contains(&self.cooldown)
-                && (0. ..=6.).contains(&self.memory)
+                && (0. ..=combat::MAX_INACTIVE_TIME).contains(&self.memory)
                 && self.detour.valid()
                 && self.last_seen.is_finite()
                 && self.pain.is_finite()

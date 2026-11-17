@@ -262,6 +262,9 @@ impl Art {
             f.restart();
         }
     }
+    pub fn burning(&self) -> bool {
+        self.burn.is_some()
+    }
     /// Advance the lava fire on the gameplay clock (never while paused).
     pub fn burn_step(&mut self, dt: f32, player: &Player) {
         if player.immersion.level >= 1 && player.immersion.kind == crate::water::Liquid::Lava {

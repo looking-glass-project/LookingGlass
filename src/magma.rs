@@ -124,9 +124,13 @@ impl Magma {
     pub fn origin(&self) -> Vec3 {
         self.feet + Vec3::Z * self.wade
     }
-    fn update_wade(&mut self, world: &World) {
-        self.wade = lava_surface(world, self.feet + Vec3::Z * 4.)
-            .map_or(0., |s| (s + WADE_HEIGHT * self.scale - self.feet.z).max(0.));
+    /// The rig origin is at the feet; idle is a low puddle and walk/attack poses
+    /// stand ~95 units tall at scale 0.75.
+    pub(crate) fn update_wade(&mut self, world: &World) {
+        // Deep pits would bury the whole body; keep the legs (about 30 units at
+        // scale 1) under the surface so the torso stands clear, as on PC.
+        self.wade = lava_surface(world, self.feet, self.scale)
+            .map_or(0., |s| (s - LEGS_UNDER_LAVA * self.scale - self.feet.z).max(0.));
     }
     pub fn place(&mut self, world: &World) {
         if !self.grounded && self.launch.is_none() {
@@ -298,7 +302,7 @@ impl Magma {
         self.cooldown = (self.cooldown - DT).max(0.);
         self.pain = (self.pain - DT).max(0.);
         self.cooling = (self.cooling
-            + if world.liquid_at(self.feet + Vec3::Z * 4.) & 8 != 0 {
+            + if in_lava(world, self.feet, self.scale) {
                 -4. * DT
             } else {
                 DT
@@ -554,16 +558,24 @@ impl Magma {
 #[cfg(test)]
 mod tests;
 
-/// How far a wading Magma Man's origin rides above the lava surface. The rig's
-/// lowest vertices sit ~35 units under its origin, so only the legs stay under,
-/// as in the PC release (approximation pending the original game code).
-const WADE_HEIGHT: f32 = 20.;
-/// Height of the lava surface above `point`, if `point` is inside lava.
-fn lava_surface(world: &World, point: Vec3) -> Option<f32> {
+/// Lava depth left over the legs when a deep pit lifts the drawn rig.
+const LEGS_UNDER_LAVA: f32 = 30.;
+/// The original MagmaMan think tests the actor's watertype (contents bit 8) over
+/// its body column, like Quake's waterlevel, not just the floor point. Pit lava
+/// brushes need not reach the floor, so sample up the 64-unit hull.
+fn lava_start(world: &World, feet: Vec3, scale: f32) -> Option<f32> {
+    (0..=8)
+        .map(|i| feet.z + (1. + i as f32 * 8.) * scale)
+        .find(|&z| world.liquid_at(vec3(feet.x, feet.y, z)) & 8 != 0)
+}
+fn in_lava(world: &World, feet: Vec3, scale: f32) -> bool {
+    lava_start(world, feet, scale).is_some()
+}
+/// Height of the lava surface over the actor, if any part of its body is in lava.
+fn lava_surface(world: &World, feet: Vec3, scale: f32) -> Option<f32> {
+    let start = lava_start(world, feet, scale)?;
+    let point = vec3(feet.x, feet.y, start);
     let lava = |z: f32| world.liquid_at(vec3(point.x, point.y, z)) & 8 != 0;
-    if !lava(point.z) {
-        return None;
-    }
     let (mut low, mut high) = (point.z, point.z + 8.);
     while lava(high) {
         low = high;
@@ -578,3 +590,4 @@ fn lava_surface(world: &World, point: Vec3) -> Option<f32> {
     }
     Some(low)
 }
+

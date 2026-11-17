@@ -2608,31 +2608,32 @@ impl Npcs {
     /// Live enemies are solid to each other, as in the original: overlapping
     /// bodies are pushed apart instead of merging into one line.
     fn separate_actors(&mut self, world: &World) {
-        const GAP: f32 = 32.;
-        let mut bodies: Vec<(usize, Vec3)> = Vec::new();
+        // (actor, feet, radius): chess pieces are 48-64 units wide, imps and guards ~32.
+        let mut bodies: Vec<(usize, Vec3, f32)> = Vec::new();
         for (i, a) in self.actors.iter().enumerate() {
-            let live = if let Some(p) = &a.imp { (p.active && p.health > 0.).then_some(p.feet) }
-                else if let Some(p) = &a.chess { (p.active && p.health > 0.).then_some(p.feet) }
-                else if let Some(p) = &a.guard { (p.health > 0.).then_some(p.feet) }
-                else if let Some(p) = &a.clock { (p.active && p.health > 0.).then_some(p.feet) }
+            let live = if let Some(p) = &a.imp { (p.active && p.health > 0.).then_some((p.feet, 16.)) }
+                else if let Some(p) = &a.chess { (p.active && p.health > 0.).then_some((p.feet, p.kind.half().x * p.scale)) }
+                else if let Some(p) = &a.guard { (p.health > 0.).then_some((p.feet, 16.)) }
+                else if let Some(p) = &a.clock { (p.active && p.health > 0.).then_some((p.feet, 16.)) }
                 else { None };
-            if let Some(feet) = live { bodies.push((i, feet)); }
+            if let Some((feet, r)) = live { bodies.push((i, feet, r)); }
         }
         let mut push = vec![Vec3::ZERO; bodies.len()];
         for x in 0..bodies.len() {
             for y in x + 1..bodies.len() {
                 let d = bodies[y].1 - bodies[x].1;
                 let flat = d.truncate();
-                if d.z.abs() > 50. || flat.length() >= GAP { continue; }
+                let gap = (bodies[x].2 + bodies[y].2) * 0.9;
+                if d.z.abs() > 50. || flat.length() >= gap { continue; }
                 let dir = if flat.length() > 0.01 { flat.normalize() } else { Vec2::X };
-                let shove = dir.extend(0.) * (GAP - flat.length()) * 0.5;
+                let shove = dir.extend(0.) * (gap - flat.length()) * 0.5;
                 push[x] -= shove;
                 push[y] += shove;
             }
         }
-        for ((i, feet), delta) in bodies.into_iter().zip(push) {
+        for ((i, feet, r), delta) in bodies.into_iter().zip(push) {
             if delta.length_squared() < 1e-6 { continue; }
-            let moved = combat::walk_body(world, feet, delta, vec3(16., 16., 25.));
+            let moved = combat::walk_body(world, feet, delta, vec3(r, r, 25.));
             let a = &mut self.actors[i];
             if let Some(p) = &mut a.imp { p.feet = moved; }
             else if let Some(p) = &mut a.chess { p.feet = moved; }

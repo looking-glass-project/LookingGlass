@@ -151,6 +151,8 @@ pub struct Guard {
     memory: f32,
     last_seen: Vec3,
     random: u32,
+    #[serde(default)]
+    detour: combat::navigation::Detour,
     serial: u32,
 }
 impl Guard {
@@ -181,6 +183,7 @@ impl Guard {
             memory: 0.,
             last_seen: feet,
             random: seed as u32,
+            detour: Default::default(),
             serial: 0,
         }
     }
@@ -622,11 +625,21 @@ impl Guard {
                 if movement.truncate().length() > 50. {
                     let stride = rig.speed(self.kind.model(), self.clip()) * STEP * self.scale;
                     let dir = movement.with_z(0.).normalize_or_zero();
-                    for angle in [0., 0.65, -0.65, 1.1, -1.1] {
+                    let before = self.feet;
+                    self.feet = self.detour.walk(
+                        world,
+                        self.feet,
+                        self.feet + dir * 200.,
+                        self.target(0).half,
+                        stride,
+                        STEP,
+                    );
+                    let moved = (self.feet - before).truncate().length_squared() > 0.0001;
+                    for angle in if moved { &[][..] } else { &[0., 0.65, -0.65, 1.1, -1.1][..] } {
                         let next = combat::walk_body(
                             world,
                             self.feet,
-                            Quat::from_rotation_z(angle) * dir * stride,
+                            Quat::from_rotation_z(*angle) * dir * stride,
                             self.target(0).half,
                         );
                         if (next - self.feet).truncate().length_squared() > 0.0001 {
@@ -726,6 +739,7 @@ impl Guard {
                 && self.variant < 12
                 && (0. ..=1.).contains(&self.cooldown)
                 && (0. ..=6.).contains(&self.memory)
+                && self.detour.valid()
                 && self.last_seen.is_finite()
                 && self.pain.is_finite()
                 && self.pain >= 0.

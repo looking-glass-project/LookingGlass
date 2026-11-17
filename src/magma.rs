@@ -395,8 +395,13 @@ impl Magma {
                         * data.speed(MODEL, self.clip()).min(320.)
                         * self.scale
                         * DT;
-                    self.feet =
-                        combat::walk_body_liquids(world, self.feet, motion, self.target(0).half, 8);
+                    let half = self.target(0).half;
+                    let mut next = combat::walk_body_liquids(world, self.feet, motion, half, 8);
+                    if next == self.feet && in_lava(world, self.feet, self.scale) {
+                        // Pit walls are taller than a stair; climb out of the lava.
+                        next = combat::walk_body_lift(world, self.feet, motion, half, 8, 64.);
+                    }
+                    self.feet = next;
                 }
             }
             Phase::Punch | Phase::Rock | Phase::Bash => {

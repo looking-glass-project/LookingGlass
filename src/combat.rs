@@ -842,7 +842,18 @@ pub(crate) fn walk_body_liquids(
     half: Vec3,
     allowed: i32,
 ) -> Vec3 {
-    let lift = Vec3::Z * 16.;
+    walk_body_lift(world, feet, delta, half, allowed, 16.)
+}
+/// As `walk_body_liquids`, with a taller step so a body can climb out of a pit.
+pub(crate) fn walk_body_lift(
+    world: &World,
+    feet: Vec3,
+    delta: Vec3,
+    half: Vec3,
+    allowed: i32,
+    step: f32,
+) -> Vec3 {
+    let lift = Vec3::Z * step;
     let center = feet + Vec3::Z * (half.z + 0.1);
     let up = world.sweep(center, center + lift, half);
     if up.start_solid {

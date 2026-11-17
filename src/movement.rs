@@ -14,7 +14,7 @@ pub const GRAVITY: f32 = 800.;
 // Local Player jump event: half gravity in the ordinary, unpowered state.
 // Horizontal acceleration and animation timing remain provisional.
 const JUMP_SPEED: f32 = GRAVITY * 0.5;
-const GROUND_Z: f32 = 0.65;
+const GROUND_Z: f32 = 0.5;
 /// Upright swimmer's shoulders are near 44 units; keep the eye just above water.
 pub const FLOAT_DEPTH: f32 = 44.;
 

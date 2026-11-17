@@ -2525,7 +2525,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
             weapon_buttons.block();
         }
         if !stats.alive() {
-            alice.die();
+            alice.die_from(feedback.damage, feedback.impulse);
         }
         let death_animation =
             !stats.alive() && focused && !paused && !menu && !inventory_menu && !console_input;

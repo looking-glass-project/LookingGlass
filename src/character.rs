@@ -15,7 +15,7 @@ use macroquad::{
 };
 use std::collections::BTreeMap;
 
-pub(crate) const CLIPS: [&str; 32] = [
+pub(crate) const CLIPS: [&str; 36] = [
     "idle_base_01",
     "walk_nowep",
     "run_nowep",
@@ -32,7 +32,7 @@ pub(crate) const CLIPS: [&str; 32] = [
     "ledge_climb_32",
     "ledge_climb_48",
     "ledge_climb_64",
-    "death_knockback",
+    "death_faint",
     "death_falling_01",
     "death_drown",
     "rope_hang",
@@ -48,7 +48,44 @@ pub(crate) const CLIPS: [&str; 32] = [
     "ledge_pullup",
     "rope_climb_up_left",
     "rope_climb_down_right",
+    // Ground deaths beyond death_faint (16), chosen by `death_clip`.
+    "death_hideous",
+    "death_forward",
+    "death_hard",
+    "death_knockback",
 ];
+const DEATH_FAINT: usize = 16;
+const DEATH_HIDEOUS: usize = 32;
+const DEATH_FORWARD: usize = 33;
+const DEATH_HARD: usize = 34;
+const DEATH_KNOCKBACK: usize = 35;
+
+/// The original `global/alice_torso.st` DEATH state: the first entry whose
+/// conditions hold (each CHANCE rolled in order) picks Alice's ground death.
+/// `damage` is the killing blow; `from_front` is None when it had no direction.
+fn choose_death(damage: f32, from_front: Option<bool>, mut roll: impl FnMut() -> f32) -> usize {
+    let front = from_front == Some(true);
+    let rear = from_front == Some(false);
+    if damage >= 40. && roll() < 0.7 {
+        return DEATH_HIDEOUS;
+    }
+    if rear && roll() < 0.9 {
+        return DEATH_FORWARD;
+    }
+    if front && damage >= 23. && roll() < 0.8 {
+        return DEATH_HARD;
+    }
+    if front && roll() < 0.8 {
+        return DEATH_KNOCKBACK;
+    }
+    if roll() < 0.6 {
+        return DEATH_FAINT;
+    }
+    if roll() < 0.8 {
+        return DEATH_HARD;
+    }
+    DEATH_HIDEOUS
+}
 
 fn rope_pair(index: usize) -> Option<usize> {
     match index {
@@ -143,6 +180,7 @@ struct Animator {
     unarmed: bool,
     offset: f32,
     previous_offset: f32,
+    death_clip: usize,
 }
 impl Animator {
     fn snapshot(&self) -> AnimatorSave {
@@ -159,9 +197,11 @@ impl Animator {
             large: self.large,
             offset: self.offset,
             previous_offset: self.previous_offset,
+            death_clip: self.death_clip,
         }
     }
     fn restore(&mut self, s: &AnimatorSave) {
+        self.death_clip = if s.death_clip < CLIPS.len() { s.death_clip } else { DEATH_FAINT };
         self.last_feet = s.last_feet;
         self.last_rope_length = s.last_rope_length;
         self.sound_span = None;
@@ -199,6 +239,7 @@ impl Animator {
             unarmed: false,
             offset: 0.,
             previous_offset: 0.,
+            death_clip: DEATH_FAINT,
         }
     }
     fn reset(&mut self, player: &Player) {
@@ -305,12 +346,15 @@ impl Animator {
         let index = match self.motion {
             Motion::Hang | Motion::PullUp => player.ledge.as_ref().map_or(26, |h| h.clip()),
             Motion::Death => {
-                if player.immersion.level == 3 {
+                // alice_torso.st KILLED: DEATH_WATER needs IN_WATER "2" and !ON_FIRE.
+                // Burning in lava is ON_FIRE: the ordinary DEATH table, not a fall.
+                let lava = player.immersion.level > 0 && player.immersion.kind == crate::water::Liquid::Lava;
+                if player.immersion.level >= 2 && !lava {
                     18
-                } else if !player.grounded {
+                } else if !player.grounded && !lava {
                     17
                 } else {
-                    16
+                    self.death_clip
                 }
             }
             Motion::Rope => match player
@@ -582,6 +626,19 @@ impl Character {
         Ok(())
     }
     pub fn die(&mut self) {
+        self.die_from(0., Vec3::ZERO);
+    }
+    /// `impulse` is the killing blow's knockback (pointing away from the attacker).
+    pub fn die_from(&mut self, damage: f32, impulse: Vec3) {
+        if !matches!(self.animator.motion, Motion::Death) {
+            let flat = impulse.truncate();
+            let from_front = (flat.length_squared() > 1e-4).then(|| {
+                let forward = Vec2::new(self.facing.cos(), self.facing.sin());
+                flat.normalize().dot(forward) < 0.
+            });
+            self.animator.death_clip =
+                choose_death(damage, from_front, || macroquad::rand::gen_range(0., 1.));
+        }
         self.power_pose.state.sync(None);
         if !matches!(
             self.animator.motion,
@@ -1398,6 +1455,11 @@ struct AnimatorSave {
     large: bool,
     offset: f32,
     previous_offset: f32,
+    #[serde(default = "default_death_clip")]
+    death_clip: usize,
+}
+fn default_death_clip() -> usize {
+    DEATH_FAINT
 }
 /// One GPU pipeline, with effects explicitly owned by each draw. Do not expose
 /// the raw Material: a queued flush can restore an earlier actor's uniforms.

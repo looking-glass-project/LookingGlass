@@ -175,6 +175,9 @@ pub struct Piece {
     last_seen: Vec3,
     block_cooldown: f32,
     random: u32,
+    /// Planned detours around obstacles and step edges (shared with spiders/ants).
+    #[serde(default)]
+    detour: crate::combat::navigation::Detour,
 }
 impl Piece {
     pub fn new(kind: Kind, feet: Vec3, yaw: f32, scale: f32, seed: usize) -> Self {
@@ -203,6 +206,7 @@ impl Piece {
             last_seen: feet,
             block_cooldown: 0.,
             random: seed as u32,
+            detour: Default::default(),
         }
     }
     pub fn target(&self, id: usize) -> Target {
@@ -598,6 +602,20 @@ impl Piece {
     }
     fn walk(&mut self, world: &World, delta: Vec3, step: f32, sidestep: bool) -> bool {
         let direction = delta.truncate().extend(0.).normalize_or_zero();
+        if sidestep {
+            // Direct step first, then the persistent A* detour when the hull is blocked.
+            let before = self.feet;
+            let goal = self.feet + delta.truncate().extend(0.);
+            self.feet = self.detour.walk(
+                world,
+                self.feet,
+                goal,
+                self.kind.half() * self.scale,
+                step * self.scale,
+                1. / 120.,
+            );
+            return self.feet.truncate().distance_squared(before.truncate()) > 0.0001;
+        }
         for angle in if sidestep {
             &[0., 0.65, -0.65, 1.1, -1.1][..]
         } else {
@@ -631,6 +649,7 @@ impl Piece {
                 && (self.health == 0.) == (self.phase == Phase::Dead)
                 && (!self.frozen || self.health == 0.)
                 && self.recoil.valid()
+                && self.detour.valid()
                 && self.last_seen.is_finite()
                 && (0. ..=3.).contains(&self.memory)
                 && (0. ..=2.).contains(&self.block_cooldown)

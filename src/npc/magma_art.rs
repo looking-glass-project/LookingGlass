@@ -102,18 +102,20 @@ impl Model {
                 }
             }
             material.bind();
-            crate::character::draw_skin_alpha(
-                &self.data.skeleton,
-                &mut self.meshes,
-                &pose,
-                Transform {
-                    translation: g.origin(),
-                    rotation: Quat::from_rotation_z(g.yaw),
-                },
-                self.data.def.scale * scale,
-                fullbright,
-                alpha,
-            );
+            crate::render_fx::with_entity_stages_only(|| {
+                crate::character::draw_skin_alpha(
+                    &self.data.skeleton,
+                    &mut self.meshes,
+                    &pose,
+                    Transform {
+                        translation: g.origin(),
+                        rotation: Quat::from_rotation_z(g.yaw),
+                    },
+                    self.data.def.scale * scale,
+                    fullbright,
+                    alpha,
+                );
+            });
             for (i, tex) in original {
                 self.meshes[i].as_mut().unwrap().texture = tex;
             }

@@ -559,7 +559,7 @@ impl Magma {
 mod tests;
 
 /// Lava depth left over the legs when a deep pit lifts the drawn rig.
-const LEGS_UNDER_LAVA: f32 = 30.;
+const LEGS_UNDER_LAVA: f32 = 6.;
 /// The original MagmaMan think tests the actor's watertype (contents bit 8) over
 /// its body column, like Quake's waterlevel, not just the floor point. Pit lava
 /// brushes need not reach the floor, so sample up the 64-unit hull.

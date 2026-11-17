@@ -2601,7 +2601,44 @@ impl Npcs {
     }
     pub fn update(&mut self, dt: f32, world: &World, eye: Vec3) -> combat::Feedback {
         self.player_targets(None);
-        self.update_targets(dt, world, eye, &[eye], &[Some(eye)])
+        let feedback = self.update_targets(dt, world, eye, &[eye], &[Some(eye)]);
+        self.separate_actors(world);
+        feedback
+    }
+    /// Live enemies are solid to each other, as in the original: overlapping
+    /// bodies are pushed apart instead of merging into one line.
+    fn separate_actors(&mut self, world: &World) {
+        const GAP: f32 = 32.;
+        let mut bodies: Vec<(usize, Vec3)> = Vec::new();
+        for (i, a) in self.actors.iter().enumerate() {
+            let live = if let Some(p) = &a.imp { (p.active && p.health > 0.).then_some(p.feet) }
+                else if let Some(p) = &a.chess { (p.active && p.health > 0.).then_some(p.feet) }
+                else if let Some(p) = &a.guard { (p.health > 0.).then_some(p.feet) }
+                else if let Some(p) = &a.clock { (p.active && p.health > 0.).then_some(p.feet) }
+                else { None };
+            if let Some(feet) = live { bodies.push((i, feet)); }
+        }
+        let mut push = vec![Vec3::ZERO; bodies.len()];
+        for x in 0..bodies.len() {
+            for y in x + 1..bodies.len() {
+                let d = bodies[y].1 - bodies[x].1;
+                let flat = d.truncate();
+                if d.z.abs() > 50. || flat.length() >= GAP { continue; }
+                let dir = if flat.length() > 0.01 { flat.normalize() } else { Vec2::X };
+                let shove = dir.extend(0.) * (GAP - flat.length()) * 0.5;
+                push[x] -= shove;
+                push[y] += shove;
+            }
+        }
+        for ((i, feet), delta) in bodies.into_iter().zip(push) {
+            if delta.length_squared() < 1e-6 { continue; }
+            let moved = combat::walk_body(world, feet, delta, vec3(16., 16., 25.));
+            let a = &mut self.actors[i];
+            if let Some(p) = &mut a.imp { p.feet = moved; }
+            else if let Some(p) = &mut a.chess { p.feet = moved; }
+            else if let Some(p) = &mut a.guard { p.feet = moved; }
+            else if let Some(p) = &mut a.clock { p.feet = moved; }
+        }
     }
     /// The host advances the cast once, with both live bodies available to each
     /// enemy. A trigger can be reached by either player in that same step.
@@ -2610,7 +2647,9 @@ impl Npcs {
         let eyes: Vec<_> = players.iter().filter(|p| p.alive).map(|p| p.eye).collect();
         let eye = eyes.first().copied().unwrap_or(players[0].eye);
         let escort_eyes = players.map(|p| p.alive.then_some(p.eye));
-        self.update_targets(dt, world, eye, &eyes, &escort_eyes)
+        let feedback = self.update_targets(dt, world, eye, &eyes, &escort_eyes);
+        self.separate_actors(world);
+        feedback
     }
     fn player_targets(&mut self, players: Option<[combat::PlayerTarget; 2]>) {
         for a in &mut self.actors {

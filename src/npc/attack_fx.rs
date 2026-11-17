@@ -12,7 +12,7 @@ pub struct Art {
     impact: Attached,
 }
 thread_local! { static CACHE: std::cell::RefCell<std::rc::Weak<Art>> = Default::default(); }
-const MATERIALS: [&str; 2] = ["queenbeam1", "emap1"];
+const MATERIALS: [&str; 3] = ["queenbeam1", "emap1", "textures/special/icechain"];
 
 fn ribbon(from: Vec3, to: Vec3, camera: Vec3, width: f32, repeats: f32) -> Option<Mesh> {
     let axis = (to - from).try_normalize()?;
@@ -85,6 +85,11 @@ impl Art {
         mesh.texture = Some(self.layers[material].0.clone());
         // Original material stages own colour, blending and scrolling; no debug tint.
         render_fx::skin_effect(&mesh, age, 1.);
+    }
+    /// Phantasmagoria ice chain; the shader tiles it 5x per repeat.
+    pub fn ice_chain(&self, from: Vec3, to: Vec3, camera: Vec3, age: f32) {
+        let repeat = (from.distance(to) / 160.).max(0.1);
+        self.draw("textures/special/icechain", from, to, camera, 3., age, repeat);
     }
     pub fn lightning(
         &self,

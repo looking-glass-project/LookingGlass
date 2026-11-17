@@ -2511,6 +2511,9 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
             stats.spend_will(feedback.will_drain.min(stats.will()));
         }
         player.knockback(feedback.impulse);
+        if feedback.freeze.contains(&crate::dice::ALICE) && stats.alive() {
+            alice.phantasm_freeze(player.feet);
+        }
         if feedback.damage > 0. {
             println!(
                 "Guard struck Alice: {} damage, {} sanity",

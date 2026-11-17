@@ -1077,6 +1077,10 @@ impl Character {
     pub fn ice_locked(&self) -> bool {
         self.visuals.ice_locked()
     }
+    /// A Phantasmagoria ice chain reached Alice: encase her in an fx_iceball block.
+    pub fn phantasm_freeze(&mut self, feet: Vec3) -> bool {
+        self.visuals.phantasm_freeze(feet, self.facing)
+    }
     pub fn attack_movement_locked(&self) -> bool {
         self.actions.movement_locked()
     }

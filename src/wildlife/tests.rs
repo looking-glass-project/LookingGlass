@@ -59,9 +59,10 @@ fn coop_phantom_drains_the_closer_players_will_without_damaging_the_other() {
     p.set(Phase::Melee);
     p.opponents.players = Some([vec3(400., 0., 48.), vec3(90., 0., 48.)].map(|eye|
         crate::combat::PlayerTarget { eye, alive: true, hidden: false }));
-    let out = run(&mut p, &floor(), vec3(400., 0., 48.), 150);
+    // PhantasmAttack mode 1: 0.5 will per 20 Hz frame for all of attack_2 (1.5 s here).
+    let out = run(&mut p, &floor(), vec3(400., 0., 48.), 200);
     assert_eq!(out.players[0].will_drain, 0.);
-    assert_eq!(out.players[1].will_drain, 10.);
+    assert!((out.players[1].will_drain - 15.).abs() < 0.1, "{}", out.players[1].will_drain);
     assert_eq!(out.players[1].damage, 0.);
     assert_eq!(out.damage, 0.);
     assert_eq!(out.will_drain, 0.);
@@ -150,22 +151,46 @@ fn cover_blocks_cues_and_missed_attacks_do_not_replay() {
         let f = run(&mut g, &wall(), vec3(90., 0., 48.), 150);
         assert_eq!(f.damage + f.will_drain, 0.);
         let f = run(&mut g, &floor(), vec3(90., 0., 48.), 20);
-        assert_eq!(f.damage + f.will_drain, 0.);
+        if k == Kind::Phantom {
+            // The mana drain is continuous for all of attack_2, so it resumes in view.
+            assert_eq!(f.damage, 0.);
+            assert!(f.will_drain <= 20. * DT * DRAIN_PER_SECOND + 1e-4);
+        } else {
+            assert_eq!(f.damage + f.will_drain, 0.);
+        }
     }
 }
 #[test]
 fn phantom_drains_will_and_chain_releases_on_cover_or_death() {
     let mut g = make(Kind::Phantom);
     g.set(Phase::Melee);
-    let f = run(&mut g, &floor(), vec3(90., 0., 48.), 160);
-    assert_eq!(f.will_drain, 10.);
+    let f = run(&mut g, &floor(), vec3(90., 0., 48.), 200);
+    assert!((f.will_drain - 15.).abs() < 0.1, "{}", f.will_drain);
     assert_eq!(f.damage, 0.);
+    // Ice chains: two tips from tag_head1/3 at 1200 u/s toward Alice +-32; a hit encases
+    // her (no damage, no pull) and the Phantasmagoria then charges.
+    let mut froze = 0;
+    for seed in 0..8 {
+        let mut c = Creature::new(Kind::Phantom, Vec3::Z * 0.1, 0., 1., seed);
+        c.set(Phase::Ranged);
+        let f = run(&mut c, &floor(), vec3(250., 0., 48.), 30);
+        assert_eq!(c.chains.len(), 2);
+        assert_eq!(f.impulse, Vec3::ZERO);
+        assert_eq!(f.damage, 0.);
+        if f.freeze == [crate::dice::ALICE] {
+            froze += 1;
+            assert!(c.stunned >= 3. && c.stunned <= 5.);
+        }
+        c.validate().unwrap();
+        let mut blocked = Creature::new(Kind::Phantom, Vec3::Z * 0.1, 0., 1., seed);
+        blocked.set(Phase::Ranged);
+        let f = run(&mut blocked, &wall(), vec3(250., 0., 48.), 60);
+        assert!(f.freeze.is_empty());
+        assert!(blocked.chains.iter().all(|c| c.tip.x <= 61.));
+    }
+    assert!(froze > 0, "no chain reached Alice");
     g.set(Phase::Ranged);
-    assert!(run(&mut g, &floor(), vec3(250., 0., 48.), 30).impulse.x < 0.);
-    assert_eq!(
-        run(&mut g, &wall(), vec3(250., 0., 48.), 1).impulse,
-        Vec3::ZERO
-    );
+    run(&mut g, &floor(), vec3(250., 0., 48.), 1);
     assert!(g.beam.is_none());
     g.hit(hit(1000., DamageKind::Knife));
     assert!(g.beam.is_none());

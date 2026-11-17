@@ -226,9 +226,19 @@ pub struct Feedback {
     pub summon_hits: Vec<Hit>,
     pub sounds: Vec<&'static str>,
     pub spatial_sounds: Vec<(&'static str, Vec3)>,
+    /// Players encased in a Phantasmagoria ice block this tick.
+    pub freeze: Vec<usize>,
 }
 impl Feedback {
+    pub fn freeze(&mut self, id: usize) {
+        if player_id(id) && !self.freeze.contains(&id) {
+            self.freeze.push(id);
+        }
+    }
     pub fn append(&mut self, other: Self) {
+        for id in other.freeze {
+            self.freeze(id);
+        }
         for (a, b) in self.players.iter_mut().zip(other.players) {
             a.damage += b.damage;
             a.impulse += b.impulse;

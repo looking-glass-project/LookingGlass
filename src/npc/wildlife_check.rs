@@ -198,6 +198,15 @@ pub async fn native(assets: &mut Assets) -> Result<()> {
             if kind.jabber() && phase == Phase::Ranged {
                 g.beam = Some(target + (eye - target) * 0.7);
             }
+            if kind == Kind::Phantom && phase == Phase::Ranged {
+                let tip = target + (eye - target) * 0.7;
+                g.chains = [-14., 14.].map(|side| crate::wildlife::Chain {
+                    from: target + vec3(0., side, 40.),
+                    tip: tip + vec3(0., side * 0.3, 0.),
+                    target: tip,
+                    done: true,
+                }).to_vec();
+            }
             let mut art = wildlife_art::Art::new(&model);
             for frame in 0..3 {
                 clear_background(BLACK);

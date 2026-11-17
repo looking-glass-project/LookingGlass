@@ -255,6 +255,29 @@ mod tests {
         state.advance(4., false, &data);
         assert!(state.shell.is_none());
     }
+    #[test]
+    fn phantasm_block_holds_alice_from_point_two_to_three_point_four_seconds() {
+        let mut state = State::default();
+        let data = Data { idle: 0.1, rise: 1., death: 1. };
+        assert!(state.phantasm(Vec3::ZERO, 0.));
+        assert!(!state.phantasm(Vec3::ZERO, 0.), "an existing block is never restarted");
+        assert!(!state.underwater(Vec3::ZERO, Vec3::X));
+        assert!(state.advance(0.15, false, &data).is_empty());
+        assert!(!state.locked());
+        assert_eq!(state.advance(0.1, false, &data).len(), 1);
+        assert!(state.locked());
+        state = serde_json::from_str(&serde_json::to_string(&state).unwrap()).unwrap();
+        state.validate().unwrap();
+        assert!(state.advance(3.1, false, &data).is_empty());
+        assert!(state.locked());
+        assert_eq!(state.advance(0.1, false, &data).len(), 1);
+        assert!(!state.locked());
+        state.advance(0.65, false, &data);
+        assert!(state.shell.is_none());
+        let mut legacy = serde_json::to_value(State::default()).unwrap();
+        legacy["shell"] = serde_json::json!({"origin":[0.,0.,0.],"age":1.,"yaw":0.});
+        assert!(!serde_json::from_value::<State>(legacy).unwrap().shell.unwrap().phantasm);
+    }
 }
 impl Wall {
     pub fn target(&self) -> Target {
@@ -307,6 +330,16 @@ pub(super) struct Shell {
     pub origin: Vec3,
     pub age: f64,
     pub yaw: f32,
+    /// A Phantasmagoria ice-chain block (fgamex86 PhantasmAttack mode 3):
+    /// fx_iceball `down` at 0 s, `idle` at 1 s, `up` at 3 s, removed at 4 s;
+    /// Alice is held from 0.2 s to 3.4 s.
+    #[serde(default)]
+    pub phantasm: bool,
+}
+impl Shell {
+    fn lock(&self) -> (f64, f64, f64) {
+        if self.phantasm { (0.2, 3.4, 4.) } else { (0.65, 7.5, 11.) }
+    }
 }
 #[derive(Clone, Default, Serialize, Deserialize)]
 pub(super) struct State {
@@ -349,9 +382,19 @@ impl State {
         Ok(())
     }
     pub fn locked(&self) -> bool {
-        self.shell
-            .as_ref()
-            .is_some_and(|s| s.age >= 0.65 && s.age < 7.5)
+        self.shell.as_ref().is_some_and(|s| {
+            let (start, end, _) = s.lock();
+            s.age >= start && s.age < end
+        })
+    }
+    /// Encase the player after a Phantasmagoria chain reaches them. An existing
+    /// block (including the underwater shell) is never restarted.
+    pub fn phantasm(&mut self, origin: Vec3, yaw: f32) -> bool {
+        if self.shell.is_some() {
+            return false;
+        }
+        self.shell = Some(Shell { origin, age: 0., yaw, phantasm: true });
+        true
     }
     pub fn underwater(&mut self, origin: Vec3, aim: Vec3) -> bool {
         if self.shell.is_some() {
@@ -361,6 +404,7 @@ impl State {
             origin,
             age: 0.,
             yaw: aim.y.atan2(aim.x),
+            phantasm: false,
         });
         true
     }
@@ -532,14 +576,15 @@ impl State {
             .retain(|w| w.melt_at.is_none_or(|at| w.age < at + data.death));
         if let Some(s) = &mut self.shell {
             let old = s.age;
+            let (start, end, gone) = s.lock();
             s.age += dt as f64;
-            if old < 0.65 && s.age >= 0.65 {
+            if old < start && s.age >= start {
                 sounds.push((FREEZE, s.origin));
             }
-            if old < 7.5 && s.age >= 7.5 {
+            if old < end && s.age >= end {
                 sounds.push(("sound/character/shared/unfreeze.wav", s.origin));
             }
-            if s.age >= 11. {
+            if s.age >= gone {
                 self.shell = None;
             }
         }

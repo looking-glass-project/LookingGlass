@@ -1347,6 +1347,9 @@ impl Visuals {
     pub fn stop_ice(&mut self) {
         self.ice.stop();
     }
+    pub fn phantasm_freeze(&mut self, feet: Vec3, yaw: f32) -> bool {
+        self.ice.phantasm(feet, yaw)
+    }
     pub fn frozen_body(&self, meshes: &[Option<Mesh>]) {
         if self.ice.locked() {
             self.ice_art.frozen_body(meshes);

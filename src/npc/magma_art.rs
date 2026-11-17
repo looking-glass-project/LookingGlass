@@ -73,49 +73,53 @@ impl Model {
         let time = g.sample_time(&self.data);
         let pose = self.data.clips[g.clip()].sample(time, g.loops());
         let skins = self.magma_skins.as_ref().unwrap();
-        let mut original = Vec::new();
-        let mut removed = Vec::new();
-        for (i, surface) in self.data.skeleton.surfaces.iter().enumerate() {
-            if self
-                .data
-                .meta
-                .hidden
-                .iter()
-                .any(|p| crate::animation_events::matches(p, &surface.name))
-            {
-                removed.push((i, self.meshes[i].take()));
-                continue;
-            }
-            if let Some(mesh) = &mut self.meshes[i] {
-                original.push((i, mesh.texture.clone()));
-                if let Some(tex) = &skins.textures[i][g.form as usize] {
-                    mesh.texture = Some(tex.clone());
+        // Hot (form 0) is fully opaque; each cooler skin fades in over the previous one.
+        let passes: &[(usize, f32)] = match g.form {
+            0 => &[(0, 1.)],
+            1 => &[(0, 1.), (1, (g.cooling / 6. - 1.).clamp(0., 1.))],
+            _ => &[(2, 1.)],
+        };
+        for &(skin_form, alpha) in passes {
+            let mut original = Vec::new();
+            let mut removed = Vec::new();
+            for (i, surface) in self.data.skeleton.surfaces.iter().enumerate() {
+                if self
+                    .data
+                    .meta
+                    .hidden
+                    .iter()
+                    .any(|p| crate::animation_events::matches(p, &surface.name))
+                {
+                    removed.push((i, self.meshes[i].take()));
+                    continue;
                 }
-                self.visible[i] = true;
+                if let Some(mesh) = &mut self.meshes[i] {
+                    original.push((i, mesh.texture.clone()));
+                    if let Some(tex) = &skins.textures[i][skin_form] {
+                        mesh.texture = Some(tex.clone());
+                    }
+                    self.visible[i] = true;
+                }
             }
-        }
-        material.bind();
-        crate::character::draw_skin_alpha(
-            &self.data.skeleton,
-            &mut self.meshes,
-            &pose,
-            Transform {
-                translation: g.feet,
-                rotation: Quat::from_rotation_z(g.yaw),
-            },
-            self.data.def.scale * scale,
-            fullbright,
-            if g.form < 2 {
-                (g.cooling / 6. - g.form as f32).clamp(0., 1.)
-            } else {
-                1.
-            },
-        );
-        for (i, tex) in original {
-            self.meshes[i].as_mut().unwrap().texture = tex;
-        }
-        for (i, mesh) in removed {
-            self.meshes[i] = mesh;
+            material.bind();
+            crate::character::draw_skin_alpha(
+                &self.data.skeleton,
+                &mut self.meshes,
+                &pose,
+                Transform {
+                    translation: g.origin(),
+                    rotation: Quat::from_rotation_z(g.yaw),
+                },
+                self.data.def.scale * scale,
+                fullbright,
+                alpha,
+            );
+            for (i, tex) in original {
+                self.meshes[i].as_mut().unwrap().texture = tex;
+            }
+            for (i, mesh) in removed {
+                self.meshes[i] = mesh;
+            }
         }
         if g.frozen {
             self.draw_frozen();
@@ -177,7 +181,7 @@ impl Art {
             return;
         }
         let transform = Transform {
-            translation: g.feet,
+            translation: g.origin(),
             rotation: Quat::from_rotation_z(g.yaw),
         };
         let clip = &data.clips[g.clip()];

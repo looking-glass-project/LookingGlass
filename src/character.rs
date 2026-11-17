@@ -32,7 +32,7 @@ pub(crate) const CLIPS: [&str; 32] = [
     "ledge_climb_32",
     "ledge_climb_48",
     "ledge_climb_64",
-    "death_faint",
+    "death_knockback",
     "death_falling_01",
     "death_drown",
     "rope_hang",
@@ -823,6 +823,7 @@ impl Character {
             self.animator.sound_span = None;
             return Vec::new();
         }
+        self.water_art.burn_step(dt, player);
         self.visuals.dice_count = weapon.dice.min(3);
         if weapon.selected == 6 && !self.visuals.dice.ready() {
             weapon.click = None;
@@ -1216,6 +1217,8 @@ impl Character {
             );
             self.material.bind_appearance(Appearance { ghost, ..Default::default() });
         }
+        self.water_art.draw_fire(feet, self.scale);
+        self.material.bind_appearance(Appearance { ghost, ..Default::default() });
         if !matches!(
             self.animator.motion,
             Motion::Death | Motion::Rope | Motion::Cart | Motion::Airship

@@ -63,6 +63,9 @@ pub struct Magma {
     pub shots: Vec<crate::snark::Shot>,
     /// A one-use source launch pad, resolved at placement creation, never on restore.
     pub launch: Option<Vec3>,
+    /// Visual and hit-volume lift while standing in a pit deeper than the body.
+    #[serde(default)]
+    pub wade: f32,
     velocity: Vec3,
     grounded: bool,
     launched: bool,
@@ -90,6 +93,7 @@ impl Magma {
             notarget: false,
             shots: vec![],
             launch: None,
+            wade: 0.,
             velocity: Vec3::ZERO,
             grounded: false,
             launched: false,
@@ -104,18 +108,35 @@ impl Magma {
     pub fn target(&self, id: usize) -> Target {
         Target {
             id,
+            center: self.feet + Vec3::Z * (32. * self.scale + self.wade),
+            half: vec3(44., 44., 32.) * self.scale,
+        }
+    }
+    /// The collision hull on the pit floor, independent of the wading lift.
+    fn body(&self) -> Target {
+        Target {
+            id: 0,
             center: self.feet + Vec3::Z * 32. * self.scale,
             half: vec3(44., 44., 32.) * self.scale,
         }
     }
+    /// Where the rig is drawn: Magma Men wade with their torso above the lava.
+    pub fn origin(&self) -> Vec3 {
+        self.feet + Vec3::Z * self.wade
+    }
+    fn update_wade(&mut self, world: &World) {
+        self.wade = lava_surface(world, self.feet + Vec3::Z * 4.)
+            .map_or(0., |s| (s + WADE_HEIGHT * self.scale - self.feet.z).max(0.));
+    }
     pub fn place(&mut self, world: &World) {
         if !self.grounded && self.launch.is_none() {
-            let b = self.target(0);
+            let b = self.body();
             if let Some(p) = world.actor_footing(self.feet, Vec3::Z * b.half.z, b.half, 1024.) {
                 self.feet = p;
             }
             self.grounded = true;
         }
+        self.update_wade(world);
     }
     pub fn loops(&self) -> bool {
         matches!(self.phase, Phase::Idle | Phase::Walk)
@@ -247,7 +268,7 @@ impl Magma {
             self.launched = true;
         }
         self.velocity.z = (self.velocity.z - 800. * DT).max(-800.);
-        let b = self.target(0);
+        let b = self.body();
         let delta = self.velocity * DT;
         let t = world.sweep(b.center, b.center + delta, b.half);
         if !t.start_solid {
@@ -290,8 +311,9 @@ impl Magma {
                 self.time = 0.;
             }
         }
-        let recoil = self.recoil.step(DT, world, self.target(0));
-        self.feet = combat::walk_body_liquids(world, self.feet, recoil, self.target(0).half, 8);
+        let recoil = self.recoil.step(DT, world, self.body());
+        self.feet = combat::walk_body_liquids(world, self.feet, recoil, self.body().half, 8);
+        self.update_wade(world);
         let b = self.target(0);
         let (aim, notarget, _) = self.opponents.aim(
             world,
@@ -531,3 +553,28 @@ impl Magma {
 }
 #[cfg(test)]
 mod tests;
+
+/// How far a wading Magma Man's origin rides above the lava surface. The rig's
+/// lowest vertices sit ~35 units under its origin, so only the legs stay under,
+/// as in the PC release (approximation pending the original game code).
+const WADE_HEIGHT: f32 = 20.;
+/// Height of the lava surface above `point`, if `point` is inside lava.
+fn lava_surface(world: &World, point: Vec3) -> Option<f32> {
+    let lava = |z: f32| world.liquid_at(vec3(point.x, point.y, z)) & 8 != 0;
+    if !lava(point.z) {
+        return None;
+    }
+    let (mut low, mut high) = (point.z, point.z + 8.);
+    while lava(high) {
+        low = high;
+        high += 8.;
+        if high - point.z > 1024. {
+            return None;
+        }
+    }
+    for _ in 0..6 {
+        let mid = (low + high) * 0.5;
+        if lava(mid) { low = mid } else { high = mid }
+    }
+    Some(low)
+}

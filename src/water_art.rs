@@ -15,6 +15,10 @@ use std::{cell::RefCell, collections::BTreeMap};
 pub struct Art {
     shell: Prop,
     bubbles: Attached,
+    /// `fx_catchfire`: flames and smoke while Alice stands in lava and briefly after.
+    fire: Option<Attached>,
+    burn: Option<f32>,
+    burn_left: f32,
     events: crate::animation_events::Model,
     warning_duration: f32,
     warning_frame: f32,
@@ -232,6 +236,9 @@ impl Art {
             shell: Prop::build(a, def, model, specs)?,
             bubbles: Attached::load(a, "fx_alicebreath", specs)?
                 .context("Missing breath bubbles")?,
+            fire: Attached::load(a, "fx_catchfire", specs).ok().flatten(),
+            burn: None,
+            burn_left: 0.,
             events: crate::animation_events::Model::load(a, "models/fx_alicebreath.tik")?,
             warning_duration,
             warning_frame,
@@ -246,6 +253,44 @@ impl Art {
         self.visible = false;
         self.warning = None;
         self.bubbles = self.bubbles.fork();
+        self.stop_burning();
+    }
+    fn stop_burning(&mut self) {
+        self.burn = None;
+        self.burn_left = 0.;
+        if let Some(f) = &mut self.fire {
+            f.restart();
+        }
+    }
+    /// Advance the lava fire on the gameplay clock (never while paused).
+    pub fn burn_step(&mut self, dt: f32, player: &Player) {
+        if player.immersion.level >= 1 && player.immersion.kind == crate::water::Liquid::Lava {
+            self.burn_left = 3.;
+            self.burn.get_or_insert(0.);
+        } else {
+            self.burn_left -= dt;
+            if self.burn_left <= 0. {
+                if self.burn.is_some() {
+                    self.stop_burning();
+                }
+                return;
+            }
+        }
+        if let Some(age) = &mut self.burn {
+            *age += dt;
+        }
+    }
+    /// Flames follow Alice's origin, alive or dying, like the original originemitter.
+    pub fn draw_fire(&mut self, feet: Vec3, scale: f32) {
+        let (Some(age), Some(fire)) = (self.burn, &mut self.fire) else {
+            return;
+        };
+        let origin = Transform {
+            translation: feet + Vec3::Z * 24. * scale,
+            rotation: Quat::IDENTITY,
+        };
+        let (atmosphere, camera) = &*self.view.borrow();
+        fire.draw(age, scale, |_, _| origin, |_, _, default| default, *camera, atmosphere);
     }
     pub fn sync(&mut self, player: &Player) {
         self.visible = player.breath.shell

@@ -542,7 +542,7 @@ impl World {
             let frozen = name
                 .split(|c: char| !c.is_ascii_alphabetic())
                 .any(|w| w.starts_with("ice") || w.starts_with("snow"));
-            if !frozen || name.contains("icewall") {
+            if !frozen {
                 continue;
             }
             let (v, i) = map.triangulate(surface);
@@ -583,14 +583,10 @@ impl World {
     /// Whether ground here is slippery. The original treats Icy Reception's whole frozen
     /// cavern as slick, rock and snow floors beside the ice included, so any map that
     /// contains an ice floor is slippery everywhere.
-    pub fn on_ice(&self, feet: Vec3) -> bool {
-        // Slick only near real ice floor, so isolated ice textures elsewhere never affect a map.
-        self.ice.iter().any(|t| {
-            t.iter().any(|p| {
-                (p.truncate() - feet.truncate()).length_squared() < 640_f32.powi(2)
-                    && (p.z - feet.z).abs() < 200.
-            })
-        })
+    pub fn on_ice(&self, _feet: Vec3) -> bool {
+        // Only maps that really contain an ice/snow floor (whole-word texture match, so lava
+        // "alicelava" never counts), and then everywhere: rock beside the ice is slick too.
+        !self.ice.is_empty()
     }
     /// Trace a box centre from start to end. Zero extents give a point trace.
     pub fn sweep(&self, start: Vec3, end: Vec3, half: Vec3) -> Trace {

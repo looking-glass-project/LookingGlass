@@ -15,7 +15,7 @@ pub struct Blood {
     /// Actor model -> its bloodmodel template (None: the tik bleeds nothing).
     models: BTreeMap<String, Option<String>>,
     templates: BTreeMap<String, Option<Attached>>,
-    live: Vec<(Attached, Vec3, f32)>,
+    live: Vec<(Attached, Vec3, f32, f32)>,
     /// Floor decals (original blood1..6_decal, o_ and g_ variants by bloodmodel).
     textures: BTreeMap<String, Option<Texture2D>>,
     decals: Vec<Decal>,
@@ -54,6 +54,17 @@ impl Blood {
         model: &str,
         at: Vec3,
     ) {
+        self.spawn_scaled(assets, specs, model, at, 1.);
+    }
+    /// A smaller burst: Alice only loses a few droplets when hurt on PC.
+    pub fn spawn_scaled(
+        &mut self,
+        assets: &mut Assets,
+        specs: &BTreeMap<String, texture::MaterialSpec>,
+        model: &str,
+        at: Vec3,
+        scale: f32,
+    ) {
         let Some(name) = self.blood_model(assets, model) else { return };
         let template = self
             .templates
@@ -63,7 +74,7 @@ impl Blood {
             if self.live.len() >= 16 {
                 self.live.remove(0);
             }
-            self.live.push((t.fork(), at, 0.));
+            self.live.push((t.fork(), at, 0., scale));
         }
     }
     fn roll(&mut self) -> f32 {
@@ -128,15 +139,15 @@ impl Blood {
             d.age += dt;
         }
         self.decals.retain(|d| d.age < d.life);
-        for (_, _, age) in &mut self.live {
+        for (_, _, age, _) in &mut self.live {
             *age += dt;
         }
-        self.live.retain(|(_, _, age)| *age < EMIT + LINGER);
+        self.live.retain(|(_, _, age, _)| *age < EMIT + LINGER);
     }
     pub fn draw(&mut self, camera: Vec3, atmosphere: &crate::environment::Atmosphere) {
-        for (effect, at, age) in &mut self.live {
+        for (effect, at, age, scale) in &mut self.live {
             let origin = Transform { translation: *at, rotation: Quat::IDENTITY };
-            effect.draw(*age, 1., |_, _| origin, |_, t, default| default && t < EMIT, camera, atmosphere);
+            effect.draw(*age, *scale, |_, _| origin, |_, t, default| default && t < EMIT, camera, atmosphere);
         }
     }
     pub fn draw_decals(&self, clock: f32) {

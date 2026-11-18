@@ -2961,11 +2961,16 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
             p.gate_particles(&mut steam);
         }
         interactions.place_level_particles(&mut steam);
+        let show_alice_in_mirror = !interactions.level_hides_player();
         let mut lights = steam.lights();
         lights.extend(alice.lights());
         lights.extend(npcs.lights());
         for slot in &interactions.levels { lights.extend(slot.ctl.lights()); }
-        scene.prepare_camera_portals(&world_camera, environment_clock, fullbright, &transforms);
+        scene.prepare_camera_portals_with(&world_camera, environment_clock, fullbright, &transforms, &mut |fb| {
+            if show_alice_in_mirror {
+                alice.draw_ghost(player.feet, fb, stats.invisible > 0. && !alice.glass_performing());
+            }
+        });
         crate::lighting::select(lights, camera, &scene.world);
         crate::render_fx::begin_view(
             &world_camera,

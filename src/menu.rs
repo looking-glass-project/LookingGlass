@@ -411,6 +411,8 @@ pub struct Menu {
     ui: std::rc::Rc<Ui>,
     selected: usize,
     ui_sounds: usize,
+    ui_cache: std::collections::HashMap<String, std::sync::Arc<[u8]>>,
+    ui_playing: Vec<rodio::Sink>,
     previous_pointer: Vec2,
     mouse_navigation: bool,
     draft: Preferences,
@@ -432,6 +434,16 @@ pub struct Menu {
     material: crate::character::SkinMaterial,
 }
 impl Menu {
+    /// Play a front-end cue directly; the gameplay request queue is not drained in menus.
+    fn ui_cue(&mut self, audio: &audio::Audio, path: &str) {
+        let Some(bytes) = self.ui_cache.get(&path.to_lowercase().replace('\\', "/")) else { return };
+        if let Ok(Some(sink)) = audio.menu_sound(bytes.clone()) {
+            self.ui_playing.push(sink);
+        }
+        if self.ui_playing.len() > 8 {
+            self.ui_playing.remove(0).stop();
+        }
+    }
     pub fn load(assets: &mut Assets) -> Result<Self> {
         let specs = texture::read_materials(assets)?;
         let mut layouts = BTreeMap::new();
@@ -583,6 +595,19 @@ impl Menu {
             ui: Ui::load(assets)?,
             selected: 0,
             ui_sounds: 0,
+            ui_cache: {
+                let mut cache = std::collections::HashMap::new();
+                let names = (1..=5).map(|i| format!("hover_{i}")).chain((1..=4).map(|i| format!("click_{i}")))
+                    .chain(["loadsave", "new", "quit", "controls"].iter().flat_map(|n| [format!("{n}_h"), format!("{n}_c")]));
+                for name in names {
+                    let path = format!("sound/ui/{name}.wav");
+                    if let Ok(bytes) = assets.read(&path) {
+                        cache.insert(path, std::sync::Arc::<[u8]>::from(bytes));
+                    }
+                }
+                cache
+            },
+            ui_playing: Vec::new(),
             previous_pointer: Vec2::splat(-10000.),
             mouse_navigation: false,
             draft: Preferences::default(),
@@ -1684,6 +1709,7 @@ impl Menu {
             input.update(prefs, focused);
             self.using_pad = input.using_pad;
             self.save_film.update_audio(audio.settings, focused);
+            self.ui_playing.retain(|s| !s.empty());
             let previous_selected = self.selected;
             let buttons = self.buttons(page);
             self.selected = self.selected.min(buttons.len().saturating_sub(1));
@@ -1797,9 +1823,9 @@ impl Menu {
                         self.ui_sounds += 1;
                         let own = &buttons[self.selected].hover_sound;
                         if own.is_empty() {
-                            audio.world_effect(&format!("sound/ui/hover_{}.wav", 1 + self.ui_sounds % 5));
+                            self.ui_cue(audio, &format!("sound/ui/hover_{}.wav", 1 + self.ui_sounds % 5));
                         } else {
-                            audio.world_effect(own);
+                            { let own = own.clone(); self.ui_cue(audio, &own); }
                         }
                     }
                     if let Some(click) = click {
@@ -1807,9 +1833,9 @@ impl Menu {
                             self.ui_sounds += 1;
                             let own = &buttons[self.selected].click_sound;
                             if own.is_empty() {
-                                audio.world_effect(&format!("sound/ui/click_{}.wav", 1 + self.ui_sounds % 4));
+                                self.ui_cue(audio, &format!("sound/ui/click_{}.wav", 1 + self.ui_sounds % 4));
                             } else {
-                                audio.world_effect(own);
+                                { let own = own.clone(); self.ui_cue(audio, &own); }
                             }
                         }
                         if page.layout() == "loadsave" && !matches!(click, Click::Slot(_)) {

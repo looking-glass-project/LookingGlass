@@ -94,6 +94,9 @@ struct Button {
     click: Click,
     lettering: Option<Lettering>,
     setting: Option<SettingView>,
+    /// Original hoversound/clicksound from the menu definition ("" = generic).
+    hover_sound: String,
+    click_sound: String,
 }
 #[derive(Clone)]
 struct SettingView {
@@ -172,7 +175,7 @@ impl Button {
             hover: "ui/buttons/apply_hover".into(),
             click,
             lettering: None,
-            setting: None,
+            setting: None, hover_sound: String::new(), click_sound: String::new(),
         }
     }
 }
@@ -205,6 +208,8 @@ impl Widget {
             click,
             lettering: Some(Lettering::from_widget(self)),
             setting: None,
+            hover_sound: self.value("hoversound").into(),
+            click_sound: self.value("clicksound").into(),
         }
     }
 }
@@ -322,7 +327,7 @@ fn setting_buttons(widgets: &[Widget], page: Page) -> Vec<Button> {
         let (label, control) = setting_view(widgets, cvar)?;
         Some(Button { rect: bounds(label.rect, control.rect), text: label.value("title").into(),
             art: String::new(), hover: String::new(), click: Click::Row(row), lettering: None,
-            setting: Some(SettingView {label: label.clone(), control: control.clone()}) })
+            setting: Some(SettingView {label: label.clone(), control: control.clone()}), hover_sound: String::new(), click_sound: String::new() })
     }).collect()
 }
 
@@ -824,7 +829,7 @@ impl Menu {
             hover: "ui/back_button_hover".into(),
             click: Click::Back,
             lettering: None,
-            setting: None,
+            setting: None, hover_sound: String::new(), click_sound: String::new(),
         });
         let mut buttons = match page {
             Page::Main => {
@@ -921,7 +926,7 @@ impl Menu {
                         hover: String::new(),
                         click: Click::Slot(i),
                         lettering: None,
-                        setting: None,
+                        setting: None, hover_sound: String::new(), click_sound: String::new(),
                     })
                     .collect::<Vec<_>>();
                 buttons.push(self.button_named("loadsave", "LoadingButton", Click::LoadSelection));
@@ -951,7 +956,7 @@ impl Menu {
                     hover: String::new(),
                     click: Click::Device,
                     lettering: None,
-                    setting: None,
+                    setting: None, hover_sound: String::new(), click_sound: String::new(),
                 }];
                 let start = self.controls_page * 8;
                 for (row, (label, _)) in BINDINGS.iter().enumerate().skip(start).take(8) {
@@ -962,7 +967,7 @@ impl Menu {
                         hover: String::new(),
                         click: Click::Row(row),
                         lettering: None,
-                        setting: None,
+                        setting: None, hover_sound: String::new(), click_sound: String::new(),
                     });
                 }
                 if self.controls_pad && self.controls_page == BINDINGS.len().div_ceil(8) {
@@ -977,7 +982,7 @@ impl Menu {
                             hover: String::new(),
                             click: Click::Row(BINDINGS.len() + i),
                             lettering: None,
-                            setting: None,
+                            setting: None, hover_sound: String::new(), click_sound: String::new(),
                         });
                     }
                 }
@@ -1023,7 +1028,7 @@ impl Menu {
                     // Mute is a Rust feature without an original widget.
                     buttons.push(Button { rect: Rect::new(68., 298., 220., 24.),
                         text: "Mute".into(), art: String::new(), hover: String::new(),
-                        click: Click::Row(2), lettering: None, setting: None });
+                        click: Click::Row(2), lettering: None, setting: None, hover_sound: String::new(), click_sound: String::new() });
                 }
                 let group = match page {
                     Page::Video => "group_video", Page::Audio => "group_audio", _ => "group_game",
@@ -1790,12 +1795,22 @@ impl Menu {
                         self.save_film.sound(audio, 1);
                     } else if page != Page::LoadSave && self.selected != previous_selected {
                         self.ui_sounds += 1;
-                        audio.world_effect(&format!("sound/ui/hover_{}.wav", 1 + self.ui_sounds % 5));
+                        let own = &buttons[self.selected].hover_sound;
+                        if own.is_empty() {
+                            audio.world_effect(&format!("sound/ui/hover_{}.wav", 1 + self.ui_sounds % 5));
+                        } else {
+                            audio.world_effect(own);
+                        }
                     }
                     if let Some(click) = click {
                         if page.layout() != "loadsave" {
                             self.ui_sounds += 1;
-                            audio.world_effect(&format!("sound/ui/click_{}.wav", 1 + self.ui_sounds % 4));
+                            let own = &buttons[self.selected].click_sound;
+                            if own.is_empty() {
+                                audio.world_effect(&format!("sound/ui/click_{}.wav", 1 + self.ui_sounds % 4));
+                            } else {
+                                audio.world_effect(own);
+                            }
                         }
                         if page.layout() == "loadsave" && !matches!(click, Click::Slot(_)) {
                             self.save_film.sound(audio, 2);

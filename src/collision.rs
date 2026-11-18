@@ -576,22 +576,11 @@ impl World {
         })
     }
 
-    /// Whether the floor directly under `feet` is icy.
-    pub fn on_ice(&self, feet: Vec3) -> bool {
-        self.ice.iter().any(|&[a, b, c]| {
-            let n = (b - a).cross(c - a);
-            if n.z.abs() < 1e-6 {
-                return false;
-            }
-            // Plane height under the point, then a 2D barycentric containment test.
-            let z = a.z - (n.x * (feet.x - a.x) + n.y * (feet.y - a.y)) / n.z;
-            if (feet.z - z).abs() > 24. {
-                return false;
-            }
-            let side = |p: Vec3, q: Vec3| (q.x - p.x) * (feet.y - p.y) - (q.y - p.y) * (feet.x - p.x);
-            let (s1, s2, s3) = (side(a, b), side(b, c), side(c, a));
-            (s1 >= 0. && s2 >= 0. && s3 >= 0.) || (s1 <= 0. && s2 <= 0. && s3 <= 0.)
-        })
+    /// Whether ground here is slippery. The original treats Icy Reception's whole frozen
+    /// cavern as slick, rock and snow floors beside the ice included, so any map that
+    /// contains an ice floor is slippery everywhere.
+    pub fn on_ice(&self, _feet: Vec3) -> bool {
+        !self.ice.is_empty()
     }
     /// Trace a box centre from start to end. Zero extents give a point trace.
     pub fn sweep(&self, start: Vec3, end: Vec3, half: Vec3) -> Trace {

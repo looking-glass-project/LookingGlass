@@ -541,7 +541,7 @@ impl World {
             // Whole words only: "device", "notice" or "slice" textures are not frozen floors.
             let frozen = name
                 .split(|c: char| !c.is_ascii_alphabetic())
-                .any(|w| w.starts_with("ice") || w.starts_with("snow"));
+                .any(|w| w.starts_with("iceground") || w.starts_with("snow"));
             if !frozen {
                 continue;
             }

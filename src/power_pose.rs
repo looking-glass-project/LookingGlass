@@ -14,6 +14,7 @@ use std::collections::BTreeMap;
 pub enum Form {
     Rage,
     Tea,
+    Glass,
 }
 const RAGE: [&str; 9] = [
     "ready",
@@ -27,6 +28,8 @@ const RAGE: [&str; 9] = [
     "ready",
 ];
 const TEA: [&str; 1] = ["grasshoppertea"];
+/// alice.tik `darkened_lookingglass` (glass.ska): Alice admires the mirror.
+const GLASS: [&str; 1] = ["darkened_lookingglass"];
 // Supplied SKAN durations, checked against the loaded clips in Performance::load.
 pub const RAGE_SECONDS: f32 = 12.5;
 const RAGE_LENGTHS: [f32; 9] = [1.55, 2.6, 1.3, 1.3, 1., 0.25, 1.4, 1.55, 1.55];
@@ -66,6 +69,7 @@ fn sequence(form: Form) -> &'static [&'static str] {
     match form {
         Form::Rage => &RAGE,
         Form::Tea => &TEA,
+        Form::Glass => &GLASS,
     }
 }
 
@@ -135,7 +139,7 @@ pub struct Performance {
 impl Performance {
     pub fn load(assets: &mut Assets, def: &Definition, bones: usize) -> Result<Self> {
         let mut clips = BTreeMap::new();
-        for &name in RAGE.iter().chain(&TEA) {
+        for &name in RAGE.iter().chain(&TEA).chain(&GLASS) {
             if !clips.contains_key(name) {
                 let file = def
                     .animations
@@ -409,6 +413,7 @@ impl Art {
                         Some(Form::Rage) if state.age < 2.85 => &skin.normal,
                         Some(Form::Rage) => &skin.rage,
                         Some(Form::Tea) => &skin.tea,
+                        Some(Form::Glass) => &skin.normal,
                         None => &skin.normal,
                     }
                     .clone(),
@@ -507,7 +512,7 @@ pub fn check(assets: &mut Assets) -> Result<()> {
     }
     println!("PASS all eight Rage clip boundaries remain continuous on the original skin");
     let upper: Vec<_> = skeleton.bones.iter().map(|_| true).collect();
-    for form in [Form::Rage, Form::Tea] {
+    for form in [Form::Rage, Form::Tea, Form::Glass] {
         performance.state = State::fresh();
         performance.state.sync(Some(form));
         let mut pose = performance.clips["ready"].sample(0., false);

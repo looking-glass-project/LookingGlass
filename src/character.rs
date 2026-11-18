@@ -1393,6 +1393,8 @@ pub fn power_form(stats: &crate::inventory::Stats) -> Option<crate::power_pose::
         Some(crate::power_pose::Form::Rage)
     } else if stats.powers.tea > 0. {
         Some(crate::power_pose::Form::Tea)
+    } else if stats.invisible > 0. {
+        Some(crate::power_pose::Form::Glass)
     } else {
         None
     }

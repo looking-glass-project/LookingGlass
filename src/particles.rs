@@ -982,9 +982,12 @@ thread_local! {
 }
 impl PickupBurst {
     pub fn load(assets: &mut Assets) -> Result<Self> {
+        Self::load_sprite(assets, "supra_p")
+    }
+    pub fn load_sprite(assets: &mut Assets, name: &str) -> Result<Self> {
         let specs = texture::read_materials(assets)?;
-        let path = texture::resolve(assets, "supra_p", &specs)
-            .ok_or_else(|| anyhow::anyhow!("Missing gnome disappearance sprite"))?;
+        let path = texture::resolve(assets, name, &specs)
+            .ok_or_else(|| anyhow::anyhow!("Missing burst sprite {name}"))?;
         let image = texture::decode(assets, &path)?;
         let texture = Texture2D::from_rgba8(image.width, image.height, &image.pixels);
         texture.set_filter(FilterMode::Linear);
@@ -1016,6 +1019,60 @@ impl PickupBurst {
             Ok(m)
         })?;
         Ok(Self { texture, material })
+    }
+    /// fx_lookingglass `glasspoof`: 300 white puffs, offset crandom 12 / random 75, life up
+    /// to 1.5 s, scale .2-1, fade in .2 s then out, falling at 100 u/s^2. Deterministic in age.
+    pub fn draw_poof(&self, origin: Vec3, age: f32, camera: Vec3, atmosphere: &Atmosphere) {
+        if !(0. ..2.).contains(&age) {
+            return;
+        }
+        atmosphere.apply(&self.material, camera);
+        gl_use_material(&self.material);
+        let direction = (origin - camera).normalize_or_zero();
+        let right = direction.cross(Vec3::Z).try_normalize().unwrap_or(Vec3::X);
+        let up = right.cross(direction).normalize_or_zero();
+        let mut seed = 0x1a55_90f;
+        let mut vertices = Vec::new();
+        let mut indices = Vec::new();
+        for _ in 0..300 {
+            let offset = vec3(
+                (random(&mut seed) * 2. - 1.) * 12.,
+                (random(&mut seed) * 2. - 1.) * 12.,
+                random(&mut seed) * 75.,
+            );
+            let life = 0.4 + random(&mut seed) * 1.1;
+            let size = (0.2 + random(&mut seed) * 0.8) * 32.;
+            if age >= life {
+                continue;
+            }
+            let center = origin + offset - Vec3::Z * (0.5 * 100. * age * age);
+            let alpha = (age / 0.2).min(1.) * (1. - age / life) * 0.8;
+            let color: [u8; 4] = Color::new(1., 1., 1., alpha).into();
+            let base = vertices.len() as u16;
+            for (delta, uv) in [
+                (-right - up, vec2(0., 1.)),
+                (right - up, vec2(1., 1.)),
+                (right + up, vec2(1., 0.)),
+                (-right + up, vec2(0., 0.)),
+            ] {
+                vertices.push(Vertex {
+                    position: center + delta * size,
+                    uv,
+                    normal: Vec4::ZERO,
+                    color,
+                });
+            }
+            indices.extend([base, base + 1, base + 2, base, base + 2, base + 3]);
+        }
+        crate::render_fx::effect(
+            &Mesh {
+                vertices,
+                indices,
+                texture: Some(self.texture.clone()),
+            },
+            crate::materials::Blend::Add,
+        );
+        gl_use_default_material();
     }
     pub fn draw(&self, origin: Vec3, age: f32, camera: Vec3, atmosphere: &Atmosphere) {
         if !(0. ..4.).contains(&age) {

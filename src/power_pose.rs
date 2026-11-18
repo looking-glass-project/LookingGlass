@@ -30,6 +30,8 @@ const RAGE: [&str; 9] = [
 const TEA: [&str; 1] = ["grasshoppertea"];
 /// alice.tik `darkened_lookingglass` (glass.ska): Alice admires the mirror.
 const GLASS: [&str; 1] = ["darkened_lookingglass"];
+/// Seconds into the pose before the mirror's shine and yellow light switch on (PC capture).
+pub const GLASS_SHINE: f32 = 3.5;
 // Supplied SKAN durations, checked against the loaded clips in Performance::load.
 pub const RAGE_SECONDS: f32 = 12.5;
 const RAGE_LENGTHS: [f32; 9] = [1.55, 2.6, 1.3, 1.3, 1., 0.25, 1.4, 1.55, 1.55];
@@ -283,6 +285,9 @@ pub struct Art {
     cup: (usize, Prop),
     /// w_lookingglass_pickup held at tag_03 during the Glass pose, with its shine layers.
     mirror: Option<(Prop, Vec<String>, Texture2D)>,
+    poof: Option<crate::particles::PickupBurst>,
+    air: std::cell::RefCell<Option<(crate::environment::Atmosphere, Vec3)>>,
+    mirror_at: std::cell::Cell<Option<Vec3>>,
     aura: effects::Aura,
     _layers: Vec<std::rc::Rc<crate::render_fx::Surface>>,
 }
@@ -404,6 +409,9 @@ impl Art {
                     .context("Missing Tea pickup tag")?,
                 Prop::load_animation(assets, "w_grasshopper_pickup", "idle", specs)?,
             ),
+            poof: crate::particles::PickupBurst::load_sprite(assets, "metadesat").ok(),
+            air: Default::default(),
+            mirror_at: Default::default(),
             mirror: Prop::load_animation(assets, "w_lookingglass_pickup", "idle", specs)
                 .ok()
                 .map(|p| {
@@ -433,6 +441,22 @@ impl Art {
     pub fn atmosphere(&self, camera: Vec3) {
         self.aura.camera.set(camera);
     }
+    pub fn atmosphere_full(&self, atmosphere: &crate::environment::Atmosphere, camera: Vec3) {
+        *self.air.borrow_mut() = Some((atmosphere.clone(), camera));
+    }
+    /// alice's mirror emits a yellow dynamic light (tik: dlight 1 1 0 100) once its shine starts.
+    pub fn glass_light(&self, state: &State, seconds: f32) -> Option<crate::lighting::Light> {
+        if state.form != Some(Form::Glass) || !state.performing || !(GLASS_SHINE..seconds).contains(&state.age) {
+            return None;
+        }
+        self.mirror_at.get().map(|position| crate::lighting::Light {
+            position,
+            color: vec3(1., 1., 0.),
+            radius: 100.,
+            only_models: false,
+            flare: false,
+        })
+    }
     pub fn remaining(&self, remaining: f32) {
         self.aura.remaining.set(remaining);
     }
@@ -456,7 +480,21 @@ impl Art {
         root: Transform,
         scale: f32,
         fullbright: bool,
+        glass_seconds: f32,
     ) {
+        if state.form == Some(Form::Glass)
+            && state.age >= glass_seconds
+            && state.age < glass_seconds + 2.
+        {
+            if let (Some(poof), Some((atmosphere, camera))) = (&self.poof, &*self.air.borrow()) {
+                poof.draw_poof(
+                    root.translation + Vec3::Z * 10.,
+                    state.age - glass_seconds,
+                    *camera,
+                    atmosphere,
+                );
+            }
+        }
         if state.form == Some(Form::Tea) && state.performing && state.age < 4.75 {
             let tag = pose[self.cup.0];
             self.cup.1.draw_frame(
@@ -478,9 +516,13 @@ impl Art {
                     rotation: root.rotation * tag.rotation,
                 };
                 let age = state.age;
+                let shining = age >= GLASS_SHINE;
+                self.mirror_at.set(Some(anchor.translation));
                 let meshes = prop.meshes_at(anchor, scale, fullbright, 0., false);
                 for (mesh, name) in meshes.iter_mut().zip(names.iter()) {
                     match name.as_str() {
+                        "material3" if !shining => {}
+                        "material2" if !shining => crate::render_fx::skin(mesh),
                         "material3" => {
                             // textures/common/lookingglass: scrolling rift light, alphaGen dot.
                             let alpha = (0.55 + 0.25 * (age * 6.).sin()).clamp(0., 1.);

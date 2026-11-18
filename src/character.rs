@@ -1182,6 +1182,7 @@ impl Character {
         self.material.atmosphere(atmosphere, camera);
         self.visuals.atmosphere(atmosphere, camera);
         self.power_art.atmosphere(camera);
+        self.power_art.atmosphere_full(atmosphere, camera);
     }
     pub fn world_time(&mut self, dt: f32, world_dt: f32) {
         let frozen = world_dt == 0. && dt > 0.;
@@ -1290,6 +1291,7 @@ impl Character {
             },
             self.scale,
             fullbright,
+            self.power_pose.duration(crate::power_pose::Form::Glass),
         );
         self.material.bind_appearance(Appearance {
             ghost,
@@ -1354,7 +1356,12 @@ impl Character {
         (self.visuals.shots, self.visuals.impacts)
     }
     pub fn lights(&self) -> Vec<crate::lighting::Light> {
-        self.visuals.lights()
+        let mut lights = self.visuals.lights();
+        lights.extend(self.power_art.glass_light(
+            &self.power_pose.state,
+            self.power_pose.duration(crate::power_pose::Form::Glass),
+        ));
+        lights
     }
     /// Renderer regression after a staged scene; keep the live shared pipeline.
     pub(crate) async fn check_visible(&mut self, label: &str) -> Result<()> {

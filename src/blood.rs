@@ -115,7 +115,7 @@ impl Blood {
             normal: trace.normal,
             radius,
             spin,
-            life: if puddle { 40. } else { 14. },
+            life: 13.,
             age: 0.,
             texture: key,
         });

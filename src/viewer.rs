@@ -2679,6 +2679,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
                 if bleeds {
                     if let Some(model) = npcs.model_name(hit.id).map(str::to_owned) {
                         blood.spawn(&mut assets, &blood_specs, &model, hit_origin);
+                        blood.splat(&mut assets, &blood_specs, &scene.world, &model, hit_origin, false);
                     }
                 }
                 hud.announce(message);

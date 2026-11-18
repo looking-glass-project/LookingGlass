@@ -2365,7 +2365,13 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
         }
         // Scene controllers may finish during movement, dialogue or boss updates.
         // Resolve the handoff once, after all three, before animation/aim/rendering.
+        // The looking-glass pose is its own camera shot: it must not hand off (and cancel
+        // the clip) mid-way, and its end must keep the player's own facing.
+        if alice.glass_performing() {
+            player.script_facing = yaw;
+        }
         let still_scripted = interactions.scripted()
+            || alice.glass_performing()
             || interactions.duchess.as_ref().is_some_and(|d| d.cinematic())
             || interactions
                 .school

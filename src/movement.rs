@@ -478,15 +478,21 @@ impl Player {
             * if self.immersion.level > 0 { 0.7 } else { 1. };
         let mut horizontal = self.velocity.truncate();
         if self.knockback_time <= 0. && (self.grounded || wish.length_squared() > 0.) {
-            // Icy floors (Icy Reception) keep momentum: weak traction both ways.
-            let acceleration = if self.grounded && world.on_ice(self.feet) {
-                if wish.length_squared() > 0. { 260. } else { 70. }
-            } else if self.grounded {
-                1800.
+            if self.grounded && world.on_ice(self.feet) {
+                // Icy Reception, measured from the PC game: friction drops speed by
+                // max(speed, ~51) * 0.255 per second and input accelerates at ~420/s.
+                let speed = horizontal.length();
+                if speed > 0. {
+                    let drop = speed.max(51.) * 0.255 * FIXED_DT;
+                    horizontal *= (speed - drop).max(0.) / speed;
+                }
+                if wish.length_squared() > 0. {
+                    horizontal += (target - horizontal).clamp_length_max(420. * FIXED_DT);
+                }
             } else {
-                420.
-            };
-            horizontal += (target - horizontal).clamp_length_max(acceleration * FIXED_DT);
+                let acceleration = if self.grounded { 1800. } else { 420. };
+                horizontal += (target - horizontal).clamp_length_max(acceleration * FIXED_DT);
+            }
         }
         self.velocity.x = horizontal.x;
         self.velocity.y = horizontal.y;

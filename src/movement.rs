@@ -487,7 +487,11 @@ impl Player {
                     horizontal *= (speed - drop).max(0.) / speed;
                 }
                 if wish.length_squared() > 0. {
-                    horizontal += (target - horizontal).clamp_length_max(420. * FIXED_DT);
+                    // PC game on ice: walk tops out at 64.3 and run at ~221, and the
+                    // acceleration scales with that top speed (~1.85/s: 116 walking, 420 running).
+                    let ice_target = target * if input.run { 221.5 / RUN_SPEED } else { 64.3 / WALK_SPEED };
+                    let acceleration = 1.85 * ice_target.length().max(64.3);
+                    horizontal += (ice_target - horizontal).clamp_length_max(acceleration * FIXED_DT);
                 }
             } else {
                 let acceleration = if self.grounded { 1800. } else { 420. };

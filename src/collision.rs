@@ -585,7 +585,7 @@ impl World {
             }
             // Plane height under the point, then a 2D barycentric containment test.
             let z = a.z - (n.x * (feet.x - a.x) + n.y * (feet.y - a.y)) / n.z;
-            if (feet.z - z).abs() > 6. {
+            if (feet.z - z).abs() > 24. {
                 return false;
             }
             let side = |p: Vec3, q: Vec3| (q.x - p.x) * (feet.y - p.y) - (q.y - p.y) * (feet.x - p.x);

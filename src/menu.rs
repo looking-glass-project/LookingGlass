@@ -367,7 +367,8 @@ fn load_texture_geometry(assets: &mut Assets, path: &str, additive: bool) -> Res
     if additive {
         for p in im.pixels.chunks_exact_mut(4) {
             let a = p[0].max(p[1]).max(p[2]);
-            p[3] = ((p[3] as u16 * a as u16) / 255) as u8;
+            // GL_ONE GL_ONE ignores the file's alpha; the smoke trail's is ~half strength.
+            p[3] = if path.contains("smoke_trail") { a } else { ((p[3] as u16 * a as u16) / 255) as u8 };
             if a > 0 {
                 for c in &mut p[..3] {
                     *c = ((*c as u16 * 255) / a as u16) as u8;

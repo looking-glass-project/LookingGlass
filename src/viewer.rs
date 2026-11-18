@@ -709,6 +709,10 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
     let mut camera_handoff = crate::camera::Handoff::default();
     let frozen_orbit = crate::camera::FrozenOrbit::load(&mut assets)?;
     let mut blood = crate::blood::Blood::default();
+    let mut blood_visit = String::new();
+    let mut blood_seen: Option<std::collections::BTreeSet<usize>> = None;
+    let mut blood_sanity = f32::MAX;
+    let mut blood_cooldown = 0.0f32;
     let blood_specs = crate::texture::read_materials(&mut assets)?;
     let mut rail_camera = crate::camera::Follow::default();
     let mut clock = FixedClock::default();
@@ -2972,7 +2976,41 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
             &scene.atmosphere,
             fullbright,
         );
+        // Alice bleeds when hurt, and enemies leave a floor puddle when they die.
+        let visit = save::visit_key(&maps[current], entry_spawn.as_deref());
+        if blood_visit != visit {
+            blood_visit = visit;
+            blood_seen = None;
+            blood.clear_decals();
+        }
+        let dead_now: std::collections::BTreeSet<usize> = npcs
+            .loot_sources()
+            .iter()
+            .filter(|s| s.dead)
+            .map(|s| s.id)
+            .collect();
+        if let Some(seen) = &blood_seen {
+            for &id in dead_now.difference(seen) {
+                if let (Some(model), Some(s)) = (
+                    npcs.model_name(id).map(str::to_owned),
+                    npcs.loot_sources().into_iter().find(|s| s.id == id),
+                ) {
+                    blood.splat(&mut assets, &blood_specs, &scene.world, &model, s.feet, true);
+                }
+            }
+        }
+        blood_seen = Some(dead_now);
+        let sanity = stats.sanity();
+        if active && sanity < blood_sanity && blood_cooldown <= 0. {
+            let at = player.eye() - Vec3::Z * 12.;
+            blood.spawn(&mut assets, &blood_specs, "alice", at);
+            blood.splat(&mut assets, &blood_specs, &scene.world, "alice", player.feet, false);
+            blood_cooldown = 0.35;
+        }
+        blood_sanity = sanity;
+        blood_cooldown = (blood_cooldown - if active { dt } else { 0. }).max(0.);
         blood.update(if active { dt } else { 0. });
+        blood.draw_decals(pickup_clock);
         blood.draw(camera, &scene.atmosphere);
         level_art.story_pose(&story);
         level_art.draw(&interactions, &hints, &scene.atmosphere, camera, fullbright);

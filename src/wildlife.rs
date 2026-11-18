@@ -603,7 +603,14 @@ impl Creature {
             if notarget { self.memory = 0.; self.detour.clear(); }
             if !visible && self.memory > 0. { delta = self.last_seen.unwrap_or(aim) - b.center; }
         }
-        let pursuing = visible || (self.kind.spider() && self.memory > 0.);
+        if self.kind == Kind::Phantom {
+            // Actors keep hunting an enemy they lost for max_inactive_time (30 s), flying
+            // straight at it (GetCloseToEnemy), not at the last sighting.
+            if visible { self.memory = crate::combat::MAX_INACTIVE_TIME; }
+            else if notarget { self.memory = 0.; }
+            else { self.memory = (self.memory - DT).max(0.); }
+        }
+        let pursuing = visible || ((self.kind.spider() || self.kind == Kind::Phantom) && self.memory > 0.);
         if self.kind.rock() {
             self.rock_step(world, delta, visible, data);
             return;
@@ -667,14 +674,20 @@ impl Creature {
                         self.set(Phase::Walk);
                         return;
                     }
-                } else if visible && facing && self.cooldown == 0. {
-                    if self.kind == Kind::Phantom
-                        && (distance < 110. || (distance > 150. && self.time >= duration))
-                    {
-                        self.variant = usize::from(distance >= 110.);
+                } else if self.kind == Kind::Phantom {
+                    // c_phantasm.st APPROACH: mana drain at 110 (50%/think), ice chain after the
+                    // fly loop when beyond 150 (50%); no facing or cooldown gate.
+                    if visible && distance < 110. && self.random() % 2 == 0 {
+                        self.variant = 0;
                         self.set(Phase::Windup);
                         return;
                     }
+                    if visible && distance > 150. && self.time >= duration && self.random() % 2 == 0 {
+                        self.variant = 1;
+                        self.set(Phase::Windup);
+                        return;
+                    }
+                } else if visible && facing && self.cooldown == 0. {
                     if self.kind != Kind::Phantom {
                         if distance < if self.kind.spider() { 110. } else { 130. } * self.scale {
                             self.variant = self.random() % 3;
@@ -992,7 +1005,7 @@ impl Creature {
     pub fn validate(&self) -> Result<()> {
         ensure!(
             self.detour.valid()
-                && self.memory.is_finite() && (0. ..=3.).contains(&self.memory)
+                && self.memory.is_finite() && (0. ..=crate::combat::MAX_INACTIVE_TIME).contains(&self.memory)
                 && self.last_seen.is_none_or(|p| p.is_finite() && p.abs().max_element() < 100_000.)
                 && self.feet.is_finite()
                 && self.yaw.is_finite()

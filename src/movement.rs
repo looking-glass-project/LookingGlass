@@ -15,7 +15,20 @@ pub const GRAVITY: f32 = 800.;
 // Local Player jump event: half gravity in the ordinary, unpowered state.
 // Horizontal acceleration and animation timing remain provisional.
 const JUMP_SPEED: f32 = GRAVITY * 0.5;
-const GROUND_Z: f32 = 0.5;
+const DEFAULT_GROUND_Z: f32 = 0.5;
+static MIN_GROUND_Z: std::sync::atomic::AtomicU32 =
+    std::sync::atomic::AtomicU32::new(DEFAULT_GROUND_Z.to_bits());
+/// Steepest walkable floor, as a normal's Z. A scripted slide (Centipede's Sanctum
+/// tunnel) makes the 49 degree slope unwalkable so Alice slides under gravity.
+pub fn set_min_ground_z(z: f32) {
+    MIN_GROUND_Z.store(z.to_bits(), std::sync::atomic::Ordering::Relaxed);
+}
+pub fn reset_min_ground_z() {
+    set_min_ground_z(DEFAULT_GROUND_Z);
+}
+fn ground_z() -> f32 {
+    f32::from_bits(MIN_GROUND_Z.load(std::sync::atomic::Ordering::Relaxed))
+}
 /// Upright swimmer's shoulders are near 44 units; keep the eye just above water.
 pub const FLOAT_DEPTH: f32 = 44.;
 
@@ -316,7 +329,7 @@ impl Player {
                 player.grounded = !player.swimming
                     && !support.start_solid
                     && support.fraction < 1.
-                    && support.normal.z >= GROUND_Z;
+                    && support.normal.z >= ground_z();
                 if player.grounded {
                     player.ground_normal = support.normal;
                 }
@@ -385,7 +398,7 @@ impl Player {
         let ground = world.body_trace(self.feet, self.feet - Vec3::Z * 2.);
         self.grounded = !ground.start_solid
             && ground.fraction < 1.
-            && ground.normal.z >= GROUND_Z
+            && ground.normal.z >= ground_z()
             && self.velocity.dot(ground.normal) <= 1.;
         if self.grounded {
             self.ground_normal = ground.normal;
@@ -429,7 +442,7 @@ impl Player {
             let bank = world.body_trace(next, next - Vec3::Z * 2.);
             let supported = !bank.start_solid
                 && bank.fraction < 1.
-                && bank.normal.z >= GROUND_Z
+                && bank.normal.z >= ground_z()
                 && Immersion::sample(world, next).level < 3;
             // Float at chest depth. Space at an edge attempts the checked climb above;
             // holding it in open water must not repeatedly launch Alice into the air.
@@ -453,7 +466,7 @@ impl Player {
                 // can occupy the lowered endpoint even though the original slide was clear.
                 let hit = world.body_trace(self.feet, capped);
                 // Preserve the uncapped slide when it climbed a walkable bank.
-                if hit.fraction >= 1. || hit.normal.z < GROUND_Z {
+                if hit.fraction >= 1. || hit.normal.z < ground_z() {
                     next = self.feet.lerp(capped, hit.fraction);
                     velocity.z = velocity.z.min(0.);
                 }
@@ -532,7 +545,7 @@ impl Player {
                 let raised = start + Vec3::Z * height;
                 let (step, step_velocity) = slide(world, raised, velocity, FIXED_DT);
                 let down = world.body_trace(step, step - Vec3::Z * (height + 2.));
-                if !down.start_solid && down.fraction < 1. && down.normal.z >= GROUND_Z {
+                if !down.start_solid && down.fraction < 1. && down.normal.z >= ground_z() {
                     let step = step - Vec3::Z * (height + 2.) * down.fraction;
                     if (step - start).truncate().length_squared()
                         > (next - start).truncate().length_squared() + 0.0001
@@ -579,7 +592,7 @@ impl Player {
         let down = world.body_trace(self.feet, self.feet - Vec3::Z * distance);
         self.grounded = !down.start_solid
             && down.fraction < 1.
-            && down.normal.z >= GROUND_Z
+            && down.normal.z >= ground_z()
             && !jump
             && (was_ground || self.velocity.dot(down.normal) <= 1.);
         if self.grounded {
@@ -646,7 +659,7 @@ impl Player {
         let forward = wish.normalize().extend(0.) * 42.;
         // There must be an actual low obstacle in front, not open water or a distant wall.
         let wall = world.body_trace(self.feet, self.feet + forward);
-        if wall.start_solid || wall.fraction >= 1. || wall.normal.z > GROUND_Z {
+        if wall.start_solid || wall.fraction >= 1. || wall.normal.z > ground_z() {
             return false;
         }
         // Water puts the collider's feet deeper than the old waist-high float.
@@ -662,7 +675,7 @@ impl Player {
             return false;
         }
         let down = world.body_trace(raised + forward, self.feet + forward);
-        if down.start_solid || down.fraction >= 1. || down.normal.z < GROUND_Z {
+        if down.start_solid || down.fraction >= 1. || down.normal.z < ground_z() {
             return false;
         }
         let end = (raised + forward).lerp(self.feet + forward, down.fraction);
@@ -746,7 +759,7 @@ fn slide(world: &World, mut position: Vec3, mut velocity: Vec3, dt: f32) -> (Vec
             normals.push(hit.normal);
         }
         let tangent_stall = hit.fraction <= 0.000001
-            && hit.normal.z < GROUND_Z
+            && hit.normal.z < ground_z()
             && velocity.dot(hit.normal).abs() < 0.01;
         velocity = constrain(velocity, &normals);
         // A tangent slide at large map coordinates can round back onto the

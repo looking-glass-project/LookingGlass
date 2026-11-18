@@ -394,13 +394,14 @@ impl Player {
             self.grounded = false;
         }
         let was_swimming = self.swimming;
-        self.swimming = self.immersion.level == 3
+        // Lava is not swimmable: a body in it falls to the floor and wades.
+        self.swimming = self.immersion.kind != crate::water::Liquid::Lava && (self.immersion.level == 3
             // A jump from a shallow, supported pool must keep its ascent. Switching
             // to swimming here clamps it back to the float line before it can clear
             // an ordinary bank (notably Herbaceous Border's slime basin).
             || (self.immersion.level >= 2 && !self.grounded
                 && (was_swimming || self.velocity.z <= 0.))
-            || (was_swimming && self.immersion.level == 1 && !self.grounded);
+            || (was_swimming && self.immersion.level == 1 && !self.grounded));
         if ((self.swimming && input.rise > 0.)
             || (self.grounded && (input.jump || input.use_pressed)))
             && self.knockback_time <= 0.

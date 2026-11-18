@@ -449,6 +449,8 @@ pub struct World {
     dynamic: Vec<Collider>,
     settled_supports: Vec<Collider>,
     weapon_obstacles: Vec<(usize, Collider)>,
+    /// Upward-facing icy floor triangles (shader name contains "ice"); walking on them slides.
+    ice: Vec<[Vec3; 3]>,
     camera_obstacles: Vec<Collider>,
     liquids: Vec<(i32, Hull)>,
     dynamic_liquids: Vec<Liquid>,
@@ -532,6 +534,21 @@ impl World {
                 }
             }
         }
+        let mut ice = Vec::new();
+        for index in map.world_surfaces.clone() {
+            let surface = &map.surfaces[index];
+            let name = map.shaders[surface.shader].name.to_ascii_lowercase();
+            if !name.contains("ice") || name.contains("icewall") {
+                continue;
+            }
+            let (v, i) = map.triangulate(surface);
+            for t in i.chunks_exact(3) {
+                let (a, b, c) = (v[t[0] as usize].position, v[t[1] as usize].position, v[t[2] as usize].position);
+                if (b - a).cross(c - a).normalize_or_zero().z.abs() > 0.7 {
+                    ice.push([a, b, c]);
+                }
+            }
+        }
         let patch_count = hulls.len() - brush_count;
         let tree = if hulls.is_empty() {
             None
@@ -546,6 +563,7 @@ impl World {
             dynamic: Vec::new(),
             settled_supports: Vec::new(),
             weapon_obstacles: Vec::new(),
+            ice,
             camera_obstacles: Vec::new(),
             liquids,
             dynamic_liquids: Vec::new(),
@@ -558,6 +576,23 @@ impl World {
         })
     }
 
+    /// Whether the floor directly under `feet` is icy.
+    pub fn on_ice(&self, feet: Vec3) -> bool {
+        self.ice.iter().any(|&[a, b, c]| {
+            let n = (b - a).cross(c - a);
+            if n.z.abs() < 1e-6 {
+                return false;
+            }
+            // Plane height under the point, then a 2D barycentric containment test.
+            let z = a.z - (n.x * (feet.x - a.x) + n.y * (feet.y - a.y)) / n.z;
+            if (feet.z - z).abs() > 6. {
+                return false;
+            }
+            let side = |p: Vec3, q: Vec3| (q.x - p.x) * (feet.y - p.y) - (q.y - p.y) * (feet.x - p.x);
+            let (s1, s2, s3) = (side(a, b), side(b, c), side(c, a));
+            (s1 >= 0. && s2 >= 0. && s3 >= 0.) || (s1 <= 0. && s2 <= 0. && s3 <= 0.)
+        })
+    }
     /// Trace a box centre from start to end. Zero extents give a point trace.
     pub fn sweep(&self, start: Vec3, end: Vec3, half: Vec3) -> Trace {
         self.sweep_except(start, end, half, None)
@@ -789,6 +824,7 @@ impl World {
             dynamic: Vec::new(),
             settled_supports: Vec::new(),
             weapon_obstacles: Vec::new(),
+            ice: Vec::new(),
             camera_obstacles: Vec::new(),
             liquids: Vec::new(),
             dynamic_liquids: Vec::new(),

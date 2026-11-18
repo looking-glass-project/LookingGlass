@@ -478,7 +478,14 @@ impl Player {
             * if self.immersion.level > 0 { 0.7 } else { 1. };
         let mut horizontal = self.velocity.truncate();
         if self.knockback_time <= 0. && (self.grounded || wish.length_squared() > 0.) {
-            let acceleration = if self.grounded { 1800. } else { 420. };
+            // Icy floors (Icy Reception) keep momentum: weak traction both ways.
+            let acceleration = if self.grounded && world.on_ice(self.feet) {
+                if wish.length_squared() > 0. { 260. } else { 70. }
+            } else if self.grounded {
+                1800.
+            } else {
+                420.
+            };
             horizontal += (target - horizontal).clamp_length_max(acceleration * FIXED_DT);
         }
         self.velocity.x = horizontal.x;

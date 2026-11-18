@@ -109,6 +109,8 @@ pub struct State {
     detour: f32,
     #[serde(default)]
     stuck: u32,
+    #[serde(default)]
+    clear_time: f32,
 }
 pub struct Timing {
     intro_tracks: Vec<crate::fortress::spline::Spline>,
@@ -343,6 +345,7 @@ impl Duchess {
                 notarget: false,
                 detour: 0.,
                 stuck: 0,
+                clear_time: 0.,
             },
             timing,
             objects,
@@ -910,9 +913,25 @@ impl Duchess {
                     // The original circles around obstacles (the Just Desserts tub) to reach
                     // Alice: when she can't be seen or the straight walk stalls, sidestep
                     // around the obstacle on the more open side until the way is clear.
-                    if visible && self.state.stuck < 8 {
-                        self.state.detour = 0.;
-                    } else if self.state.detour == 0. {
+                    // Test the Duchess's own body, not her line of sight: a low table can be
+                    // seen over yet still block her. Keep a chosen side until the body path is clear.
+                    let body = vec3(32., 32., 64.);
+                    let c = self.state.feet + Vec3::Z * 64.1;
+                    let reach = distance.min(150.);
+                    let clear = world
+                        .sweep(c, c + direct.extend(0.) * reach, body)
+                        .fraction
+                        >= 1.;
+                    if clear && self.state.detour != 0. {
+                        self.state.clear_time += STEP;
+                        if self.state.clear_time > 0.35 {
+                            self.state.detour = 0.;
+                            self.state.clear_time = 0.;
+                        }
+                    } else if !clear {
+                        self.state.clear_time = 0.;
+                    }
+                    if !clear && self.state.detour == 0. {
                         let open = |turn: f32| {
                             let dir = Quat::from_rotation_z(turn) * direct.extend(0.);
                             let c = self.state.feet + Vec3::Z * 64.1;
@@ -1859,6 +1878,7 @@ mod tests {
                 notarget: false,
                 detour: 0.,
                 stuck: 0,
+                clear_time: 0.,
             },
             timing: Timing {
                 intro_tracks: vec![],

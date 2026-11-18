@@ -41,10 +41,17 @@ impl Art {
                     + Quat::from_rotation_z(g.yaw)
                         * data.tag(g.clip(), g.time, "tag_beam").translation
                         * g.scale
+            } else if g.kind == crate::wildlife::Kind::Phantom {
+                g.feet
+                    + Quat::from_rotation_z(g.yaw)
+                        * data.tag(g.clip(), g.time, "tag_head4").translation
+                        * g.scale
             } else {
                 g.target(0).center
             };
-            if g.kind.jabber() {
+            if g.kind == crate::wildlife::Kind::Phantom {
+                beams.mana_beam(from, end, camera, g.time);
+            } else if g.kind.jabber() {
                 beams.lightning(from, end, camera, (g.time-data.clips[g.clip()].frame_time).max(0.), 1000., false, atmosphere);
             } else {
                 draw_line_3d(from, end, Color::new(0.45, 0.75, 1., 0.7));

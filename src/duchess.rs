@@ -104,6 +104,11 @@ pub struct State {
     accumulator: f64,
     home: Vec3,
     pub notarget: bool,
+    /// Side the Duchess circles an obstacle that blocks her way to Alice (+1/-1, 0 = none).
+    #[serde(default)]
+    detour: f32,
+    #[serde(default)]
+    stuck: u32,
 }
 pub struct Timing {
     intro_tracks: Vec<crate::fortress::spline::Spline>,
@@ -336,6 +341,8 @@ impl Duchess {
                 accumulator: 0.,
                 home: Vec3::ZERO,
                 notarget: false,
+                detour: 0.,
+                stuck: 0,
             },
             timing,
             objects,
@@ -898,11 +905,39 @@ impl Duchess {
                         self.state.feet + Vec3::Z * 64.,
                     ));
                 } else if distance > 90. {
-                    self.walk(
-                        world,
-                        delta.truncate().normalize_or_zero(),
-                        if distance > 350. { 190. } else { 100. },
-                    );
+                    let direct = delta.truncate().normalize_or_zero();
+                    let speed = if distance > 350. { 190. } else { 100. };
+                    // The original circles around obstacles (the Just Desserts tub) to reach
+                    // Alice: when she can't be seen or the straight walk stalls, sidestep
+                    // around the obstacle on the more open side until the way is clear.
+                    if visible && self.state.stuck < 8 {
+                        self.state.detour = 0.;
+                    } else if self.state.detour == 0. {
+                        let open = |turn: f32| {
+                            let dir = Quat::from_rotation_z(turn) * direct.extend(0.);
+                            let c = self.state.feet + Vec3::Z * 64.1;
+                            world.sweep(c, c + dir * 400., vec3(32., 32., 64.)).fraction
+                        };
+                        self.state.detour = if open(1.4) >= open(-1.4) { 1. } else { -1. };
+                    }
+                    let wish = if self.state.detour == 0. {
+                        direct
+                    } else {
+                        let r = Quat::from_rotation_z(self.state.detour * 1.2) * direct.extend(0.);
+                        vec2(r.x, r.y)
+                    };
+                    let before = self.state.feet;
+                    self.walk(world, wish, speed);
+                    if self.state.feet.distance(before) < speed * STEP * 0.3 {
+                        self.state.stuck += 1;
+                        if self.state.stuck >= 8 {
+                            // Blocked even while circling: try the other way round.
+                            self.state.detour = if self.state.detour == 0. { 1. } else { -self.state.detour };
+                            self.state.stuck = 0;
+                        }
+                    } else {
+                        self.state.stuck = 0;
+                    }
                 }
             }
             Action::Phase => {
@@ -1822,6 +1857,8 @@ mod tests {
                 accumulator: 0.,
                 home: Vec3::ZERO,
                 notarget: false,
+                detour: 0.,
+                stuck: 0,
             },
             timing: Timing {
                 intro_tracks: vec![],

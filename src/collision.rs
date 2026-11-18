@@ -538,7 +538,7 @@ impl World {
         for index in map.world_surfaces.clone() {
             let surface = &map.surfaces[index];
             let name = map.shaders[surface.shader].name.to_ascii_lowercase();
-            if !name.contains("ice") || name.contains("icewall") {
+            if !(name.contains("ice") || name.contains("snow")) || name.contains("icewall") {
                 continue;
             }
             let (v, i) = map.triangulate(surface);

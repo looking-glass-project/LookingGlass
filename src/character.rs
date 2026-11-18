@@ -1102,6 +1102,12 @@ impl Character {
     pub fn phantasm_freeze(&mut self, feet: Vec3) -> bool {
         self.visuals.phantasm_freeze(feet, self.facing)
     }
+    /// Alice is admiring the Darkened Looking Glass: the original locks control and
+    /// closes the camera in on her until the clip ends.
+    pub fn glass_performing(&self) -> bool {
+        self.power_pose.state.performing
+            && self.power_pose.state.form == Some(crate::power_pose::Form::Glass)
+    }
     pub fn attack_movement_locked(&self) -> bool {
         self.actions.movement_locked()
     }

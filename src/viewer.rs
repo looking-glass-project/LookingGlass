@@ -1969,7 +1969,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
                         control = Controls::default();
                         player.velocity = Vec3::ZERO;
                     }
-                    if alice.attack_movement_locked() {
+                    if alice.attack_movement_locked() || alice.glass_performing() {
                         control = Controls::default();
                     }
                     scene.world.set_weapon_obstacles(alice.ice_targets());
@@ -2799,12 +2799,21 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
         let frozen_camera = alice
             .frozen()
             .map(|(time, origin, yaw)| frozen_orbit.camera(&scene.world, time, origin, yaw));
+        let glass_camera = alice.glass_performing().then(|| {
+            let center = player.feet + crate::collision::PLAYER_CENTER;
+            let rotation = Quat::from_rotation_z(direction.y.atan2(direction.x));
+            crate::cinematic::Camera::look(
+                center + rotation * vec3(-70., -40., 12.),
+                center + Vec3::Z * 14.,
+            )
+        });
         let scripted_camera = pand_camera
             .or_else(|| {
                 cinematic_camera
                     .map(|(eye, target, _)| crate::cinematic::Camera::look(eye, target))
             })
-            .or(frozen_camera);
+            .or(frozen_camera)
+            .or(glass_camera);
         let (eye, aim, gameplay_alice) = if third_person && !flying {
             follow_camera.update(
                 &scene.world,
@@ -2870,6 +2879,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
         let show_alice = !interactions.level_hides_player() && if scripted_camera.is_some() {
             rage_scene.is_some_and(|(_, finished)| !finished)
                 || frozen_camera.is_some()
+                || glass_camera.is_some()
                 || (cinematic_camera.is_some_and(|(_, _, show)| show) && pand_camera.is_none())
         } else {
             gameplay_alice && camera.distance(player.feet + Vec3::Z * 32.) > 30.
@@ -2969,7 +2979,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
         }
         alice.atmosphere(&scene.atmosphere, camera);
         if show_alice && !interactions.school.as_ref().is_some_and(|s| s.cinematic()) {
-            alice.draw_ghost(player.feet, fullbright, stats.invisible > 0.);
+            alice.draw_ghost(player.feet, fullbright, stats.invisible > 0. && !alice.glass_performing());
         }
         npcs.draw(
             camera,

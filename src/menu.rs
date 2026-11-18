@@ -672,17 +672,21 @@ impl Menu {
             if source_h < 0.5 {
                 continue;
             }
-            draw_texture_ex(
-                t,
-                r.x,
-                r.y + dest_y,
-                WHITE,
-                DrawTextureParams {
-                    dest_size: Some(vec2(r.w, dest_h)),
-                    source: Some(Rect::new(0., source_y, t.width(), source_h)),
-                    ..Default::default()
-                },
-            );
+            // The original adds the trail over the wall (GL_ONE GL_ONE); the stock alpha
+            // pipeline is dimmer, so draw each slice twice to stand out like on PC.
+            for _ in 0..2 {
+                draw_texture_ex(
+                    t,
+                    r.x,
+                    r.y + dest_y,
+                    WHITE,
+                    DrawTextureParams {
+                        dest_size: Some(vec2(r.w, dest_h)),
+                        source: Some(Rect::new(0., source_y, t.width(), source_h)),
+                        ..Default::default()
+                    },
+                );
+            }
         }
     }
     fn art(&self, canvas: Canvas, name: &str, rect: Rect, alpha: f32) {

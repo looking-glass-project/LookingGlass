@@ -1104,6 +1104,9 @@ impl Character {
     }
     /// Alice is admiring the Darkened Looking Glass: the original locks control and
     /// closes the camera in on her until the clip ends.
+    pub fn glass_age(&self) -> f32 {
+        self.power_pose.state.age
+    }
     pub fn glass_performing(&self) -> bool {
         self.power_pose.state.performing
             && self.power_pose.state.form == Some(crate::power_pose::Form::Glass)

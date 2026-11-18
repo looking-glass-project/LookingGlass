@@ -2808,8 +2808,14 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
         let glass_camera = alice.glass_performing().then(|| {
             let center = player.feet + crate::collision::PLAYER_CENTER;
             let rotation = Quat::from_rotation_z(direction.y.atan2(direction.x));
+            // Pull in from the follow distance, then keep creeping closer.
+            let t = (alice.glass_age() / 0.9).clamp(0., 1.);
+            let t = t * t * (3. - 2. * t);
+            let creep = (alice.glass_age() * 0.04).min(0.12);
+            let near = vec3(-70., -40., 12.);
+            let far = vec3(-150., -60., 30.);
             crate::cinematic::Camera::look(
-                center + rotation * vec3(-70., -40., 12.),
+                center + rotation * (far.lerp(near, t) * (1. - creep)),
                 center + Vec3::Z * 14.,
             )
         });

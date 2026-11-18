@@ -281,6 +281,8 @@ pub struct Art {
     skins: Vec<Skin>,
     props: Vec<Attachment>,
     cup: (usize, Prop),
+    /// w_lookingglass_pickup held at tag_03 during the Glass pose, with its shine layers.
+    mirror: Option<(Prop, Vec<String>, Texture2D)>,
     aura: effects::Aura,
     _layers: Vec<std::rc::Rc<crate::render_fx::Surface>>,
 }
@@ -402,6 +404,13 @@ impl Art {
                     .context("Missing Tea pickup tag")?,
                 Prop::load_animation(assets, "w_grasshopper_pickup", "idle", specs)?,
             ),
+            mirror: Prop::load_animation(assets, "w_lookingglass_pickup", "idle", specs)
+                .ok()
+                .map(|p| {
+                    let names = p.surface_names();
+                    let white = Texture2D::from_rgba8(1, 1, &[255; 4]);
+                    (p, names, white)
+                }),
             _layers: layers,
         })
     }
@@ -460,6 +469,41 @@ impl Art {
                 state.age,
                 false,
             );
+        }
+        if state.form == Some(Form::Glass) && state.performing {
+            if let Some((prop, names, white)) = &mut self.mirror {
+                let tag = pose[self.cup.0];
+                let anchor = Transform {
+                    translation: root.point(tag.translation * scale),
+                    rotation: root.rotation * tag.rotation,
+                };
+                let age = state.age;
+                let meshes = prop.meshes_at(anchor, scale, fullbright, 0., false);
+                for (mesh, name) in meshes.iter_mut().zip(names.iter()) {
+                    match name.as_str() {
+                        "material3" => {
+                            // textures/common/lookingglass: scrolling rift light, alphaGen dot.
+                            let alpha = (0.55 + 0.25 * (age * 6.).sin()).clamp(0., 1.);
+                            for v in &mut mesh.vertices {
+                                v.uv.x = v.uv.x * 2. + age * 0.5;
+                                v.color = [255, 255, 255, (alpha * 255.) as u8];
+                            }
+                            crate::render_fx::effect(mesh, crate::materials::Blend::AlphaAdd);
+                        }
+                        "material2" => {
+                            // fx/rift_base: additive white, rgbGen wave noise 0.75 +/- 0.25 at 50 Hz.
+                            let noise = 0.75 + 0.25 * ((age * 50.).sin() * 43758.5453).sin();
+                            let c = (noise.clamp(0., 1.) * 255.) as u8;
+                            mesh.texture = Some(white.clone());
+                            for v in &mut mesh.vertices {
+                                v.color = [c, c, c, 255];
+                            }
+                            crate::render_fx::effect(mesh, crate::materials::Blend::AlphaAdd);
+                        }
+                        _ => crate::render_fx::skin(mesh),
+                    }
+                }
+            }
         }
         for a in &mut self.props {
             if state.form != Some(a.form) || state.age < a.start {

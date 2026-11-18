@@ -898,6 +898,9 @@ impl Prop {
             scale: def.scale,
         })
     }
+    pub(crate) fn surface_names(&self) -> Vec<String> {
+        self.model.surfaces.iter().map(|s| s.name.clone()).collect()
+    }
     pub(crate) fn point(&self, attachment: Transform, tag: &str, scale: f32) -> Vec3 {
         attachment.point(self.model.tags.get(tag).map_or(Vec3::ZERO, |v| v[0]) * self.scale * scale)
     }

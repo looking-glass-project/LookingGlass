@@ -274,6 +274,18 @@ fn menu_texture_path(
     texture::resolve(assets, key, specs)
 }
 
+/// Quake III's smooth value noise in [-1, 1], as used by `rgbGen/alphaGen wave noise`.
+fn menu_noise(x: f32) -> f32 {
+    let hash = |i: i32| {
+        let mut n = (i as u32).wrapping_mul(0x9e3779b1) ^ 0x85ebca6b;
+        n = (n ^ (n >> 15)).wrapping_mul(0x2c1b3c6d);
+        n ^= n >> 12;
+        (n & 0xffff) as f32 / 32767.5 - 1.
+    };
+    let (i, f) = (x.floor() as i32, x.fract());
+    let f = f * f * (3. - 2. * f);
+    hash(i) * (1. - f) + hash(i + 1) * f
+}
 fn main_background_glow(art: &str) -> bool {
     art.starts_with("ui/main/main") && art.ends_with("_glow")
 }
@@ -646,6 +658,32 @@ impl Menu {
     pub fn close(&mut self) {
         self.page = None;
         self.save_film.stop();
+    }
+    /// `tcMod scroll 0 0.1`: the texture wraps vertically, drawn as two slices.
+    fn scrolling_art(&self, canvas: Canvas, name: &str, rect: Rect, offset: f32) {
+        let Some(t) = self.textures.get(&name.to_ascii_lowercase()) else { return };
+        let r = canvas.rect(rect);
+        let off = offset.rem_euclid(1.);
+        let h = t.height();
+        for (source_y, source_h, dest_y, dest_h) in [
+            (off * h, (1. - off) * h, 0., (1. - off) * r.h),
+            (0., off * h, (1. - off) * r.h, off * r.h),
+        ] {
+            if source_h < 0.5 {
+                continue;
+            }
+            draw_texture_ex(
+                t,
+                r.x,
+                r.y + dest_y,
+                WHITE,
+                DrawTextureParams {
+                    dest_size: Some(vec2(r.w, dest_h)),
+                    source: Some(Rect::new(0., source_y, t.width(), source_h)),
+                    ..Default::default()
+                },
+            );
+        }
     }
     fn art(&self, canvas: Canvas, name: &str, rect: Rect, alpha: f32) {
         if let Some(t) = self.textures.get(&name.to_ascii_lowercase()) {
@@ -1376,15 +1414,21 @@ impl Menu {
                         .windows(2).find(|p| p[0] == "shader").map(|p| p[1].trim_end_matches("\\n").to_owned()))
             } else { None };
             let art = hovered_title.as_deref().unwrap_or_else(|| widget.art());
-            let alpha = if art.contains("/glow")
-                || art.contains("wick")
-                || page == Page::Main && main_background_glow(art)
-            {
-                0.15 + (get_time() as f32 * 3.).sin().abs() * 0.15
+            let time = get_time() as f32;
+            let alpha = if art.contains("wick") {
+                // alphaGen wave sin .7 .35 0 .2
+                (0.7 + 0.35 * (time * 0.2 * std::f32::consts::TAU).sin()).clamp(0., 1.)
+            } else if art.contains("/glow") || page == Page::Main && main_background_glow(art) {
+                // alphaGen wave noise 0 1 0 3: the window light flickers like lightning.
+                menu_noise(time * 3.).clamp(0., 1.)
             } else {
                 1.
             };
-            self.art(canvas, art, widget.rect, alpha);
+            if page == Page::Main && art.eq_ignore_ascii_case("ui/main/smoke") {
+                self.scrolling_art(canvas, art, widget.rect, 0.1 * time);
+            } else {
+                self.art(canvas, art, widget.rect, alpha);
+            }
             if !widget.value("title").is_empty()
                 && !(page.layout() == "loadsave" && ["MapName", "DateTime", "PageNum"].contains(&widget.value("name"))) {
                 self.draw_lettering(canvas, widget, widget.value("title"), false);

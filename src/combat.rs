@@ -234,6 +234,12 @@ pub struct Feedback {
     pub spatial_sounds: Vec<(&'static str, Vec3)>,
     /// Players encased in a Phantasmagoria ice block this tick.
     pub freeze: Vec<usize>,
+    /// Velocity added to Alice without the knockback control lock (SuckEnemy).
+    pub pull: Vec3,
+    /// Alice is held hidden inside an evil mushroom at this origin (Digest).
+    pub swallow: Option<Vec3>,
+    /// Alice is spat out from this origin with this velocity.
+    pub launch: Option<(Vec3, Vec3)>,
 }
 impl Feedback {
     pub fn freeze(&mut self, id: usize) {
@@ -253,6 +259,9 @@ impl Feedback {
         self.damage += other.damage;
         self.impulse += other.impulse;
         self.will_drain += other.will_drain;
+        self.pull += other.pull;
+        self.swallow = self.swallow.or(other.swallow);
+        self.launch = self.launch.or(other.launch);
         self.summon_hits.extend(other.summon_hits);
         self.sounds.extend(other.sounds);
         self.spatial_sounds.extend(other.spatial_sounds);
@@ -266,6 +275,15 @@ impl Feedback {
         } else {
             self.strike(id, amount, Vec3::ZERO, DamageKind::Other);
         }
+    }
+    pub fn pull(&mut self, id: usize, velocity: Vec3) {
+        if id == crate::dice::ALICE { self.pull += velocity } else { self.strike(id, 0., velocity, DamageKind::Other) }
+    }
+    pub fn swallow(&mut self, id: usize, at: Vec3) {
+        if id == crate::dice::ALICE { self.swallow = Some(at) }
+    }
+    pub fn launch(&mut self, id: usize, from: Vec3, velocity: Vec3) {
+        if id == crate::dice::ALICE { self.launch = Some((from, velocity)) } else { self.strike(id, 0., velocity, DamageKind::Other) }
     }
     pub fn strike(&mut self, id: usize, damage: f32, impulse: Vec3, kind: DamageKind) {
         if let Some(slot) = player_slot(id) {

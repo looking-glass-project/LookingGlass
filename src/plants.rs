@@ -122,7 +122,17 @@ pub struct Plant {
     pain: f32,
     random: u32,
     serial: u32,
+    /// Authored `target` the Digest behavior launches its victim at (350 u/s horizontal).
+    #[serde(default)]
+    pub spit_to: Option<Vec3>,
+    #[serde(default)]
+    swallowed: bool,
 }
+/// fgamex86 SuckEnemy: velocity += dir * (448 - dist) / 384 * strength * dt (state arg 1200).
+const SUCK_STRENGTH: f32 = 1200.;
+/// Digest: victims within 150 are swallowed for health/200 + 1 s (health clamped 50..300,
+/// Alice full health 200 → 2 s), spat 0.25 s later for 24 damage.
+const DIGEST_HOLD: f32 = 2.25;
 impl Plant {
     pub fn new(kind: Kind, feet: Vec3, yaw: f32, scale: f32, seed: usize) -> Self {
         Self {
@@ -144,6 +154,8 @@ impl Plant {
             pain: 0.,
             random: seed as u32,
             serial: 0,
+            spit_to: None,
+            swallowed: false,
         }
     }
     pub fn grow_for_check(&mut self) {
@@ -458,46 +470,54 @@ impl Plant {
                 }
             }
             Phase::Suck => {
-                if !visible || distance >= 416. || self.time >= 2. {
+                // c_evilmushroom.st SUCK: no timeout; READY when out of 416, grab within 100.
+                if !visible || distance >= 416. {
                     self.set(Phase::Release);
                 } else if distance < 100. {
                     self.set(Phase::Grab);
                 } else {
-                    out.strike(
+                    let d = (aim - self.feet).truncate().length();
+                    out.pull(
                         victim,
-                        0.,
-                        -delta.normalize_or_zero() * 1200. * STEP,
-                        DamageKind::Other,
+                        -delta.with_z(0.).normalize_or_zero()
+                            * ((448. - d) / 384.)
+                            * SUCK_STRENGTH
+                            * STEP,
                     );
                 }
             }
             Phase::Grab => {
-                if !visible || distance >= 120. {
+                if !visible || distance >= 150. {
                     self.set(Phase::Release);
                 } else if self.time >= duration {
                     self.set(Phase::Digest);
+                    self.swallowed = true;
                     out.sounds.push("sound/character/evil_mushroom/digest.wav");
                 }
             }
             Phase::Digest => {
-                if !visible || distance >= 120. {
+                if !self.swallowed {
                     self.set(Phase::Release);
+                } else if self.time < DIGEST_HOLD {
+                    out.swallow(victim, self.feet);
                 } else {
-                    for (i, at) in [0.25, 0.75, 1.25].into_iter().enumerate() {
-                        if self.contacts & (1 << i) == 0 && self.time >= at {
-                            self.contacts |= 1 << i;
-                            out.strike(victim, 5., Vec3::ZERO, DamageKind::Other);
+                    self.swallowed = false;
+                    // Launch at the authored target (horizontal 350, gravity 800), else upward
+                    // with a random horizontal direction.
+                    let v = match self.spit_to {
+                        Some(to) => {
+                            let flat = (to - self.feet).truncate();
+                            let t = (flat.length() / 350.).max(0.1);
+                            (flat / t).extend((to.z - self.feet.z) / t + 0.5 * 800. * t)
                         }
-                    }
-                    if self.time >= 1.5 {
-                        self.set(Phase::Release);
-                        out.strike(
-                            victim,
-                            0.,
-                            delta.normalize_or_zero() * 200.,
-                            DamageKind::Other,
-                        );
-                    }
+                        None => {
+                            let a = (self.random() % 360) as f32 * std::f32::consts::PI / 180.;
+                            vec3(a.cos() * 350., a.sin() * 350., 500.)
+                        }
+                    };
+                    out.strike(victim, 24., Vec3::ZERO, DamageKind::Other);
+                    out.launch(victim, self.feet + Vec3::Z * 8., v);
+                    self.set(Phase::Release);
                 }
             }
             Phase::Release | Phase::Pain => {

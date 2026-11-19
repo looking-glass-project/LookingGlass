@@ -126,7 +126,7 @@ fn mushroom_pull_stops_for_cover_distance_notarget_and_death() {
         let mut p = plant(Kind::Mushroom);
         p.set(Phase::Suck);
         let eye = vec3(250., 0., 48.);
-        assert!(run(&mut p, &floor(), eye, 1).impulse.x < 0.);
+        assert!(run(&mut p, &floor(), eye, 1).pull.x < 0.);
         let wall = World::fixture(&[(vec3(100., -1000., -100.), vec3(110., 1000., 1000.))]);
         match stop {
             0 => {}
@@ -143,21 +143,24 @@ fn mushroom_pull_stops_for_cover_distance_notarget_and_death() {
             if stop == 3 { vec3(500., 0., 48.) } else { eye },
             1,
         );
-        assert_eq!(f.impulse, Vec3::ZERO);
+        assert_eq!(f.pull, Vec3::ZERO);
     }
 }
 #[test]
-fn mushroom_digest_is_bounded_interruptible_and_does_not_lock_player() {
+fn mushroom_digest_swallows_then_spits_for_24() {
     let mut p = plant(Kind::Mushroom);
     p.set(Phase::Digest);
-    let f = run(&mut p, &floor(), vec3(80., 0., 48.), 181);
-    assert_eq!(f.damage, 15.);
+    p.swallowed = true;
+    let held = run(&mut p, &floor(), vec3(80., 0., 48.), 200);
+    assert!(held.swallow.is_some() && held.launch.is_none() && held.damage == 0.);
+    let f = run(&mut p, &floor(), vec3(80., 0., 48.), 80);
+    assert_eq!(f.damage, 24.);
+    let (_, v) = f.launch.unwrap();
+    assert!((v.truncate().length() - 350.).abs() < 1. && v.z > 0.);
     assert_eq!(p.phase, Phase::Release);
-    assert!(f.impulse.x > 0.);
     p.set(Phase::Digest);
-    p.hit(hit(30., DamageKind::Knife));
-    assert_eq!(p.phase, Phase::Pain);
-    assert_eq!(run(&mut p, &floor(), vec3(80., 0., 48.), 100).damage, 0.);
+    assert_eq!(run(&mut p, &floor(), vec3(80., 0., 48.), 2).damage, 0.);
+    assert_eq!(p.phase, Phase::Release);
 }
 #[test]
 fn demon_can_draw_plant_aggro_and_receive_damage() {

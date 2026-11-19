@@ -2524,6 +2524,17 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
             stats.spend_will(feedback.will_drain.min(stats.will()));
         }
         player.knockback(feedback.impulse);
+        player.velocity += feedback.pull;
+        let plant_swallowed = feedback.swallow.is_some() && stats.alive();
+        if let Some(at) = feedback.swallow.filter(|_| stats.alive()) {
+            player.feet = at;
+            player.velocity = Vec3::ZERO;
+        }
+        if let Some((from, v)) = feedback.launch.filter(|_| stats.alive()) {
+            player.feet = from;
+            player.velocity = v;
+            player.grounded = false;
+        }
         if feedback.freeze.contains(&crate::dice::ALICE) && stats.alive() {
             alice.phantasm_freeze(player.feet);
         }
@@ -2991,11 +3002,11 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
             fullbright,
         );
         scene.draw(camera, environment_clock, fullbright, false, &transforms);
-        if show_alice && stats.invisible <= 0. {
+        if show_alice && !plant_swallowed && stats.invisible <= 0. {
             crate::lighting::shadow(&scene.world, player.feet, 22.);
         }
         alice.atmosphere(&scene.atmosphere, camera);
-        if show_alice && !interactions.school.as_ref().is_some_and(|s| s.cinematic()) {
+        if show_alice && !plant_swallowed && !interactions.school.as_ref().is_some_and(|s| s.cinematic()) {
             alice.draw_ghost(player.feet, fullbright, stats.invisible > 0. && !alice.glass_performing());
         }
         npcs.draw(

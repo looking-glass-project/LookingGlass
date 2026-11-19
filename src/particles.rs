@@ -783,6 +783,12 @@ impl Steam {
                     }
                     spec.size.low *= width / 64.;
                     spec.size.high *= width / 64.;
+                    // The original plume (clips side by side) tops out near the pickup box, about a
+                    // third of the height the authored accel gives in this renderer.
+                    for a in &mut spec.accel {
+                        a.low *= 0.36;
+                        a.high *= 0.36;
+                    }
                 }
                 if model.starts_with("fx_emitter_waterspray") {
                     // Original engine sprites: half-extent = texture width / 2 * scale, and

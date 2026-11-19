@@ -209,6 +209,8 @@ pub struct Duchess {
     links: Option<Vec<Vec<usize>>>,
     route: Vec<usize>,
     route_age: f32,
+    /// Always-on fire emitters riding a moving wall: (entity id, wall group).
+    fires: Vec<(usize, usize, Vec3, Quat)>,
 }
 fn entity<'a>(map: &'a Bsp, name: &str) -> Result<&'a BTreeMap<String, String>> {
     map.entities
@@ -368,6 +370,20 @@ impl Duchess {
             links: None,
             route: Vec::new(),
             route_age: 0.,
+            fires: map
+                .entities
+                .iter()
+                .enumerate()
+                .filter(|(_, e)| e.get("model").is_some_and(|m| m.trim_start_matches("models/") == "fx_emitter_fire_expensive.tik"))
+                .filter_map(|(i, e)| {
+                    Some((
+                        i,
+                        group(e.get("targetname")?)?,
+                        crate::interaction::vector(e.get("origin")?)?,
+                        crate::decorations::rotation(e),
+                    ))
+                })
+                .collect(),
         };
         s.rebuild(map)?;
         Ok(s)
@@ -603,6 +619,21 @@ impl Duchess {
     }
     pub fn colliders(&self) -> impl Iterator<Item = Collider> + '_ {
         self.objects.iter().map(|o| o.collider.clone())
+    }
+    /// Pose offsets for the fire emitters bound to the moving walls.
+    pub fn emitter_poses(&self) -> Vec<(crate::entity::Id, Transform)> {
+        self.fires
+            .iter()
+            .map(|&(id, g, origin, rotation)| {
+                (
+                    crate::entity::Id(id),
+                    Transform {
+                        translation: origin + self.group_offset(g),
+                        rotation,
+                    },
+                )
+            })
+            .collect()
     }
     pub fn transforms(&self) -> impl Iterator<Item = (usize, Vec3, Quat)> + '_ {
         self.objects
@@ -2020,6 +2051,7 @@ mod tests {
             links: None,
             route: Vec::new(),
             route_age: 0.,
+            fires: Vec::new(),
         }
     }
     fn floor() -> World {

@@ -92,7 +92,10 @@ impl Art {
     }
     /// Phantasm mana drain (PhantasmAttack mode 1): the original spawns `fx_metagas` at
     /// tag_head4, angled at the enemy; its tag_gas emitter streams `meta.spr` sprites.
-    pub fn mana_beam(&self, from: Vec3, to: Vec3, camera: Vec3, age: f32, atm: &Atmosphere) {
+    /// The gas entity sits at the enemy's origin (Evaluate mode 1) and is angled along the
+    /// vector from tag_head4 to that origin, so the stream envelops the victim.
+    pub fn mana_beam(&self, head: Vec3, victim: Vec3, camera: Vec3, age: f32, atm: &Atmosphere) {
+        let (from, to) = (victim, victim + (victim - head));
         let Some(gas) = &self.gas else { return };
         let mut effect = gas.fork();
         let rotation = Quat::from_rotation_arc(Vec3::X, (to - from).try_normalize().unwrap_or(Vec3::X));

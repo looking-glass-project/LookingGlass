@@ -92,6 +92,10 @@ impl Blood {
         puddle: bool,
     ) {
         let Some(name) = self.blood_model(assets, model) else { return };
+        // Original hit blood (fgamex86 FUN_100de6f0) only places a floor decal when rand() > 0.5.
+        if !puddle && self.roll() <= 0.5 {
+            return;
+        }
         let prefix = if name.contains("green") {
             "g_"
         } else if name.contains("sparks") {
@@ -114,7 +118,8 @@ impl Blood {
             return;
         }
         let center = (at + Vec3::Z * 8.).lerp(at - Vec3::Z * 160., trace.fraction);
-        let jitter = if puddle { 0. } else { 14. };
+        // Original: crandom(20) on X and Y for every blood decal (CE-verified on a fire imp kill).
+        let jitter = 40.;
         let (jx, jy) = ((self.roll() - 0.5) * jitter, (self.roll() - 0.5) * jitter);
         let radius = if puddle { 26. + self.roll() * 14. } else { 8. + self.roll() * 8. };
         if self.decals.len() >= MAX_DECALS {

@@ -849,7 +849,9 @@ impl Steam {
             }
             // The enclosed pixie requests axis bounds, not world collision.
             // Its casing still occludes the sprite through the depth buffer.
+            // Waterfall mist (roguespray) is emitted against rock faces and must drift through them.
             if self.emitters[p.emitter].spec.constrain.is_none()
+                && !self.emitters[p.emitter].spec.image.ends_with("roguespray")
                 && world.sweep(p.position, next, Vec3::ZERO).fraction < 1.
             {
                 p.age = p.life;

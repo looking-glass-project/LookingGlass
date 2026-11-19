@@ -66,7 +66,7 @@ impl Art {
             layers,
             impact: Attached::load_clip_bursts(a, "fx_lightning_hit", Some("idle"), 0.05, specs)?
                 .context("Missing lightning interception effect")?,
-            gas: Attached::load_clip_bursts(a, "fx_metagas", Some("idle"), 0.05, specs)
+            gas: Attached::load(a, "fx_metagas", specs)
                 .ok()
                 .flatten(),
         });

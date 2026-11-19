@@ -1867,4 +1867,14 @@ mod tests {
         assert_eq!(p[0].offset, b.sample(0.45, 123)[0].offset);
         assert!(b.sample(1.21, 123).is_empty());
     }
+
+    #[test]
+    fn metagas_tag_emitter_parses_for_phantasm_drain() {
+        let text = "TIKI\ninit\n{\n client\n {\n tagemitter tag_gas metagas\n (\n model meta.spr\n spawnrate 75\n velocity 220\n scalemin 4.2\n scalemax 5.0\n scalerate -4\n fade\n life 0.5\n )\n }\n}\n";
+        let specs = parse(text);
+        assert_eq!(specs.len(), 1);
+        assert_eq!(specs[0].rate, 75.);
+        assert_eq!(specs[0].forward, 220.);
+        assert_eq!(specs[0].image, "meta");
+    }
 }

@@ -714,15 +714,6 @@ impl Steam {
                 .unwrap_or(1.)
                 .max(0.001);
             for mut spec in definitions {
-                // The original 200+100/s additive altar plume saturates this
-                // renderer's LDR target. Keep the weapon readable without
-                // reducing the authored motion, colours or other emitters.
-                if crate::inventory::WEAPONS
-                    .iter()
-                    .any(|(id, _)| model == format!("altar_{id}.tik"))
-                {
-                    spec.alpha *= 0.12;
-                }
                 let mut point = origin;
                 let mut axes = rotation;
                 if let Some(tag) = &spec.tag {
@@ -778,6 +769,20 @@ impl Steam {
                     let factor = textures.first().map_or(1., |t| t.width() / 64.);
                     spec.size.low *= factor;
                     spec.size.high *= factor;
+                }
+                if crate::inventory::WEAPONS
+                    .iter()
+                    .any(|(id, _)| model == format!("altar_{id}.tik"))
+                {
+                    // Engine sprite size is texture width times scale (CE-verified), so the 32 px
+                    // bam / 16 px metared plume is far smaller than this renderer's 64 px baseline.
+                    let width = textures.first().map_or(64., |t| t.width());
+                    let mean = (spec.size.low + spec.size.high) * 0.5;
+                    if mean > 0. {
+                        spec.growth /= mean;
+                    }
+                    spec.size.low *= width / 64.;
+                    spec.size.high *= width / 64.;
                 }
                 if model.starts_with("fx_emitter_waterspray") {
                     // Original engine sprites: half-extent = texture width / 2 * scale, and

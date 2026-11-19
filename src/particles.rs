@@ -748,7 +748,16 @@ impl Steam {
                     let Some(path) = texture::resolve(assets, frame, &specs) else {
                         continue;
                     };
-                    let image = texture::decode(assets, &path)?;
+                    let mut image = texture::decode(assets, &path)?;
+                    // GL_ONE GL_ONE ignores texture alpha. Some original sprites (waterfall mist
+                    // water1.ftx) store the picture in RGB with alpha 0 everywhere.
+                    if matches!(stage.blend, crate::materials::Blend::Add | crate::materials::Blend::AlphaAdd)
+                        && image.pixels.chunks_exact(4).all(|p| p[3] == 0)
+                    {
+                        for p in image.pixels.chunks_exact_mut(4) {
+                            p[3] = 255;
+                        }
+                    }
                     let t = Texture2D::from_rgba8(image.width, image.height, &image.pixels);
                     t.set_filter(FilterMode::Linear);
                     textures.push(t);
@@ -849,9 +858,7 @@ impl Steam {
             }
             // The enclosed pixie requests axis bounds, not world collision.
             // Its casing still occludes the sprite through the depth buffer.
-            // Waterfall mist (roguespray) is emitted against rock faces and must drift through them.
             if self.emitters[p.emitter].spec.constrain.is_none()
-                && !self.emitters[p.emitter].spec.image.ends_with("roguespray")
                 && world.sweep(p.position, next, Vec3::ZERO).fraction < 1.
             {
                 p.age = p.life;

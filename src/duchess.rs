@@ -203,6 +203,12 @@ pub struct Duchess {
     points: BTreeMap<String, Vec3>,
     pub pickup_id: String,
     essence_origins: [Vec3; 4],
+    /// info_pathnode origins: the original's Chase behavior paths over this graph (PathNode/Path)
+    /// when the enemy is not directly reachable, instead of feeling around obstacles.
+    nodes: Vec<Vec3>,
+    links: Option<Vec<Vec<usize>>>,
+    route: Vec<usize>,
+    route_age: f32,
 }
 fn entity<'a>(map: &'a Bsp, name: &str) -> Result<&'a BTreeMap<String, String>> {
     map.entities
@@ -353,6 +359,15 @@ impl Duchess {
             points,
             pickup_id: format!("potears3:{pickup_index}"),
             essence_origins,
+            nodes: map
+                .entities
+                .iter()
+                .filter(|e| e.get("classname").is_some_and(|c| c == "info_pathnode"))
+                .filter_map(|e| e.get("origin").and_then(|v| crate::interaction::vector(v)))
+                .collect(),
+            links: None,
+            route: Vec::new(),
+            route_age: 0.,
         };
         s.rebuild(map)?;
         Ok(s)
@@ -931,7 +946,13 @@ impl Duchess {
                     } else if !clear {
                         self.state.clear_time = 0.;
                     }
-                    if !clear && self.state.detour == 0. {
+                    let nav = if clear {
+                        self.route.clear();
+                        None
+                    } else {
+                        self.nav_wish(world, target_feet)
+                    };
+                    if !clear && nav.is_none() && self.state.detour == 0. {
                         let open = |turn: f32| {
                             let dir = Quat::from_rotation_z(turn) * direct.extend(0.);
                             let c = self.state.feet + Vec3::Z * 64.1;
@@ -939,7 +960,10 @@ impl Duchess {
                         };
                         self.state.detour = if open(1.4) >= open(-1.4) { 1. } else { -1. };
                     }
-                    let wish = if self.state.detour == 0. {
+                    let wish = if let Some(n) = nav {
+                        self.state.detour = 0.;
+                        n
+                    } else if self.state.detour == 0. {
                         direct
                     } else {
                         let r = Quat::from_rotation_z(self.state.detour * 1.2) * direct.extend(0.);
@@ -1061,6 +1085,107 @@ impl Duchess {
             }
             Action::Death => (),
         }
+    }
+    /// Can the Duchess's body walk straight between two floor points at her own height?
+    fn body_clear(&self, world: &World, a: Vec3, b: Vec3) -> bool {
+        let z = Vec3::Z * (self.state.feet.z + 64.1);
+        let (a, b) = (vec3(a.x, a.y, 0.) + z, vec3(b.x, b.y, 0.) + z);
+        let t = world.sweep(a, b, vec3(32., 32., 64.));
+        !t.start_solid && t.fraction >= 1.
+    }
+    /// Original Chase over the PathNode graph: walk node to node along the shortest route to the
+    /// node nearest the enemy. Returns the heading toward the next waypoint, or None without a
+    /// usable route (caller falls back to feeling around the obstacle).
+    fn nav_wish(&mut self, world: &World, goal: Vec3) -> Option<Vec2> {
+        if self.nodes.len() < 2 {
+            return None;
+        }
+        if self.links.is_none() {
+            let n = self.nodes.len();
+            let mut links = vec![Vec::new(); n];
+            for i in 0..n {
+                for j in i + 1..n {
+                    let d = self.nodes[i].truncate().distance(self.nodes[j].truncate());
+                    if d <= 800. && self.body_clear(world, self.nodes[i], self.nodes[j]) {
+                        links[i].push(j);
+                        links[j].push(i);
+                    }
+                }
+            }
+            self.links = Some(links);
+        }
+        self.route_age += STEP;
+        let feet = self.state.feet;
+        if self.route_age >= 0.4 || self.route.is_empty() {
+            self.route_age = 0.;
+            let flat = |a: Vec3, b: Vec3| a.truncate().distance(b.truncate());
+            let nearest = |from: Vec3, need_clear: bool, me: &Self| -> Option<usize> {
+                let mut best: Option<(f32, usize)> = None;
+                for (i, n) in me.nodes.iter().enumerate() {
+                    if need_clear && !me.body_clear(world, from, *n) {
+                        continue;
+                    }
+                    let d = flat(from, *n);
+                    if best.map_or(true, |(b, _)| d < b) {
+                        best = Some((d, i));
+                    }
+                }
+                best.map(|(_, i)| i)
+            };
+            let start = nearest(feet, true, self).or_else(|| nearest(feet, false, self))?;
+            let end = nearest(goal, true, self).or_else(|| nearest(goal, false, self))?;
+            let links = self.links.as_ref()?;
+            let n = self.nodes.len();
+            let mut dist = vec![f32::INFINITY; n];
+            let mut prev = vec![usize::MAX; n];
+            let mut open = vec![start];
+            dist[start] = 0.;
+            while let Some(k) = (0..open.len()).min_by(|&a, &b| {
+                let f = |i: usize| dist[open[i]] + flat(self.nodes[open[i]], self.nodes[end]);
+                f(a).total_cmp(&f(b))
+            }) {
+                let u = open.swap_remove(k);
+                if u == end {
+                    break;
+                }
+                for &v in &links[u] {
+                    let nd = dist[u] + flat(self.nodes[u], self.nodes[v]);
+                    if nd < dist[v] {
+                        dist[v] = nd;
+                        prev[v] = u;
+                        if !open.contains(&v) {
+                            open.push(v);
+                        }
+                    }
+                }
+            }
+            if dist[end].is_infinite() {
+                self.route.clear();
+                return None;
+            }
+            let mut path = vec![end];
+            while let Some(&last) = path.last() {
+                if prev[last] == usize::MAX {
+                    break;
+                }
+                path.push(prev[last]);
+            }
+            path.reverse();
+            self.route = path;
+        }
+        // Drop waypoints already reached or that can be skipped with a clear walk.
+        while self.route.len() > 1 {
+            let reached = feet.truncate().distance(self.nodes[self.route[0]].truncate()) < 56.;
+            let skip = self.body_clear(world, feet, self.nodes[self.route[1]]);
+            if reached || skip {
+                self.route.remove(0);
+            } else {
+                break;
+            }
+        }
+        let next = self.nodes[*self.route.first()?];
+        let d = (next - feet).truncate();
+        (d.length() > 8.).then(|| d.normalize_or_zero())
     }
     fn walk(&mut self, world: &World, wish: Vec2, speed: f32) {
         for turn in [0_f32, 0.6, -0.6, 1.2, -1.2] {
@@ -1890,6 +2015,10 @@ mod tests {
             points: BTreeMap::new(),
             pickup_id: "potears3:21".into(),
             essence_origins: [vec3(1000., 1000., 0.); 4],
+            nodes: Vec::new(),
+            links: None,
+            route: Vec::new(),
+            route_age: 0.,
         }
     }
     fn floor() -> World {

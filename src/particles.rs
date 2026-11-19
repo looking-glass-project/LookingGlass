@@ -686,7 +686,10 @@ impl Steam {
                 String::from_utf8_lossy(&assets.read(&format!("models/{model}"))?).into_owned();
             let definitions = parse(&text);
             let selected_clip = e.get("anim").map(String::as_str)
-                .or_else(|| (model == "lantern.tik").then_some("lantern"));
+                .or_else(|| (model == "lantern.tik").then_some("lantern"))
+                // Hollow Hideaway's waterfall spray tags idle "off" but no script ever
+                // switches them on; the original shows them running from level start.
+                .or_else(|| model.starts_with("fx_emitter_waterspray").then_some("on"));
             let tan = crate::weapons::read_model_clip(
                 assets, model.trim_end_matches(".tik"), selected_clip,
             ).ok();

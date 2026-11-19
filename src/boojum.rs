@@ -331,21 +331,54 @@ impl Boojum {
             State::Dead => {}
         }
     }
+    /// The original spawns `fx_cone` (alpha .04-.14) and one `fx_wave` (alpha .5) at the mouth:
+    /// translucent shockwave cones with a gradient alpha that grow by 4 scale/s and fade
+    /// over 1 s (c_boojum.tik attack_scream), not wire rings.
     pub fn draw_waves(&self) {
+        thread_local! {
+            static WHITE: Texture2D = Texture2D::from_rgba8(1, 1, &[255; 4]);
+        }
+        let white = WHITE.with(|t| t.clone());
         for w in &self.waves {
-            let right = w.direction.cross(Vec3::Z).normalize_or_zero();
-            let up = right.cross(w.direction);
-            let radius = 4. + w.age * 40.;
-            let color = Color::new(0.65, 0.85, 1., (1. - w.age) * 0.6);
-            for i in 0..16 {
-                let a = i as f32 * std::f32::consts::TAU / 16.;
-                let b = (i + 1) as f32 * std::f32::consts::TAU / 16.;
-                crate::render_fx::line(
-                    w.position + (right * a.cos() + up * a.sin()) * radius,
-                    w.position + (right * b.cos() + up * b.sin()) * radius,
-                    color,
-                );
+            let big = w.speed > 700.;
+            let right = w.direction.cross(Vec3::Z).try_normalize().unwrap_or(Vec3::X);
+            let up = right.cross(w.direction).normalize_or_zero();
+            let scale = 0.66 * (if big { 3. } else { 1. } + 4. * w.age);
+            let base = if big { 0.5 } else { 0.1 };
+            let fade = (1. - w.age).clamp(0., 1.);
+            let (length, radius) = (30. * scale, 22. * scale);
+            let mut vertices = Vec::new();
+            let mut indices = Vec::new();
+            const SIDES: usize = 20;
+            const RINGS: usize = 4;
+            for ring in 0..=RINGS {
+                let t = ring as f32 / RINGS as f32;
+                // Opaque at the mouth-side tip, transparent toward the flared rim.
+                let alpha = base * fade * (1. - t * 0.85);
+                let color: [u8; 4] = Color::new(0.85, 0.9, 1., alpha).into();
+                for i in 0..SIDES {
+                    let a = i as f32 * std::f32::consts::TAU / SIDES as f32;
+                    vertices.push(Vertex {
+                        position: w.position
+                            + w.direction * (t * length)
+                            + (right * a.cos() + up * a.sin()) * (radius * t),
+                        uv: vec2(i as f32 / SIDES as f32, t),
+                        normal: Vec4::ZERO,
+                        color,
+                    });
+                }
             }
+            for ring in 0..RINGS {
+                for i in 0..SIDES {
+                    let (a, b) = (ring * SIDES + i, ring * SIDES + (i + 1) % SIDES);
+                    let (c, d) = (a + SIDES, b + SIDES);
+                    indices.extend([a, b, c, b, d, c].map(|v| v as u16));
+                }
+            }
+            crate::render_fx::effect(
+                &Mesh { vertices, indices, texture: Some(white.clone()) },
+                crate::materials::Blend::Alpha,
+            );
         }
     }
 }

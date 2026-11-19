@@ -68,7 +68,8 @@ impl Art {
                 .context("Missing lightning interception effect")?,
             gas: Attached::load(a, "fx_metagas", specs)
                 .ok()
-                .flatten(),
+                .flatten()
+                .map(Attached::engine_sprite_size),
         });
         CACHE.with(|c| *c.borrow_mut() = Rc::downgrade(&art));
         Ok(art)
@@ -95,7 +96,8 @@ impl Art {
     /// The gas entity sits at the enemy's origin (Evaluate mode 1) and is angled along the
     /// vector from tag_head4 to that origin, so the stream envelops the victim.
     pub fn mana_beam(&self, head: Vec3, victim: Vec3, camera: Vec3, age: f32, atm: &Atmosphere) {
-        let (from, to) = (victim, victim + (victim - head));
+        // CE capture: entity origin = victim origin + 32 z; stream rises back toward the head.
+        let (from, to) = (victim, head);
         let Some(gas) = &self.gas else { return };
         let mut effect = gas.fork();
         let rotation = Quat::from_rotation_arc(Vec3::X, (to - from).try_normalize().unwrap_or(Vec3::X));

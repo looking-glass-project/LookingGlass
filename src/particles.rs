@@ -1241,6 +1241,20 @@ impl Attached {
             }
         }
     }
+    /// Engine sprite sizing for `.spr` models: half-extent is texture width / 2 times the
+    /// emitter scale, and `scalerate` adds to that scale (relative growth = rate / scale).
+    pub(crate) fn engine_sprite_size(mut self) -> Self {
+        for e in &mut self.steam.emitters {
+            let width = e.textures.first().map_or(64., |t| t.width());
+            let mean = (e.spec.size.low + e.spec.size.high) * 0.5;
+            if mean > 0. {
+                e.spec.growth /= mean;
+            }
+            e.spec.size.low *= width / 64.;
+            e.spec.size.high *= width / 64.;
+        }
+        self
+    }
     /// A separate emitter clock sharing immutable textures/materials.
     pub(crate) fn fork(&self) -> Self {
         Self {

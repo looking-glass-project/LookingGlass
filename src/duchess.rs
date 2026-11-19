@@ -932,7 +932,8 @@ impl Duchess {
                     // seen over yet still block her. Keep a chosen side until the body path is clear.
                     let body = vec3(32., 32., 64.);
                     let c = self.state.feet + Vec3::Z * 64.1;
-                    let reach = distance.min(150.);
+                    // The whole straight line to the enemy, not just the next few steps: the tub only blocks late.
+                    let reach = (distance - 90.).max(0.);
                     let clear = world
                         .sweep(c, c + direct.extend(0.) * reach, body)
                         .fraction

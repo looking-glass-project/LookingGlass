@@ -779,6 +779,18 @@ impl Steam {
                     spec.size.low *= factor;
                     spec.size.high *= factor;
                 }
+                if model.starts_with("fx_emitter_waterspray") {
+                    // Original engine sprites: half-extent = texture width / 2 * scale, and
+                    // scalerate adds to that scale (CE-verified on fx_metagas). The 16 px water
+                    // drop is therefore a quarter of the 64 px baseline this renderer assumes.
+                    let width = textures.first().map_or(64., |t| t.width());
+                    let mean = (spec.size.low + spec.size.high) * 0.5;
+                    if mean > 0. {
+                        spec.growth /= mean;
+                    }
+                    spec.size.low *= width / 64.;
+                    spec.size.high *= width / 64.;
+                }
                 let enabled = !spec.start_off;
                 emitters.push(Emitter {
                     id,

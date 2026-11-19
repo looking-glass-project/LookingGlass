@@ -10,6 +10,7 @@ use std::{collections::BTreeMap, rc::Rc};
 pub struct Art {
     layers: BTreeMap<&'static str, (Texture2D, Rc<render_fx::Surface>)>,
     impact: Attached,
+    gas: Option<Attached>,
 }
 thread_local! { static CACHE: std::cell::RefCell<std::rc::Weak<Art>> = Default::default(); }
 const MATERIALS: [&str; 3] = ["queenbeam1", "emap1", "textures/special/icechain"];
@@ -65,6 +66,9 @@ impl Art {
             layers,
             impact: Attached::load_clip_bursts(a, "fx_lightning_hit", Some("idle"), 0.05, specs)?
                 .context("Missing lightning interception effect")?,
+            gas: Attached::load_clip_bursts(a, "fx_metagas", Some("idle"), 0.05, specs)
+                .ok()
+                .flatten(),
         });
         CACHE.with(|c| *c.borrow_mut() = Rc::downgrade(&art));
         Ok(art)
@@ -86,26 +90,20 @@ impl Art {
         // Original material stages own colour, blending and scrolling; no debug tint.
         render_fx::skin_effect(&mesh, age, 1.);
     }
-    /// Phantasm mana-drain beam: layered additive blue-violet ribbons with a pulsing core.
-    pub fn mana_beam(&self, from: Vec3, to: Vec3, camera: Vec3, age: f32) {
-        let white = self.layers["emap1"].0.clone();
-        for (width, color, alpha) in [
-            (46., [0.25, 0.2, 1.0], 0.16),
-            (26., [0.35, 0.3, 1.0], 0.3),
-            (10., [0.7, 0.75, 1.0], 0.65),
-        ] {
-            let Some(mut mesh) = ribbon(from, to, camera, width * (1. + 0.08 * (age * 40.).sin()), 1.)
-            else {
-                continue;
-            };
-            let pulse = alpha * (0.85 + 0.15 * (age * 31. + width).sin());
-            let c: [u8; 4] = Color::new(color[0], color[1], color[2], pulse).into();
-            for v in &mut mesh.vertices {
-                v.color = c;
-            }
-            mesh.texture = Some(white.clone());
-            render_fx::effect(&mesh, crate::materials::Blend::Add);
-        }
+    /// Phantasm mana drain (PhantasmAttack mode 1): the original spawns `fx_metagas` at
+    /// tag_head4, angled at the enemy; its tag_gas emitter streams `meta.spr` sprites.
+    pub fn mana_beam(&self, from: Vec3, to: Vec3, camera: Vec3, age: f32, atm: &Atmosphere) {
+        let Some(gas) = &self.gas else { return };
+        let mut effect = gas.fork();
+        let rotation = Quat::from_rotation_arc(Vec3::X, (to - from).try_normalize().unwrap_or(Vec3::X));
+        effect.draw(
+            age.max(0.),
+            1.,
+            |_, _| Transform { translation: from, rotation },
+            |_, _, on| on,
+            camera,
+            atm,
+        );
     }
     /// Phantasmagoria ice chain; the shader tiles it 5x per repeat.
     pub fn ice_chain(&self, from: Vec3, to: Vec3, camera: Vec3, age: f32) {

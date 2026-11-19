@@ -50,7 +50,7 @@ impl Art {
                 g.target(0).center
             };
             if g.kind == crate::wildlife::Kind::Phantom {
-                beams.mana_beam(from, end, camera, g.time);
+                beams.mana_beam(from, end, camera, g.time, atmosphere);
             } else if g.kind.jabber() {
                 beams.lightning(from, end, camera, (g.time-data.clips[g.clip()].frame_time).max(0.), 1000., false, atmosphere);
             } else {

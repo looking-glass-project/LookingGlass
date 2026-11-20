@@ -13,8 +13,14 @@ pub(super) struct Art {
 }
 impl Art {
     pub fn new(model: &Model) -> Self {
+        // The spider's poison_spit uses `randvel`/`velocity` relative to tag_mouth; read as world
+        // axes it fired straight up instead of along the mouth.
+        let mut effect = model.own_effect.as_ref().map(|t| t.fork());
+        if let Some(e) = &mut effect {
+            e.orient_velocity("poison_spit");
+        }
         Self {
-            effect: model.own_effect.as_ref().map(|t| t.fork()),
+            effect,
             templates: model
                 .effects
                 .iter()
@@ -60,6 +66,7 @@ impl Art {
         if self.phase != Some(g.phase) || g.time < self.time {
             if let Some(effect) = &mut self.effect {
                 *effect = effect.fork();
+                effect.orient_velocity("poison_spit");
             }
             self.attachments.clear();
         }

@@ -3201,7 +3201,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
         let show_details = help || menu;
         if paused && !menu && !inventory_menu && !console_input && !help {
             ui.paused(&if input.using_pad {
-                "A or Start to resume".into()
+                crate::input::pad_text("A or Start to resume")
             } else {
                 format!("{} or click to resume", input.label(&preferences, "P"))
             });
@@ -3278,7 +3278,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
                 ),
                 format!(
                     "{}: menus   {}: chapters   {}: help",
-                    if input.using_pad { "Start" } else { "Esc" },
+                    if input.using_pad { crate::input::pad_label("Start") } else { "Esc".into() },
                     input.label(&preferences, "Tab"),
                     input.label(&preferences, "H")
                 ),
@@ -3410,7 +3410,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
                 skip_scene.draw(
                     &ui,
                     &if input.using_pad {
-                        "A".into()
+                        crate::input::pad_label("A")
                     } else {
                         input.label(&preferences, "Enter")
                     },

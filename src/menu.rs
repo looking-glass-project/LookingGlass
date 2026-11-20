@@ -1571,9 +1571,10 @@ impl Menu {
                         cell.rect = Rect::new(r.x, r.y, r.w-key_width, r.h);
                         self.draw_lettering(canvas, &cell, &b.text, selected);
                         cell.rect = Rect::new(r.right()-key_width, r.y, key_width, r.h);
-                        self.draw_lettering(canvas, &cell, if self.controls_pad {
-                            &self.draft.pad_bindings[row]
-                        } else {&self.draft.bindings[row]}, selected);
+                        let shown = if self.controls_pad {
+                            crate::input::pad_label(&self.draft.pad_bindings[row])
+                        } else { self.draft.bindings[row].clone() };
+                        self.draw_lettering(canvas, &cell, &shown, selected);
                     } else if page != Page::Video {
                         let width = if self.toggle(page, row).is_some() {
                             r.w - 38.
@@ -1627,16 +1628,16 @@ impl Menu {
         if page.settings() {
             self.ui.font.draw(
                 canvas,
-                if self.binding.is_some() {
+                &if self.binding.is_some() {
                     if self.controls_pad {
-                        "Press a button   Start / Esc cancel   Delete clear"
+                        crate::input::pad_text("Press a button   Start / Esc cancel   Delete clear")
                     } else {
-                        "Press a key, mouse button or wheel   Esc cancels"
+                        "Press a key, mouse button or wheel   Esc cancels".to_owned()
                     }
                 } else if self.using_pad {
-                    "D-pad / stick: browse   A: select   B: back"
+                    crate::input::pad_text("D-pad / stick: browse   A: select   B: back")
                 } else {
-                    "Arrows adjust   Enter select   Esc cancel"
+                    "Arrows adjust   Enter select   Esc cancel".to_owned()
                 },
                 Rect::new(80., 442., 478., 24.),
                 19.,
@@ -1660,12 +1661,12 @@ impl Menu {
         if page == Page::Main && !buttons.is_empty() {
             self.ui.font.draw(
                 canvas,
-                if self.frontend || self.post_game {
-                    "Tab: chapters"
+                &if self.frontend || self.post_game {
+                    "Tab: chapters".to_owned()
                 } else if self.using_pad {
-                    "Tab: chapters   Start / B: back to game"
+                    crate::input::pad_text("Tab: chapters   Start / B: back to game")
                 } else {
-                    "Tab: chapters   Esc: back to game"
+                    "Tab: chapters   Esc: back to game".to_owned()
                 },
                 Rect::new(285., 451., 345., 25.),
                 18.,

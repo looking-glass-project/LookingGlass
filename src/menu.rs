@@ -295,9 +295,13 @@ fn menu_noise(x: f32) -> f32 {
 /// (`ui/border1_left.tga` in a pak, or a loose `border1_left.tga` next to the paks) and never
 /// bundled. Without it the pillarbox stays black.
 fn load_menu_border(assets: &mut Assets) -> Option<Texture2D> {
-    let bytes = assets.read("ui/border1_left.tga").ok()
-        .or_else(|| std::fs::read(assets.base.join("border1_left.tga")).ok())?;
-    let image = texture::decode_bytes(bytes, "border1_left.tga").ok()?;
+    load_loose_texture(assets, "border1_left.tga")
+}
+/// A texture from a pak (`ui/<name>`) or, as the remaster ships these, loose beside the paks.
+fn load_loose_texture(assets: &mut Assets, name: &str) -> Option<Texture2D> {
+    let bytes = assets.read(&format!("ui/{name}")).ok()
+        .or_else(|| std::fs::read(assets.base.join(name)).ok())?;
+    let image = texture::decode_bytes(bytes, name).ok()?;
     let texture = Texture2D::from_rgba8(image.width, image.height, &image.pixels);
     texture.set_filter(FilterMode::Linear);
     Some(texture)
@@ -417,6 +421,8 @@ pub struct Menu {
     textures: BTreeMap<String, Texture2D>,
     /// Optional ornate side border for widescreen menus (VorpalFix's `border1_left.tga`).
     border: Option<Texture2D>,
+    /// The console-style title screen shown once at launch (the remaster's loose `title_bg.tga`).
+    title: Option<Texture2D>,
     button_bounds: BTreeMap<String, (f32, f32)>,
     binding_labels: BTreeMap<String, String>,
     map_titles: BTreeMap<String, String>,
@@ -633,6 +639,7 @@ impl Menu {
             save_selected: 0,
             save_film: save_screen::Film::load(assets)?,
             border: load_menu_border(assets),
+            title: load_loose_texture(assets, "title_bg.tga"),
             controls_pad: false,
             controls_page: 0,
             using_pad: false,
@@ -1404,7 +1411,7 @@ impl Menu {
         if pillar < 1. {
             return;
         }
-        let width = 320. * screen_height() / 720.;
+        let width = border.width() * screen_height() / 720.;
         let params = |flip_x| DrawTextureParams {
             dest_size: Some(vec2(width, screen_height())),
             flip_x,
@@ -1724,6 +1731,40 @@ impl Menu {
         }
     }
     /// The world loop does not advance while this modal loop is running.
+    /// The original console title screen: art covering the window and a "Press START" prompt.
+    /// Returns false when the player quit. Does nothing without the art.
+    pub async fn title_screen(&mut self, prefs: &Preferences, audio: &mut audio::Audio, input: &mut crate::input::Input) -> bool {
+        let Some(title) = self.title.clone() else { return true };
+        show_mouse(false);
+        let started = get_time();
+        loop {
+            if is_quit_requested() {
+                return false;
+            }
+            let focused = crate::look::window_focused();
+            input.update(prefs, focused);
+            audio.update(0., Vec3::ZERO, 0., true, true);
+            let (w, h) = (screen_width(), screen_height());
+            clear_background(BLACK);
+            let scale = (w / 1280.).max(h / 720.);
+            let size = vec2(1280., 720.) * scale;
+            draw_texture_ex(&title, (w - size.x) * 0.5, (h - size.y) * 0.5, WHITE,
+                DrawTextureParams { dest_size: Some(size), ..Default::default() });
+            let canvas = Canvas::new(w, h);
+            let pulse = 0.75 + 0.25 * ((get_time() * 2.).sin() as f32);
+            self.ui.font.draw(canvas, &crate::input::pad_text(if input.using_pad { "Press Start" } else { "Press Enter" }),
+                Rect::new(160., 365., 320., 50.), 36., Color::new(1., 1., 1., pulse));
+            let pressed = focused && get_time() - started > 0.3 && (is_key_pressed(KeyCode::Enter)
+                || is_key_pressed(KeyCode::Space) || is_key_pressed(KeyCode::KpEnter)
+                || is_mouse_button_pressed(MouseButton::Left)
+                || input.pad_pressed("Start") || input.pad_pressed("A"));
+            next_frame().await;
+            if pressed {
+                input.suppress();
+                return true;
+            }
+        }
+    }
     pub async fn run(
         &mut self,
         prefs: &mut Preferences,

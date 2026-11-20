@@ -291,6 +291,17 @@ fn menu_noise(x: f32) -> f32 {
     let f = f * f * (3. - 2. * f);
     hash(i) * (1. - f) + hash(i + 1) * f
 }
+/// The border art is GPL-licensed VorpalFix content, so it is read from the player's game data
+/// (`ui/border1_left.tga` in a pak, or a loose `border1_left.tga` next to the paks) and never
+/// bundled. Without it the pillarbox stays black.
+fn load_menu_border(assets: &mut Assets) -> Option<Texture2D> {
+    let bytes = assets.read("ui/border1_left.tga").ok()
+        .or_else(|| std::fs::read(assets.base.join("border1_left.tga")).ok())?;
+    let image = texture::decode_bytes(bytes, "border1_left.tga").ok()?;
+    let texture = Texture2D::from_rgba8(image.width, image.height, &image.pixels);
+    texture.set_filter(FilterMode::Linear);
+    Some(texture)
+}
 fn main_background_glow(art: &str) -> bool {
     art.starts_with("ui/main/main") && art.ends_with("_glow")
 }
@@ -404,6 +415,8 @@ pub struct Menu {
     pub frontend: bool,
     layouts: BTreeMap<String, Vec<Widget>>,
     textures: BTreeMap<String, Texture2D>,
+    /// Optional ornate side border for widescreen menus (VorpalFix's `border1_left.tga`).
+    border: Option<Texture2D>,
     button_bounds: BTreeMap<String, (f32, f32)>,
     binding_labels: BTreeMap<String, String>,
     map_titles: BTreeMap<String, String>,
@@ -619,6 +632,7 @@ impl Menu {
             save_previews: Default::default(),
             save_selected: 0,
             save_film: save_screen::Film::load(assets)?,
+            border: load_menu_border(assets),
             controls_pad: false,
             controls_page: 0,
             using_pad: false,
@@ -1382,6 +1396,23 @@ impl Menu {
         gl_use_default_material();
         set_default_camera();
     }
+    /// Fills the pillarbox of a widescreen menu with the border art, scaled to the screen height
+    /// (the art is 320x720 and its inner edge meets the 4:3 menu area, as VorpalFix draws it).
+    fn draw_border(&self, canvas: Canvas) {
+        let Some(border) = &self.border else { return };
+        let pillar = canvas.rect(Rect::new(0., 0., 0., 0.)).x;
+        if pillar < 1. {
+            return;
+        }
+        let width = 320. * screen_height() / 720.;
+        let params = |flip_x| DrawTextureParams {
+            dest_size: Some(vec2(width, screen_height())),
+            flip_x,
+            ..Default::default()
+        };
+        draw_texture_ex(border, pillar - width, 0., WHITE, params(false));
+        draw_texture_ex(border, screen_width() - pillar, 0., WHITE, params(true));
+    }
     fn draw(&mut self, page: Page, buttons: &[Button]) {
         self.draw_into(page, buttons, None);
     }
@@ -1398,6 +1429,7 @@ impl Menu {
             });
         }
         clear_background(BLACK);
+        self.draw_border(canvas);
         if page.layout() == "loadsave" {
             self.draw_save_underlay(canvas, get_time());
         }

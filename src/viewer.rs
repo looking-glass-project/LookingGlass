@@ -3070,6 +3070,9 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
             camera,
             pickup_clock,
         );
+        for origin in power_art.take_drop_cues() {
+            audio.world_effect_at("sound/item/essence/small/mtespu.wav", origin);
+        }
         {
             scene.draw_with_particles(
                 camera,

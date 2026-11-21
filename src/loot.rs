@@ -32,7 +32,7 @@ impl Grade {
             Self::Super => "w_me_super",
         }
     }
-    fn duration(self) -> f32 {
+    pub fn duration(self) -> f32 {
         match self {
             Self::Small => 40.,
             Self::Medium => 20.,

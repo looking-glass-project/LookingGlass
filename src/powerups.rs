@@ -265,6 +265,11 @@ pub struct Art {
     essence: crate::loot_art::Art,
     collection_fx: std::collections::BTreeMap<String, crate::pickup_effects::Effect>,
     collected: Vec<(String, macroquad::prelude::Vec3, f32)>,
+    /// The authored `grow` clip plays when an enemy's essence first appears.
+    grow: Vec<crate::pickup_effects::Effect>,
+    born: std::collections::BTreeMap<(String, usize), f32>,
+    cues: Vec<(f32, macroquad::prelude::Vec3)>,
+    ready: Vec<macroquad::prelude::Vec3>,
 }
 impl Art {
     pub fn load(assets: &mut crate::assets::Assets) -> Result<Self> {
@@ -294,6 +299,13 @@ impl Art {
                 })
                 .collect::<Result<_>>()?,
             collected: Vec::new(),
+            grow: crate::loot_art::GRADES
+                .iter()
+                .map(|g| crate::pickup_effects::Effect::load(assets, g.model(), "grow", &specs))
+                .collect::<Result<_>>()?,
+            born: Default::default(),
+            cues: Vec::new(),
+            ready: Vec::new(),
         })
     }
     pub fn collected(&mut self, item: &crate::inventory::Pickup, clock: f32) {
@@ -304,6 +316,13 @@ impl Art {
     }
     pub fn clear_effects(&mut self) {
         self.collected.clear();
+        self.born.clear();
+        self.cues.clear();
+        self.ready.clear();
+    }
+    /// World positions where a freshly grown drop plays its authored `mtespu` sound.
+    pub fn take_drop_cues(&mut self) -> Vec<macroquad::prelude::Vec3> {
+        std::mem::take(&mut self.ready)
     }
     pub fn draw(
         &mut self,
@@ -373,8 +392,37 @@ impl Art {
                 .distance_squared(b.1)
                 .total_cmp(&camera.distance_squared(a.1))
         });
+        let (due, later): (Vec<_>, Vec<_>) = std::mem::take(&mut self.cues)
+            .into_iter()
+            .partition(|(at, _)| *at <= clock);
+        self.cues = later;
+        self.ready.extend(due.into_iter().map(|(_, at)| at));
         for (grade, origin) in essences {
             self.essence.draw(grade, origin, atmosphere, camera, clock);
+        }
+        if let Some(loot) = stats.loot.get(visit) {
+            for d in &loot.drops {
+                let key = (visit.to_string(), d.id);
+                let i = crate::loot_art::GRADES.iter().position(|g| *g == d.grade);
+                let (Some(i), false) = (i, self.born.contains_key(&key)) else {
+                    // Drawn while growing: authored emitters (go_up from frame 40, light).
+                    if let (Some(i), Some(start)) = (i, self.born.get(&key).copied()) {
+                        let age = clock - start;
+                        if (0. ..self.grow[i].duration()).contains(&age) {
+                            crate::render::depth_read_only(|| {
+                                self.grow[i].draw(age, d.origin, 0.4, camera, atmosphere)
+                            });
+                        }
+                    }
+                    continue;
+                };
+                // Only a drop that has just appeared grows; reloaded or shrunken ones do not.
+                let fresh = d.remaining >= d.grade.duration() - 0.5;
+                self.born.insert(key, if fresh { clock } else { f32::NEG_INFINITY });
+                if fresh {
+                    self.cues.push((clock + 40. * self.grow[i].frame_time(), d.origin));
+                }
+            }
         }
         // These authored bursts live at most 3 seconds. Keep a short tail,
         // bounded even if many items are collected between rendered frames.

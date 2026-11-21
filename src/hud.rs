@@ -257,19 +257,28 @@ impl Hud {
         }
         let (w, h) = (screen_width(), screen_height());
         let s = (h / 900.).clamp(0.55, 4.).min(w / 900.);
-        // VorpalFix's console HUD: each side is pulled in by width / (17 * (16/9) / aspect)
-        // (about 1/17 of the width at 16:9) and everything is raised by a tenth of the height.
-        let (inset, lift) = if prefs.console_hud && w / h > 4. / 3. {
-            (w / (17. * (16. / 9.) / (w / h)), h / 10.)
+        // VorpalFix's console HUD, measured from the native game at 16:9: the meters keep the
+        // original's height-based size (about 0.83 of the screen tall, no lift) and sit in from
+        // each edge; the inset follows VorpalFix's width/aspect rule on wider screens.
+        let console = prefs.console_hud && w / h > 4. / 3.;
+        let text_s = s;
+        let (s, left, right, y) = if console {
+            let c = h / 461.;
+            let edge = 0.0878 * w * ((w / h) / (16. / 9.));
+            (
+                c,
+                edge - 24. * c,
+                w - edge - c,
+                h * (1. - 0.0894) - 385. * c,
+            )
         } else {
-            (0., 0.)
+            (s, 24. * s, w - 48. * s, h - 64. * s - 385. * s)
         };
-        let y = h - 64. * s - 385. * s - lift;
-        let weapon_rect = self.meter_icon_rect(24. * s + inset, y, s, false);
+        let weapon_rect = self.meter_icon_rect(left, y, s, false);
         if let Some((kind, _)) = stats.active_power() {
             self.foldout_icon(
                 &self.power_icons[kind as usize],
-                self.meter_icon_rect(w - 48. * s - inset, y, s, true),
+                self.meter_icon_rect(right, y, s, true),
                 true,
                 WHITE,
             );
@@ -278,16 +287,16 @@ impl Hud {
             self.icon(selected, weapon_rect, WHITE);
             self.ui.fit_label(
                 WEAPONS[selected].1,
-                weapon_rect.right() + 10. * s,
-                weapon_rect.y + weapon_rect.h * 0.5 + 11. * s,
-                25. * s,
-                235. * s,
+                weapon_rect.right() + 10. * text_s,
+                weapon_rect.y + weapon_rect.h * 0.5 + 11. * text_s,
+                25. * text_s,
+                235. * text_s,
                 Color::from_hex(0xeee4d4),
             );
         }
         // The handles cover the cards' hinges on both sides.
-        self.meter(0, stats.sanity(), 24. * s + inset, y, s);
-        self.meter(1, stats.will(), w - 48. * s - inset, y, s);
+        self.meter(0, stats.sanity(), left, y, s);
+        self.meter(1, stats.will(), right, y, s);
         if show_retry && !stats.alive() {
             let r = Rect::new(
                 (w - 440. * text_scale).max(16. * text_scale) * 0.5,

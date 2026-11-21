@@ -115,6 +115,8 @@ pub struct Preferences {
     pub console_hud: bool,
     /// Show a frames-per-second counter in the top-left corner.
     pub show_fps: bool,
+    /// Draw a dark plate behind the FPS counter.
+    pub fps_plate: bool,
 }
 impl Default for Preferences {
     fn default() -> Self {
@@ -136,6 +138,7 @@ impl Default for Preferences {
             msaa: 1,
             console_hud: false,
             show_fps: false,
+            fps_plate: false,
         }
     }
 }

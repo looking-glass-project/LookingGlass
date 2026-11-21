@@ -236,18 +236,30 @@ impl Hud {
         if prefs.show_fps {
             let fps = get_fps();
             let (cpu, draws, verts) = PERF.with(std::cell::Cell::get);
-            let text = format!("{fps} FPS  cpu {cpu:.1}ms  {draws} draws  {verts} verts");
             let size = 24. * text_scale;
-            // A dark plate keeps the counter readable over bright maps.
-            let width = self.ui.font.width(&text, size);
-            draw_rectangle(
-                6. * text_scale,
-                4. * text_scale,
-                width + 12. * text_scale,
-                size + 12. * text_scale,
-                Color::new(0., 0., 0., 0.7),
-            );
-            self.ui.label(&text, 12. * text_scale, 28. * text_scale, size, Color::from_hex(0xffffff));
+            // Fixed columns, so growing numbers never run into the next field.
+            let fields = [
+                (format!("{fps} FPS"), "000 FPS"),
+                (format!("cpu {cpu:.1}ms"), "cpu 00.0ms"),
+                (format!("{draws} draws"), "0000 draws"),
+                (format!("{verts} verts"), "000000 verts"),
+            ];
+            let gap = 14. * text_scale;
+            let total: f32 = fields.iter().map(|(_, w)| self.ui.font.width(w, size) + gap).sum::<f32>() - gap;
+            if prefs.fps_plate {
+                draw_rectangle(
+                    6. * text_scale,
+                    4. * text_scale,
+                    total + 12. * text_scale,
+                    size + 12. * text_scale,
+                    Color::new(0., 0., 0., 0.7),
+                );
+            }
+            let mut x = 12. * text_scale;
+            for (text, widest) in &fields {
+                self.ui.label(text, x, 28. * text_scale, size, Color::from_hex(0xffffff));
+                x += self.ui.font.width(widest, size) + gap;
+            }
         }
         if !inventory {
             if let Some((kind, time)) = stats.active_power() {

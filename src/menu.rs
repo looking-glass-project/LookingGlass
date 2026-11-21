@@ -1098,6 +1098,10 @@ impl Menu {
                         text: format!("FPS Counter: {}", if self.draft.show_fps { "On" } else { "Off" }),
                         art: String::new(), hover: String::new(),
                         click: Click::Row(5), lettering: None, setting: None, hover_sound: String::new(), click_sound: String::new() });
+                    buttons.push(Button { rect: Rect::new(left, below + 14. + 120., 260., 26.),
+                        text: format!("FPS Backdrop: {}", if self.draft.fps_plate { "On" } else { "Off" }),
+                        art: String::new(), hover: String::new(),
+                        click: Click::Row(6), lettering: None, setting: None, hover_sound: String::new(), click_sound: String::new() });
                 }
                 let group = match page {
                     Page::Video => "group_video", Page::Audio => "group_audio", _ => "group_game",
@@ -1200,6 +1204,7 @@ impl Menu {
             }
             (Page::Video, 4) => self.draft.console_hud = !self.draft.console_hud,
             (Page::Video, 5) => self.draft.show_fps = !self.draft.show_fps,
+            (Page::Video, 6) => self.draft.fps_plate = !self.draft.fps_plate,
             (Page::Audio, 0) => {
                 self.draft_audio.music = (self.draft_audio.music + delta * 0.05).clamp(0., 1.)
             }

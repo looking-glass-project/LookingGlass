@@ -430,6 +430,23 @@ impl Ui {
     }
     pub fn cursor(&self) {
         let p = mouse_position();
+        // Without a mouse (PS5) the pointer never moves from its initial corner; drawing it
+        // there only covers whatever is in the top-left (such as the FPS counter).
+        thread_local! {
+            static FIRST: std::cell::Cell<Option<(f32, f32)>> = const { std::cell::Cell::new(None) };
+            static MOVED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+        }
+        let first = FIRST.with(|f| {
+            let v = f.get().unwrap_or(p);
+            f.set(Some(v));
+            v
+        });
+        if p != first {
+            MOVED.with(|m| m.set(true));
+        }
+        if !MOVED.with(std::cell::Cell::get) {
+            return;
+        }
         let scale = (screen_height() / 600.).clamp(0.75, 2.);
         draw_texture_ex(
             &self.cursor,

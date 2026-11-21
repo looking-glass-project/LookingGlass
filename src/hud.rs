@@ -236,7 +236,18 @@ impl Hud {
         if prefs.show_fps {
             let fps = get_fps();
             let (cpu, draws, verts) = PERF.with(std::cell::Cell::get);
-            self.ui.label(&format!("{fps} FPS  cpu {cpu:.1}ms  {draws} draws  {verts} verts"), 12. * text_scale, 28. * text_scale, 24. * text_scale, Color::from_hex(0xeee4d4));
+            let text = format!("{fps} FPS  cpu {cpu:.1}ms  {draws} draws  {verts} verts");
+            let size = 24. * text_scale;
+            // A dark plate keeps the counter readable over bright maps.
+            let width = self.ui.font.width(&text, size);
+            draw_rectangle(
+                6. * text_scale,
+                4. * text_scale,
+                width + 12. * text_scale,
+                size + 12. * text_scale,
+                Color::new(0., 0., 0., 0.7),
+            );
+            self.ui.label(&text, 12. * text_scale, 28. * text_scale, size, Color::from_hex(0xffffff));
         }
         if !inventory {
             if let Some((kind, time)) = stats.active_power() {

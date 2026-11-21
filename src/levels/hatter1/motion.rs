@@ -382,11 +382,21 @@ impl Clockwork {
                     }
                 }
                 "dormouse_beam_wand" => {
-                    if let Some(a) = s.hare {
-                        o.pose.rotation = Quat::from_rotation_z(
-                            (60. * (((t - a).rem_euclid(8.) / 0.5).min(1.))).to_radians(),
-                        );
-                    }
+                    // Script: rotateZdown(60) at start (roll -60), then every 8 s rotateZup(60)
+                    // in 0.5 s, hold 2 s, rotateZdown(60) in 1 s. rotateZ is roll: local X.
+                    let roll = s.hare.map_or(-60., |a| {
+                        let p = (t - a).rem_euclid(8.);
+                        if p < 0.5 {
+                            -60. + 60. * (p / 0.5)
+                        } else if p < 2.5 {
+                            0.
+                        } else if p < 3.5 {
+                            -60. * (p - 2.5)
+                        } else {
+                            -60.
+                        }
+                    });
+                    o.pose.rotation = Quat::from_rotation_x(roll.to_radians());
                 }
                 n if n.contains("sky") || n.ends_with("_light") || n == "clock_light" => {
                     o.draw = false;

@@ -460,6 +460,15 @@ pub struct Guard {
     falling: f32,
     #[serde(default)]
     placed: bool,
+    /// Running after an enemy still far away (the original's CHARGE state).
+    #[serde(default)]
+    charging: bool,
+    #[serde(default)]
+    detour: navigation::Detour,
+    #[serde(default)]
+    roll: f32,
+    #[serde(default)]
+    rng: u32,
 }
 impl Guard {
     pub fn validate_save(&self) -> anyhow::Result<()> {
@@ -533,7 +542,20 @@ impl Guard {
             accumulator: 0.,
             falling: 0.,
             placed: false,
+            charging: false,
+            detour: Default::default(),
+            roll: 0.,
+            rng: 0x9e37_79b9 ^ (feet.x.to_bits().rotate_left(7) ^ feet.y.to_bits()),
         }
+    }
+    fn last_known(&self, eye: Vec3) -> Vec3 {
+        eye
+    }
+    fn random(&mut self) -> f32 {
+        self.rng ^= self.rng << 13;
+        self.rng ^= self.rng >> 17;
+        self.rng ^= self.rng << 5;
+        (self.rng >> 8) as f32 / (1u32 << 24) as f32
     }
     pub fn target(&self, id: usize) -> Target {
         Target {
@@ -555,6 +577,8 @@ impl Guard {
             self.cut_variant.clip()
         } else if self.ranged && self.state == State::Attack {
             "stand_attack"
+        } else if self.charging && self.state == State::Chase {
+            "run"
         } else {
             self.state.clip()
         }
@@ -719,8 +743,8 @@ impl Guard {
             self.notarget,
             self.state == State::Attack,
             |eye| {
-                eye.distance_squared(center) < if ranged { 900. * 900. } else { 420. * 420. }
-                    && eye.distance_squared(home) < if ranged { 1000. * 1000. } else { 700. * 700. }
+                eye.distance_squared(center) < 1000. * 1000.
+                    && eye.distance_squared(home) < 4000. * 4000.
             },
         );
         let delta = eye - self.target(0).center;
@@ -733,18 +757,9 @@ impl Guard {
         };
         let distance = delta.truncate().length();
         let aware = !notarget
-            && delta.length_squared()
-                < if self.ranged {
-                    900. * 900.
-                } else {
-                    420. * 420.
-                }
-            && eye.distance_squared(self.home)
-                < if self.ranged {
-                    1000. * 1000.
-                } else {
-                    700. * 700.
-                };
+            // The original's `visiondistance 1000` with no leash to the spawn point.
+            && delta.length_squared() < 1000. * 1000.
+            && eye.distance_squared(self.home) < 4000. * 4000.;
         // Distant actors should not trace across the entire level at 120 Hz.
         let visible = aware && {
             let sight = world.sweep(self.target(0).center, eye, Vec3::splat(0.5));
@@ -783,7 +798,7 @@ impl Guard {
                     }
                     if !self.ranged
                         && visible
-                        && distance <= 78. * self.scale + reach.x
+                        && distance <= 100. * self.scale + reach.x
                         && delta.z.abs() < 55. * self.scale + reach.z
                         && delta
                             .truncate()
@@ -801,22 +816,47 @@ impl Guard {
             }
             State::Chase => {
                 if !aware {
+                    self.charging = false;
+                    self.detour.clear();
                     self.set_state(State::Idle);
-                } else if (self.ranged && distance < 600.)
-                    || (distance < 60. * self.scale + reach.x
-                        && delta.z.abs() < 55. * self.scale + reach.z)
-                {
-                    if self.cooldown <= 0. {
-                        self.set_state(State::Attack);
-                        out.sounds.push(if self.ranged {
-                            "sound/character/cardguard/diamond/stand_attack.wav"
-                        } else {
-                            "sound/character/cardguard/club/attack1.wav"
-                        });
+                } else {
+                    // CHARGE: run while the enemy is still far off, otherwise APPROACH on foot.
+                    let far = if self.ranged { 250. } else { 150. };
+                    self.charging = visible && distance > far;
+                    let melee = distance < 100. * self.scale + reach.x
+                        && delta.z.abs() < 55. * self.scale + reach.z;
+                    // WALK_ATTACK/CHARGE_ATTACK: shoot now and then while hunting.
+                    self.roll += dt;
+                    let shoot = if self.ranged && visible && self.roll >= 0.8 {
+                        self.roll = 0.;
+                        let chance = if self.charging { 0.2 } else { 1. / 3. };
+                        self.random() < chance
+                    } else {
+                        false
+                    };
+                    if melee || shoot {
+                        if self.cooldown <= 0. {
+                            self.charging = false;
+                            self.detour.clear();
+                            self.set_state(State::Attack);
+                            out.sounds.push(if self.ranged {
+                                "sound/character/cardguard/diamond/stand_attack.wav"
+                            } else {
+                                "sound/character/cardguard/club/attack1.wav"
+                            });
+                        }
+                    } else {
+                        let speed = if self.charging { 190. } else { 95. };
+                        let goal = if visible { eye } else { self.last_known(eye) };
+                        self.feet = self.detour.walk(
+                            world,
+                            self.feet,
+                            goal,
+                            vec3(24., 24., 40.) * self.scale,
+                            speed * dt,
+                            dt,
+                        );
                     }
-                } else if self.feet.distance(self.home) < 500. {
-                    let wish = delta.truncate().normalize_or_zero().extend(0.) * 95. * dt;
-                    self.feet = walk(world, self.feet, wish, self.scale);
                 }
             }
             _ => (),

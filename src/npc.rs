@@ -512,6 +512,7 @@ impl Data {
             names.extend(
                 [
                     "walk",
+                    "run",
                     "alert1",
                     "attack1",
                     "pain1",

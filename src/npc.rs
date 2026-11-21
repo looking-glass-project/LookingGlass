@@ -1571,6 +1571,9 @@ struct Actor {
     watch: crate::facial::Watch,
     #[serde(skip)]
     mouth: f32,
+    /// Seconds until an idle insane child's next cry (`snd_idle`); the original redraws it every 10-40 s.
+    #[serde(skip)]
+    laugh: f32,
     story_visible: bool,
     speaking: bool,
     #[serde(default)]
@@ -2351,6 +2354,7 @@ impl Npcs {
                     speaking: false,
                     ending_talk: false,
                     mouth: 0.,
+                    laugh: 0.,
                     model,
                     clock: (s.model == crate::clockwork::MODEL
                         && !preview
@@ -2913,6 +2917,24 @@ impl Npcs {
                 } else {
                     idle
                 };
+                // The original's idle behavior draws `snd_idle1..3` at a random 10-40 s while
+                // the child is not following a path.
+                if actor.walk.is_none() && actor.guide.is_none() && !actor.spawn.model.contains("runner") {
+                    if actor.laugh <= 0. {
+                        let seed = (actor.spawn.origin.x * 7.3 + actor.spawn.origin.y * 3.1 + actor.time * 91.7).to_bits();
+                        let r = |k: u32| (seed.wrapping_mul(2654435761).rotate_left(k) % 10_000) as f32 / 10_000.;
+                        if actor.laugh < 0. || actor.time == 0. {
+                            let n = 1 + (r(5) * 3.) as u32 % 3;
+                            feedback.cue_sounds.push((
+                                format!("sound/character/insane_children/idle{n}.wav"),
+                                actor.position(),
+                            ));
+                        }
+                        actor.laugh = 10. + r(11) * 30.;
+                    }
+                    actor.laugh -= dt;
+                    if actor.laugh == 0. { actor.laugh = -1e-3; }
+                }
                 let talking = actor.greeting > 0. || actor.speaking;
                 let (_, was_clip, was, _) = d.performance(idle, talking, actor.ending_talk, before);
                 let (_, clip, now, looping) = d.performance(idle, talking, actor.ending_talk, actor.time);
@@ -4292,6 +4314,7 @@ mod tests {
             speaking: false,
             ending_talk: false,
             mouth: 0.,
+            laugh: 0.,
             model: 0,
             spawn: Spawn {
                 resident_spawn: None,

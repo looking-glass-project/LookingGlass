@@ -1274,19 +1274,10 @@ impl Duchess {
             }
         }
     }
-    /// The original's camera while the Duchess holds the player, measured from the
-    /// running game: locked 73.5 degrees down, facing back toward her (yaw about
-    /// 177 degrees off hers), 128 units out with the head as the focus.
-    pub fn bite_camera(&self, world: &World, head: Vec3) -> Option<crate::cinematic::Camera> {
-        if self.state.stage != Stage::Fighting || !self.controlled() || self.state.action != Action::Bite {
-            return None;
-        }
-        let (pitch, yaw) = (73.5_f32.to_radians(), self.state.yaw + std::f32::consts::PI - 0.054);
-        let back = vec3(-pitch.cos() * yaw.cos(), -pitch.cos() * yaw.sin(), pitch.sin());
-        let eye = head + back * 128. + Vec3::Z * 32.;
-        let trace = world.sweep(head, eye, Vec3::splat(4.));
-        let eye = if trace.start_solid { eye } else { head.lerp(eye, (trace.fraction - 0.01).clamp(0., 1.)) };
-        Some(crate::cinematic::Camera::look(eye, head))
+    /// Frame of the `raise` clip while the Duchess holds the player.
+    pub fn bite_frame(&self) -> Option<f32> {
+        (self.controlled() && self.state.stage == Stage::Fighting && self.state.action == Action::Bite)
+            .then(|| self.state.clock / self.timing.frame(Action::Bite, 1.))
     }
     pub fn camera(&self, world: &World) -> Option<crate::cinematic::Camera> {
         if !self.cinematic() {

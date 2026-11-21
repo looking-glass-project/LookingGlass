@@ -340,3 +340,58 @@ impl FrozenOrbit {
         crate::cinematic::Camera::look(eye, target)
     }
 }
+
+/// The original's camera while the Duchess holds Alice, recorded from the running game:
+/// yaw locks where the player was looking, pitch eases down to 75 degrees (rate about 11/s),
+/// each of the three bites kicks it a further 4.7 degrees decaying at about 2/s, and on
+/// release it eases back to the player's own view. 128 units out, head as the focus.
+#[derive(Default)]
+pub struct Bite {
+    active: bool,
+    yaw: f32,
+    pitch: f32,
+    kick: f32,
+    frame: f32,
+}
+impl Bite {
+    pub fn update(
+        &mut self,
+        world: &crate::collision::World,
+        frame: Option<f32>,
+        direction: Vec3,
+        head: Vec3,
+        dt: f32,
+    ) -> Option<crate::cinematic::Camera> {
+        let player_yaw = direction.y.atan2(direction.x);
+        let player_pitch = (-direction.normalize_or_zero().z).clamp(-1., 1.).asin();
+        let rate = 1. - (-11. * dt).exp();
+        if let Some(frame) = frame {
+            if !self.active {
+                *self = Self { active: true, yaw: player_yaw, pitch: player_pitch, kick: 0., frame };
+            }
+            self.pitch += (75f32.to_radians() - self.pitch) * rate;
+            if [34., 44., 54.].iter().any(|&f| self.frame < f && frame >= f) {
+                self.kick = 4.7f32.to_radians();
+            }
+            self.frame = frame;
+        } else if self.active {
+            let turn = (player_yaw - self.yaw + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU) - std::f32::consts::PI;
+            self.yaw += turn * rate;
+            self.pitch += (player_pitch - self.pitch) * rate;
+            if (self.pitch - player_pitch).abs() < 2f32.to_radians() {
+                self.active = false;
+                return None;
+            }
+        } else {
+            return None;
+        }
+        self.kick *= (-2.05 * dt).exp();
+        let pitch = self.pitch + self.kick;
+        let forward = vec3(pitch.cos() * self.yaw.cos(), pitch.cos() * self.yaw.sin(), -pitch.sin());
+        let origin = head + Vec3::Z * 16.;
+        let eye = origin - forward * 128. + Vec3::Z * 16.;
+        let trace = world.sweep(origin, eye, Vec3::splat(4.));
+        let eye = if trace.start_solid { eye } else { origin.lerp(eye, (trace.fraction - 0.01).clamp(0., 1.)) };
+        Some(crate::cinematic::Camera::look(eye, eye + forward * 128.))
+    }
+}

@@ -706,6 +706,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
     level_art.prepare(&mut assets, &scene, &interactions, true)?;
     let mut third_person = true;
     let mut follow_camera = crate::camera::Follow::default();
+    let mut bite_view = crate::camera::Bite::default();
     let mut camera_handoff = crate::camera::Handoff::default();
     let frozen_orbit = crate::camera::FrozenOrbit::load(&mut assets)?;
     let mut blood = crate::blood::Blood::default();
@@ -2830,10 +2831,13 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
                 center + Vec3::Z * 14.,
             )
         });
-        let bite_camera = interactions
-            .duchess
-            .as_ref()
-            .and_then(|d| d.bite_camera(&scene.world, player.eye() + Vec3::Z * 16.));
+        let bite_camera = bite_view.update(
+            &scene.world,
+            interactions.duchess.as_ref().and_then(|d| d.bite_frame()),
+            direction,
+            player.feet + Vec3::Z * 75.,
+            if active { dt } else { 0. },
+        );
         let scripted_camera = pand_camera
             .or(bite_camera)
             .or_else(|| {

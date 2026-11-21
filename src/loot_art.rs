@@ -228,6 +228,7 @@ pub async fn check(assets: &mut Assets) -> Result<()> {
                     origin: vec3(-75. + i as f32 * 50., 0., 0.),
                     grade,
                     remaining: 5.,
+                    age: 99.,
                 })
                 .collect(),
         },

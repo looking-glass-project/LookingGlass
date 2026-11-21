@@ -61,7 +61,15 @@ pub struct Drop {
     pub origin: Vec3,
     pub grade: Grade,
     pub remaining: f32,
+    /// Seconds since it appeared; saves from before this field count as grown.
+    #[serde(default = "grown")]
+    pub age: f32,
 }
+fn grown() -> f32 {
+    GROW_SECONDS
+}
+/// The authored `grow` clip (30 fps, identical for every grade) turns solid at frame 40.
+pub const GROW_SECONDS: f32 = 40. / 30.;
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Loot {
     pub awarded: BTreeSet<usize>,
@@ -106,6 +114,7 @@ impl Loot {
         });
         self.drops.extend(ready);
         self.drops.retain_mut(|d| {
+            d.age += dt;
             d.remaining -= dt;
             while d.remaining <= 0. {
                 let Some(next) = d.grade.smaller() else {
@@ -137,6 +146,7 @@ impl Loot {
                     origin,
                     grade: s.grade,
                     remaining: s.grade.duration(),
+                    age: 0.,
                 },
             ));
         }
@@ -144,6 +154,7 @@ impl Loot {
     pub fn pickups(&self, visit: &str) -> Vec<Pickup> {
         self.drops
             .iter()
+            .filter(|d| d.age >= GROW_SECONDS)
             .map(|d| Pickup {
                 id: format!("drop:{visit}:{}", d.id),
                 model: d.grade.model().into(),
@@ -217,6 +228,7 @@ pub fn check_school_contacts(assets: &mut crate::assets::Assets) -> Result<()> {
                             origin,
                             grade: Grade::Small,
                             remaining: 15.,
+                            age: 99.,
                         }],
                     },
                 );
@@ -317,6 +329,7 @@ mod tests {
                         origin: Vec3::ZERO,
                         grade: Grade::Small,
                         remaining: 40.,
+                        age: 99.,
                     }],
                 },
             );
@@ -400,6 +413,7 @@ mod tests {
                 origin: Vec3::ZERO,
                 grade: Grade::Large,
                 remaining: 10.,
+                age: 99.,
             }],
         };
         a.update(10.);

@@ -417,7 +417,7 @@ impl Art {
                     continue;
                 };
                 // Only a drop that has just appeared grows; reloaded or shrunken ones do not.
-                let fresh = d.remaining >= d.grade.duration() - 0.5;
+                let fresh = d.age <= 0.5;
                 self.born.insert(key, if fresh { clock } else { f32::NEG_INFINITY });
                 if fresh {
                     self.cues.push((clock + 40. * self.grow[i].frame_time(), d.origin));

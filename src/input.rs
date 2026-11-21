@@ -331,7 +331,8 @@ impl Pad {
         self.pressed = 0;
         self.nav_down = 0;
         self.nav_pressed = 0;
-        self.neutral_sticks = true;
+        // Sticks stay live across menu/pause boundaries: only buttons need releasing. Requiring the
+        // sticks to re-centre made movement and camera look frozen after opening Alice's Toys.
         self.move_axis = Vec2::ZERO;
         self.look_axis = Vec2::ZERO;
     }

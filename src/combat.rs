@@ -846,7 +846,15 @@ impl Guard {
                             });
                         }
                     } else {
-                        let speed = if self.charging { 190. } else { 95. };
+                        // Root motion of the original walk/run clips (distance per
+                        // loop x model scale), from the .ska data.
+                        let speed = self.scale
+                            * match (self.ranged, self.charging) {
+                                (false, false) => 68.7,
+                                (false, true) => 224.2,
+                                (true, false) => 62.2,
+                                (true, true) => 236.6,
+                            };
                         let goal = if visible { eye } else { self.last_known(eye) };
                         self.feet = self.detour.walk(
                             world,

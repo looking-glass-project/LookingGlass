@@ -2774,6 +2774,7 @@ impl Npcs {
             }
         }
         for actor in &mut self.actors {
+            let before = actor.time;
             actor.electric = (actor.electric - dt.max(0.)).max(0.);
             if (self.owns_ladybugs && crate::pool::cinema::owns(&actor.spawn.name))
                 || (self.owns_school_first && crate::school::cinema::owns(&actor.spawn.name))
@@ -2891,6 +2892,47 @@ impl Npcs {
                 );
             } else {
                 actor.tick(dt, world, eye);
+            }
+            // The insane children's footsteps, fidget cries and swipes are authored as
+            // client-side events on their clips; nothing else plays them.
+            if actor.spawn.model.starts_with("c_insanechild")
+                && actor.time > before
+                && (actor.position() - eye).length_squared() < 1600. * 1600.
+            {
+                let d = &self.models[actor.model].data;
+                let idle = actor
+                    .spawn
+                    .animation
+                    .as_ref()
+                    .filter(|n| d.clips.contains_key(*n))
+                    .unwrap_or(&d.idle);
+                let idle = if let Some(g) = &actor.guide {
+                    g.clip()
+                } else if actor.walk.is_some() {
+                    "walk"
+                } else {
+                    idle
+                };
+                let talking = actor.greeting > 0. || actor.speaking;
+                let (_, was_clip, was, _) = d.performance(idle, talking, actor.ending_talk, before);
+                let (_, clip, now, looping) = d.performance(idle, talking, actor.ending_talk, actor.time);
+                let fresh = was_clip != clip || now < was;
+                let animation = &d.clips[&clip];
+                for command in d.events.between(
+                    &clip,
+                    crate::animation_events::Span {
+                        start: if fresh { 0. } else { was },
+                        end: now,
+                        duration: animation.duration(),
+                        frame_time: animation.frame_time,
+                        looping,
+                        entered: fresh,
+                    },
+                ) {
+                    if let crate::animation_events::Command::Sound { path, .. } = command {
+                        feedback.cue_sounds.push((path.clone(), actor.position()));
+                    }
+                }
             }
         }
         feedback

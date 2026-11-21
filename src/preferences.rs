@@ -113,6 +113,8 @@ pub struct Preferences {
     pub msaa: u32,
     /// VorpalFix's console-style HUD position: meters pulled in from the screen edges and raised.
     pub console_hud: bool,
+    /// Show a frames-per-second counter in the top-left corner.
+    pub show_fps: bool,
 }
 impl Default for Preferences {
     fn default() -> Self {
@@ -133,6 +135,7 @@ impl Default for Preferences {
             anisotropy: 1,
             msaa: 1,
             console_hud: false,
+            show_fps: false,
         }
     }
 }

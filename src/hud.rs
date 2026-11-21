@@ -223,6 +223,10 @@ impl Hud {
         show_retry: bool,
     ) {
         let text_scale = crate::ui::overlay_scale();
+        if prefs.show_fps {
+            let fps = get_fps();
+            self.ui.label(&format!("{fps} FPS"), 12. * text_scale, 28. * text_scale, 24. * text_scale, Color::from_hex(0xeee4d4));
+        }
         if !inventory {
             if let Some((kind, time)) = stats.active_power() {
                 self.ui.label(

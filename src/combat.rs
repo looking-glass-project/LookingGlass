@@ -468,6 +468,8 @@ pub struct Guard {
     #[serde(default)]
     roll: f32,
     #[serde(default)]
+    lost: f32,
+    #[serde(default)]
     rng: u32,
 }
 impl Guard {
@@ -545,6 +547,7 @@ impl Guard {
             charging: false,
             detour: Default::default(),
             roll: 0.,
+            lost: 0.,
             rng: 0x9e37_79b9 ^ (feet.x.to_bits().rotate_left(7) ^ feet.y.to_bits()),
         }
     }
@@ -765,7 +768,15 @@ impl Guard {
             let sight = world.sweep(self.target(0).center, eye, Vec3::splat(0.5));
             !sight.start_solid && sight.fraction >= 1.
         };
+        // Sighted: acquires from Idle. Engaged (in range, even round a corner):
+        // keeps hunting like HAVE_ENEMY until the target has been unseen for a while.
+        let engaged = aware;
         let aware = aware && visible;
+        if visible {
+            self.lost = 0.;
+        } else {
+            self.lost += dt;
+        }
         if !matches!(self.state, State::Attack | State::Pain) && aware {
             let angle = delta.y.atan2(delta.x);
             let difference = (angle - self.yaw + std::f32::consts::PI)
@@ -815,7 +826,7 @@ impl Guard {
                 }
             }
             State::Chase => {
-                if !aware {
+                if !engaged || self.lost > 12. {
                     self.charging = false;
                     self.detour.clear();
                     self.set_state(State::Idle);
@@ -856,6 +867,7 @@ impl Guard {
                                 (true, true) => 236.6,
                             };
                         let goal = if visible { eye } else { self.last_known(eye) };
+                        let before = self.feet;
                         self.feet = self.detour.walk(
                             world,
                             self.feet,
@@ -864,6 +876,14 @@ impl Guard {
                             speed * dt,
                             dt,
                         );
+                        let step = (self.feet - before).truncate();
+                        if !visible && step.length_squared() > 1e-6 {
+                            let want = step.y.atan2(step.x);
+                            let d = (want - self.yaw + std::f32::consts::PI)
+                                .rem_euclid(std::f32::consts::TAU)
+                                - std::f32::consts::PI;
+                            self.yaw += d.clamp(-dt * 4., dt * 4.);
+                        }
                     }
                 }
             }

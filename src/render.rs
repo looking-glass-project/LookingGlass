@@ -128,6 +128,9 @@ pub struct DrawStats {
     pub culled: usize,
     pub triangles: usize,
     pub detail_saved: usize,
+    pub verts: usize,
+    pub uncullable: usize,
+    pub layers: usize,
 }
 struct Part {
     face: usize,
@@ -560,6 +563,9 @@ fn draw_batch(
         }
     }
     context.stats.triangles += batch.mesh.indices.len() / 3 * batch.layers.len();
+    context.stats.verts += batch.mesh.vertices.len();
+    context.stats.layers += batch.layers.len();
+    if !can_cull { context.stats.uncullable += 1; }
     for (j, (v, base)) in batch.mesh.vertices.iter_mut().zip(&batch.base).enumerate() {
         // Billboards use source UV corners to build geometry. Animated layer
         // UVs from the previous frame must not move or rotate those corners.
@@ -639,16 +645,22 @@ fn draw_batch(
     let mut queued = Vec::new();
     for layer in &batch.layers {
         let material = &materials[layer.material];
+        let needs_normal = layer.spec.environment || layer.spec.dot_alpha.is_some();
         for (j, (v, base)) in batch.mesh.vertices.iter_mut().zip(&batch.base).enumerate() {
-            let mut n = batch.normals[j];
-            for deform in &batch.deforms {
-                n = deform.normal(base.position, n, time);
-            }
-            let n = batch
-                .motion
-                .as_ref()
-                .map_or(n, |m| m.normal(n, time));
-            let normal = transform.map_or(n, |(_, _, r)| *r * n);
+            // Only environment mapping and view-dependent alpha read the normal.
+            let normal = if needs_normal {
+                let mut n = batch.normals[j];
+                for deform in &batch.deforms {
+                    n = deform.normal(base.position, n, time);
+                }
+                let n = batch
+                    .motion
+                    .as_ref()
+                    .map_or(n, |m| m.normal(n, time));
+                transform.map_or(n, |(_, _, r)| *r * n)
+            } else {
+                Vec3::Z
+            };
             let uv = if batch.sky && !batch.portal {
                 let ray = (v.position - camera).normalize_or_zero();
                 // Infinite, curved cloud projection; no translation with player motion.
@@ -684,9 +696,8 @@ fn draw_batch(
         }
         material.set_uniform("FxModel", 0_f32);
         material.set_uniform("FxAppearance", Vec4::ZERO);
-        crate::lighting::apply(
+        crate::lighting::apply_world(
             material,
-            false,
             crate::render_fx::active() && layer.lit && !backdrop && !batch.sky,
         );
         material.set_uniform(
@@ -1050,6 +1061,9 @@ impl Scene {
         self.stats.culled += context.stats.culled;
         self.stats.triangles += context.stats.triangles;
         self.stats.detail_saved += context.stats.detail_saved;
+        self.stats.verts += context.stats.verts;
+        self.stats.uncullable += context.stats.uncullable;
+        self.stats.layers += context.stats.layers;
     }
     pub fn load(assets: &mut Assets, name: &str) -> Result<Self> {
         Self::load_for(assets, name, Default::default())
@@ -1709,6 +1723,9 @@ impl Scene {
         self.stats.culled += context.stats.culled;
         self.stats.triangles += context.stats.triangles;
         self.stats.detail_saved += context.stats.detail_saved;
+        self.stats.verts += context.stats.verts;
+        self.stats.uncullable += context.stats.uncullable;
+        self.stats.layers += context.stats.layers;
     }
 }
 

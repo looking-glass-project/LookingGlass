@@ -62,7 +62,12 @@ pub struct Wave {
 }
 impl Wave {
     pub fn sample(&self, time: f32) -> f32 {
+        self.sample_shifted(time, 0.)
+    }
+    /// `sample` with extra phase added, without cloning the wave (this runs per vertex).
+    pub fn sample_shifted(&self, time: f32, shift: f32) -> f32 {
         let [base, amplitude, phase, frequency] = self.values;
+        let phase = phase + shift;
         let x = (phase + time * frequency).rem_euclid(1.);
         let wave = match self.kind.as_str() {
             "sin" => (x * std::f32::consts::TAU).sin(),
@@ -113,9 +118,9 @@ impl Deform {
     }
     pub fn normal(&self, p: Vec3, n: Vec3, time: f32) -> Vec3 {
         if let Self::WaveNormal(spread, direction, wave) = self {
-            let mut wave = wave.clone();
-            wave.values[2] += (p.x + p.y + p.z) / spread;
-            (n + *direction * wave.sample(time)).try_normalize().unwrap_or(n)
+            (n + *direction * wave.sample_shifted(time, (p.x + p.y + p.z) / spread))
+                .try_normalize()
+                .unwrap_or(n)
         } else {
             n
         }
@@ -123,9 +128,7 @@ impl Deform {
     pub fn position(&self, p: Vec3, n: Vec3, uv: Vec2, time: f32) -> Vec3 {
         match self {
             Self::Wave(spread, w) => {
-                let mut w = w.clone();
-                w.values[2] += (p.x + p.y + p.z) / spread.max(0.001);
-                p + n * w.sample(time)
+                p + n * w.sample_shifted(time, (p.x + p.y + p.z) / spread.max(0.001))
             }
             Self::Move(v, w) => p + *v * w.sample(time),
             Self::Bulge([width, height, speed]) => {

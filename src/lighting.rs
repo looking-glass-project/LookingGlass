@@ -16,6 +16,8 @@ thread_local! {
     static LIGHTS: RefCell<Vec<Light>> = const {RefCell::new(Vec::new())};
     static SHADOW: RefCell<Option<Texture2D>> = const {RefCell::new(None)};
     static FLARE: RefCell<Option<Texture2D>> = const {RefCell::new(None)};
+    static GENERATION: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    static APPLIED: RefCell<Vec<(usize, u64, bool)>> = const { RefCell::new(Vec::new()) };
     static CROQUET: RefCell<Vec<Light>> = const {RefCell::new(Vec::new())};
 }
 pub fn select(mut lights: Vec<Light>, eye: Vec3, world: &World) {
@@ -28,12 +30,14 @@ pub fn select(mut lights: Vec<Light>, eye: Vec3, world: &World) {
     lights.retain(|l| world.sweep(eye, l.position, Vec3::ZERO).fraction >= 0.995);
     lights.truncate(8);
     LIGHTS.with(|v| *v.borrow_mut() = lights);
+    GENERATION.with(|g| g.set(g.get() + 1));
 }
 fn score(light: Light, eye: Vec3) -> f32 {
     light.radius / (light.position.distance(eye) + light.radius)
 }
 pub(crate) fn fixture_lights(lights: Vec<Light>) {
     LIGHTS.with(|v| *v.borrow_mut() = lights.into_iter().take(8).collect());
+    GENERATION.with(|g| g.set(g.get() + 1));
 }
 pub(crate) fn count() -> usize {
     LIGHTS.with(|l| l.borrow().len())
@@ -60,7 +64,31 @@ pub fn fragment(source: &str) -> String {
     s += "return light;}\n";
     source.replace("// LIGHTS", &s)
 }
+const LIGHT_NAMES: [&str; 8] = ["FxLight0", "FxLight1", "FxLight2", "FxLight3", "FxLight4", "FxLight5", "FxLight6", "FxLight7"];
+const COLOR_NAMES: [&str; 8] = ["FxColor0", "FxColor1", "FxColor2", "FxColor3", "FxColor4", "FxColor5", "FxColor6", "FxColor7"];
 pub fn apply(material: &Material, model: bool, enabled: bool) {
+    // Another caller's flags may now be on the material.
+    APPLIED.with(|a| a.borrow_mut().clear());
+    write_lights(material, model, enabled);
+}
+/// World-geometry variant: a material already carrying this frame's lights with the same
+/// `enabled` flag is left alone (the shared materials are drawn hundreds of times a frame).
+pub fn apply_world(material: &Material, enabled: bool) {
+    let key = (material as *const Material as usize, GENERATION.with(|g| g.get()), enabled);
+    let fresh = APPLIED.with(|a| {
+        let mut a = a.borrow_mut();
+        if a.iter().any(|k| *k == key) {
+            return false;
+        }
+        a.retain(|k| k.0 != key.0);
+        a.push(key);
+        true
+    });
+    if fresh {
+        write_lights(material, false, enabled);
+    }
+}
+fn write_lights(material: &Material, model: bool, enabled: bool) {
     LIGHTS.with(|lights| {
         let lights = lights.borrow();
         for i in 0..8 {
@@ -68,11 +96,11 @@ pub fn apply(material: &Material, model: bool, enabled: bool) {
                 .get(i)
                 .filter(|l| enabled && (model || !l.only_models));
             material.set_uniform(
-                &format!("FxLight{i}"),
+                LIGHT_NAMES[i],
                 light.map_or(Vec4::ZERO, |l| l.position.extend(l.radius)),
             );
             material.set_uniform(
-                &format!("FxColor{i}"),
+                COLOR_NAMES[i],
                 light.map_or(Vec4::ZERO, |l| l.color.extend(1.)),
             );
         }

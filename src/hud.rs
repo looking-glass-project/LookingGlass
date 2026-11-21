@@ -257,12 +257,19 @@ impl Hud {
         }
         let (w, h) = (screen_width(), screen_height());
         let s = (h / 900.).clamp(0.55, 4.).min(w / 900.);
-        let y = h - 64. * s - 385. * s;
-        let weapon_rect = self.meter_icon_rect(24. * s, y, s, false);
+        // VorpalFix's console HUD: each side is pulled in by width / (17 * (16/9) / aspect)
+        // (about 1/17 of the width at 16:9) and everything is raised by a tenth of the height.
+        let (inset, lift) = if prefs.console_hud && w / h > 4. / 3. {
+            (w / (17. * (16. / 9.) / (w / h)), h / 10.)
+        } else {
+            (0., 0.)
+        };
+        let y = h - 64. * s - 385. * s - lift;
+        let weapon_rect = self.meter_icon_rect(24. * s + inset, y, s, false);
         if let Some((kind, _)) = stats.active_power() {
             self.foldout_icon(
                 &self.power_icons[kind as usize],
-                self.meter_icon_rect(w - 48. * s, y, s, true),
+                self.meter_icon_rect(w - 48. * s - inset, y, s, true),
                 true,
                 WHITE,
             );
@@ -279,8 +286,8 @@ impl Hud {
             );
         }
         // The handles cover the cards' hinges on both sides.
-        self.meter(0, stats.sanity(), 24. * s, y, s);
-        self.meter(1, stats.will(), w - 48. * s, y, s);
+        self.meter(0, stats.sanity(), 24. * s + inset, y, s);
+        self.meter(1, stats.will(), w - 48. * s - inset, y, s);
         if show_retry && !stats.alive() {
             let r = Rect::new(
                 (w - 440. * text_scale).max(16. * text_scale) * 0.5,

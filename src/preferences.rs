@@ -105,6 +105,14 @@ pub struct Preferences {
     pub pad_sensitivity: f32,
     pub pad_deadzone: f32,
     pub invert_pad: bool,
+    /// DualSense motion aiming (the controller's gyro adds to right-stick look).
+    pub gyro_aiming: bool,
+    /// Anisotropic texture filtering level: 1 (off), 2, 4, 8 or 16. Vulkan (PS5) only.
+    pub anisotropy: u32,
+    /// Multisample anti-aliasing: 1 (off), 2, 4 or 8. Vulkan (PS5) only.
+    pub msaa: u32,
+    /// VorpalFix's console-style HUD position: meters pulled in from the screen edges and raised.
+    pub console_hud: bool,
 }
 impl Default for Preferences {
     fn default() -> Self {
@@ -121,6 +129,10 @@ impl Default for Preferences {
             pad_sensitivity: 1.,
             pad_deadzone: 0.24,
             invert_pad: false,
+            gyro_aiming: false,
+            anisotropy: 1,
+            msaa: 1,
+            console_hud: false,
         }
     }
 }

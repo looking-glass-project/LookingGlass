@@ -408,8 +408,8 @@ impl School {
             for name in ["secret_shelf", "shelf_book"] {
                 s.object_mut(name).pose.origin.y += 648.;
             }
-            s.object_mut("bookshelf1").pose.angles.y = 45.;
-            s.object_mut("bookshelf2").pose.angles.y = -45.;
+            s.object_mut("bookshelf1").pose.angles.y = -45.;
+            s.object_mut("bookshelf2").pose.angles.y = 45.;
             for o in &mut s.objects {
                 o.collider = Collider::model(map, o.model, o.pose.origin, o.pose.rotation(), true)?;
             }
@@ -719,7 +719,7 @@ impl School {
                         let o = self.object_mut(&format!("bookshelf{}", i + 1));
                         o.move_to(
                             Pose {
-                                angles: vec3(0., if i == 0 { 45. } else { -45. }, 0.),
+                                angles: vec3(0., if i == 0 { -45. } else { 45. }, 0.),
                                 ..o.base
                             },
                             2.,

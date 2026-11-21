@@ -892,6 +892,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
     loop {
         crate::ui_probe::screen(if paused { "solo-paused" } else { "solo-play" }, &[], "");
         let mut frame_profile = crate::frame_profile::span("frame_cpu");
+        let frame_started = std::time::Instant::now();
         input.update(&preferences, window_focused());
         let overlay_before = menu || inventory_menu || console.open || paused;
         let context_before = (menu, inventory_menu, console.open, paused);
@@ -3503,6 +3504,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
         if context_before != (menu, inventory_menu, console.open, paused) {
             input.suppress();
         }
+        crate::hud::set_perf(frame_started.elapsed().as_secs_f32() * 1000., scene.stats.layers, scene.stats.verts);
         next_frame().await;
     }
     if saves_enabled && played && stats.alive() && options.frames.is_none() && !post_game {

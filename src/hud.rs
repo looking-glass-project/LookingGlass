@@ -31,6 +31,16 @@ pub fn air(breath: &crate::water::Breath, ui: &crate::ui::Ui) {
     ui.toast(&text, screen_height() - 76.);
 }
 
+thread_local! {
+    static PERF: std::cell::Cell<(f32, usize, usize)> = const { std::cell::Cell::new((0., 0, 0)) };
+}
+/// CPU milliseconds spent building the last frame, with its draw-pass and animated-vertex counts.
+pub fn set_perf(cpu_ms: f32, draws: usize, verts: usize) {
+    PERF.with(|p| {
+        let (old, ..) = p.get();
+        p.set((old * 0.9 + cpu_ms * 0.1, draws, verts));
+    });
+}
 pub struct Hud {
     pub ui: std::rc::Rc<crate::ui::Ui>,
     meters: [Texture2D; 2],
@@ -225,7 +235,8 @@ impl Hud {
         let text_scale = crate::ui::overlay_scale();
         if prefs.show_fps {
             let fps = get_fps();
-            self.ui.label(&format!("{fps} FPS"), 12. * text_scale, 28. * text_scale, 24. * text_scale, Color::from_hex(0xeee4d4));
+            let (cpu, draws, verts) = PERF.with(std::cell::Cell::get);
+            self.ui.label(&format!("{fps} FPS  cpu {cpu:.1}ms  {draws} draws  {verts} verts"), 12. * text_scale, 28. * text_scale, 24. * text_scale, Color::from_hex(0xeee4d4));
         }
         if !inventory {
             if let Some((kind, time)) = stats.active_power() {

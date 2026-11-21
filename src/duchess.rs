@@ -315,9 +315,12 @@ impl Duchess {
         if let Ok(world) = World::from_bsp(map) {
             for n in ["duchessin", "duchessout"] {
                 let at = points[n];
-                let down = world.sweep(at + Vec3::Z * 8., at - Vec3::Z * 96., Vec3::splat(0.5));
-                if !down.start_solid && down.fraction < 1. {
-                    points.insert(n.into(), at + Vec3::Z * 8. - Vec3::Z * 104. * down.fraction);
+                // Settle with her walking hull so she lands where `walk` can move her from.
+                let half = vec3(32., 32., 64.);
+                let top = at + Vec3::Z * (64.1 + 8.);
+                let down = world.sweep(top, top - Vec3::Z * 96., half);
+                if !down.start_solid && down.fraction < 1. && down.normal.z >= 0.65 {
+                    points.insert(n.into(), top - Vec3::Z * (96. * down.fraction + 64.1));
                 }
             }
         }
@@ -1169,7 +1172,8 @@ impl Duchess {
     }
     /// Can the Duchess's body walk straight between two floor points at her own height?
     fn body_clear(&self, world: &World, a: Vec3, b: Vec3) -> bool {
-        let z = Vec3::Z * (self.state.feet.z + 64.1);
+        // Raised by her step height, as `walk` is, so floor trim and low ledges do not cut the graph.
+        let z = Vec3::Z * (self.state.feet.z + 64.1 + 18.);
         let (a, b) = (vec3(a.x, a.y, 0.) + z, vec3(b.x, b.y, 0.) + z);
         let t = world.sweep(a, b, vec3(32., 32., 64.));
         !t.start_solid && t.fraction >= 1.

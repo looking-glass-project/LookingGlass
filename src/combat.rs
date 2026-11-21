@@ -469,6 +469,11 @@ pub struct Guard {
     roll: f32,
     #[serde(default)]
     lost: f32,
+    /// Seconds spent hunting without moving (no path), and whether to stand still.
+    #[serde(default)]
+    stuck: f32,
+    #[serde(default)]
+    holding: bool,
     #[serde(default)]
     rng: u32,
 }
@@ -548,6 +553,8 @@ impl Guard {
             detour: Default::default(),
             roll: 0.,
             lost: 0.,
+            stuck: 0.,
+            holding: false,
             rng: 0x9e37_79b9 ^ (feet.x.to_bits().rotate_left(7) ^ feet.y.to_bits()),
         }
     }
@@ -580,6 +587,9 @@ impl Guard {
             self.cut_variant.clip()
         } else if self.ranged && self.state == State::Attack {
             "stand_attack"
+        } else if self.holding && self.state == State::Chase {
+            // Original HOLD_POSITION / cooldown: stand and watch, never run in place.
+            "idle"
         } else if self.charging && self.state == State::Chase {
             "run"
         } else {
@@ -827,25 +837,38 @@ impl Guard {
             }
             State::Chase => {
                 if !engaged || self.lost > 12. {
+                    self.holding = false;
+                    self.stuck = 0.;
                     self.charging = false;
                     self.detour.clear();
                     self.set_state(State::Idle);
                 } else {
                     // CHARGE: run while the enemy is still far off, otherwise APPROACH on foot.
                     let far = if self.ranged { 250. } else { 150. };
-                    self.charging = visible && distance > far;
+                    self.charging = visible && distance > far && self.stuck < 0.5;
                     let melee = distance < 100. * self.scale + reach.x
                         && delta.z.abs() < 55. * self.scale + reach.z;
                     // WALK_ATTACK/CHARGE_ATTACK: shoot now and then while hunting.
                     self.roll += dt;
                     let shoot = if self.ranged && visible && self.roll >= 0.8 {
                         self.roll = 0.;
-                        let chance = if self.charging { 0.2 } else { 1. / 3. };
+                        let chance = if self.stuck >= 0.5 {
+                            // NO_PATH + CAN_SHOOT_ENEMY: HOLD_POSITION, shoot at 80 %.
+                            0.8
+                        } else if self.charging {
+                            0.2
+                        } else {
+                            1. / 3.
+                        };
                         self.random() < chance
                     } else {
                         false
                     };
+                    self.holding = false;
                     if melee || shoot {
+                        // Waiting out the attack cooldown: stand, don't walk on the spot.
+                        self.holding = self.cooldown > 0.;
+                        self.stuck = 0.;
                         if self.cooldown <= 0. {
                             self.charging = false;
                             self.detour.clear();
@@ -877,6 +900,12 @@ impl Guard {
                             dt,
                         );
                         let step = (self.feet - before).truncate();
+                        if step.length() < 0.25 * speed * dt {
+                            self.stuck += dt;
+                        } else {
+                            self.stuck = 0.;
+                        }
+                        self.holding = self.stuck >= 0.5;
                         if !visible && step.length_squared() > 1e-6 {
                             let want = step.y.atan2(step.x);
                             let d = (want - self.yaw + std::f32::consts::PI)

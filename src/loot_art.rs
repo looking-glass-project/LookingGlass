@@ -16,6 +16,8 @@ struct Layer {
 }
 pub struct Art {
     props: Vec<crate::weapons::Prop>,
+    /// `grow` clip meshes: a new drop builds itself before settling into `idle`.
+    growing: Vec<crate::weapons::Prop>,
     layers: Vec<Vec<Layer>>,
     effects: Vec<crate::pickup_effects::Effect>,
     materials: [Rc<Material>; 2],
@@ -27,6 +29,7 @@ impl Art {
         specs: &BTreeMap<String, texture::MaterialSpec>,
     ) -> Result<Self> {
         let mut props = Vec::new();
+        let mut growing = Vec::new();
         let mut layers = Vec::new();
         let mut textures = BTreeMap::<String, Texture2D>::new();
         let direct = BTreeMap::new();
@@ -35,6 +38,12 @@ impl Art {
                 assets,
                 grade.model(),
                 "idle",
+                &direct,
+            )?);
+            growing.push(crate::weapons::Prop::load_animation(
+                assets,
+                grade.model(),
+                "grow",
                 &direct,
             )?);
             let shader = format!("models/weapons/metaessence/skin{:02}", 4 - i);
@@ -72,6 +81,7 @@ impl Art {
         }
         Ok(Self {
             props,
+            growing,
             layers,
             effects: GRADES
                 .iter()
@@ -88,11 +98,23 @@ impl Art {
         eye: Vec3,
         clock: f32,
     ) {
+        self.draw_with(grade, origin, atmosphere, eye, clock, None);
+    }
+    /// `growing` is the seconds into the authored `grow` clip for a freshly dropped item.
+    pub fn draw_with(
+        &mut self,
+        grade: Grade,
+        origin: Vec3,
+        atmosphere: &Atmosphere,
+        eye: Vec3,
+        clock: f32,
+        growing: Option<f32>,
+    ) {
         if crate::render_fx::active() {
-            self.draw_inner(grade, origin, atmosphere, eye, clock);
+            self.draw_inner(grade, origin, atmosphere, eye, clock, growing);
         } else {
             crate::render::depth_read_only(|| {
-                self.draw_inner(grade, origin, atmosphere, eye, clock)
+                self.draw_inner(grade, origin, atmosphere, eye, clock, growing)
             });
         }
     }
@@ -103,22 +125,21 @@ impl Art {
         atmosphere: &Atmosphere,
         eye: Vec3,
         clock: f32,
+        growing: Option<f32>,
     ) {
         let i = GRADES.iter().position(|g| *g == grade).unwrap();
         for (filter, material) in self.materials.iter().enumerate() {
             atmosphere.apply(material, eye);
             material.set_uniform("FogMode", if filter == 1 { 2_f32 } else { 1. });
         }
-        let meshes = self.props[i].meshes_at(
-            crate::skeletal::Transform {
-                translation: origin,
-                rotation: Quat::from_rotation_z(clock * 0.4),
-            },
-            1.,
-            true,
-            clock,
-            true,
-        );
+        let pose = crate::skeletal::Transform {
+            translation: origin,
+            rotation: Quat::from_rotation_z(clock * 0.4),
+        };
+        let meshes = match growing {
+            Some(age) => self.growing[i].meshes_at(pose, 1., true, age, false),
+            None => self.props[i].meshes_at(pose, 1., true, clock, true),
+        };
         for mesh in meshes {
             let uv: Vec<_> = mesh.vertices.iter().map(|v| v.uv).collect();
             let mut queued = Vec::new();
@@ -153,7 +174,10 @@ impl Art {
             }
         }
         gl_use_default_material();
-        self.effects[i].draw(clock, origin, 0.4, eye, atmosphere);
+        // While growing, the clip's own emitters (drawn by the caller) replace the idle sparks.
+        if growing.is_none() {
+            self.effects[i].draw(clock, origin, 0.4, eye, atmosphere);
+        }
     }
 }
 

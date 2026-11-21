@@ -267,8 +267,7 @@ pub struct Art {
     collected: Vec<(String, macroquad::prelude::Vec3, f32)>,
     /// The authored `grow` clip plays when an enemy's essence first appears.
     grow: Vec<crate::pickup_effects::Effect>,
-    born: std::collections::BTreeMap<(String, usize), f32>,
-    cues: Vec<(f32, macroquad::prelude::Vec3)>,
+    cued: std::collections::BTreeSet<(String, usize)>,
     ready: Vec<macroquad::prelude::Vec3>,
 }
 impl Art {
@@ -303,8 +302,7 @@ impl Art {
                 .iter()
                 .map(|g| crate::pickup_effects::Effect::load(assets, g.model(), "grow", &specs))
                 .collect::<Result<_>>()?,
-            born: Default::default(),
-            cues: Vec::new(),
+            cued: Default::default(),
             ready: Vec::new(),
         })
     }
@@ -316,8 +314,7 @@ impl Art {
     }
     pub fn clear_effects(&mut self) {
         self.collected.clear();
-        self.born.clear();
-        self.cues.clear();
+        self.cued.clear();
         self.ready.clear();
     }
     /// World positions where a freshly grown drop plays its authored `mtespu` sound.
@@ -365,7 +362,7 @@ impl Art {
                         .iter()
                         .find(|g| g.model() == item.model)
                     {
-                        essences.push((*grade, item.origin));
+                        essences.push((*grade, item.origin, None));
                     }
                     continue;
                 }
@@ -383,7 +380,9 @@ impl Art {
             );
         }
         if let Some(loot) = stats.loot.get(visit) {
-            essences.extend(loot.drops.iter().map(|d| (d.grade, d.origin)));
+            essences.extend(loot.drops.iter().map(|d| {
+                (d.grade, d.origin, (d.age < crate::loot::GROW_CLIP_SECONDS).then_some(d.age))
+            }));
         }
         // Placed and dropped translucent items share both the material passes
         // and ordering, including when they overlap in the same view.
@@ -392,35 +391,26 @@ impl Art {
                 .distance_squared(b.1)
                 .total_cmp(&camera.distance_squared(a.1))
         });
-        let (due, later): (Vec<_>, Vec<_>) = std::mem::take(&mut self.cues)
-            .into_iter()
-            .partition(|(at, _)| *at <= clock);
-        self.cues = later;
-        self.ready.extend(due.into_iter().map(|(_, at)| at));
-        for (grade, origin) in essences {
-            self.essence.draw(grade, origin, atmosphere, camera, clock);
+        for (grade, origin, growing) in essences {
+            self.essence
+                .draw_with(grade, origin, atmosphere, camera, clock, growing);
         }
         if let Some(loot) = stats.loot.get(visit) {
             for d in &loot.drops {
-                let key = (visit.to_string(), d.id);
-                let i = crate::loot_art::GRADES.iter().position(|g| *g == d.grade);
-                let (Some(i), false) = (i, self.born.contains_key(&key)) else {
-                    // Drawn while growing: authored emitters (go_up from frame 40, light).
-                    if let (Some(i), Some(start)) = (i, self.born.get(&key).copied()) {
-                        let age = clock - start;
-                        if (0. ..self.grow[i].duration()).contains(&age) {
-                            crate::render::depth_read_only(|| {
-                                self.grow[i].draw(age, d.origin, 0.4, camera, atmosphere)
-                            });
-                        }
-                    }
+                let Some(i) = crate::loot_art::GRADES.iter().position(|g| *g == d.grade) else {
                     continue;
                 };
-                // Only a drop that has just appeared grows; reloaded or shrunken ones do not.
-                let fresh = d.age <= 0.5;
-                self.born.insert(key, if fresh { clock } else { f32::NEG_INFINITY });
-                if fresh {
-                    self.cues.push((clock + 40. * self.grow[i].frame_time(), d.origin));
+                // The clip's own emitters (go_up from frame 40, light) run while it grows.
+                if d.age < self.grow[i].duration() {
+                    crate::render::depth_read_only(|| {
+                        self.grow[i].draw(d.age, d.origin, 0.4, camera, atmosphere)
+                    });
+                }
+                // mtespu.wav plays at frame 40, once, when the drop turns solid.
+                if (crate::loot::GROW_SECONDS..crate::loot::GROW_SECONDS + 0.75).contains(&d.age)
+                    && self.cued.insert((visit.to_string(), d.id))
+                {
+                    self.ready.push(d.origin);
                 }
             }
         }

@@ -70,6 +70,8 @@ fn grown() -> f32 {
 }
 /// The authored `grow` clip (30 fps, identical for every grade) turns solid at frame 40.
 pub const GROW_SECONDS: f32 = 40. / 30.;
+/// Whole `grow` clip: 121 frames at 30 fps, then the item idles.
+pub const GROW_CLIP_SECONDS: f32 = 121. / 30.;
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Loot {
     pub awarded: BTreeSet<usize>,

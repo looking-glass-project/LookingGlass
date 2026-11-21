@@ -40,6 +40,13 @@ const OBJECTS: &[&str] = &[
     "bookshelf2",
     "library_spiral_lift",
     "elevator2",
+    // Fixed braces and arms around the elevator shaft; the script never moves them.
+    "elevator2_arm2_left",
+    "elevator2_arm2_right",
+    "elevator2_brace_left",
+    "elevator2_brace_right",
+    "elevator2_arm_left",
+    "elevator2_arm_right",
     "observatory_clip",
     "removeme",
     "flyingsupport1",

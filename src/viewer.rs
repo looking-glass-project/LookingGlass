@@ -2830,7 +2830,12 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
                 center + Vec3::Z * 14.,
             )
         });
+        let bite_camera = interactions
+            .duchess
+            .as_ref()
+            .and_then(|d| d.bite_camera(&scene.world, player.eye() + Vec3::Z * 16.));
         let scripted_camera = pand_camera
+            .or(bite_camera)
             .or_else(|| {
                 cinematic_camera
                     .map(|(eye, target, _)| crate::cinematic::Camera::look(eye, target))

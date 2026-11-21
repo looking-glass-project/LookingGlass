@@ -116,6 +116,8 @@ pub struct Timing {
     intro_tracks: Vec<crate::fortress::spline::Spline>,
     pub clips: BTreeMap<String, (f32, f32)>,
     death_focus: Vec<Vec3>,
+    /// Model-space `tag_pickup` (hand) and `tag_pigbaby` (mouth; the map defines no `tag_gut`, and the clip damages from this tag) per frame of the bite clip.
+    bite_tags: Vec<(Vec3, Vec3)>,
 }
 impl Timing {
     fn load(a: &mut Assets) -> Result<Self> {
@@ -123,6 +125,7 @@ impl Timing {
         let s = Skeleton::parse(&a.read(&format!("{}/{}", d.path, d.model))?)?;
         let mut clips = BTreeMap::new();
         let mut death_focus = Vec::new();
+        let mut bite_tags = Vec::new();
         for name in [
             "idle_1", "run", "run_away", "attack_1", "raise", "attack_2", "attack_3", "attack_4",
             "pain1", "death",
@@ -151,6 +154,18 @@ impl Timing {
                         .push(pose[head].translation.lerp(pose[neck].translation, blend) * d.scale);
                 }
             }
+            if name == "raise" {
+                let find = |tag: &str| s.bones.iter().position(|b| b.name == tag);
+                if let (Some(hand), Some(gut)) = (find("tag_pickup"), find("tag_pigbaby")) {
+                    for frame in 0..c.frames.len() {
+                        let pose = s.global_pose(&c.sample(frame as f32 * c.frame_time, false));
+                        bite_tags.push((
+                            pose[hand].translation * d.scale,
+                            pose[gut].translation * d.scale,
+                        ));
+                    }
+                }
+            }
             clips.insert(name.into(), (c.duration(), c.frame_time));
         }
         let mut intro_tracks = Vec::new();
@@ -168,6 +183,7 @@ impl Timing {
         Ok(Self {
             clips,
             death_focus,
+            bite_tags,
             intro_tracks,
         })
     }
@@ -176,6 +192,17 @@ impl Timing {
     }
     fn frame(&self, action: Action, frame: f32) -> f32 {
         self.clips[action.clip()].1 * frame
+    }
+    /// Where the original `DragEnemy "tag_pickup" "tag_gut"` carries the victim, model space:
+    /// picked up at the hand, then drawn to the mouth by the first bite, following the clip.
+    fn held(&self, time: f32) -> Option<Vec3> {
+        let frame = (time / self.clips["raise"].1).max(0.);
+        let last = self.bite_tags.len().checked_sub(1)?;
+        let at = |f: usize| self.bite_tags[f.min(last)];
+        let (a, b) = (at(frame as usize), at(frame as usize + 1));
+        let (hand, gut) = (a.0.lerp(b.0, frame.fract()), a.1.lerp(b.1, frame.fract()));
+        let t = ((frame - 8.) / 26.).clamp(0., 1.);
+        Some(hand.lerp(gut, t * t * (3. - 2. * t)))
     }
     fn focus(&self, time: f32) -> Vec3 {
         let frame = (time / self.clips["death"].1).max(0.);
@@ -1081,7 +1108,14 @@ impl Duchess {
             }
             Action::Bite => {
                 let front = vec3(self.state.yaw.cos(), self.state.yaw.sin(), 0.);
-                let hold = self.state.feet + front * 65. + Vec3::Z * 35.;
+                let hold = match self.timing.held(self.state.clock) {
+                    // The tag marks the victim's centre; the player's origin is at the feet.
+                    Some(tag) => {
+                        self.state.feet + Quat::from_rotation_z(self.state.yaw) * tag - Vec3::Z * 36.
+                    }
+                    None => self.state.feet + front * 65. + Vec3::Z * 35.,
+                };
+                if std::env::var_os("DUCHESS_TRACE").is_some() { eprintln!("BITE clock {:.2} tag {:?}", self.state.clock, self.timing.held(self.state.clock)); }
                 if self.state.clock < self.timing.frame(Action::Bite, 64.) && world.body_clear(hold)
                     && self.coop_hold_clear(victim, hold)
                 {
@@ -1599,11 +1633,30 @@ impl Art {
                     1.
                 };
                 let mut pos = d.points[start].lerp(d.points[goal], f);
+                // Face the way they walk in, then the room's centre once standing.
+                let heading = d.points[goal] - d.points[start];
+                let mut yaw = if f < 1. && heading.truncate().length_squared() > 1. {
+                    heading.y.atan2(heading.x)
+                } else {
+                    2.4
+                };
+                let (mut clip, mut clip_time, mut looping) =
+                    (if f < 1. { "walk" } else { "idle" }, d.state.time, true);
+                if goal == "billstand" && d.state.stage == Stage::Well {
+                    // Bill waves at the well to open it (script: talk_no).
+                    let t = d.state.time - 1.5;
+                    if t >= 0. {
+                        (clip, clip_time, looping) = ("talk_no", t, false);
+                    }
+                }
                 if goal == "turtlestand" && matches!(d.state.stage, Stage::Well | Stage::Complete) {
                     let t = ((d.state.time - 2.) / 1.).clamp(0., 1.);
                     if d.state.stage == Stage::Complete || t >= 1. {
                         continue;
                     }
+                    let jump = d.points["jumpinthewell"] - d.points["turtle_jump_pos"];
+                    yaw = jump.y.atan2(jump.x);
+                    (clip, clip_time, looping) = ("jump", d.state.time - 2., false);
                     pos = d.points["turtle_jump_pos"].lerp(vec3(320., 224., -120.), t)
                         + Vec3::Z * (120. * (std::f32::consts::PI * t).sin());
                 }
@@ -1611,12 +1664,12 @@ impl Art {
                     actor.show_attachments(d.state.shell_returned);
                 }
                 actor.draw(
-                    if f < 1. { "walk" } else { "idle" },
-                    d.state.time,
-                    true,
+                    clip,
+                    clip_time,
+                    looping,
                     Transform {
                         translation: pos,
-                        rotation: Quat::from_rotation_z(2.4),
+                        rotation: Quat::from_rotation_z(yaw),
                     },
                     1.,
                     fullbright,
@@ -1625,21 +1678,26 @@ impl Art {
         }
         if d.cinematic() {
             let mut p = d.points["fuck_pos"];
+            let (mut clip, mut clip_time, mut looping) = ("idle_base_02", d.state.time, true);
+            let mut yaw = std::f32::consts::FRAC_PI_2;
             if matches!(d.state.stage, Stage::Rescue | Stage::Farewell | Stage::Well) {
                 p = d.points["alice_end_pos"];
                 if d.state.stage == Stage::Well && d.state.time > 3.5 {
                     let t = ((d.state.time - 3.5) / 1.5).min(1.);
                     p = d.points["turtle_jump_pos"].lerp(vec3(320., 224., -120.), t)
                         + Vec3::Z * (100. * (std::f32::consts::PI * t).sin());
+                    let jump = d.points["jumpinthewell"] - d.points["turtle_jump_pos"];
+                    yaw = jump.y.atan2(jump.x);
+                    (clip, clip_time, looping) = ("jump", d.state.time - 3.5, false);
                 }
             }
             self.alice.draw(
-                "idle_base_02",
-                d.state.time,
-                true,
+                clip,
+                clip_time,
+                looping,
                 Transform {
                     translation: p,
-                    rotation: Quat::from_rotation_z(std::f32::consts::FRAC_PI_2),
+                    rotation: Quat::from_rotation_z(yaw),
                 },
                 1.,
                 fullbright,
@@ -2041,6 +2099,7 @@ mod tests {
                 intro_tracks: vec![],
                 clips,
                 death_focus: vec![Vec3::Z * 100.],
+                bite_tags: Vec::new(),
             },
             objects: vec![],
             groups: vec![],

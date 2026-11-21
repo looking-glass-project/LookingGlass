@@ -593,7 +593,8 @@ impl Duchess {
                 } else {
                     0.
                 };
-                q = Quat::from_rotation_z(a);
+                // Source rotateZ is roll: about our local X, not the vertical axis.
+                q = Quat::from_rotation_x(a);
             }
             "secretdoorobj" => {
                 let f = match self.state.stage {
@@ -602,7 +603,8 @@ impl Duchess {
                     Stage::Well => 1. - (self.state.time / 1.).min(1.),
                     _ => 0.,
                 };
-                q = Quat::from_rotation_y(90_f32.to_radians() * f);
+                // rotateYupto(90) is yaw: the door swings about the vertical axis.
+                q = Quat::from_rotation_z(90_f32.to_radians() * f);
                 let pivot = self.points["secretdoororigin"] + self.group_offset(2);
                 p = pivot + q * (p - pivot);
             }
@@ -612,7 +614,8 @@ impl Duchess {
                     Stage::Complete => 1.,
                     _ => 0.,
                 };
-                q = Quat::from_rotation_z(
+                // rotateZ (roll, local X): the leaves lift on their outer hinges.
+                q = Quat::from_rotation_x(
                     90_f32.to_radians() * f * if o.name == "welldoor1" { 1. } else { -1. },
                 );
             }
@@ -622,7 +625,8 @@ impl Duchess {
                 } else {
                     0.
                 };
-                q = Quat::from_rotation_x((-30_f32 + 60. * f).to_radians());
+                // rotateX is pitch (local Y).
+                q = Quat::from_rotation_y((-30_f32 + 60. * f).to_radians());
                 let pivot = self.points["wellleverorg"];
                 p = pivot + q * (p - pivot);
             }

@@ -310,6 +310,17 @@ impl Duchess {
         ] {
             points.insert(n.into(), origin(map, n)?);
         }
+        // The Duchess's waypoints hang above the floor; her model origin is at her feet, so the
+        // scripted entrance (duchessin -> duchessout) would otherwise leave her floating.
+        if let Ok(world) = World::from_bsp(map) {
+            for n in ["duchessin", "duchessout"] {
+                let at = points[n];
+                let down = world.sweep(at + Vec3::Z * 8., at - Vec3::Z * 96., Vec3::splat(0.5));
+                if !down.start_solid && down.fraction < 1. {
+                    points.insert(n.into(), at + Vec3::Z * 8. - Vec3::Z * 104. * down.fraction);
+                }
+            }
+        }
         let mut objects = Vec::new();
         for e in map.entities.iter().filter(|e| supported(e)) {
             let model = e
@@ -359,7 +370,7 @@ impl Duchess {
                 action: Action::Chase,
                 clock: 0.,
                 health: 600.,
-                feet: origin(map, "duchessout")?,
+                feet: points["duchessout"],
                 yaw: -std::f32::consts::FRAC_PI_2,
                 shots: vec![],
                 bursts: vec![],

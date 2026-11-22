@@ -3514,7 +3514,10 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
         if context_before != (menu, inventory_menu, console.open, paused) {
             input.suppress();
         }
-        crate::hud::set_perf(frame_started.elapsed().as_secs_f32() * 1000., scene.stats.layers, scene.stats.verts);
+        let cpu_ms = frame_started.elapsed().as_secs_f32() * 1000.;
+        crate::frame_profile::set_live(preferences.show_fps);
+        crate::hud::set_split(cpu_ms, &crate::frame_profile::take_frame());
+        crate::hud::set_perf(cpu_ms, scene.stats.layers, scene.stats.verts);
         next_frame().await;
     }
     if saves_enabled && played && stats.alive() && options.frames.is_none() && !post_game {

@@ -33,6 +33,23 @@ pub fn air(breath: &crate::water::Breath, ui: &crate::ui::Ui) {
 
 thread_local! {
     static PERF: std::cell::Cell<(f32, usize, usize)> = const { std::cell::Cell::new((0., 0, 0)) };
+    static SPLIT: std::cell::Cell<[f32; 5]> = const { std::cell::Cell::new([0.; 5]) };
+}
+/// Where the frame's CPU time went (world draw, actors, effects, lighting, everything else).
+pub fn set_split(cpu_ms: f32, spans: &std::collections::BTreeMap<&'static str, f64>) {
+    let get = |names: &[&str]| names.iter().map(|n| spans.get(n).copied().unwrap_or(0.) as f32).sum::<f32>();
+    let mut v = [
+        get(&["world_draw"]),
+        get(&["npcs", "movers"]),
+        get(&["particles", "scene_particles_etc", "level_art_draw", "level_art_effects"]),
+        get(&["lighting_select"]),
+        0.,
+    ];
+    v[4] = (cpu_ms - v[..4].iter().sum::<f32>()).max(0.);
+    SPLIT.with(|p| {
+        let old = p.get();
+        p.set(std::array::from_fn(|i| old[i] * 0.9 + v[i] * 0.1));
+    });
 }
 /// CPU milliseconds spent building the last frame, with its draw-pass and animated-vertex counts.
 pub fn set_perf(cpu_ms: f32, draws: usize, verts: usize) {
@@ -251,7 +268,7 @@ impl Hud {
                     6. * text_scale,
                     4. * text_scale,
                     total + 12. * text_scale,
-                    size + 12. * text_scale,
+                    size * 1.9 + 14. * text_scale,
                     Color::new(0., 0., 0., 0.7),
                 );
             }
@@ -260,6 +277,12 @@ impl Hud {
                 self.ui.label(text, x, 28. * text_scale, size, Color::from_hex(0xffffff));
                 x += self.ui.font.width(widest, size) + gap;
             }
+            let s = SPLIT.with(std::cell::Cell::get);
+            let line = format!(
+                "world {:.1}  actors {:.1}  fx {:.1}  light {:.1}  other {:.1}",
+                s[0], s[1], s[2], s[3], s[4]
+            );
+            self.ui.label(&line, 12. * text_scale, 28. * text_scale + size, size * 0.8, Color::from_hex(0xffffff));
         }
         if !inventory {
             if let Some((kind, time)) = stats.active_power() {

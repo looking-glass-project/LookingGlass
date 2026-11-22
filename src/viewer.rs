@@ -2521,6 +2521,16 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
         for &hit in &feedback.summon_hits {
             alice.hit_summon(hit);
         }
+        {
+            // Enemies are solid to Alice: slide her out of any body she overlaps.
+            let push = npcs.player_push(player.feet);
+            if push.length_squared() > 1e-6 {
+                let hit = scene.world.body_trace(player.feet, player.feet + push);
+                if !hit.start_solid {
+                    player.feet += push * hit.fraction;
+                }
+            }
+        }
         stats.damage(feedback.damage);
         if feedback.will_drain > 0. {
             stats.spend_will(feedback.will_drain.min(stats.will()));

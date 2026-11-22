@@ -2613,38 +2613,50 @@ impl Npcs {
     /// Live enemies are solid to each other, as in the original: overlapping
     /// bodies are pushed apart instead of merging into one line.
     fn separate_actors(&mut self, world: &World) {
-        // (actor, feet, radius): chess pieces are 48-64 units wide, imps and guards ~32.
-        let mut bodies: Vec<(usize, Vec3, f32)> = Vec::new();
-        for (i, a) in self.actors.iter().enumerate() {
-            let live = if let Some(p) = &a.imp { (p.active && p.health > 0.).then_some((p.feet, 16.)) }
-                else if let Some(p) = &a.chess { (p.active && p.health > 0.).then_some((p.feet, p.kind.half().x * p.scale)) }
-                else if let Some(p) = &a.guard { (p.health > 0.).then_some((p.feet, 16.)) }
-                else if let Some(p) = &a.clock { (p.active && p.health > 0.).then_some((p.feet, 16.)) }
-                else { None };
-            if let Some((feet, r)) = live { bodies.push((i, feet, r)); }
-        }
+        // Every live enemy is a solid body of its own hit-box width: the old fixed 16-unit
+        // radius let 64-unit clockwork and card bodies overlap, and ants and residents
+        // were never included.
+        let bodies = self.targets();
         let mut push = vec![Vec3::ZERO; bodies.len()];
         for x in 0..bodies.len() {
             for y in x + 1..bodies.len() {
-                let d = bodies[y].1 - bodies[x].1;
+                let (a, b) = (&bodies[x], &bodies[y]);
+                let d = b.center - a.center;
                 let flat = d.truncate();
-                let gap = (bodies[x].2 + bodies[y].2) * 0.9;
-                if d.z.abs() > 50. || flat.length() >= gap { continue; }
+                let gap = a.half.x + b.half.x;
+                if d.z.abs() >= a.half.z + b.half.z || flat.length() >= gap { continue; }
                 let dir = if flat.length() > 0.01 { flat.normalize() } else { Vec2::X };
                 let shove = dir.extend(0.) * (gap - flat.length()) * 0.5;
                 push[x] -= shove;
                 push[y] += shove;
             }
         }
-        for ((i, feet, r), delta) in bodies.into_iter().zip(push) {
+        for (t, delta) in bodies.into_iter().zip(push) {
             if delta.length_squared() < 1e-6 { continue; }
-            let moved = combat::walk_body(world, feet, delta, vec3(r, r, 25.));
-            let a = &mut self.actors[i];
-            if let Some(p) = &mut a.imp { p.feet = moved; }
-            else if let Some(p) = &mut a.chess { p.feet = moved; }
-            else if let Some(p) = &mut a.guard { p.feet = moved; }
-            else if let Some(p) = &mut a.clock { p.feet = moved; }
+            let a = &mut self.actors[t.id];
+            let half = vec3(t.half.x, t.half.x, 25.);
+            if let Some(p) = &mut a.imp { p.feet = combat::walk_body(world, p.feet, delta, half); }
+            else if let Some(p) = &mut a.chess { p.feet = combat::walk_body(world, p.feet, delta, half); }
+            else if let Some(p) = &mut a.guard { p.feet = combat::walk_body(world, p.feet, delta, half); }
+            else if let Some(p) = &mut a.clock { p.feet = combat::walk_body(world, p.feet, delta, half); }
+            else if let Some(p) = &mut a.ant { p.feet = combat::walk_body(world, p.feet, delta, half); }
         }
+    }
+    /// How far a player standing at `feet` must move to leave the live enemies, so Alice
+    /// cannot walk through them (the original treats actors as solid to the player).
+    pub fn player_push(&self, feet: Vec3) -> Vec3 {
+        let half = crate::collision::PLAYER_HALF;
+        let center = feet + crate::collision::PLAYER_CENTER;
+        let mut out = Vec3::ZERO;
+        for t in self.targets() {
+            let d = center - t.center;
+            let flat = d.truncate();
+            let gap = t.half.x + half.x;
+            if d.z.abs() >= t.half.z + half.z || flat.length() >= gap { continue; }
+            let dir = if flat.length() > 0.01 { flat.normalize() } else { Vec2::X };
+            out += dir.extend(0.) * (gap - flat.length());
+        }
+        out
     }
     /// The host advances the cast once, with both live bodies available to each
     /// enemy. A trigger can be reached by either player in that same step.

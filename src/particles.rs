@@ -455,6 +455,8 @@ pub struct Steam {
     emitters: Vec<Emitter>,
     puffs: Vec<Puff>,
     seed: u32,
+    /// Frame counter that staggers the world-collision test across puffs.
+    tick: u32,
     materials: Vec<std::rc::Rc<Material>>,
 }
 fn random(seed: &mut u32) -> f32 {
@@ -846,6 +848,7 @@ impl Steam {
             emitters,
             puffs: Vec::new(),
             seed: 0x56789abc,
+            tick: 0,
             materials,
         })
     }
@@ -858,7 +861,9 @@ impl Steam {
             return;
         }
         let dt = dt.min(0.05);
-        for p in &mut self.puffs {
+        self.tick = self.tick.wrapping_add(1);
+        let tick = self.tick;
+        for (index, p) in self.puffs.iter_mut().enumerate() {
             let dt = if self.emitters[p.emitter].spec.no_deadtime {
                 dt
             } else {
@@ -881,8 +886,11 @@ impl Steam {
             }
             // The enclosed pixie requests axis bounds, not world collision.
             // Its casing still occludes the sprite through the depth buffer.
+            // A trace per puff per frame dominated torch halls: test each puff every fourth
+            // frame, along the distance it will cover until its next test.
             if self.emitters[p.emitter].spec.constrain.is_none()
-                && world.sweep(p.position, next, Vec3::ZERO).fraction < 1.
+                && (index as u32).wrapping_add(tick) % 4 == 0
+                && world.sweep(p.position, p.position + p.velocity * dt * 4., Vec3::ZERO).fraction < 1.
             {
                 p.age = p.life;
             }
@@ -901,7 +909,7 @@ impl Steam {
             if !e.enabled
                 || e.spec.rate <= 0.
                 || (e.spec.image.is_empty() && e.spec.light.is_some())
-                || e.origin.distance_squared(eye) > 3000. * 3000.
+                || e.origin.distance_squared(eye) > 2200. * 2200.
             {
                 // Keep the enclosed light ready when its lantern comes into range.
                 e.carry = if e.enabled && e.spec.constrain.is_some() {
@@ -1300,6 +1308,7 @@ impl Attached {
                 emitters: self.steam.emitters.clone(),
                 puffs: Vec::new(),
                 seed: 1,
+                tick: 0,
                 materials: self.steam.materials.clone(),
             },
         }
@@ -1398,6 +1407,7 @@ impl Attached {
                 emitters,
                 puffs: Vec::new(),
                 seed: 1,
+                tick: 0,
                 materials: shared_materials()?,
             },
         }))

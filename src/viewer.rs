@@ -893,6 +893,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
         crate::ui_probe::screen(if paused { "solo-paused" } else { "solo-play" }, &[], "");
         let mut frame_profile = crate::frame_profile::span("frame_cpu");
         let frame_started = std::time::Instant::now();
+        let mut loop_span = crate::frame_profile::span("loop_input");
         input.update(&preferences, window_focused());
         let overlay_before = menu || inventory_menu || console.open || paused;
         let context_before = (menu, inventory_menu, console.open, paused);
@@ -2098,6 +2099,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
             && focused
             && !flying
             && stats.alive();
+        loop_span = crate::frame_profile::span("loop_story");
         hints.sync(&interactions);
         if (summon_cat || (story_active && pressed(KeyCode::C))) && !in_transport {
             let outcome = if !stats.alive() || flying {
@@ -2345,6 +2347,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
                 }
             }
         }
+        loop_span = crate::frame_profile::span("loop_player");
         if !paused && !menu && !inventory_menu && !console_input && focused && stats.alive() {
             environment_clock += world_dt;
             steam.animate(environment_clock);
@@ -2429,6 +2432,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
         if interactions.levels.iter().any(|s| s.ctl.dismiss_summons()) {
             alice.dismiss_summon();
         }
+        loop_span = crate::frame_profile::span("loop_encounters");
         interactions.activate_enemies();
         let scripted_motion = interactions.scripted();
         if let Some(s) = &mut interactions.encounters {
@@ -2488,6 +2492,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
             player.knockback(f.impulse);
             audio.feedback(&f);
         }
+        loop_span = crate::frame_profile::span("loop_npc_glue");
         npcs.summon(alice.ally_target());
         npcs.activate_levels(&interactions.levels);
         npcs.notarget(stats.ignores_alice());
@@ -2592,6 +2597,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
             }
             targets.extend(interactions.levels_targets());
         }
+        loop_span = crate::frame_profile::span("loop_weapons");
         targets.extend(alice.ice_targets());
         alice.world_time(dt, world_dt);
         alice.notarget(stats.ignores_alice());
@@ -2750,6 +2756,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
         for sound in weapon_sounds {
             audio.weapon_effect(sound);
         }
+        loop_span = crate::frame_profile::span("loop_camera_audio");
         for (path, origin) in alice.take_world_audio() {
             audio.world_effect_at(path, origin);
         }
@@ -2957,6 +2964,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
         if let Some(distance) = interactions.levels.iter().find_map(|s| s.ctl.fog_distance()) {
             scene.atmosphere.distance.w = distance;
         }
+        loop_span = crate::frame_profile::span("loop_pre_draw");
         clear_background(scene.atmosphere.background());
         let world_camera = Camera3D {
             position: camera,
@@ -3022,10 +3030,12 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
             &scene.atmosphere,
             fullbright,
         );
+        loop_span = crate::frame_profile::span("loop_scene_draw");
         scene.draw(camera, environment_clock, fullbright, false, &transforms);
         if show_alice && !plant_swallowed && stats.invisible <= 0. {
             crate::lighting::shadow(&scene.world, player.feet, 22.);
         }
+        loop_span = crate::frame_profile::span("loop_actors_draw");
         alice.atmosphere(&scene.atmosphere, camera);
         if show_alice && !plant_swallowed && !interactions.school.as_ref().is_some_and(|s| s.cinematic()) {
             alice.draw_ghost(player.feet, fullbright, stats.invisible > 0. && !alice.glass_performing());
@@ -3149,6 +3159,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
         if saves_enabled {
             save_frame.update();
         }
+        loop_span = crate::frame_profile::span("loop_ui");
         set_default_camera();
         if active {
             use crate::interaction::friendly::{use_owner, UseOwner};
@@ -3514,6 +3525,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
         if context_before != (menu, inventory_menu, console.open, paused) {
             input.suppress();
         }
+        drop(loop_span);
         let cpu_ms = frame_started.elapsed().as_secs_f32() * 1000.;
         crate::frame_profile::set_live(preferences.show_fps);
         crate::hud::set_split(cpu_ms, &crate::frame_profile::take_frame());

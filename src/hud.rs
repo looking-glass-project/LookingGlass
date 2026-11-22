@@ -34,6 +34,7 @@ pub fn air(breath: &crate::water::Breath, ui: &crate::ui::Ui) {
 thread_local! {
     static PERF: std::cell::Cell<(f32, usize, usize)> = const { std::cell::Cell::new((0., 0, 0)) };
     static SPLIT: std::cell::Cell<[f32; 5]> = const { std::cell::Cell::new([0.; 5]) };
+    static LOOP: std::cell::Cell<[f32; 11]> = const { std::cell::Cell::new([0.; 11]) };
 }
 /// Where the frame's CPU time went (world draw, actors, effects, lighting, everything else).
 pub fn set_split(cpu_ms: f32, spans: &std::collections::BTreeMap<&'static str, f64>) {
@@ -46,6 +47,15 @@ pub fn set_split(cpu_ms: f32, spans: &std::collections::BTreeMap<&'static str, f
         0.,
     ];
     v[4] = (cpu_ms - v[..4].iter().sum::<f32>()).max(0.);
+    let names = [
+        "loop_input", "loop_story", "loop_player", "loop_encounters", "loop_npc_glue", "loop_weapons",
+        "loop_camera_audio", "loop_pre_draw", "loop_scene_draw", "loop_actors_draw", "loop_ui",
+    ];
+    let l: [f32; 11] = std::array::from_fn(|i| spans.get(names[i]).copied().unwrap_or(0.) as f32);
+    LOOP.with(|p| {
+        let old = p.get();
+        p.set(std::array::from_fn(|i| old[i] * 0.9 + l[i] * 0.1));
+    });
     SPLIT.with(|p| {
         let old = p.get();
         p.set(std::array::from_fn(|i| old[i] * 0.9 + v[i] * 0.1));
@@ -268,7 +278,7 @@ impl Hud {
                     6. * text_scale,
                     4. * text_scale,
                     total + 12. * text_scale,
-                    size * 1.9 + 14. * text_scale,
+                    size * 3.4 + 14. * text_scale,
                     Color::new(0., 0., 0., 0.7),
                 );
             }
@@ -283,6 +293,14 @@ impl Hud {
                 s[0], s[1], s[2], s[3], s[4]
             );
             self.ui.label(&line, 12. * text_scale, 28. * text_scale + size, size * 0.8, Color::from_hex(0xffffff));
+            let l = LOOP.with(std::cell::Cell::get);
+            let rows = [
+                format!("input {:.1}  story {:.1}  player {:.1}  enc {:.1}  glue {:.1}  weapons {:.1}", l[0], l[1], l[2], l[3], l[4], l[5]),
+                format!("camera {:.1}  predraw {:.1}  scene {:.1}  actors {:.1}  ui {:.1}", l[6], l[7], l[8], l[9], l[10]),
+            ];
+            for (n, row) in rows.iter().enumerate() {
+                self.ui.label(row, 12. * text_scale, 28. * text_scale + size * (1.8 + 0.8 * n as f32), size * 0.8, Color::from_hex(0xffffff));
+            }
         }
         if !inventory {
             if let Some((kind, time)) = stats.active_power() {

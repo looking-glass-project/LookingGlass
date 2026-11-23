@@ -428,12 +428,18 @@ pub struct Menu {
     /// The console-style title screen shown once at launch (the remaster's loose `title_bg.tga`).
     title: Option<Texture2D>,
     button_bounds: BTreeMap<String, (f32, f32)>,
+    /// Multi-stage or waved UI shaders (`ui/control/reflect_lightning`): `(image key, alphaGen wave)`.
+    stages: BTreeMap<String, Vec<(String, Option<crate::materials::Wave>)>>,
     binding_labels: BTreeMap<String, String>,
     map_titles: BTreeMap<String, String>,
     pub(crate) chapter_labels: crate::chapters::Labels,
     ui: std::rc::Rc<Ui>,
     selected: usize,
     ui_sounds: usize,
+    /// Alice3D widget lightning (FUN_004c66e0): light radius = 4000 * noise(3t); thunder when > 2000.
+    lightning: f32,
+    thunder_wait: f32,
+    thunder_index: usize,
     ui_cache: std::collections::HashMap<String, std::sync::Arc<[u8]>>,
     ui_playing: Vec<rodio::Sink>,
     previous_pointer: Vec2,
@@ -555,10 +561,34 @@ impl Menu {
         }
         let mut textures = BTreeMap::new();
         let mut button_bounds = BTreeMap::new();
+        let mut stages = BTreeMap::new();
         for name in names {
             let key = name.to_ascii_lowercase();
             if textures.contains_key(&key) {
                 continue;
+            }
+            if let Some(spec) = specs.get(&key).filter(|s| {
+                !name.starts_with("ui/main") && !name.contains("wick")
+                    && (s.stages.len() > 1 || s.stages.iter().any(|st| st.alpha.is_some()))
+            }) {
+                let mut layers = Vec::new();
+                for stage in &spec.stages {
+                    let Some(image) = stage.images.first() else { continue };
+                    let image_key = image.to_ascii_lowercase();
+                    if !textures.contains_key(&image_key) {
+                        if let Some(path) = menu_texture_path(assets, &specs, &image_key) {
+                            let (texture, _) = load_texture_geometry(assets, &path, false)?;
+                            textures.insert(image_key.clone(), texture);
+                        }
+                    }
+                    if textures.contains_key(&image_key) {
+                        layers.push((image_key, stage.alpha.clone()));
+                    }
+                }
+                if !layers.is_empty() {
+                    stages.insert(key.clone(), layers);
+                    continue;
+                }
             }
             if let Some(candidate) = menu_texture_path(assets, &specs, &key) {
                 let additive = specs.get(&key).is_some_and(|s| s.stages.first()
@@ -613,15 +643,19 @@ impl Menu {
             layouts,
             textures,
             button_bounds,
+            stages,
             binding_labels,
             map_titles,
             chapter_labels,
             ui: Ui::load(assets)?,
             selected: 0,
             ui_sounds: 0,
+            lightning: 0.,
+            thunder_wait: 0.,
+            thunder_index: 0,
             ui_cache: {
                 let mut cache = std::collections::HashMap::new();
-                let names = (1..=5).map(|i| format!("hover_{i}")).chain((1..=4).map(|i| format!("click_{i}")))
+                let names = (1..=5).map(|i| format!("hover_{i}")).chain((1..=4).map(|i| format!("click_{i}"))).chain((1..=3).map(|i| format!("thunder_{i}")))
                     .chain(["loadsave", "new", "quit", "controls"].iter().flat_map(|n| [format!("{n}_h"), format!("{n}_c")]));
                 for name in names {
                     let path = format!("sound/ui/{name}.wav");
@@ -1440,6 +1474,17 @@ impl Menu {
         clear_background(Color::new(0., 0., 0., 0.));
         self.material
             .atmosphere(&crate::environment::Atmosphere::default(), eye);
+        crate::lighting::fixture_lights(if self.lightning > 0. {
+            vec![crate::lighting::Light {
+                position: vec3(-250., 300., -167.),
+                color: vec3(0.97, 0.97, 0.82),
+                radius: self.lightning,
+                only_models: false,
+                flare: false,
+            }]
+        } else {
+            vec![]
+        });
         self.material.bind();
         self.mirror.draw_filtered(
             "idle_stand_rocktoes",
@@ -1454,6 +1499,7 @@ impl Menu {
             &["material15", "material16", "material17"],
         );
         gl_use_default_material();
+        crate::lighting::fixture_lights(vec![]);
         set_default_camera();
     }
     /// Fills the pillarbox of a widescreen menu with the border art, scaled to the screen height
@@ -1551,7 +1597,13 @@ impl Menu {
             } else {
                 1.
             };
-            if page == Page::Main && art.eq_ignore_ascii_case("ui/main/smoke") {
+            if let Some(layers) = self.stages.get(&art.to_ascii_lowercase()) {
+                // Every stage of the original shader, each with its own alphaGen wave (noise = lightning).
+                for (image, wave) in layers {
+                    let a = wave.as_ref().map_or(1., |w| w.sample(time).clamp(0., 1.));
+                    self.art(canvas, image, widget.rect, a);
+                }
+            } else if page == Page::Main && art.eq_ignore_ascii_case("ui/main/smoke") {
                 self.scrolling_art(canvas, art, widget.rect, 0.1 * time);
             } else {
                 self.art(canvas, art, widget.rect, alpha);
@@ -1844,6 +1896,20 @@ impl Menu {
             let buttons = self.buttons(page);
             self.selected = self.selected.min(buttons.len().saturating_sub(1));
             audio.update(0., listener, yaw, true, true);
+            if page.layout() == "controls" {
+                // The original's Alice widget flashes a light from noise and plays one of three
+                // thunder cracks when it peaks, at most every five seconds.
+                self.lightning = 4000. * menu_noise(get_time() as f32 * 3.);
+                if self.lightning > 2000. && self.thunder_wait < 0.001 {
+                    let path = format!("sound/ui/thunder_{}.wav", self.thunder_index + 1);
+                    self.ui_cue(audio, &path);
+                    self.thunder_wait = 5.;
+                    self.thunder_index = (self.thunder_index + 1) % 3;
+                }
+                self.thunder_wait -= get_frame_time();
+            } else {
+                self.lightning = 0.;
+            }
             let canvas = Canvas::new(screen_width(), screen_height());
             let mouse = Vec2::from(mouse_position());
             let hit = buttons

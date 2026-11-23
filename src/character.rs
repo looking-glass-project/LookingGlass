@@ -1349,6 +1349,16 @@ impl Character {
         );
         gl_use_default_material();
     }
+    /// World-space triangles of the body as last posed by `draw_body`.
+    pub fn shadow_triangles(&self) -> Vec<[Vec3; 3]> {
+        let mut out = Vec::new();
+        for mesh in self.meshes.iter().flatten() {
+            for t in mesh.indices.chunks_exact(3) {
+                out.push([0, 1, 2].map(|i| mesh.vertices[t[i] as usize].position));
+            }
+        }
+        out
+    }
     pub fn draw_effects(&mut self, camera: Vec3, fullbright: bool, show_alice: bool) {
         self.visuals
             .draw_effects(&self.material, camera, fullbright, show_alice);

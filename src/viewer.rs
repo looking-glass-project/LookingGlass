@@ -3040,13 +3040,13 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
         );
         loop_span = crate::frame_profile::span("loop_scene_draw");
         scene.draw(camera, environment_clock, fullbright, false, &transforms);
-        if show_alice && !plant_swallowed && stats.invisible <= 0. {
-            crate::lighting::shadow(&scene.world, player.feet, 22.);
-        }
         loop_span = crate::frame_profile::span("loop_actors_draw");
         alice.atmosphere(&scene.atmosphere, camera);
         if show_alice && !plant_swallowed && !interactions.school.as_ref().is_some_and(|s| s.cinematic()) {
             alice.draw_ghost(player.feet, fullbright, stats.invisible > 0. && !alice.glass_performing());
+            if stats.invisible <= 0. && !plant_swallowed {
+                crate::lighting::figure_shadow(&scene.world, player.feet, &alice.shadow_triangles(), crate::lighting::FIGURE_LIGHT);
+            }
         }
         npcs.draw(
             camera,

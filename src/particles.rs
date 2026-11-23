@@ -431,6 +431,8 @@ struct Emitter {
     carry: f32,
     enabled: bool,
     animation_enabled: Option<bool>,
+    /// Shown and hidden by map script rather than by animation events.
+    scripted: bool,
 }
 struct AnimationBinding {
     id: usize,
@@ -494,6 +496,9 @@ impl Steam {
                 true,
             );
             for e in self.emitters.iter_mut().filter(|e| e.id == binding.id) {
+                if e.scripted {
+                    continue;
+                }
                 e.animation_enabled = visual.emitters.get(&e.spec.name).copied();
                 if let (Some(tag), Some(model)) = (&e.spec.tag, &binding.model) {
                     if let (Some(points), Some(axes)) =
@@ -616,6 +621,9 @@ impl Steam {
     /// Script `show`/`hide` of the Duchess hearth emitters (`firesparklies`).
     pub fn script_group(&mut self, ids: &[usize], on: bool) {
         for e in self.emitters.iter_mut().filter(|e| ids.contains(&e.id)) {
+            if on && !e.enabled {
+                e.carry = 1.;
+            }
             e.animation_enabled = Some(on);
             e.enabled = on;
         }
@@ -698,7 +706,7 @@ impl Steam {
             };
             let text =
                 String::from_utf8_lossy(&assets.read(&format!("models/{model}"))?).into_owned();
-            let definitions = parse(&text);
+            let mut definitions = parse(&text);
             let selected_clip = e.get("anim").map(String::as_str)
                 .or_else(|| (model == "lantern.tik").then_some("lantern"))
                 // Hollow Hideaway's waterfall spray tags idle "off" but no script ever
@@ -727,7 +735,16 @@ impl Steam {
                 })
                 .unwrap_or(1.)
                 .max(0.001);
+            if matches!(model, "fx_eyestaff_spark.tik" | "fx_eyestaff_splode.tik") {
+                definitions.extend(burst_specs(&text, Some("idle"), frame_time));
+            }
             for mut spec in definitions {
+                // Measured live in the original (cgamex86 tempmodels): the hearth fire emits about
+                // 105 sprites a second and none outlive roughly two seconds.
+                if model == "fx_emitter_fire_expensive.tik" && spec.rate == 200. {
+                    spec.rate = 105.;
+                    spec.life = Range { low: 1., high: 2. };
+                }
                 let mut point = origin;
                 let mut axes = rotation;
                 if let Some(tag) = &spec.tag {
@@ -817,6 +834,10 @@ impl Steam {
                     spec.size.high *= width / 64.;
                 }
                 let enabled = !spec.start_off;
+                // `originspawn` blocks fire their whole count each time the idle clip starts over.
+                if spec.burst.is_some() {
+                    spec.rate = 1. / duration;
+                }
                 emitters.push(Emitter {
                     id,
                     pickup: e.get("classname").is_some_and(|c| c.to_ascii_lowercase().starts_with("item_")),
@@ -838,6 +859,7 @@ impl Steam {
                     enabled,
                     // The Duchess hearth's `firesparklies` are hidden until the script shows them.
                     animation_enabled: e.get("targetname").is_some_and(|n| n == "firesparklies").then_some(false),
+                    scripted: e.get("targetname").is_some_and(|n| n == "firesparklies"),
                 });
             }
             animations.push(AnimationBinding {
@@ -933,6 +955,7 @@ impl Steam {
             e.carry = (e.carry + dt * e.spec.rate).min(32.);
             while e.carry >= 1. {
                 e.carry -= 1.;
+              for _ in 0..e.spec.burst.map_or(1, |(_, n)| n) {
                 if self.puffs.len() >= 4096 {
                     break;
                 }
@@ -964,6 +987,7 @@ impl Steam {
                     },
                     emitter: index,
                 });
+              }
             }
         }
     }
@@ -1410,6 +1434,7 @@ impl Attached {
                 carry: 0.,
                 enabled: true,
                 animation_enabled: None,
+                scripted: false,
             });
         }
         Ok(Some(Self {
@@ -1652,6 +1677,7 @@ mod tests {
                         carry: 0.,
                         enabled: true,
                         animation_enabled: None,
+                scripted: false,
                     })
                     .collect(),
                 puffs: vec![],
@@ -1867,6 +1893,7 @@ mod tests {
                 carry: 0.,
                 enabled: true,
                 animation_enabled: None,
+                scripted: false,
             }],
             puffs: vec![],
             seed: 12345,

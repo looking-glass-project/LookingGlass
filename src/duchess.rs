@@ -1051,7 +1051,9 @@ impl Duchess {
             .sweep(self.state.feet + Vec3::Z * 64., eye, Vec3::splat(0.5))
             .fraction
             >= 1.;
-        if self.state.action != Action::Phase {
+        // ATTACK_HEAD_BITE only runs DragEnemy: she no longer watches or turns toward the
+        // victim she carries, which would orbit her around the hand holding Alice.
+        if !matches!(self.state.action, Action::Phase | Action::Bite) {
             self.state.yaw = delta.y.atan2(delta.x);
         }
         match self.state.action {
@@ -2313,6 +2315,20 @@ mod tests {
         d.action(Action::Bite);
         d.state.clock = 3.3;
         assert!(!d.controlled());
+    }
+    #[test]
+    fn carrying_the_victim_never_turns_the_duchess() {
+        let mut d = boss();
+        d.action(Action::Bite);
+        d.state.yaw = 0.7;
+        let mut p = Player::new(vec3(60., 20., 0.));
+        let mut f = Feedback::default();
+        for _ in 0..30 {
+            d.step(&floor(), &mut p, &mut f);
+            // Wherever Alice is carried, the bite must not swing her round.
+            p.feet += vec3(-3., 5., 0.);
+        }
+        assert_eq!(d.state.yaw, 0.7);
     }
     #[test]
     fn attack_resume_keeps_cues_projectiles_and_damage() {

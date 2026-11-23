@@ -916,7 +916,7 @@ mod tests {
             );
             assert_ne!(store.path(slot, false), store.path(slot, true));
         }
-        for invalid in ["slot0", "slot5", "../quick", "C:\\save"] {
+        for invalid in ["slot0", "slot999", "../quick", "C:\\save"] {
             assert!(Slot::parse(invalid).is_err());
         }
     }

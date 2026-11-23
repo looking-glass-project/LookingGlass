@@ -516,13 +516,15 @@ impl Steam {
             .filter_map(|e| {
                 e.spec.light.map(
                     |(color, radius, only_models, flare)| crate::lighting::Light {
+                        // Essence pickups glow at their tag_light, the gem's centre, with a halo.
                         position: e.origin
                             + sampled(e.spec.offset, &mut 1) * e.scale
-                            + e.rotation * sampled(e.spec.axis_offset, &mut 1) * e.scale,
+                            + e.rotation * sampled(e.spec.axis_offset, &mut 1) * e.scale
+                            + if e.pickup { Vec3::Z * 14. * e.scale } else { Vec3::ZERO },
                         color: e.light_color.unwrap_or(color),
                         radius: radius * e.scale,
                         only_models,
-                        flare,
+                        flare: flare || e.pickup,
                     },
                 )
             })

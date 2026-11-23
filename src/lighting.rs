@@ -212,7 +212,7 @@ pub fn flares(eye: Vec3, direction: Vec3) {
         for l in lights.borrow().iter().filter(|l| l.flare) {
             let right = direction.cross(Vec3::Z).try_normalize().unwrap_or(Vec3::X);
             let up = right.cross(direction).normalize_or_zero();
-            let r = l.radius.clamp(8., 48.);
+            let r = (if l.radius > 1. { l.radius * 0.3 } else { l.radius }).clamp(8., 48.);
             let color: [u8; 4] = Color::new(
                 l.color.x,
                 l.color.y,

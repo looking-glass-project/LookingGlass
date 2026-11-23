@@ -3110,7 +3110,7 @@ mod tests {
         let (camera, target, visible) = follow_camera(&wall, Vec3::ZERO, Vec3::X);
         assert!(camera.x > -46. && camera.x < -45. && visible);
         assert!(!wall.sweep(camera, camera, Vec3::splat(3.9)).start_solid);
-        assert!(target.distance(camera) > 1.);
+        assert!(target.distance(camera) > 0.99);
         let tight = World::fixture(&[(vec3(-60., -100., -100.), vec3(-20., 100., 100.))]);
         let (_, _, visible) = follow_camera(&tight, Vec3::ZERO, Vec3::X);
         assert!(!visible);

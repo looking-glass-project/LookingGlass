@@ -318,6 +318,22 @@ impl Clockwork {
                     )
                 }
                 "cam_gear1" => o.pose.rotation = Quat::from_rotation_y((t * 90.).to_radians()),
+                // Hatter1_Cinema1 machine threads: they start once the fade-in begins (1.5 s in)
+                // and then loop for the rest of the scene.
+                "clock_osc_button1" | "clock_osc_button2" | "clock_osc_button3" | "clock_osc_button4" => {
+                    let i = (o.name.as_bytes()[o.name.len() - 1] - b'1') as usize;
+                    o.pose.translation.y += scene
+                        .filter(|v| v.kind == Kind::Hare)
+                        .map_or(0., |v| osc_button(i, v.time - 1.5));
+                }
+                "clock_whirler" => {
+                    if let Some(v) = scene.filter(|v| v.kind == Kind::Hare && v.time > 1.5) {
+                        let p = (v.time - 1.5 - 0.1).max(0.).rem_euclid(4.);
+                        let f = if p < 3. { p / 3. } else { 1. - (p - 3.) };
+                        o.pose.translation.x -= 64. * f;
+                        o.pose.rotation = Quat::from_rotation_y(-(180. * f).to_radians());
+                    }
+                }
                 "plunger" => {
                     let a = t.rem_euclid(4.);
                     o.pose.translation.z += if a < 3. { 40. * a } else { 120. * (4. - a) };
@@ -591,4 +607,28 @@ pub(super) fn dunk(t: f32) -> f32 {
     } else {
         300. * (1. - ((t - 6.) / 3.6).min(1.))
     }
+}
+
+/// North offset of oscillator button `i` (0..4) `t` seconds after its thread starts: the
+/// script sets 0/4/8/12 units at 0.1 s, then steps every 0.3 s through six north/south patterns.
+fn osc_button(i: usize, t: f32) -> f32 {
+    const STEPS: [[f32; 4]; 7] = [
+        [0., 4., 8., 12.],
+        [4., 8., 12., 8.],
+        [8., 12., 8., 4.],
+        [12., 8., 4., 0.],
+        [8., 4., 0., 4.],
+        [4., 0., 4., 8.],
+        [0., 4., 8., 12.],
+    ];
+    if t <= 0. {
+        return 0.;
+    }
+    if t < 0.1 {
+        return STEPS[0][i] * (t / 0.1);
+    }
+    let t = t - 0.1;
+    let n = (t / 0.3).floor() as usize % 6;
+    let f = (t / 0.3).fract();
+    STEPS[n][i] + (STEPS[n + 1][i] - STEPS[n][i]) * f
 }

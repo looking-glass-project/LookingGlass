@@ -1643,6 +1643,7 @@ mod tests {
                     .collect(),
                 puffs: vec![],
                 seed: 1,
+                tick: 0,
                 materials: vec![],
             },
         }
@@ -1856,6 +1857,7 @@ mod tests {
             }],
             puffs: vec![],
             seed: 12345,
+            tick: 0,
             materials: vec![],
         };
         let pose = Transform {

@@ -32,8 +32,19 @@ pub enum Slot {
     Two,
     Three,
     Four,
+    /// Manual slots 5 and up, shown on the later pages of the Load/Save screen.
+    Extra(u16),
 }
+/// Pages of six slots the Load/Save screen offers; the first holds the original six.
+pub const SAVE_PAGES: usize = 10;
 impl Slot {
+    /// The six slots of a Load/Save page (page 0 is the original set).
+    pub fn page(page: usize) -> [Self; 6] {
+        if page == 0 {
+            return Self::ALL;
+        }
+        std::array::from_fn(|i| Self::Extra((5 + 6 * (page - 1) + i) as u16))
+    }
     pub const ALL: [Self; 6] = [
         Self::One,
         Self::Two,
@@ -50,7 +61,10 @@ impl Slot {
             "slot2" => Ok(Self::Two),
             "slot3" => Ok(Self::Three),
             "slot4" => Ok(Self::Four),
-            _ => anyhow::bail!("Use quick, auto or slot1-slot4"),
+            _ => match s.strip_prefix("slot").and_then(|n| n.parse::<u16>().ok()) {
+                Some(n) if (5..5 + 6 * (SAVE_PAGES as u16 - 1)).contains(&n) => Ok(Self::Extra(n)),
+                _ => anyhow::bail!("Use quick, auto or slot1-slot{}", 4 + 6 * (SAVE_PAGES - 1)),
+            },
         }
     }
     pub fn name(self) -> &'static str {
@@ -61,7 +75,16 @@ impl Slot {
             Self::Two => "slot2",
             Self::Three => "slot3",
             Self::Four => "slot4",
+            Self::Extra(n) => Self::extra_names()[n as usize].as_str(),
         }
+    }
+    fn extra_titles() -> &'static [String] {
+        static TITLES: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+        TITLES.get_or_init(|| (0..5 + 6 * SAVE_PAGES).map(|n| format!("Slot {n}")).collect())
+    }
+    fn extra_names() -> &'static [String] {
+        static NAMES: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+        NAMES.get_or_init(|| (0..5 + 6 * SAVE_PAGES).map(|n| format!("slot{n}")).collect())
     }
     pub fn title(self) -> &'static str {
         match self {
@@ -71,6 +94,7 @@ impl Slot {
             Self::Four => "Slot 4",
             Self::Quick => "Quick save",
             Self::Auto => "Automatic save",
+            Self::Extra(n) => Self::extra_titles()[n as usize].as_str(),
         }
     }
 }
@@ -250,6 +274,17 @@ impl Store {
             slot.name(),
             if backup { ".previous" } else { "" }
         ))
+    }
+    /// Removes a slot's save and its backup. Missing files are not an error.
+    pub fn delete(&self, slot: Slot) -> Result<()> {
+        for backup in [false, true] {
+            match fs::remove_file(self.path(slot, backup)) {
+                Ok(()) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => return Err(e).with_context(|| format!("Cannot delete {}", slot.title())),
+            }
+        }
+        Ok(())
     }
     pub fn exists(&self, slot: Slot) -> bool {
         self.path(slot, false).is_file() || self.path(slot, true).is_file()

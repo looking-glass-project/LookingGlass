@@ -31,6 +31,7 @@ pub enum Page {
     ConfirmNew(Difficulty),
     ConfirmLoad(Slot),
     ConfirmSave(Slot),
+    ConfirmDelete(Slot),
 }
 impl Page {
     fn parent(self) -> Option<Self> {
@@ -39,14 +40,14 @@ impl Page {
             Self::Video | Self::Audio | Self::Game | Self::Controls => Some(Self::Settings),
             Self::Credits => Some(Self::Quit),
             Self::ConfirmNew(_) => Some(Self::NewGame),
-            Self::ConfirmLoad(_) | Self::ConfirmSave(_) => Some(Self::LoadSave),
+            Self::ConfirmLoad(_) | Self::ConfirmSave(_) | Self::ConfirmDelete(_) => Some(Self::LoadSave),
             _ => Some(Self::Main),
         }
     }
     fn layout(self) -> &'static str {
         match self {
             Self::Settings | Self::Video | Self::Audio | Self::Game | Self::Controls => "controls",
-            Self::LoadSave | Self::ConfirmLoad(_) | Self::ConfirmSave(_) => "loadsave",
+            Self::LoadSave | Self::ConfirmLoad(_) | Self::ConfirmSave(_) | Self::ConfirmDelete(_) => "loadsave",
             Self::NewGame | Self::ConfirmNew(_) => "newgame",
             Self::Quit => "quit",
             Self::Credits => "credits",
@@ -85,6 +86,9 @@ enum Click {
     Slot(usize),
     SaveSelection,
     LoadSelection,
+    SavePage(i32),
+    DeleteSelection,
+    Delete(Slot),
 }
 struct Button {
     rect: Rect,
@@ -442,6 +446,7 @@ pub struct Menu {
     save_usable: [bool; 6],
     save_previews: [Option<Texture2D>; 6],
     save_selected: usize,
+    save_page: usize,
     save_film: save_screen::Film,
     controls_pad: bool,
     controls_page: usize,
@@ -637,6 +642,7 @@ impl Menu {
             save_usable: [false; 6],
             save_previews: Default::default(),
             save_selected: 0,
+            save_page: 0,
             save_film: save_screen::Film::load(assets)?,
             border: load_menu_border(assets),
             title: load_loose_texture(assets, "title_bg.tga"),
@@ -947,18 +953,20 @@ impl Menu {
                     Some(w.button(click))
                 })
                 .collect(),
-            Page::ConfirmNew(_) | Page::ConfirmLoad(_) | Page::ConfirmSave(_) => {
+            Page::ConfirmNew(_) | Page::ConfirmLoad(_) | Page::ConfirmSave(_) | Page::ConfirmDelete(_) => {
                 let action = match page {
                     Page::ConfirmNew(d) => Action::NewGame(d),
                     Page::ConfirmLoad(s) => Action::Load(s),
                     Page::ConfirmSave(s) => Action::Save(s),
+                    Page::ConfirmDelete(_) => Action::Resume,
                     _ => unreachable!(),
                 };
+                let yes = match page { Page::ConfirmDelete(s) => Click::Delete(s), _ => Click::Action(action) };
                 vec![
                     Button::text(
                         Rect::new(205., 264., 100., 35.),
                         "Yes",
-                        Click::Action(action),
+                        yes,
                     ),
                     Button::text(Rect::new(335., 264., 100., 35.), "No", Click::Back),
                 ]
@@ -979,6 +987,9 @@ impl Menu {
                 if !self.frontend {
                     buttons.push(self.button_named("loadsave", "SaveButton", Click::SaveSelection));
                 }
+                buttons.push(self.button_named("loadsave", "DeleteButton", Click::DeleteSelection));
+                buttons.push(self.button_named("loadsave", "PrevButton", Click::SavePage(-1)));
+                buttons.push(self.button_named("loadsave", "NextButton", Click::SavePage(1)));
                 buttons.push(back());
                 buttons
             }
@@ -1117,7 +1128,7 @@ impl Menu {
         };
         // Adapted dialogs and paging have no original layout. Reuse the original
         // generic button lettering, while keeping their own rectangles and actions.
-        if matches!(page, Page::ConfirmNew(_) | Page::ConfirmLoad(_) | Page::ConfirmSave(_) | Page::Credits) {
+        if matches!(page, Page::ConfirmNew(_) | Page::ConfirmLoad(_) | Page::ConfirmSave(_) | Page::ConfirmDelete(_) | Page::Credits) {
             if let Some(template) = self.layouts["controls"].iter().find(|w|
                 w.kind == "Button" && w.value("stuffcommand").contains("ui_setcvars")) {
                 for b in &mut buttons {
@@ -1317,7 +1328,7 @@ impl Menu {
         }
     }
     fn refresh_saves(&mut self, store: &Store) {
-        for (index, slot) in Slot::ALL.into_iter().enumerate() {
+        for (index, slot) in Slot::page(self.save_page).into_iter().enumerate() {
             let loaded = store.read(slot);
             self.save_usable[index] = loaded.is_ok();
             self.save_previews[index] = loaded
@@ -1557,7 +1568,7 @@ impl Menu {
         }
         if matches!(
             page,
-            Page::ConfirmNew(_) | Page::ConfirmLoad(_) | Page::ConfirmSave(_)
+            Page::ConfirmNew(_) | Page::ConfirmLoad(_) | Page::ConfirmSave(_) | Page::ConfirmDelete(_)
         ) {
             let r = canvas.rect(Rect::new(100., 165., 440., 153.));
             self.ui.panel(r);
@@ -1565,6 +1576,7 @@ impl Menu {
                 Page::ConfirmNew(d) => format!("Start a new {} game?", d.name()),
                 Page::ConfirmLoad(_) => "Replace this session with the saved game?".into(),
                 Page::ConfirmSave(s) => format!("Replace {} with this game?", s.title()),
+                Page::ConfirmDelete(s) => format!("Delete {}?", s.title()),
                 _ => unreachable!(),
             };
             self.ui.font.draw(
@@ -1578,6 +1590,8 @@ impl Menu {
                 canvas,
                 if matches!(page, Page::ConfirmNew(_)) {
                     "Your current game will be saved automatically."
+                } else if matches!(page, Page::ConfirmDelete(_)) {
+                    "The save cannot be recovered. Choose No to return."
                 } else {
                     "Choose No to return."
                 },
@@ -2011,9 +2025,35 @@ impl Menu {
                                 self.save_film.sound(audio, 0);
                                 self.message.clear();
                             }
+                            Click::SavePage(delta) => {
+                                self.save_page = (self.save_page as i32 + delta).rem_euclid(crate::save::SAVE_PAGES as i32) as usize;
+                                self.save_selected = 0;
+                                self.selected = 0;
+                                self.refresh_saves(store);
+                                self.save_film.open(0, get_time());
+                                self.message.clear();
+                            }
+                            Click::DeleteSelection => {
+                                let slot = Slot::page(self.save_page)[self.save_selected];
+                                if store.exists(slot) {
+                                    self.open(Page::ConfirmDelete(slot), prefs, audio.settings);
+                                } else {
+                                    self.message = "This slot is empty.".into();
+                                }
+                            }
+                            Click::Delete(slot) => {
+                                match store.delete(slot) {
+                                    Ok(()) => {
+                                        self.refresh_saves(store);
+                                        self.open(Page::LoadSave, prefs, audio.settings);
+                                        self.message = format!("Deleted {}", slot.title());
+                                    }
+                                    Err(e) => self.message = format!("Could not delete: {e}"),
+                                }
+                            }
                             Click::LoadSelection => {
                                 if self.save_usable[self.save_selected] {
-                                    let slot = Slot::ALL[self.save_selected];
+                                    let slot = Slot::page(self.save_page)[self.save_selected];
                                     if self.frontend {
                                         action = Some(Action::Load(slot));
                                     } else {
@@ -2032,7 +2072,7 @@ impl Menu {
                                             .into();
                                     continue;
                                 }
-                                let slot = Slot::ALL[self.save_selected];
+                                let slot = Slot::page(self.save_page)[self.save_selected];
                                 if slot == Slot::Auto {
                                     self.message = "Choose a manual slot or the quick save.".into();
                                 } else if store.exists(slot) {

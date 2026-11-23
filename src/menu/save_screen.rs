@@ -237,7 +237,7 @@ impl Menu {
         self.shutter_art(canvas, "bigcover_right", 190. * open, rect);
     }
     pub(super) fn draw_save_details(&self, canvas: Canvas, page: Page, focus: Option<Click>) {
-        for (index, slot) in Slot::ALL.into_iter().enumerate() {
+        for (index, slot) in Slot::page(self.save_page).into_iter().enumerate() {
             let b = self.save_widget(&format!("LoadButton{}", index + 1));
             let lit =
                 index == self.save_selected || page == Page::LoadSave && index == self.selected;
@@ -268,13 +268,7 @@ impl Menu {
                 crate::ui::PAPER_TEXT,
             );
         }
-        // The six existing slots occupy one page. Keep the original unlit
-        // pagination/delete hardware visible without inventing new actions.
-        for name in ["PrevButton", "NextButton", "DeleteButton"] {
-            let w = self.save_widget(name);
-            self.art(canvas, w.art(), w.rect, 0.65);
-        }
-        self.draw_lettering(canvas, self.save_widget("PageNum"), "1", false);
+        self.draw_lettering(canvas, self.save_widget("PageNum"), &(self.save_page + 1).to_string(), false);
         let shown = self.save_film.shutter.sample(get_time()).0;
         self.draw_lettering(canvas, self.save_widget("MapName"), &self.save_labels[shown], false);
         let action_title = |name: &str, fallback: &str| {
@@ -287,7 +281,9 @@ impl Menu {
         let status = if page == Page::LoadSave {
             match focus {
                 Some(Click::LoadSelection) => action_title("LoadingButton", "Load Game"),
-                Some(Click::SaveSelection) if self.save_selected == 5 => "Automatic save".into(),
+                Some(Click::DeleteSelection) => action_title("DeleteButton", "Delete Game"),
+                Some(Click::SavePage(d)) => (if d < 0 { "Previous Page" } else { "Next Page" }).into(),
+                Some(Click::SaveSelection) if self.save_page == 0 && self.save_selected == 5 => "Automatic save".into(),
                 Some(Click::SaveSelection) => action_title("SaveButton", "Save Game"),
                 _ => self.save_dates[shown].clone(),
             }

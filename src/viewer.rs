@@ -3124,6 +3124,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
         for origin in power_art.take_drop_cues() {
             audio.world_effect_at("sound/item/essence/small/mtespu.wav", origin);
         }
+        crate::lighting::flush_figures(&scene.world, camera);
         {
             let _p = crate::frame_profile::span("scene_particles_etc");
             scene.draw_with_particles(

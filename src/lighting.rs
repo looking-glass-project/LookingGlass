@@ -14,7 +14,8 @@ pub struct Light {
 }
 thread_local! {
     static LIGHTS: RefCell<Vec<Light>> = const {RefCell::new(Vec::new())};
-    static FIGURE: RefCell<Option<Texture2D>> = const {RefCell::new(None)};
+    static FIGURE: RefCell<Vec<Option<Texture2D>>> = const {RefCell::new(Vec::new())};
+    static FIGURE_QUEUE: RefCell<Vec<(Vec3, Vec<[Vec3; 3]>)>> = const {RefCell::new(Vec::new())};
     static SHADOW: RefCell<Option<Texture2D>> = const {RefCell::new(None)};
     static FLARE: RefCell<Option<Texture2D>> = const {RefCell::new(None)};
     static GENERATION: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
@@ -298,6 +299,31 @@ pub const FIGURE_LIGHT: Vec3 = Vec3::new(-0.490, 0.235, 0.840);
 /// down from 5 above the origin and use `(1 - fraction) * 0.7`. Overlapping front-facing
 /// triangles blend again, exactly as the separate draws do natively.
 pub fn figure_shadow(world: &World, feet: Vec3, triangles: &[[Vec3; 3]], light: Vec3) {
+    figure_shadow_slot(0, world, feet, triangles, light);
+}
+/// Enemies and other model actors that the original shadows (every tiki without `noshadow`,
+/// renderfx 0x800|0x4000000 in CG_ModelAnim) queue their posed triangles while drawing.
+pub fn queue_figure(feet: Vec3, triangles: Vec<[Vec3; 3]>) {
+    FIGURE_QUEUE.with(|q| {
+        let mut q = q.borrow_mut();
+        if q.len() < 64 && !triangles.is_empty() {
+            q.push((feet, triangles));
+        }
+    });
+}
+/// Draw (and clear) the queued actor shadows: nearest `MAX_FIGURES` to the camera.
+pub fn flush_figures(world: &World, camera: Vec3) {
+    const MAX_FIGURES: usize = 16;
+    const MAX_DISTANCE: f32 = 2500.;
+    let mut queued = FIGURE_QUEUE.with(|q| std::mem::take(&mut *q.borrow_mut()));
+    queued.retain(|(feet, _)| feet.distance(camera) < MAX_DISTANCE);
+    queued.sort_by(|a, b| a.0.distance(camera).total_cmp(&b.0.distance(camera)));
+    queued.dedup_by(|a, b| a.0.distance(b.0) < 0.5);
+    for (i, (feet, triangles)) in queued.into_iter().take(MAX_FIGURES).enumerate() {
+        figure_shadow_slot(i + 1, world, feet, &triangles, FIGURE_LIGHT);
+    }
+}
+fn figure_shadow_slot(slot: usize, world: &World, feet: Vec3, triangles: &[[Vec3; 3]], light: Vec3) {
     let from = feet + Vec3::Z * 5.;
     let to = from - Vec3::Z * 128.5;
     let hit = world.sweep(from, to, Vec3::ZERO);
@@ -312,7 +338,18 @@ pub fn figure_shadow(world: &World, feet: Vec3, triangles: &[[Vec3; 3]], light: 
     }
     let slide = light / light.z;
     let n = FIGURE_SIZE;
-    let scale = n as f32 / (2. * FIGURE_RADIUS);
+    // Large actors need a larger mask than Alice's 64-unit half-extent.
+    let radius = triangles
+        .iter()
+        .flatten()
+        .map(|p| {
+            let flat = *p - light / light.z * (p.z - feet.z);
+            (flat.x - feet.x).abs().max((flat.y - feet.y).abs())
+        })
+        .fold(FIGURE_RADIUS, f32::max)
+        .min(768.)
+        * 1.02;
+    let scale = n as f32 / (2. * radius);
     let mut layers = vec![0_u8; n * n];
     let pixel = |p: Vec3| {
         let flat = p - slide * (p.z - feet.z);
@@ -349,27 +386,30 @@ pub fn figure_shadow(world: &World, feet: Vec3, triangles: &[[Vec3; 3]], light: 
     }
     let texture = FIGURE.with(|f| {
         let mut f = f.borrow_mut();
+        if f.len() <= slot {
+            f.resize(slot + 1, None);
+        }
         let image = Image {
             bytes,
             width: n as u16,
             height: n as u16,
         };
-        match f.as_ref() {
+        match f[slot].as_ref() {
             Some(t) => t.update(&image),
             None => {
                 let t = Texture2D::from_image(&image);
                 t.set_filter(FilterMode::Linear);
-                *f = Some(t);
+                f[slot] = Some(t);
             }
         }
-        f.clone().unwrap()
+        f[slot].clone().unwrap()
     });
     // The mask is centred on the feet; the quad lies on the floor plane found by the trace.
     let vertices = [(-1., -1.), (1., -1.), (1., 1.), (-1., 1.)]
         .into_iter()
         .map(|(x, y): (f32, f32)| {
-            let dx = x * FIGURE_RADIUS;
-            let dy = y * FIGURE_RADIUS;
+            let dx = x * radius;
+            let dy = y * radius;
             let dz = -(hit.normal.x * dx + hit.normal.y * dy) / hit.normal.z;
             Vertex {
                 position: vec3(feet.x, feet.y, center.z) + vec3(dx, dy, dz),

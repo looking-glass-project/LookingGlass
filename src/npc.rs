@@ -287,6 +287,8 @@ struct Metadata {
     name: String,
     bounds: Option<(Vec3, Vec3)>,
     airborne: bool,
+    /// `noshadow` in the tiki's server block: CG_ModelAnim then never sets RF_SHADOW.
+    noshadow: bool,
 }
 /// Read only the init/server declaration, excluding comments, client effects and animation events.
 fn metadata(text: &str) -> Result<Metadata> {
@@ -325,6 +327,7 @@ fn metadata(text: &str) -> Result<Metadata> {
                         }
                     }
                     "friend" | "civilian" => result.friendly = true,
+                    "noshadow" => result.noshadow = true,
                     "name" if args.len() >= 2 => result.name = args[1].clone(),
                     "surface" if args.len() >= 3 && args[2] == "+nodraw" => {
                         result.hidden.insert(args[1].to_lowercase());
@@ -1146,6 +1149,15 @@ impl Model {
         );
         for (visible, mesh) in self.visible.iter_mut().zip(&self.meshes) {
             *visible = mesh.is_some();
+        }
+        if !d.meta.noshadow && d.def.scale * scale > 0. {
+            let mut triangles = Vec::new();
+            for mesh in self.meshes.iter().flatten() {
+                for t in mesh.indices.chunks_exact(3) {
+                    triangles.push([0, 1, 2].map(|i| mesh.vertices[t[i] as usize].position));
+                }
+            }
+            crate::lighting::queue_figure(transform.translation, triangles);
         }
         // Model instances are shared by many actors. Always restore every mesh.
         for (i, mesh) in removed {

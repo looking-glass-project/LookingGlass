@@ -127,7 +127,7 @@ impl Default for Preferences {
             fullscreen: false,
             sensitivity: 1.,
             invert_mouse: false,
-            camera_distance: 132.,
+            camera_distance: 128.,
             always_run: false,
             lock_strafe: true,
             subtitles: true,

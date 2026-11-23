@@ -3045,6 +3045,28 @@ mod tests {
         assert!(span.end > span.start);
     }
     #[test]
+    fn reverse_gaits_use_the_backward_clips_with_the_right_weapon_class() {
+        for (run, unarmed, large, index) in [
+            (false, false, false, 37),
+            (false, false, true, 38),
+            (true, true, false, 39),
+            (true, false, false, 40),
+            (true, false, true, 41),
+        ] {
+            let mut a = animator();
+            a.reverse = true;
+            a.unarmed = unarmed;
+            a.large = large;
+            let mut p = Player::new(Vec3::ZERO);
+            p.grounded = true;
+            p.velocity = Vec3::X * 150.;
+            p.feet += p.velocity * 0.1;
+            a.update(0.1, &p, run);
+            assert_eq!(a.sound_clip, Some(index), "run {run} unarmed {unarmed} large {large}");
+            assert!(CLIPS[index].contains("back"));
+        }
+    }
+    #[test]
     fn locomotion_jumping_landing_pause_and_reset() {
         let mut a = animator();
         let mut p = Player::new(Vec3::ZERO);

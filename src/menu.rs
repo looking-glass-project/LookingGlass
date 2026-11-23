@@ -1229,7 +1229,7 @@ impl Menu {
             (Page::Game, 1) => self.draft.invert_mouse = !self.draft.invert_mouse,
             (Page::Game, 2) => {
                 self.draft.camera_distance =
-                    (self.draft.camera_distance + delta * 10.).clamp(80., 220.)
+                    (self.draft.camera_distance + delta * 10.).clamp(76., 192.)
             }
             (Page::Game, 3) => self.draft.always_run = !self.draft.always_run,
             (Page::Game, 4) => self.draft.subtitles = !self.draft.subtitles,
@@ -1267,7 +1267,7 @@ impl Menu {
             (Page::Audio, 0) => Some(self.draft_audio.music),
             (Page::Audio, 1) => Some(self.draft_audio.effects),
             (Page::Game, 0) => Some((self.draft.sensitivity - 0.2) / 2.8),
-            (Page::Game, 2) => Some(((self.draft.camera_distance - 80.) / 140.).clamp(0., 1.)),
+            (Page::Game, 2) => Some(((self.draft.camera_distance - 76.) / 116.).clamp(0., 1.)),
             (Page::Controls, row) if row == BINDINGS.len() => {
                 Some((self.draft.pad_sensitivity - 0.2) / 2.8)
             }
@@ -1283,7 +1283,7 @@ impl Menu {
             (Page::Audio, 0) => self.draft_audio.music = v,
             (Page::Audio, 1) => self.draft_audio.effects = v,
             (Page::Game, 0) => self.draft.sensitivity = 0.2 + v * 2.8,
-            (Page::Game, 2) => self.draft.camera_distance = 80. + v * 140.,
+            (Page::Game, 2) => self.draft.camera_distance = 76. + v * 116.,
             (Page::Controls, row) if row == BINDINGS.len() => {
                 self.draft.pad_sensitivity = 0.2 + v * 2.8
             }

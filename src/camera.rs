@@ -7,6 +7,8 @@ pub use handoff::Handoff;
 
 const HALF: Vec3 = Vec3::splat(4.);
 const RELEASE_DELAY: f32 = 0.12;
+/// Camera pivot height over the feet, measured live in the original (camera z - player z at level pitch).
+const NATIVE_PIVOT: f32 = 90.;
 
 #[derive(Default)]
 pub struct Follow {
@@ -35,7 +37,9 @@ impl Follow {
             .previous_feet
             .is_none_or(|last| last.distance(feet) > 128.);
         self.previous_feet = Some(feet);
-        let pivot = feet + Vec3::Z * 36.;
+        // Original cgame (FUN_30025a40): the arm runs back along the full view direction from a
+        // point 90 units above the player's origin, and the camera looks along the view, not at Alice.
+        let pivot = feet + Vec3::Z * NATIVE_PIVOT;
         // Filter small steps/landings vertically, without lagging mouse aim or strafing.
         self.height = if fresh {
             pivot.z
@@ -53,9 +57,9 @@ impl Follow {
                 anchor_hit.fraction
             },
         );
-        let shoulder = vec3(direction.y, -direction.x, 0.).normalize_or_zero() * 24.;
-        let offset = -direction * distance.clamp(0., 1024.) + Vec3::Z * 12. + shoulder;
-        self.resolve(world, target, offset, dt, fresh, f32::INFINITY)
+        let offset = -direction.normalize_or_zero() * distance.clamp(0., 1024.);
+        let (eye, _, visible) = self.resolve(world, target, offset, dt, fresh, f32::INFINITY);
+        (eye, eye + direction, visible)
     }
 
     /// Preserve the rail camera's framing, but keep its arm out of tunnel walls.
@@ -239,10 +243,10 @@ mod tests {
         let world = wall(-22.);
         let mut camera = Follow::default();
         let (eye, target, visible) = camera.update(&world, Vec3::ZERO, Vec3::X, 132., 1. / 60.);
-        safe(&world, eye, target);
+        safe(&world, eye, Vec3::Z * NATIVE_PIVOT);
         assert!(!visible);
         assert!(
-            eye.z - target.z < 3.,
+            eye.z - NATIVE_PIVOT < 3.,
             "A close wall must not swing the camera overhead"
         );
         assert!(eye.x > -18.);
@@ -255,21 +259,21 @@ mod tests {
         let mut camera = Follow::default();
         camera.update(&empty, Vec3::ZERO, Vec3::X, 132., 1. / 60.);
         let (near, target, _) = camera.update(&wall, Vec3::ZERO, Vec3::X, 132., 1. / 60.);
-        safe(&wall, near, target);
+        safe(&wall, near, Vec3::Z * NATIVE_PIVOT);
         for i in 0..30 {
             let w = if i % 2 == 0 { &empty } else { &wall };
             let (eye, target, _) = camera.update(w, Vec3::ZERO, Vec3::X, 132., 1. / 60.);
-            safe(w, eye, target);
+            safe(w, eye, Vec3::Z * NATIVE_PIVOT);
             assert!(eye.distance(near) < 9.);
         }
         let mut previous = near;
         for _ in 0..90 {
             let (eye, target, _) = camera.update(&empty, Vec3::ZERO, Vec3::X, 132., 1. / 60.);
-            safe(&empty, eye, target);
+            safe(&empty, eye, Vec3::Z * NATIVE_PIVOT);
             assert!(eye.distance(previous) < 12.);
             previous = eye;
         }
-        assert!(camera.arm > 132.);
+        assert!(camera.arm > 131.9);
     }
 
     #[test]
@@ -283,7 +287,7 @@ mod tests {
             let angle = i as f32 * 0.013;
             let direction = vec3(angle.cos(), angle.sin(), 0.);
             let (eye, target, _) = camera.update(&world, Vec3::ZERO, direction, 220., 1. / 120.);
-            safe(&world, eye, target);
+            safe(&world, eye, Vec3::Z * NATIVE_PIVOT);
         }
     }
 
@@ -303,17 +307,17 @@ mod tests {
         assert!(ends.windows(2).all(|p| (p[0] - p[1]).abs() < 0.001));
         let mut camera = Follow::default();
         camera.update(&empty, Vec3::ZERO, Vec3::X, 132., 0.);
-        let (eye, target, _) = camera.update(&empty, Vec3::Z * 18., Vec3::X, 132., 1. / 60.);
-        assert!((42. ..54.).contains(&target.z));
+        let (eye, _, _) = camera.update(&empty, Vec3::Z * 18., Vec3::X, 132., 1. / 60.);
+        assert!((96. ..108.).contains(&eye.z));
         assert_eq!(
             camera.update(&empty, Vec3::Z * 18., Vec3::X, 132., 0.).0,
             eye
         );
-        let (_, target, _) = camera.update(&empty, Vec3::Z * 1000., Vec3::X, 132., 1. / 60.);
-        assert_eq!(target.z, 1036.);
+        let (eye, _, _) = camera.update(&empty, Vec3::Z * 1000., Vec3::X, 132., 1. / 60.);
+        assert_eq!(eye.z, 1090.);
         camera.reset();
-        let (_, target, _) = camera.update(&empty, Vec3::Z * 18., Vec3::X, 132., 0.);
-        assert_eq!(target.z, 54.);
+        let (eye, _, _) = camera.update(&empty, Vec3::Z * 18., Vec3::X, 132., 0.);
+        assert_eq!(eye.z, 108.);
     }
 }
 

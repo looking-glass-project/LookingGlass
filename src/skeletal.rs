@@ -377,6 +377,12 @@ impl Animation {
         if distance <= 0. || !distance.is_finite() {
             return time;
         }
+        // Backward gaits (run_back_*, walk_back_*) travel along -X; weigh by the dominant direction.
+        let sign = if self.frames.iter().map(|f| f.delta.x).sum::<f32>() < 0. {
+            -1.
+        } else {
+            1.
+        };
         let weights: Vec<f32> = self
             .frames
             .iter()
@@ -384,7 +390,7 @@ impl Animation {
                 if vertical {
                     f.delta.z.abs()
                 } else {
-                    f.delta.x.max(0.)
+                    (f.delta.x * sign).max(0.)
                 }
             })
             .collect();

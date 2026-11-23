@@ -3054,6 +3054,10 @@ mod tests {
             (true, false, true, 41),
         ] {
             let mut a = animator();
+            // Real run_back_*/walk_back_* clips travel along -X (header distance is a length).
+            for f in &mut a.clips[index].frames {
+                f.delta.x = -f.delta.x;
+            }
             a.reverse = true;
             a.unarmed = unarmed;
             a.large = large;
@@ -3063,6 +3067,12 @@ mod tests {
             p.feet += p.velocity * 0.1;
             a.update(0.1, &p, run);
             assert_eq!(a.sound_clip, Some(index), "run {run} unarmed {unarmed} large {large}");
+            let before = a.time;
+            for _ in 0..5 {
+                p.feet += p.velocity * 0.05;
+                a.update(0.05, &p, run);
+            }
+            assert!(a.time > before + 0.05, "{} must advance with travel", CLIPS[index]);
             assert!(CLIPS[index].contains("back"));
         }
     }

@@ -2359,6 +2359,10 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
                 steam.stop();
             }
             steam.sync(&interactions.event_world);
+            if let Some(d) = &interactions.duchess {
+                let (ids, on) = d.hearth_emitters();
+                steam.script_group(&ids, on);
+            }
             if let Some(v) = &interactions.village {
                 v.place_particles(&mut steam);
             }
@@ -2997,6 +3001,10 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
         scene.update_ropes(world_dt, rope_hand, &transforms);
         steam.animate(environment_clock);
         steam.sync(&interactions.event_world);
+        if let Some(d) = &interactions.duchess {
+            let (ids, on) = d.hearth_emitters();
+            steam.script_group(&ids, on);
+        }
         steam.collected(&pickups, &stats);
         if interactions
             .school

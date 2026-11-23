@@ -674,6 +674,9 @@ impl World {
         self.weapon_obstacles.clone_from(&other.weapon_obstacles);
         self.dynamic_liquids.clone_from(&other.dynamic_liquids);
     }
+    pub fn dynamic_clone(&self) -> Vec<Collider> {
+        self.dynamic.clone()
+    }
     pub fn set_dynamic(&mut self, colliders: Vec<Collider>) {
         self.dynamic = colliders;
     }

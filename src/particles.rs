@@ -327,6 +327,9 @@ fn supported(model: &str) -> bool {
                     | "fx_mushroom_steam.tik"
                     | "al_fire1.tik"
                     | "fx_emitter_fire_expensive.tik"
+                    | "fx_eyestaff_spark.tik"
+                    | "fx_eyestaff_splode.tik"
+                    | "prj_napalm.tik"
                     | "fx_bubbles_noair.tik"
                     | "fx_bubbles_air.tik"
                     | "fx_mockturtle_launcher.tik"
@@ -610,6 +613,13 @@ impl Steam {
         self.puffs
             .retain(|p| !self.emitters[p.emitter].spec.start_off);
     }
+    /// Script `show`/`hide` of the Duchess hearth emitters (`firesparklies`).
+    pub fn script_group(&mut self, ids: &[usize], on: bool) {
+        for e in self.emitters.iter_mut().filter(|e| ids.contains(&e.id)) {
+            e.animation_enabled = Some(on);
+            e.enabled = on;
+        }
+    }
     pub fn sync(&mut self, state: &crate::event::Runtime) {
         for e in &mut self.emitters {
             e.enabled = state.enabled(crate::entity::Id(e.id))
@@ -826,7 +836,8 @@ impl Steam {
                     // One ten-second pixie is alive from entry, then replaced.
                     carry: if model == "lantern.tik" { 1. } else { 0. },
                     enabled,
-                    animation_enabled: None,
+                    // The Duchess hearth's `firesparklies` are hidden until the script shows them.
+                    animation_enabled: e.get("targetname").is_some_and(|n| n == "firesparklies").then_some(false),
                 });
             }
             animations.push(AnimationBinding {

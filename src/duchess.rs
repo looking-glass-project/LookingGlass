@@ -237,7 +237,7 @@ pub struct Duchess {
     route: Vec<usize>,
     route_age: f32,
     /// Always-on fire emitters riding a moving wall: (entity id, wall group).
-    fires: Vec<(usize, usize, Vec3, Quat)>,
+    fires: Vec<(usize, usize, Vec3, Quat, bool)>,
 }
 fn entity<'a>(map: &'a Bsp, name: &str) -> Result<&'a BTreeMap<String, String>> {
     map.entities
@@ -310,6 +310,17 @@ impl Duchess {
         ] {
             points.insert(n.into(), origin(map, n)?);
         }
+        // Alice's start point also hangs above the floor; drop it onto the ground so she does not fall in.
+        if let Ok(world) = World::from_bsp(map) {
+            let at = points["fuck_pos"];
+            let half = crate::collision::PLAYER_HALF;
+            let c = crate::collision::PLAYER_CENTER;
+            let top = at + c;
+            let down = world.sweep(top, top - Vec3::Z * 96., half);
+            if !down.start_solid && down.fraction < 1. && down.normal.z >= 0.65 {
+                points.insert("fuck_pos".into(), top - Vec3::Z * 96. * down.fraction - c + Vec3::Z * 0.25);
+            }
+        }
         // The Duchess's waypoints hang above the floor; her model origin is at her feet, so the
         // scripted entrance (duchessin -> duchessout) would otherwise leave her floating.
         if let Ok(world) = World::from_bsp(map) {
@@ -320,7 +331,7 @@ impl Duchess {
                 let top = at + Vec3::Z * (64.1 + 8.);
                 let down = world.sweep(top, top - Vec3::Z * 96., half);
                 if !down.start_solid && down.fraction < 1. && down.normal.z >= 0.65 {
-                    points.insert(n.into(), top - Vec3::Z * (96. * down.fraction + 64.1));
+                    points.insert(n.into(), top - Vec3::Z * (96. * down.fraction + 64.1) + Vec3::Z * 0.5);
                 }
             }
         }
@@ -415,13 +426,14 @@ impl Duchess {
                 .entities
                 .iter()
                 .enumerate()
-                .filter(|(_, e)| e.get("model").is_some_and(|m| m.trim_start_matches("models/") == "fx_emitter_fire_expensive.tik"))
+                .filter(|(_, e)| e.get("model").is_some_and(|m| matches!(m.trim_start_matches("models/"), "fx_emitter_fire_expensive.tik" | "fx_eyestaff_spark.tik" | "fx_eyestaff_splode.tik" | "prj_napalm.tik")))
                 .filter_map(|(i, e)| {
                     Some((
                         i,
                         group(e.get("targetname")?)?,
                         crate::interaction::vector(e.get("origin")?)?,
                         crate::decorations::rotation(e),
+                        e.get("targetname").is_some_and(|n| n == "firesparklies"),
                     ))
                 })
                 .collect(),
@@ -665,11 +677,17 @@ impl Duchess {
     pub fn colliders(&self) -> impl Iterator<Item = Collider> + '_ {
         self.objects.iter().map(|o| o.collider.clone())
     }
+    /// Entity ids of the `firesparklies` emitters and whether the script has them shown
+    /// (`start_emitters` 0.3 s into `expand_room`, `stop_emitters` 3 s later).
+    pub fn hearth_emitters(&self) -> (Vec<usize>, bool) {
+        let ids = self.fires.iter().filter(|f| f.4).map(|f| f.0).collect();
+        (ids, self.state.stage == Stage::Expanding && (0.3..3.3).contains(&self.state.time))
+    }
     /// Pose offsets for the fire emitters bound to the moving walls.
     pub fn emitter_poses(&self) -> Vec<(crate::entity::Id, Transform)> {
         self.fires
             .iter()
-            .map(|&(id, g, origin, rotation)| {
+            .map(|&(id, g, origin, rotation, _)| {
                 (
                     crate::entity::Id(id),
                     Transform {
@@ -684,6 +702,28 @@ impl Duchess {
         self.objects
             .iter()
             .map(|o| (o.model, o.pose.translation, o.pose.rotation))
+    }
+    /// Land her entrance points on the floor as it is once the room has finished expanding
+    /// (the moving brushes include the hearth), so the walking hull starts clear of them.
+    fn settle_final(&mut self, world: &mut World) {
+        let stage = std::mem::replace(&mut self.state.stage, Stage::Fighting);
+        let poses: Vec<_> = self.objects.iter().map(|o| self.object_pose(o)).collect();
+        self.state.stage = stage;
+        let colliders: Vec<_> = self.objects.iter().zip(&poses)
+            .map(|(o, p)| o.shape.at(p.translation, p.rotation)).collect();
+        let before = world.dynamic_clone();
+        world.set_dynamic(colliders);
+        let half = vec3(32., 32., 64.);
+        for n in ["duchessin", "duchessout"] {
+            let at = self.points[n];
+            let top = at + Vec3::Z * (64.1 + 24.);
+            let down = world.sweep(top, top - Vec3::Z * 160., half);
+            if !down.start_solid && down.fraction < 1. && down.normal.z >= 0.65 {
+                self.points.insert(n.into(), top - Vec3::Z * (160. * down.fraction + 64.1) + Vec3::Z * 0.5);
+            }
+        }
+        world.set_dynamic(before);
+        self.state.feet = self.points["duchessout"];
     }
     pub fn advance(
         &mut self,
@@ -711,6 +751,7 @@ impl Duchess {
             player.release_rope();
             player.script_facing = std::f32::consts::FRAC_PI_2;
             self.state.home = player.feet;
+            self.settle_final(world);
         }
         match self.state.stage {
             Stage::Expanding if self.state.time >= 4.2 => self.stage(Stage::Introduction),
@@ -1599,7 +1640,10 @@ impl Art {
         }
         if d.state.stage != Stage::Waiting {
             let (clip, time, looping) =
-                if matches!(d.state.stage, Stage::Expanding | Stage::Introduction) {
+                if d.state.stage == Stage::Expanding && d.state.time >= 3. {
+                    // Duchess_Grow: she runs out of the fireplace while growing to full size.
+                    ("run", d.state.time - 3., true)
+                } else if matches!(d.state.stage, Stage::Expanding | Stage::Introduction) {
                     ("idle_1", d.state.time, true)
                 } else {
                     (
@@ -1635,7 +1679,11 @@ impl Art {
                     looping,
                     Transform {
                         translation: pos,
-                        rotation: Quat::from_rotation_z(d.state.yaw),
+                        rotation: Quat::from_rotation_z(if d.state.stage == Stage::Expanding {
+                            -std::f32::consts::FRAC_PI_2
+                        } else {
+                            d.state.yaw
+                        }),
                     },
                     grow,
                     fullbright,
@@ -1885,17 +1933,6 @@ impl Art {
                 camera,
                 atmosphere,
             );
-        }
-        if d.state.stage == Stage::Expanding {
-            for i in 0..20 {
-                let t = (d.state.time + i as f32 * 0.13) % 1.;
-                crate::render_fx::sphere(
-                    vec3((i as f32 * 3.).sin() * 25., 930., 40. + t * 180.) + d.group_offset(0),
-                    3. + t * 6.,
-                    None,
-                    Color::new(1., 0.35, 0.08, 1. - t),
-                );
-            }
         }
         gl_use_default_material();
     }

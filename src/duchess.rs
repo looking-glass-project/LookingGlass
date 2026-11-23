@@ -60,6 +60,45 @@ impl Action {
         }
     }
 }
+/// Native bone controller scales of the Duchess's attack clips: the server-side
+/// `setcontrollerscale` events of `c_duchess.tik` step the scale on exact frames.
+/// Controller 0 is `Bip01 Head` (the bite swells it to twice its size around the
+/// grab) and controller 3 is `Bip01 R UpperArm` (the smack swells the swinging arm),
+/// as bound in the game library's actor start-up.
+fn growth(action: Action, frame: f32) -> Option<(&'static str, f32)> {
+    let f = frame.floor().max(0.) as i32;
+    match action {
+        Action::Bite => Some((
+            "Bip01 Head",
+            match f {
+                ..=9 => 1.0,
+                10..=19 => 1.0 + (f - 9) as f32 * 0.1,
+                20..=59 => 2.0,
+                60 => 1.8,
+                61 => 1.7,
+                62 => 1.6,
+                63 => 1.5,
+                64 => 1.4,
+                65 => 1.2,
+                66 => 1.1,
+                _ => 1.0,
+            },
+        )),
+        Action::Smack => Some((
+            "Bip01 R UpperArm",
+            match f {
+                ..=0 => 1.0,
+                1..=4 => 1.0 + f as f32 * 0.2,
+                5..=13 => 1.8,
+                14 => 1.6,
+                15 => 1.4,
+                16 => 1.2,
+                _ => 1.0,
+            },
+        )),
+        _ => None,
+    }
+}
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct Shot {
     pub position: Vec3,
@@ -1673,6 +1712,12 @@ impl Art {
                 };
             // The phase body and its afterimages belong in the translucent pass.
             if d.state.action != Action::Phase {
+                let scales: Vec<_> = (d.state.stage == Stage::Fighting)
+                    .then(|| growth(d.state.action, d.state.clock / d.timing.frame(d.state.action, 1.)))
+                    .flatten()
+                    .into_iter()
+                    .collect();
+                self.duchess.bone_scales(&scales);
                 self.duchess.draw_filtered(
                     clip,
                     time,
@@ -2048,6 +2093,20 @@ impl Duchess {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn attack_growth_follows_the_tiki_controller_events() {
+        let head = |f| growth(Action::Bite, f).unwrap();
+        assert_eq!(head(9.9), ("Bip01 Head", 1.));
+        assert!((head(10.).1 - 1.1).abs() < 1e-6 && (head(19.5).1 - 2.).abs() < 1e-6);
+        assert_eq!(head(59.).1, 2.);
+        assert_eq!((head(60.).1, head(65.).1, head(67.).1), (1.8, 1.2, 1.));
+        let arm = |f| growth(Action::Smack, f).unwrap();
+        assert_eq!(arm(0.5).1, 1.);
+        assert!((arm(4.).1 - 1.8).abs() < 1e-6 && arm(13.).1 == 1.8);
+        assert_eq!((arm(14.).1, arm(16.).1, arm(17.).1), (1.6, 1.2, 1.));
+        assert!(growth(Action::Pepper, 5.).is_none());
+    }
     use super::*;
     #[test]
     fn phase_trail_tracks_motion_at_fixed_intervals_and_expires() {

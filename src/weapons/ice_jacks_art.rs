@@ -109,7 +109,10 @@ impl Art {
             jacks.push(Prop::load(a, name, specs)?);
         }
         let mut stream =
-            Attached::load(a, "w_icewand", specs)?.context("Ice Wand emitters missing")?;
+            Attached::load(a, "w_icewand", specs)?
+                .context("Ice Wand emitters missing")?
+                // Engine `.spr` sprites: half-extent is texture width / 2 times the emitter scale.
+                .engine_sprite_size();
         for name in [
             "cubes",
             "smoker",

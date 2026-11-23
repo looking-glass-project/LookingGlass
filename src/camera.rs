@@ -196,6 +196,35 @@ pub fn check(assets: &mut crate::assets::Assets) -> anyhow::Result<()> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn bite_camera_follows_the_recorded_topdown_behaviour() {
+        let world = World::fixture(&[]);
+        let mut bite = Bite::default();
+        let head = vec3(0., 0., Bite::VIEW_HEIGHT);
+        let dt = 1. / 60.;
+        let mut last = None;
+        for frame in 0..180 {
+            // Frame 34.5 passes the first bite cue.
+            last = bite.update(&world, Some(frame as f32 / 3.), Vec3::X, head, dt);
+        }
+        let camera = last.unwrap();
+        // Looking almost straight down at the held player, 128 back along the view.
+        let forward = (camera.target - camera.eye).normalize();
+        assert!((forward.z + 75f32.to_radians().sin()).abs() < 0.06, "{forward}");
+        assert!(camera.eye.z > head.z + 100.);
+        // A bite kicks roll together with pitch, then it decays away.
+        let mut bite = Bite::default();
+        bite.update(&world, Some(33.), Vec3::X, head, dt);
+        let kicked = bite.update(&world, Some(34.), Vec3::X, head, dt).unwrap();
+        assert!((kicked.up - Vec3::Z).length() > 0.03);
+        // Release blends back to the player's view within 0.15 s.
+        let mut done = false;
+        for _ in 0..12 {
+            done |= bite.update(&world, None, Vec3::X, head, dt).is_none();
+        }
+        assert!(done);
+    }
+
     fn wall(x: f32) -> World {
         World::fixture(&[(vec3(x - 10., -200., -100.), vec3(x, 200., 200.))])
     }
@@ -341,10 +370,12 @@ impl FrozenOrbit {
     }
 }
 
-/// The original's camera while the Duchess holds Alice, recorded from the running game:
-/// yaw locks where the player was looking, pitch eases down to 75 degrees (rate about 11/s),
-/// each of the three bites kicks it a further 4.7 degrees decaying at about 2/s, and on
-/// release it eases back to the player's own view. 128 units out, head as the focus.
+/// The original's camera while the Duchess holds Alice, read from the running game: Alice's
+/// HELD state selects the engine's `topdown` camera. Yaw locks where the player was looking,
+/// pitch eases to 75 degrees (about 11/s), each of the three bites kicks pitch and roll
+/// together to 4.7 degrees (decaying near 1.95/s), and on release the view blends back to the
+/// player's own in about 0.15 s. The follow camera then sits `cg_cameradist` (128) back from the
+/// view origin, raised by `cg_cameraheight` and `cg_cameraverticaldisplacement` (16 each).
 #[derive(Default)]
 pub struct Bite {
     active: bool,
@@ -352,8 +383,12 @@ pub struct Bite {
     pitch: f32,
     kick: f32,
     frame: f32,
+    leaving: Option<(f32, f32, f32)>,
 }
 impl Bite {
+    /// Height of the view origin above Alice's feet in the recorded camera.
+    pub const VIEW_HEIGHT: f32 = 58.;
+    const RELEASE: f32 = 0.15;
     pub fn update(
         &mut self,
         world: &crate::collision::World,
@@ -365,33 +400,51 @@ impl Bite {
         let player_yaw = direction.y.atan2(direction.x);
         let player_pitch = (-direction.normalize_or_zero().z).clamp(-1., 1.).asin();
         let rate = 1. - (-11. * dt).exp();
+        let mut pitch;
+        let mut roll;
         if let Some(frame) = frame {
             if !self.active {
-                *self = Self { active: true, yaw: player_yaw, pitch: player_pitch, kick: 0., frame };
+                *self = Self { active: true, yaw: player_yaw, pitch: player_pitch, kick: 0., frame, leaving: None };
             }
+            self.leaving = None;
             self.pitch += (75f32.to_radians() - self.pitch) * rate;
             if [34., 44., 54.].iter().any(|&f| self.frame < f && frame >= f) {
                 self.kick = 4.7f32.to_radians();
             }
             self.frame = frame;
+            self.kick *= (-1.95 * dt).exp();
+            pitch = self.pitch + self.kick;
+            roll = self.kick;
         } else if self.active {
+            let (from_pitch, from_kick, elapsed) = self.leaving.get_or_insert((self.pitch + self.kick, self.kick, 0.));
+            *elapsed += dt;
+            let t = (*elapsed / Self::RELEASE).clamp(0., 1.);
+            pitch = *from_pitch + (player_pitch - *from_pitch) * t;
+            roll = *from_kick * (1. - t);
             let turn = (player_yaw - self.yaw + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU) - std::f32::consts::PI;
-            self.yaw += turn * rate;
-            self.pitch += (player_pitch - self.pitch) * rate;
-            if (self.pitch - player_pitch).abs() < 2f32.to_radians() {
+            self.yaw += turn * t;
+            if t >= 1. {
                 self.active = false;
+                self.leaving = None;
                 return None;
             }
         } else {
             return None;
         }
-        self.kick *= (-2.05 * dt).exp();
-        let pitch = self.pitch + self.kick;
+        pitch = pitch.clamp(-1.5, 1.5);
+        roll = roll.clamp(-0.5, 0.5);
         let forward = vec3(pitch.cos() * self.yaw.cos(), pitch.cos() * self.yaw.sin(), -pitch.sin());
         let origin = head + Vec3::Z * 16.;
         let eye = origin - forward * 128. + Vec3::Z * 16.;
         let trace = world.sweep(origin, eye, Vec3::splat(4.));
         let eye = if trace.start_solid { eye } else { origin.lerp(eye, (trace.fraction - 0.01).clamp(0., 1.)) };
-        Some(crate::cinematic::Camera::look(eye, eye + forward * 128.))
+        let mut camera = crate::cinematic::Camera::look(eye, eye + forward * 128.);
+        // Positive roll in the original tilts the view clockwise.
+        let right = forward.cross(Vec3::Z).normalize_or_zero();
+        if right != Vec3::ZERO {
+            let up = right.cross(forward).normalize_or_zero();
+            camera.up = up * roll.cos() + right * roll.sin();
+        }
+        Some(camera)
     }
 }

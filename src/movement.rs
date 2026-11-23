@@ -85,6 +85,9 @@ pub struct Player {
     pub script_rope_length: Option<f32>,
     #[serde(default)]
     pub script_facing: f32,
+    /// An enemy has Alice (the original IS_GRABBED): she plays `held` and the camera goes top-down.
+    #[serde(skip)]
+    pub held: bool,
     pub steam: bool,
     pub feet: Vec3,
     pub velocity: Vec3,
@@ -165,6 +168,7 @@ impl Player {
             script_rope_rise: 0.,
             script_rope_length: None,
             script_facing: 0.,
+            held: false,
             steam: false,
             feet,
             velocity: Vec3::ZERO,

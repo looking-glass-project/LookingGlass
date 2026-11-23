@@ -15,7 +15,7 @@ use macroquad::{
 };
 use std::collections::BTreeMap;
 
-pub(crate) const CLIPS: [&str; 36] = [
+pub(crate) const CLIPS: [&str; 37] = [
     "idle_base_01",
     "walk_nowep",
     "run_nowep",
@@ -53,12 +53,15 @@ pub(crate) const CLIPS: [&str; 36] = [
     "death_forward",
     "death_hard",
     "death_knockback",
+    // `held` in alice.tik: Alice thrashing while an enemy has her.
+    "shake",
 ];
 const DEATH_FAINT: usize = 16;
 const DEATH_HIDEOUS: usize = 32;
 const DEATH_FORWARD: usize = 33;
 const DEATH_HARD: usize = 34;
 const DEATH_KNOCKBACK: usize = 35;
+const HELD: usize = 36;
 
 /// The original `global/alice_torso.st` DEATH state: the first entry whose
 /// conditions hold (each CHANCE rolled in order) picks Alice's ground death.
@@ -139,6 +142,7 @@ enum Motion {
     Airship,
     Hang,
     PullUp,
+    Held,
 }
 impl Motion {
     fn index(self) -> usize {
@@ -157,6 +161,7 @@ impl Motion {
                 | Self::Cart
                 | Self::Airship
                 | Self::Hang
+                | Self::Held
         )
     }
 }
@@ -292,6 +297,8 @@ impl Animator {
         self.landings = player.landings;
         let next = if self.motion == Motion::Death {
             Motion::Death
+        } else if player.held {
+            Motion::Held
         } else if player.script_motion > 0 {
             match player.script_motion {
                 1 => Motion::Rope,
@@ -344,6 +351,7 @@ impl Animator {
             self.time = if next == Motion::Takeoff { 0.25 } else { 0. };
         }
         let index = match self.motion {
+            Motion::Held => HELD,
             Motion::Hang | Motion::PullUp => player.ledge.as_ref().map_or(26, |h| h.clip()),
             Motion::Death => {
                 // alice_torso.st KILLED: DEATH_WATER needs IN_WATER "2" and !ON_FIRE.

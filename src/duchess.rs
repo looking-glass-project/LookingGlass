@@ -774,6 +774,7 @@ impl Duchess {
         if dt <= 0. || !dt.is_finite() {
             return Ok(());
         }
+        player.held = false;
         if self.cinematic() {
             self.state.time += dt.min(0.1);
         }
@@ -1221,6 +1222,7 @@ impl Duchess {
                     player.velocity = Vec3::ZERO;
                     player.cancel_climb();
                     player.release_rope();
+                    player.held = true;
                 }
                 let frames = [34., 44., 54., 65.];
                 while self.state.cue < 4

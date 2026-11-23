@@ -2857,7 +2857,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
             &scene.world,
             interactions.duchess.as_ref().and_then(|d| d.bite_frame()),
             direction,
-            player.feet + Vec3::Z * 75.,
+            player.feet + Vec3::Z * crate::camera::Bite::VIEW_HEIGHT,
             if active { dt } else { 0. },
         );
         let scripted_camera = pand_camera

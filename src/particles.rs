@@ -61,6 +61,8 @@ struct Spec {
     constrain: Option<Vec3>,
     tag: Option<String>,
     rate: f32,
+    /// `collision` with a `bouncefactor`: sparks rebound off surfaces instead of dying on them.
+    bounce: Option<f32>,
     size: Range,
     growth: f32,
     life: Range,
@@ -93,6 +95,7 @@ impl Default for Spec {
             rate: 0.,
             size: Range::fixed(0.3),
             growth: 0.,
+            bounce: None,
             life: Range::fixed(1.),
             offset: [Range::default(); 3],
             axis_offset: [Range::default(); 3],
@@ -189,6 +192,7 @@ fn parse(text: &str) -> Vec<Spec> {
             "scalemin" => s.size.low = n(1).unwrap_or(s.size.low),
             "scalemax" => s.size.high = n(1).unwrap_or(s.size.high),
             "scalerate" => s.growth = n(1).unwrap_or(0.),
+            "bouncefactor" => s.bounce = n(1).filter(|v| *v > 0.),
             "life" => {
                 let mut i = 1;
                 s.life = scalar(&t, &mut i).unwrap_or_default();
@@ -923,7 +927,15 @@ impl Steam {
             // Its casing still occludes the sprite through the depth buffer.
             // A trace per puff per frame dominated torch halls: test each puff every fourth
             // frame, along the distance it will cover until its next test.
-            if self.emitters[p.emitter].spec.constrain.is_none()
+            if let Some(bounce) = self.emitters[p.emitter].spec.bounce {
+                // Native tempmodels with `collision` and a bouncefactor rebound off the world.
+                let hit = world.sweep(p.position, next, Vec3::ZERO);
+                if hit.fraction < 1. {
+                    let n = hit.normal;
+                    p.velocity = (p.velocity - n * (2. * p.velocity.dot(n))) * bounce;
+                    next = p.position + n * 0.5;
+                }
+            } else if self.emitters[p.emitter].spec.constrain.is_none()
                 && (index as u32).wrapping_add(tick) % 4 == 0
                 && world.sweep(p.position, p.position + p.velocity * dt * 4., Vec3::ZERO).fraction < 1.
             {

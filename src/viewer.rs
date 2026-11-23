@@ -1274,6 +1274,25 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
                             }
                         ));
                     }
+                    Ok(Command::LockStrafe(value)) => {
+                        if let Some(value) = value {
+                            preferences.lock_strafe = value;
+                            if let Err(e) = preferences.save() {
+                                console.print(format!(
+                                    "Applied; settings could not be saved: {e}"
+                                ));
+                            }
+                        }
+                        console.print(format!(
+                            "cg_lockstrafe {} ({})",
+                            u8::from(preferences.lock_strafe),
+                            if preferences.lock_strafe {
+                                "body follows the view, native"
+                            } else {
+                                "free third-person turning"
+                            }
+                        ));
+                    }
                     Ok(Command::Wuss) => {
                         match crate::console::gameplay::give(
                             "weapons", &assets, &catalog, &mut stats,
@@ -2605,6 +2624,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
         targets.extend(alice.ice_targets());
         alice.world_time(dt, world_dt);
         alice.notarget(stats.ignores_alice());
+        alice.lock_strafe = preferences.lock_strafe && !flying;
         let weapon_sounds = alice.update_funded(
             if (active && !pand_cinematic) || death_animation {
                 dt

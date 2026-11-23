@@ -15,7 +15,7 @@ use macroquad::{
 };
 use std::collections::BTreeMap;
 
-pub(crate) const CLIPS: [&str; 37] = [
+pub(crate) const CLIPS: [&str; 42] = [
     "idle_base_01",
     "walk_nowep",
     "run_nowep",
@@ -55,6 +55,12 @@ pub(crate) const CLIPS: [&str; 37] = [
     "death_knockback",
     // `held` in alice.tik: Alice thrashing while an enemy has her.
     "shake",
+    // Backward gaits (alice_legs.st WALK_BACKWARD / RUN_BACKWARD), used while locked to the view.
+    "walk_back_smallwep",
+    "walk_back_bigwep",
+    "run_back_nowep",
+    "run_back_smallwep",
+    "run_back_bigwep",
 ];
 const DEATH_FAINT: usize = 16;
 const DEATH_HIDEOUS: usize = 32;
@@ -183,6 +189,8 @@ struct Animator {
     landings: u64,
     large: bool,
     unarmed: bool,
+    /// Moving against the facing (lock-strafe): play the backward gait clips.
+    reverse: bool,
     offset: f32,
     previous_offset: f32,
     death_clip: usize,
@@ -242,6 +250,7 @@ impl Animator {
             landings: 0,
             large: false,
             unarmed: false,
+            reverse: false,
             offset: 0.,
             previous_offset: 0.,
             death_clip: DEATH_FAINT,
@@ -400,6 +409,22 @@ impl Animator {
                     24
                 } else {
                     6
+                }
+            }
+            Motion::Walk if self.reverse => {
+                if self.large {
+                    38
+                } else {
+                    37
+                }
+            }
+            Motion::Run if self.reverse => {
+                if self.unarmed {
+                    39
+                } else if self.large {
+                    41
+                } else {
+                    40
                 }
             }
             Motion::Walk => {
@@ -570,6 +595,8 @@ impl Animator {
 
 pub struct Character {
     pub weapon_notice: Option<&'static str>,
+    /// Native lock-strafe: the body always faces the view yaw (CE-recorded), never the travel direction.
+    pub lock_strafe: bool,
     _material_layers: Vec<std::rc::Rc<crate::render_fx::Surface>>,
     foot_rig: crate::footing::Rig,
     foot_state: crate::footing::State,
@@ -787,6 +814,7 @@ impl Character {
             meshes,
             material,
             scale: def.scale,
+            lock_strafe: false,
             facing: 0.,
             actions,
             visuals,
@@ -907,6 +935,11 @@ impl Character {
         }
         self.animator.large = [4, 7, 8].contains(&weapon.selected);
         self.animator.unarmed = weapon.selected == crate::weapons::UNARMED;
+        self.animator.reverse = self.lock_strafe && {
+            let v = player.velocity.truncate();
+            let look = weapon.aim.truncate().normalize_or_zero();
+            v.length() > 1. && look.dot(v.normalize()) < -0.5
+        };
         self.animator.update(
             if self.visuals.ice_locked() { 0. } else { dt },
             player,
@@ -964,6 +997,9 @@ impl Character {
         } else if dt > 0. && attack_aim.is_some() {
             let aim = attack_aim.unwrap();
             self.facing = aim.y.atan2(aim.x);
+        } else if dt > 0. && self.lock_strafe && weapon.aim.truncate().length() > 1e-3 {
+            // Native: body yaw is the view yaw in every direction of travel and at rest.
+            self.facing = weapon.aim.y.atan2(weapon.aim.x).rem_euclid(std::f32::consts::TAU);
         } else if dt > 0. && player.velocity.truncate().length() > 12. {
             let target = player.velocity.y.atan2(player.velocity.x);
             let difference = (target - self.facing + std::f32::consts::PI)

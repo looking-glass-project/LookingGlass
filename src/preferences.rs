@@ -99,6 +99,8 @@ pub struct Preferences {
     pub invert_mouse: bool,
     pub camera_distance: f32,
     pub always_run: bool,
+    /// Native lock-strafe control (body always faces the view); false is free third-person turning.
+    pub lock_strafe: bool,
     pub subtitles: bool,
     pub bindings: Vec<String>,
     pub pad_bindings: Vec<String>,
@@ -127,6 +129,7 @@ impl Default for Preferences {
             invert_mouse: false,
             camera_distance: 132.,
             always_run: false,
+            lock_strafe: true,
             subtitles: true,
             bindings: BINDINGS.iter().map(|(_, key)| (*key).to_owned()).collect(),
             pad_bindings: pad_defaults(),

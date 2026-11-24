@@ -173,21 +173,24 @@ impl Blood {
         if loaded.is_none() {
             return;
         }
-        let trace = world.sweep(at + Vec3::Z * 8., at - Vec3::Z * 160., Vec3::splat(1.));
-        if trace.start_solid || trace.fraction >= 1. || trace.normal.z < 0.5 {
+        // CE (FUN_100de6f0, hooked over 12 hits): a point trace from the entity origin along
+        // d = (centroid - origin) + (crandom(20), crandom(20), -50), reaching |d| + 10 units. The
+        // decal sits at the trace end on any surface it meets; nothing beyond that reach.
+        let start = at + Vec3::Z * 25.;
+        let d = vec3((self.roll() * 2. - 1.) * 20., (self.roll() * 2. - 1.) * 20., -75.);
+        let end = start + d * (1. + 10. / d.length());
+        let trace = world.sweep(start, end, Vec3::splat(0.1));
+        if trace.start_solid || trace.fraction >= 1. {
             return;
         }
-        let center = (at + Vec3::Z * 8.).lerp(at - Vec3::Z * 160., trace.fraction);
-        // Original: crandom(20) on X and Y for every blood decal (CE-verified on a fire imp kill).
-        let jitter = 40.;
-        let (jx, jy) = ((self.roll() - 0.5) * jitter, (self.roll() - 0.5) * jitter);
+        let center = start.lerp(end, trace.fraction);
         let radius = 8. + self.roll() * 8.;
         if self.decals.len() >= MAX_DECALS {
             self.decals.remove(0);
         }
         let spin = self.roll() * std::f32::consts::TAU;
         self.decals.push(Decal {
-            center: center + vec3(jx, jy, 0.) + trace.normal * 0.4,
+            center: center + trace.normal * 0.4,
             normal: trace.normal,
             radius,
             spin,

@@ -756,7 +756,8 @@ impl State {
                 if self.demon.is_none() {
                     out.refund += combat::will_cost(6, false);
                 }
-                let left = (8. - self.time).max(0.);
+                // Measured in the running game: the thrown dice are removed exactly 3.0 s after the rift opens.
+                let left = 3.;
                 self.smoke
                     .extend(self.dice.iter().map(|d| Smoke { position: d.position, age: 0., left }));
                 self.dice.clear();
@@ -1241,7 +1242,8 @@ impl Art {
             }
             // fgame FUN_100605b0: fx_rift plays `idle` (opening) then `fullsize` at the dice's
             // landing point while the summon is present; the dismissal closes it again.
-            if d.phase != Phase::Vanish || d.time < 0.5 {
+            // Measured: the rift entity is removed exactly 10.0 s after it opens.
+            if d.life < 10. && (d.phase != Phase::Vanish || d.time < 0.5) {
                 let pose = Transform {
                     translation: d.feet,
                     rotation: Quat::IDENTITY,

@@ -147,7 +147,11 @@ impl Blood {
         let template = self
             .templates
             .entry(name.clone())
-            .or_insert_with(|| Attached::load(assets, &name, specs).ok().flatten());
+            .or_insert_with(|| {
+                // CE/Ghidra: the blood sprites are 16 px (blood_drip, blood_spray); the engine draws a
+                // sprite at texture width times scale, a quarter of this renderer's 64 px baseline.
+                Attached::load(assets, &name, specs).ok().flatten().map(Attached::engine_sprite_size)
+            });
         if let Some(t) = template {
             if self.live.len() >= 16 {
                 self.live.remove(0);

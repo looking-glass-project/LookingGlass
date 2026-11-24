@@ -53,7 +53,24 @@ struct Decal {
     texture: String,
 }
 const MAX_DECALS: usize = 48;
-const FADE: f32 = 4.;
+/// Native decal polys (CE hook on the engine's poly add, game-clock): vertex RGBA 255,255,255,255
+/// for 9 s, then alpha falls linearly to 0 over 1 s (removed ~10 s after spawn).
+const FADE: f32 = 1.;
+fn decal_alpha(life: f32, age: f32) -> f32 {
+    ((life - age) / FADE).clamp(0., 1.)
+}
+#[cfg(test)]
+mod decal_tests {
+    use super::*;
+    /// Native CE capture: full alpha through 9 s, ~half at 9.5 s, gone at 10 s.
+    #[test]
+    fn alpha_matches_native_timeline() {
+        assert_eq!(decal_alpha(10., 0.), 1.);
+        assert_eq!(decal_alpha(10., 8.9), 1.);
+        assert!((decal_alpha(10., 9.5) - 0.5).abs() < 1e-4);
+        assert_eq!(decal_alpha(10., 10.), 0.);
+    }
+}
 impl Blood {
     fn blood_model(&mut self, assets: &mut Assets, model: &str) -> Option<String> {
         self.models
@@ -174,7 +191,7 @@ impl Blood {
             normal: trace.normal,
             radius,
             spin,
-            life: 13.,
+            life: 10.,
             age: 0.,
             texture: key,
         });
@@ -206,7 +223,7 @@ impl Blood {
             let y = d.normal.cross(x);
             let (sin, cos) = d.spin.sin_cos();
             let (x, y) = ((x * cos + y * sin) * d.radius, (y * cos - x * sin) * d.radius);
-            let alpha = ((d.life - d.age) / FADE).clamp(0., 1.);
+            let alpha = decal_alpha(d.life, d.age);
             let mesh = Mesh {
                 vertices: [
                     (d.center - x - y, vec2(0., 0.)),

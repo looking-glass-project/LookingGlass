@@ -72,6 +72,8 @@ pub struct Hud {
     pub ui: std::rc::Rc<crate::ui::Ui>,
     meters: [Texture2D; 2],
     icons: Vec<Texture2D>,
+    /// Demon Dice foldout images for owning two and three dice.
+    dice_icons: [Texture2D; 2],
     power_icons: [Texture2D; 3],
     pickup_models: std::cell::RefCell<Vec<crate::weapons::Prop>>,
     foldout: crate::tan::Model,
@@ -110,7 +112,12 @@ impl Hud {
                 ),
             )?);
         }
+        let dice_icons = [
+            load(assets, "models/ui/dice2.ftx")?,
+            load(assets, "models/ui/dice3.ftx")?,
+        ];
         Ok(Self {
+            dice_icons,
             pickup_models: std::cell::RefCell::new(pickup_models),
             ui: crate::ui::Ui::load(assets)?,
             meters,
@@ -151,8 +158,14 @@ impl Hud {
             self.ui.toast(&self.message, 80. * crate::ui::overlay_scale());
         }
     }
-    fn icon(&self, index: usize, r: Rect, color: Color) {
-        self.foldout_icon(&self.icons[index], r, false, color);
+    fn icon(&self, index: usize, copies: u8, r: Rect, color: Color) {
+        // Native hud_foldout_dice1/2/3: the Demon Dice image follows how many dice Alice owns.
+        let texture = match (WEAPONS[index].0, copies) {
+            ("demondice", 2) => &self.dice_icons[0],
+            ("demondice", 3..) => &self.dice_icons[1],
+            _ => &self.icons[index],
+        };
+        self.foldout_icon(texture, r, false, color);
     }
     fn foldout_icon(&self, texture: &Texture2D, r: Rect, mirror: bool, color: Color) {
         let points = &self.foldout.surfaces[0].frames[0];
@@ -363,7 +376,7 @@ impl Hud {
             );
         }
         if let Some(selected) = stats.equipped() {
-            self.icon(selected, weapon_rect, WHITE);
+            self.icon(selected, stats.copies(selected), weapon_rect, WHITE);
             self.ui.fit_label(
                 WEAPONS[selected].1,
                 weapon_rect.right() + 10. * text_s,
@@ -476,6 +489,7 @@ impl Hud {
             let size = (r.h - 52.).min(r.w - 20.);
             self.icon(
                 i,
+                stats.copies(i),
                 Rect::new(r.x + (r.w - size) * 0.5, r.y + 5., size, size),
                 if owned {
                     WHITE

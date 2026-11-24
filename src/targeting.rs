@@ -66,6 +66,9 @@ pub struct Pointer {
     pentagram: Option<Pentagram>,
     dice: Option<usize>,
     effect: Attached,
+    /// fgame Player reticle types 2 and 3: two emitters orbit the tracked enemy.
+    orbit: [Attached; 2],
+    clock: f32,
     rules: Vec<Rule>,
     age: f32,
     previous: Option<(usize, Vec3)>,
@@ -107,7 +110,9 @@ impl Pointer {
             dice: crate::inventory::WEAPONS
                 .iter()
                 .position(|(name, _)| *name == "demondice"),
+            orbit: [effect.fork(), effect.fork()],
             effect,
+            clock: 0.,
             rules,
             age: 0.,
             previous: None,
@@ -164,6 +169,40 @@ impl Pointer {
                         crate::render_fx::effect(&mesh, blend);
                     }
                 }
+            }
+            return;
+        }
+        if sight.weapon.and_then(|w| self.rules.get(w)).is_some_and(|r| matches!(r.kind, 2 | 3)) {
+            // Types 2 (jacks, cards) and 3 (mallet) mark only the tracked enemy: two blue target
+            // emitters circle it at 8 rad/s, on opposite sides, at half its bounding radius.
+            self.previous = None;
+            self.age = 0.;
+            let origin = sight.eye - Vec3::Z * 20.;
+            let Some(target) = crate::weapons::aim_target(ctx, origin, sight.direction)
+                .and_then(|id| ctx.targets.iter().find(|t| t.id == id))
+            else {
+                self.clock = 0.;
+                return;
+            };
+            self.clock += dt.clamp(0., 0.1);
+            let radius = target.half.length() * 0.5;
+            let center = target.center;
+            for (i, orbit) in self.orbit.iter_mut().enumerate() {
+                let sign = if i == 0 { 1. } else { -1. };
+                orbit.draw(
+                    self.clock,
+                    0.2,
+                    |t, _| {
+                        let (sin, cos) = (t * 8.).sin_cos();
+                        crate::skeletal::Transform {
+                            translation: center + vec3(cos, sin, 0.) * radius * sign,
+                            rotation: Quat::IDENTITY,
+                        }
+                    },
+                    |name, _, _| name == "blue",
+                    camera,
+                    atmosphere,
+                );
             }
             return;
         }

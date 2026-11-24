@@ -36,6 +36,10 @@ pub(crate) use projectile::Projectile;
 
 /// The Vorpal Blade's melee volume (40 units, native +-15 X/Y and 0..24 Z) for
 /// headless route drivers, which use the same contact rules as the live weapon.
+/// The enemy the jacks, cards and mallet track (`Player::FindClosestEnemyInRadius`).
+pub(crate) fn aim_target(ctx: &CombatContext<'_>, origin: Vec3, aim: Vec3) -> Option<usize> {
+    projectile::target(ctx, origin, aim)
+}
 pub(crate) fn blade_melee(ctx: &CombatContext<'_>, origin: Vec3, aim: Vec3) -> Vec<Hit> {
     projectile::melee(ctx, origin, aim)
 }

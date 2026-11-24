@@ -869,9 +869,24 @@ impl Prop {
                 .or_else(|| def.skins.get("all"))
                 .with_context(|| format!("Weapon surface skin missing: {}/{}", def.path, s.name))?;
             let path = texture::resolve(assets, &format!("{}/{skin}", def.path), specs)
-                .or_else(|| texture::resolve(assets, skin, specs))
-                .with_context(|| format!("Weapon texture {skin}"))?;
-            let image = texture::decode(assets, &path)?;
+                .or_else(|| texture::resolve(assets, skin, specs));
+            // Shaders such as fx/rift_base draw `$whiteimage`, which has no file.
+            let white = path.is_none()
+                && specs.get(&skin.to_ascii_lowercase()).is_some_and(|spec| {
+                    spec.stages.iter().flat_map(|st| &st.images).any(|c| c == "$whiteimage" || c == "*white")
+                });
+            let image = if white {
+                texture::RgbaImage {
+                    width: 1,
+                    height: 1,
+                    pixels: vec![255; 4],
+                }
+            } else {
+                texture::decode(
+                    assets,
+                    &path.with_context(|| format!("Weapon texture {skin}"))?,
+                )?
+            };
             let tex = Texture2D::from_rgba8(image.width, image.height, &image.pixels);
             tex.set_filter(FilterMode::Linear);
             material_layers.push(crate::render_fx::register(

@@ -2221,8 +2221,12 @@ impl Visuals {
                 self.props[10].draw(anchors[1], 1., fullbright);
             }
         }
-        if [0, 3, 5].contains(&index) {
-            if let Some(age) = actions.return_age() {
+        if [0, 3, 5, 6].contains(&index) {
+            if let Some(age) = if index == 6 {
+                self.dice.return_age()
+            } else {
+                actions.return_age()
+            } {
                 crate::render::depth_read_only(|| self.draw_return(anchors[0], age));
             }
         }

@@ -288,10 +288,16 @@ pub struct State {
     pub beams: Vec<Beam>,
     seed: u32,
     pub cooldown: f32,
+    /// Seconds since the thrown dice reappeared in Alice's hand; negative while they are away.
+    #[serde(default = "no_regen")]
+    regen: f32,
     time: f32,
     accumulator: f64,
     #[serde(default)]
     world_accumulator: f64,
+}
+fn no_regen() -> f32 {
+    99.
 }
 impl Default for State {
     fn default() -> Self {
@@ -307,6 +313,7 @@ impl Default for State {
             beams: vec![],
             seed: 0x6d2b79f5,
             cooldown: 0.,
+            regen: no_regen(),
             time: 0.,
             accumulator: 0.,
             world_accumulator: 0.,
@@ -340,6 +347,10 @@ pub fn tier(pips: &[u8]) -> usize {
     }
 }
 impl State {
+    /// Age of the hand reappearance burst, while it is still visible.
+    pub fn return_age(&self) -> Option<f32> {
+        (0. ..1.9).contains(&self.regen).then_some(self.regen)
+    }
     pub fn ready(&self) -> bool {
         self.cooldown <= 0. && self.dice.is_empty() && self.demon.is_none()
     }
@@ -367,6 +378,7 @@ impl State {
         self.time = 0.;
         self.forced_king = count == 3 && self.rage;
         self.cooldown = 6.;
+        self.regen = -1.;
         for i in 0..count {
             // Private deterministic generator: saving mid-throw cannot reroll a summon.
             self.seed ^= self.seed << 13;
@@ -561,6 +573,16 @@ impl State {
     ) {
         if real_active {
             self.cooldown = (self.cooldown - STEP).max(0.);
+            // fx_thrownweapon: the dice return half a second before the cycle ends and the
+            // reappearance burst plays on the hand, with weapon_reappear.wav.
+            if self.regen < 99. && self.cooldown <= 0.5 && self.dice.is_empty() && self.demon.is_none()
+            {
+                if self.regen < 0. {
+                    self.regen = 0.;
+                    out.sounds.push("sound/weapon/shared/weapon_reappear.wav");
+                }
+                self.regen = (self.regen + STEP).min(99.);
+            }
         }
         if world_active {
             self.beams.retain_mut(|b| {

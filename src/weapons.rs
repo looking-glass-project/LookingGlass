@@ -2361,8 +2361,12 @@ impl Visuals {
             self.props[12].draw(
                 Transform {
                     translation: d.position,
-                    rotation: Quat::from_rotation_x(d.age * 7.)
-                        * Quat::from_rotation_y(d.age * 11.),
+                    // A die that has stopped no longer tumbles.
+                    rotation: if d.resting {
+                        Quat::IDENTITY
+                    } else {
+                        Quat::from_rotation_x(d.age * 7.) * Quat::from_rotation_y(d.age * 11.)
+                    },
                 },
                 1.,
                 fullbright,

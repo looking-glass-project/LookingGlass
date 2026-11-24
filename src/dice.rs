@@ -282,6 +282,10 @@ pub struct State {
     #[serde(default)]
     next_id: u32,
     pub dice: Vec<Die>,
+    /// Landed dice: w_throwndice's `smoke` animation hides the die and starts its smoke emitter
+    /// until the projectile's 8 second life ends.
+    #[serde(default)]
+    pub smoke: Vec<Smoke>,
     pub demon: Option<Demon>,
     bolts: Vec<Bolt>,
     #[serde(default)]
@@ -308,6 +312,7 @@ impl Default for State {
             forced_king: false,
             next_id: 0,
             dice: vec![],
+            smoke: vec![],
             demon: None,
             bolts: vec![],
             beams: vec![],
@@ -319,6 +324,12 @@ impl Default for State {
             world_accumulator: 0.,
         }
     }
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct Smoke {
+    pub position: Vec3,
+    pub age: f32,
+    pub left: f32,
 }
 #[derive(Default)]
 pub struct Feedback {
@@ -639,6 +650,12 @@ impl State {
                 contact.is_none() && !wall.start_solid && wall.fraction >= 1. && b.age < 2.
             });
         }
+        if real_active {
+            self.smoke.retain_mut(|s| {
+                s.age += STEP;
+                s.age < s.left
+            });
+        }
         if real_active && !self.dice.is_empty() {
             self.time += STEP;
             for die in &mut self.dice {
@@ -697,6 +714,9 @@ impl State {
                 if self.demon.is_none() {
                     out.refund += combat::will_cost(6, false);
                 }
+                let left = (8. - self.time).max(0.);
+                self.smoke
+                    .extend(self.dice.iter().map(|d| Smoke { position: d.position, age: 0., left }));
                 self.dice.clear();
                 self.time = 0.;
                 out.sounds
@@ -1068,6 +1088,9 @@ pub struct Art {
     emitters: std::collections::BTreeMap<u32, crate::particles::Attached>,
     poof: Vec<crate::particles::Attached>,
     spawn: crate::particles::Attached,
+    /// w_throwndice `smoke` originemitter (firesmoke.spr, 7/s, 2.5 s life, scale 0.5 growing 0.4/s).
+    smoke: crate::particles::Attached,
+    smoke_forks: Vec<crate::particles::Attached>,
     pub atmosphere: std::cell::RefCell<crate::environment::Atmosphere>,
 }
 impl Art {
@@ -1124,6 +1147,9 @@ impl Art {
             poof,
             spawn: crate::particles::Attached::load(assets, "fx_demonspawn", specs)?
                 .ok_or_else(|| anyhow::anyhow!("Missing demon spawn effect"))?,
+            smoke: crate::particles::Attached::load(assets, "w_throwndice", specs)?
+                .ok_or_else(|| anyhow::anyhow!("Missing thrown dice smoke"))?,
+            smoke_forks: vec![],
             atmosphere: Default::default(),
         })
     }
@@ -1209,6 +1235,22 @@ impl Art {
                     &atmosphere,
                 );
             }
+        }
+        while self.smoke_forks.len() < state.smoke.len() {
+            self.smoke_forks.push(self.smoke.fork());
+        }
+        for (fork, s) in self.smoke_forks.iter_mut().zip(&state.smoke) {
+            fork.draw(
+                s.age,
+                1.,
+                |_, _| Transform {
+                    translation: s.position,
+                    rotation: Quat::IDENTITY,
+                },
+                |_, _, _| true,
+                camera,
+                &atmosphere,
+            );
         }
         self.emitters
             .retain(|id, _| state.bolts.iter().any(|p| p.id == *id));

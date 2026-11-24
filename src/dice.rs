@@ -344,6 +344,19 @@ impl State {
         self.cooldown <= 0. && self.dice.is_empty() && self.demon.is_none()
     }
     pub fn throw(&mut self, count: u8, origin: Vec3, direction: Vec3) -> bool {
+        self.throw_at(count, origin, direction, None)
+    }
+    /// fgame `DemonDice::Throw` (FUN_1005ef90). Unlocked: the view forward times 300, scaled by
+    /// 0.005, launched at speed 300. Locked on an enemy (the pentagram target): the offset to it
+    /// plus half of sv_gravity upward, scaled by 0.005 and launched at the distance. Dice 2 and 3
+    /// leave 0.2 of a speed to the left and right of the first.
+    pub fn throw_at(
+        &mut self,
+        count: u8,
+        origin: Vec3,
+        direction: Vec3,
+        target: Option<Vec3>,
+    ) -> bool {
         if !self.ready()
             || !(1..=3).contains(&count)
             || !origin.is_finite()
@@ -360,11 +373,20 @@ impl State {
             self.seed ^= self.seed >> 17;
             self.seed ^= self.seed << 5;
             let pip = (self.seed % 6 + 1) as u8;
-            let spread = (i as f32 - (count - 1) as f32 * 0.5) * 0.16;
+            let forward = direction.normalize_or_zero();
+            let (aim, speed) = match target.filter(|t| t.is_finite()) {
+                Some(t) => ((t - origin + Vec3::Z * 400.) * 0.005, (t - origin).length()),
+                None => (forward * 300. * 0.005, 300.),
+            };
+            let right = forward.cross(Vec3::Z).normalize_or_zero();
+            let side = match i {
+                1 => -right * 0.2,
+                2 => right * 0.2,
+                _ => Vec3::ZERO,
+            };
             self.dice.push(Die {
                 position: origin,
-                velocity: Quat::from_rotation_z(spread) * direction.normalize_or_zero() * 200.
-                    + Vec3::Z * 110.,
+                velocity: (aim + side) * speed,
                 age: 0.,
                 resting: false,
                 pip,

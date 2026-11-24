@@ -1918,7 +1918,10 @@ impl Visuals {
                     self.first_person,
                     8.,
                 );
-                self.dice.throw(self.dice_count, origin, aimed);
+                let locked = projectile::target(context, eye - Vec3::Z * 20., direction)
+                    .and_then(|id| context.targets.iter().find(|t| t.id == id))
+                    .map(|t| t.center);
+                self.dice.throw_at(self.dice_count, origin, aimed, locked);
                 return;
             }
             if weapon == 1 || p.alternate() {

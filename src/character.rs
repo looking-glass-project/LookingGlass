@@ -1139,6 +1139,10 @@ impl Character {
     pub fn ice_locked(&self) -> bool {
         self.visuals.ice_locked()
     }
+    /// Whether the native idle camera state (`IDLE_CAMERA`) is active.
+    pub fn idle_camera(&self) -> bool {
+        self.acting.camera_idle()
+    }
     pub fn frozen(&self) -> Option<(f32, Vec3, f32)> {
         self.visuals.frozen()
     }
@@ -1396,6 +1400,9 @@ impl Character {
         out
     }
     pub fn draw_effects(&mut self, camera: Vec3, fullbright: bool, show_alice: bool) {
+        if let Some((pose, scale)) = self.acting.mount {
+            self.visuals.attached_ice_mist(pose, scale, camera);
+        }
         self.visuals
             .draw_effects(&self.material, camera, fullbright, show_alice);
     }

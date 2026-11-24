@@ -2338,6 +2338,11 @@ impl Visuals {
         }
         gl_use_default_material();
     }
+    /// The ice wand an idle gesture carries keeps its always-on `ice_effect` mist emitter.
+    pub fn attached_ice_mist(&mut self, pose: Transform, scale: f32, camera: Vec3) {
+        self.ice_art
+            .held_mist(pose, scale, self.ice.clock as f32, camera);
+    }
     pub fn draw_effects(
         &mut self,
         body_material: &crate::character::SkinMaterial,

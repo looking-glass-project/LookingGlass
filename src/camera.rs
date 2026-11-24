@@ -198,6 +198,22 @@ pub fn check(assets: &mut crate::assets::Assets) -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn idle_view_settles_at_native_yaw_and_level_pitch() {
+        let mut v = super::IdleView::default();
+        let start = vec3(0.6, 0.6, 0.5).normalize();
+        let mut d = start;
+        for _ in 0..120 {
+            d = v.update(start, true, 1. / 60.);
+        }
+        let yaw = (d.y.atan2(d.x) - start.y.atan2(start.x)).rem_euclid(std::f32::consts::TAU);
+        assert!((yaw - super::IdleView::YAW).abs() < 0.01 && d.z.abs() < 0.01);
+        for _ in 0..120 {
+            d = v.update(start, false, 1. / 60.);
+        }
+        assert!(d.distance(start) < 1e-3);
+    }
+
     use super::*;
 
     #[test]
@@ -450,5 +466,34 @@ impl Bite {
             camera.up = up * roll.cos() + right * roll.sin();
         }
         Some(camera)
+    }
+}
+
+/// Native `camera frontright` idle view, measured live in cgame: view pitch pinned to 0 and view yaw
+/// offset by -210 degrees (= +150) from the player's, blending at about 11 per second.
+#[derive(Default)]
+pub struct IdleView {
+    blend: f32,
+    last: Vec3,
+}
+
+impl IdleView {
+    pub const YAW: f32 = 150. * std::f32::consts::PI / 180.;
+    pub fn update(&mut self, direction: Vec3, wanted: bool, dt: f32) -> Vec3 {
+        // The native state requires the view angles to be unchanged.
+        let turned = self.last.distance(direction) > 1e-3;
+        self.last = direction;
+        let target = if wanted && !turned { 1. } else { 0. };
+        self.blend += (target - self.blend) * (1. - (-11. * dt.clamp(0., 0.1)).exp());
+        if self.blend < 1e-3 {
+            self.blend = 0.;
+            return direction;
+        }
+        let yaw = direction.y.atan2(direction.x) + Self::YAW * self.blend;
+        let pitch = direction.z.clamp(-1., 1.).asin() * (1. - self.blend);
+        vec3(yaw.cos() * pitch.cos(), yaw.sin() * pitch.cos(), pitch.sin())
+    }
+    pub fn reset(&mut self) {
+        self.blend = 0.;
     }
 }

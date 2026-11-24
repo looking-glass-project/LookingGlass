@@ -706,6 +706,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
     level_art.prepare(&mut assets, &scene, &interactions, true)?;
     let mut third_person = true;
     let mut follow_camera = crate::camera::Follow::default();
+    let mut idle_view = crate::camera::IdleView::default();
     let mut bite_view = crate::camera::Bite::default();
     let mut camera_handoff = crate::camera::Handoff::default();
     let frozen_orbit = crate::camera::FrozenOrbit::load(&mut assets)?;
@@ -2889,15 +2890,21 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
             .or(frozen_camera)
             .or(glass_camera);
         let (eye, aim, gameplay_alice) = if third_person && !flying {
+            let view = idle_view.update(
+                direction,
+                alice.idle_camera() && scripted_camera.is_none(),
+                if active { dt } else { 0. },
+            );
             follow_camera.update(
                 &scene.world,
                 player.feet,
-                direction,
+                view,
                 preferences.camera_distance,
                 if active { dt } else { 0. },
             )
         } else {
             follow_camera.reset();
+            idle_view.reset();
             (pos, pos + direction, false)
         };
         let fade = interactions

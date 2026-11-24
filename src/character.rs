@@ -929,6 +929,7 @@ impl Character {
             return Vec::new();
         }
         self.water_art.burn_step(dt, player);
+        self.water_art.splash_step(dt, player);
         self.visuals.dice_count = weapon.dice.min(3);
         if weapon.selected == 6 && !self.visuals.dice.ready() {
             weapon.click = None;
@@ -1369,6 +1370,7 @@ impl Character {
             self.material.bind_appearance(Appearance { ghost, ..Default::default() });
         }
         self.water_art.draw_fire(feet, self.scale);
+        self.water_art.draw_splashes();
         self.material.bind_appearance(Appearance { ghost, ..Default::default() });
         if !matches!(
             self.animator.motion,

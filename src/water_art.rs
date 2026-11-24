@@ -27,7 +27,24 @@ pub struct Art {
     visible: bool,
     warning: Option<f32>,
     view: RefCell<(Atmosphere, Vec3)>,
+    /// `fx_splashsmall`: spawned whenever Alice's feet first touch liquid (native player event 6).
+    splash: Option<Attached>,
+    splashes: Vec<Splash>,
+    /// `None` until the first step after a reset or restore: that step only records the state, so
+    /// loading or teleporting into water is not a splash.
+    last_level: Option<u8>,
+    last_fall: f32,
 }
+struct Splash {
+    fx: Attached,
+    at: Vec3,
+    scale: f32,
+    age: f32,
+}
+/// Longest-lived splash sprite (the ripple rings live 2.5 s).
+const SPLASH_LIFE: f32 = 2.6;
+/// The model's own `scale 0.65` times the event scale.
+const SPLASH_MODEL_SCALE: f32 = 0.65;
 
 /// Exercise the actual Character draw path, including immediate paused restores.
 pub async fn check(a: &mut Assets) -> Result<()> {
@@ -191,6 +208,52 @@ pub async fn check(a: &mut Assets) -> Result<()> {
     set_default_camera();
     crate::viewer::save_capture(&root.join("garden-swimming.png"))?;
     next_frame().await;
+    // Entering the water: dry for a frame, then feet in the liquid, so the native event-6 splash
+    // (mist, drops and flat ripple rings) fires once and ages on the gameplay clock.
+    let mut splash_player = player.clone();
+    splash_player.immersion = Immersion::default();
+    splash_player.velocity = Vec3::new(0., 0., -900.);
+    let mut splash_alice = Character::load(a)?;
+    splash_alice.reset(&splash_player, 0.);
+    let tick = |c: &mut Character, p: &Player, dt: f32| {
+        c.update(
+            dt,
+            p,
+            false,
+            crate::weapons::WeaponInput { aim: Vec3::X, ..Default::default() },
+            &crate::combat::Context { world: &scene.world, targets: &[] },
+        );
+    };
+    tick(&mut splash_alice, &splash_player, 1. / 60.);
+    splash_player.immersion = Immersion { level: 1, kind: Liquid::Water };
+    splash_player.velocity = Vec3::ZERO;
+    tick(&mut splash_alice, &splash_player, 1. / 60.);
+    let splash_target = splash_player.feet + Vec3::Z * 14.;
+    let splash_camera = Camera3D {
+        position: splash_target + vec3(-150., -110., 70.),
+        target: splash_target,
+        up: Vec3::Z,
+        fovy: 55_f32.to_radians(),
+        z_near: 2.,
+        z_far: 30000.,
+        ..Default::default()
+    };
+    let mut elapsed = 0.;
+    for (name, until) in [("splash-0.15", 0.15), ("splash-0.5", 0.5), ("splash-1.2", 1.2)] {
+        while elapsed < until {
+            tick(&mut splash_alice, &splash_player, 1. / 60.);
+            elapsed += 1. / 60.;
+        }
+        clear_background(Color::new(0.12, 0.2, 0.27, 1.));
+        set_camera(&splash_camera);
+        crate::render_fx::begin_view(&splash_camera, 2., &Atmosphere::default(), true);
+        splash_alice.atmosphere(&Atmosphere::default(), splash_camera.position);
+        splash_alice.draw(splash_player.feet, true);
+        crate::render_fx::finish();
+        set_default_camera();
+        crate::viewer::save_capture(&root.join(format!("{name}.png")))?;
+        next_frame().await;
+    }
     println!("PASS swimming shell: {} visible pixels; paused/restore/refill identical; absent without reward/on land/in lava; low-air bubbles visible and paused; actual Garden breathing", changed(0,1));
     Ok(())
 }
@@ -234,7 +297,10 @@ impl Art {
         };
         Ok(Self {
             shell: Prop::build(a, def, model, specs)?,
+            // Engine sprite size is texture width times scale (CE-verified), as for the other
+            // underwater bubble owners; without it the 200/s breath bubbles are far too big.
             bubbles: Attached::load(a, "fx_alicebreath", specs)?
+                .map(Attached::engine_sprite_size)
                 .context("Missing breath bubbles")?,
             fire: Attached::load(a, "fx_catchfire", specs).ok().flatten(),
             burn: None,
@@ -247,9 +313,19 @@ impl Art {
             visible: false,
             warning: None,
             view: RefCell::new((Atmosphere::default(), Vec3::ZERO)),
+            splash: Attached::load_clip_bursts(a, "fx_splashsmall", Some("idle"), 0.05, specs)
+                .ok()
+                .flatten()
+                .map(Attached::engine_sprite_size)
+                .map(Attached::flat_sprites),
+            splashes: Vec::new(),
+            last_level: None,
+            last_fall: 0.,
         })
     }
     pub fn reset(&mut self) {
+        self.splashes.clear();
+        self.last_level = None;
         self.visible = false;
         self.warning = None;
         self.bubbles = self.bubbles.fork();
@@ -260,6 +336,44 @@ impl Art {
         self.burn_left = 0.;
         if let Some(f) = &mut self.fire {
             f.restart();
+        }
+    }
+    /// Native player event 6 (FUN_100b6ee0 in fgamex86): when the feet reach water the game spawns
+    /// `fx_splashsmall` at the surface, scaled `clamp(1 - (vz + 400) / 1500, 1, 1.5)` by how fast
+    /// Alice was falling. Lava plays the burn sound instead and spawns nothing.
+    pub fn splash_step(&mut self, dt: f32, player: &Player) {
+        for s in &mut self.splashes {
+            s.age += dt;
+        }
+        self.splashes.retain(|s| s.age < SPLASH_LIFE);
+        let level = player.immersion.level.min(3) as u8;
+        if self.last_level == Some(0) && level > 0 && player.immersion.kind != crate::water::Liquid::Lava {
+            if let Some(template) = &self.splash {
+                let f = 1. - (self.last_fall + 400.) / 1500.;
+                let event_scale = if f >= 1. { f.min(1.5) } else { 1. };
+                if self.splashes.len() >= 6 {
+                    self.splashes.remove(0);
+                }
+                self.splashes.push(Splash {
+                    fx: template.fork(),
+                    // Level 1 means the surface lies between 1 and 28 units above the feet.
+                    at: player.feet + Vec3::Z * 14.,
+                    scale: SPLASH_MODEL_SCALE * event_scale,
+                    age: 0.,
+                });
+            }
+        }
+        self.last_level = Some(level);
+        self.last_fall = player.velocity.z;
+    }
+    pub fn draw_splashes(&mut self) {
+        let (atmosphere, camera) = &*self.view.borrow();
+        for s in &mut self.splashes {
+            let origin = Transform {
+                translation: s.at,
+                rotation: Quat::IDENTITY,
+            };
+            s.fx.draw(s.age, s.scale, |_, _| origin, |_, _, default| default, *camera, atmosphere);
         }
     }
     pub fn burning(&self) -> bool {

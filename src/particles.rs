@@ -80,6 +80,10 @@ struct Spec {
     random_roll: bool,
     sphere: bool,
     start_off: bool,
+    /// First `angles` value: a sprite emitted at pitch 90 lies flat (the splash ripple rings).
+    angles_pitch: Option<f32>,
+    /// Opt-in (see `Attached::flat_sprites`): draw in the horizontal plane, not facing the camera.
+    flat: bool,
 }
 impl Default for Spec {
     fn default() -> Self {
@@ -111,6 +115,8 @@ impl Default for Spec {
             random_roll: false,
             sphere: false,
             start_off: false,
+            angles_pitch: None,
+            flat: false,
         }
     }
 }
@@ -230,6 +236,7 @@ fn parse(text: &str) -> Vec<Spec> {
             "randomroll" => s.random_roll = true,
             "sphere" => s.sphere = true,
             "startoff" => s.start_off = true,
+            "angles" => s.angles_pitch = n(1),
             _ => {}
         }
     }
@@ -827,7 +834,12 @@ impl Steam {
                         a.high *= 0.36;
                     }
                 }
-                if model.starts_with("fx_emitter_waterspray") {
+                // The underwater bubble emitters use the same engine sprite sizing: the 16-32 px
+                // bubble sprite at scale .25 is far smaller than this renderer's 64 px baseline.
+                if model.starts_with("fx_emitter_waterspray")
+                    || model.starts_with("fx_bubbles_")
+                    || model == "fx_mockturtle_launcher.tik"
+                {
                     // Original engine sprites: half-extent = texture width / 2 * scale, and
                     // scalerate adds to that scale (CE-verified on fx_metagas). The 16 px water
                     // drop is therefore a quarter of the 64 px baseline this renderer assumes.
@@ -1020,10 +1032,14 @@ impl Steam {
         }
     }
     pub fn draw_one(&self, index: usize, camera: Vec3, direction: Vec3) {
-        let right = direction.cross(Vec3::Z).try_normalize().unwrap_or(Vec3::X);
-        let up = right.cross(direction).normalize_or_zero();
         let p = &self.puffs[index];
         let e = &self.emitters[p.emitter];
+        let (right, up) = if e.spec.flat {
+            (Vec3::X, Vec3::Y)
+        } else {
+            let right = direction.cross(Vec3::Z).try_normalize().unwrap_or(Vec3::X);
+            (right, right.cross(direction).normalize_or_zero())
+        };
         gl_use_material(&self.materials[usize::from(e.additive)]);
         let radius = p.size * (1. + e.spec.growth * p.age).max(0.);
         let x = (right * p.roll.cos() + up * p.roll.sin()) * radius;
@@ -1349,6 +1365,13 @@ impl Attached {
             }
             e.spec.size.low *= width / 64.;
             e.spec.size.high *= width / 64.;
+        }
+        self
+    }
+    /// Lay sprites authored with `angles 90 0 0` flat in the horizontal plane, as the engine does.
+    pub(crate) fn flat_sprites(mut self) -> Self {
+        for e in &mut self.steam.emitters {
+            e.spec.flat = e.spec.angles_pitch == Some(90.);
         }
         self
     }

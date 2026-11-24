@@ -469,8 +469,10 @@ impl Bite {
     }
 }
 
-/// Native `camera frontright` idle view, measured live in cgame: view pitch pinned to 0 and view yaw
-/// offset by -210 degrees (= +150) from the player's, blending at about 11 per second.
+/// Native `camera frontright` idle view. fgame FUN_100b82e0 case 5 sets camera flags |= 2|8, pitch
+/// offset 0 and yaw offset 210.0 (0x10173b60); cgame subtracts it from the view yaw (= +150) and
+/// blends at about 11 per second (measured live). Other native offsets: frontleft 120, front 180,
+/// side_left 90, side_right -90, topdown pitch -75.
 #[derive(Default)]
 pub struct IdleView {
     blend: f32,

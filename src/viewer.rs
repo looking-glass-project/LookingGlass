@@ -3125,7 +3125,8 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
         let sanity = stats.sanity();
         if active && sanity < blood_sanity && blood_cooldown <= 0. {
             let at = player.feet + Vec3::Z * 44.;
-            blood.spawn_scaled(&mut assets, &blood_specs, "alice", at, 0.2);
+            // CE (FUN_100de6f0 spray entity +0x1b8): Alice's hurt spray is scale 1.0, like enemies'.
+            blood.spawn(&mut assets, &blood_specs, "alice", at);
             blood.splat(&mut assets, &blood_specs, &scene.world, "alice", player.feet, false);
             blood_cooldown = 0.35;
         }

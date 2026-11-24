@@ -7,7 +7,8 @@ use crate::{
 use macroquad::prelude::*;
 use std::collections::BTreeMap;
 
-const EMIT: f32 = 1.;
+/// CE: the native spray entity (scale 1.0 for Alice and for enemies) is removed 0.5 s after the hit.
+const EMIT: f32 = 0.5;
 const LINGER: f32 = 0.8;
 
 #[derive(Default)]

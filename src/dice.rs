@@ -769,7 +769,12 @@ impl State {
             return;
         }
         if let Some(d) = &mut self.demon {
+            let before = d.life;
             d.life = (d.life + STEP).min(1e9);
+            // FUN_100605b0 posts `dice_vortex_close` (the rift close sound) 5.0 s after the rift opens.
+            if before < 5. && d.life >= 5. && d.phase != Phase::Vanish {
+                out.sounds.push(CLOSE);
+            }
             d.shield = (d.shield - STEP).max(0.);
             d.feet += d.recoil.step(STEP, ctx.world, d.target());
             if d.time == 0. && d.phase == Phase::Vanish {
@@ -1331,7 +1336,8 @@ impl Art {
         state
             .demon
             .iter()
-            .filter(|d| d.phase != Phase::Dead)
+            // The lens flares on the rift are removed 4.9 s after it opens (event 0x101b8248).
+            .filter(|d| d.phase != Phase::Dead && d.life < 4.9)
             .map(|d| crate::lighting::Light {
                 position: d.feet + Vec3::Z * 48.,
                 color: self.flicker.as_ref().map_or(Vec3::ONE, |s| s.sample(d.life))

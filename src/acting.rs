@@ -282,14 +282,28 @@ impl Acting {
             return;
         };
         let clip = &self.clips[name].animation;
-        let weight = if looping {
-            1.
+        let (fade_in, fade_out) = if looping {
+            (1., 1.)
         } else {
-            (time / 0.15).min(1.) * ((clip.duration() - time) / 0.15).clamp(0., 1.)
+            (
+                (time / 0.15).min(1.),
+                ((clip.duration() - time) / 0.15).clamp(0., 1.),
+            )
         };
+        // Native: STAND_IDLE_PLAY hands over to STAND_IDLE, which plays idle_base_01 from frame
+        // zero. Ease the gesture out into that pose rather than the walk-idle base, or the legs
+        // and body pop when the loop begins.
+        let rest = (!looping && self.state.idle >= 25. && idle)
+            .then(|| self.clips.get("idle_base_01"))
+            .flatten()
+            .map(|c| c.animation.sample(0., true));
         for (i, sample) in clip.sample(time, looping).into_iter().enumerate() {
             if idle || upper[i] {
-                pose[i] = pose[i].blend(sample, weight);
+                let base = match &rest {
+                    Some(rest) => pose[i].blend(rest[i], 1. - fade_out),
+                    None => pose[i],
+                };
+                pose[i] = base.blend(sample, fade_in * fade_out);
             }
         }
     }
@@ -332,7 +346,7 @@ impl Acting {
                 translation: transform.point(pose[bone].translation * scale),
                 rotation: transform.rotation * pose[bone].rotation,
             };
-            if attachment.model == "w_icewand.tik" {
+            if attachment.model.trim_end_matches(".tik") == "w_icewand" {
                 self.mount = Some((at, scale * attachment.scale));
             }
             self.props.get_mut(&attachment.model).unwrap().draw_frame(

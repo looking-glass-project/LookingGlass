@@ -2338,6 +2338,9 @@ impl Visuals {
         }
         gl_use_default_material();
     }
+    pub fn advance_ice_clock_for_check(&mut self, dt: f64) {
+        self.ice.clock += dt;
+    }
     /// The ice wand an idle gesture carries keeps its always-on `ice_effect` mist emitter.
     pub fn attached_ice_mist(&mut self, pose: Transform, scale: f32, camera: Vec3) {
         self.ice_art

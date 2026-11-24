@@ -1640,6 +1640,8 @@ pub async fn render_animations(assets: &mut Assets) -> Result<()> {
     let specs = texture::read_materials(assets)?;
     for (clip, time, weapon) in [
         ("knife_idle3", 1., 0),
+        ("wand_idle1", 1.5, 4),
+        ("wand_idle1", 2.4, 4),
         ("cards_idle2", 2., 1),
         ("mallet_idle3", 1.5, 2),
         ("jacks_idle2", 0.8, 5),
@@ -1663,9 +1665,13 @@ pub async fn render_animations(assets: &mut Assets) -> Result<()> {
         for frame in 0..3 {
             animation_camera(clip);
             alice.draw(Vec3::ZERO, true);
+            let eye = vec3(12.5, 12.5, 40.)
+                + vec3(1., -1., 0.35).normalize() * (vec3(50., 50., 80.).length() * 1.8);
+            alice.visuals.advance_ice_clock_for_check(0.4);
+            alice.draw_effects(eye, true, true);
             if frame == 2 {
                 crate::viewer::save_capture(std::path::Path::new(&format!(
-                    "private/animation-{clip}.png"
+                    "private/animation-{clip}-{time}.png"
                 )))?;
             }
             next_frame().await;

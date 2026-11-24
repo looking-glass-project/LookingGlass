@@ -2360,7 +2360,7 @@ impl Visuals {
         for d in &self.dice.dice {
             self.props[12].draw(
                 Transform {
-                    translation: d.position,
+                    translation: d.shown(),
                     // A die that has stopped no longer tumbles.
                     rotation: if d.resting {
                         Quat::IDENTITY

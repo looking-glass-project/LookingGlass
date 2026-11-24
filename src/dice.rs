@@ -171,7 +171,21 @@ pub struct Die {
     pub age: f32,
     pub resting: bool,
     pub pip: u8,
+    /// Position at the previous 20 Hz physics frame and how far the next one has progressed;
+    /// the native client interpolates between server frames.
+    #[serde(skip)]
+    prev: Option<Vec3>,
+    #[serde(skip)]
+    blend: f32,
 }
+impl Die {
+    pub fn shown(&self) -> Vec3 {
+        self.prev
+            .map_or(self.position, |p| p.lerp(self.position, self.blend.clamp(0., 1.)))
+    }
+}
+/// fgame `sv_fps` 20: entity physics (FUN_10077790) runs once per 0.05 s server frame.
+const FRAME: f32 = 0.05;
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Phase {
     Appear,
@@ -278,6 +292,8 @@ pub struct State {
     #[serde(skip)]
     pub difficulty: crate::powerups::Difficulty,
     #[serde(default)]
+    frame: f32,
+    #[serde(default)]
     forced_king: bool,
     #[serde(default)]
     next_id: u32,
@@ -309,6 +325,7 @@ impl Default for State {
             notarget: false,
             rage: false,
             difficulty: Default::default(),
+            frame: 0.,
             forced_king: false,
             next_id: 0,
             dice: vec![],
@@ -413,6 +430,8 @@ impl State {
                 age: 0.,
                 resting: false,
                 pip,
+                prev: None,
+                blend: 1.,
             });
         }
         true
@@ -658,25 +677,48 @@ impl State {
         }
         if real_active && !self.dice.is_empty() {
             self.time += STEP;
+            self.frame += STEP;
+            let step = self.frame >= FRAME;
+            if step {
+                self.frame -= FRAME;
+            }
             for die in &mut self.dice {
                 die.age += STEP;
                 if die.resting {
                     continue;
                 }
-                die.velocity.z -= 800. * STEP;
-                let end = die.position + die.velocity * STEP;
+                if !step {
+                    die.blend = self.frame / FRAME;
+                    continue;
+                }
+                die.prev = Some(die.position);
+                die.blend = self.frame / FRAME;
+                // FUN_10075b10: gravity (sv_gravity 800 times the entity's 1.0) is applied
+                // before the move, then the move is traced with the 8 unit box.
+                die.velocity.z -= 800. * FRAME;
+                let end = die.position + die.velocity * FRAME;
                 let hit = ctx.world.sweep(die.position, end, Vec3::splat(8.));
                 die.position = die.position.lerp(end, hit.fraction);
                 if hit.start_solid {
+                    die.velocity = Vec3::ZERO;
                     die.resting = true;
                 } else if hit.fraction < 1. {
                     if die.velocity.length() > 40. {
                         out.sounds.push(SOUNDS[3]);
                     }
-                    die.velocity =
-                        (die.velocity - hit.normal * 2. * die.velocity.dot(hit.normal)) * 0.4;
-                    die.position += hit.normal * 0.1;
-                    if hit.normal.z > 0.7 && die.velocity.length() < 50. {
+                    // movetype 10 clips with an overbounce of 1.5 (FUN_10075810): the normal
+                    // component reverses at half strength and tangential speed is kept; values
+                    // inside (-0.1, 0.1) snap to zero.
+                    let mut v = die.velocity - hit.normal * die.velocity.dot(hit.normal) * 1.5;
+                    for c in [&mut v.x, &mut v.y, &mut v.z] {
+                        if *c > -0.1 && *c < 0.1 {
+                            *c = 0.;
+                        }
+                    }
+                    die.velocity = v;
+                    // A floor steeper than 0.7 that leaves the die rising slower than 60 stops it.
+                    if hit.normal.z > 0.7 && v.z < 60. {
+                        die.velocity = Vec3::ZERO;
                         die.resting = true;
                     }
                 }

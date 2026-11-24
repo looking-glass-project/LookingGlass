@@ -106,7 +106,7 @@ impl Blood {
         }
         self.last = Some(self.clock);
         self.spawn(assets, specs, model, at);
-        self.splat(assets, specs, world, model, at, false);
+        self.splat(assets, specs, world, model, at);
     }
     pub fn spawn(
         &mut self,
@@ -142,7 +142,7 @@ impl Blood {
         self.seed = self.seed.wrapping_mul(1664525).wrapping_add(1013904223);
         (self.seed >> 8) as f32 / (1u32 << 24) as f32
     }
-    /// A blood decal on the floor under `at`: small for a hit, large for a death puddle.
+    /// A blood decal on the floor under `at` (hit blood only).
     pub fn splat(
         &mut self,
         assets: &mut Assets,
@@ -150,11 +150,10 @@ impl Blood {
         world: &World,
         model: &str,
         at: Vec3,
-        puddle: bool,
     ) {
         let Some(name) = self.blood_model(assets, model) else { return };
         // Original hit blood (fgamex86 FUN_100de6f0) only places a floor decal when rand() > 0.5.
-        if !puddle && self.roll() <= 0.5 {
+        if self.roll() <= 0.5 {
             return;
         }
         let prefix = if name.contains("green") {
@@ -182,7 +181,7 @@ impl Blood {
         // Original: crandom(20) on X and Y for every blood decal (CE-verified on a fire imp kill).
         let jitter = 40.;
         let (jx, jy) = ((self.roll() - 0.5) * jitter, (self.roll() - 0.5) * jitter);
-        let radius = if puddle { 26. + self.roll() * 14. } else { 8. + self.roll() * 8. };
+        let radius = 8. + self.roll() * 8.;
         if self.decals.len() >= MAX_DECALS {
             self.decals.remove(0);
         }

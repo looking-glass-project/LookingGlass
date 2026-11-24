@@ -712,7 +712,6 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
     let frozen_orbit = crate::camera::FrozenOrbit::load(&mut assets)?;
     let mut blood = crate::blood::Blood::default();
     let mut blood_visit = String::new();
-    let mut blood_seen: Option<std::collections::BTreeSet<usize>> = None;
     let mut blood_sanity = f32::MAX;
     let mut blood_cooldown = 0.0f32;
     let blood_specs = crate::texture::read_materials(&mut assets)?;
@@ -3098,36 +3097,18 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
             &scene.atmosphere,
             fullbright,
         );
-        // Alice bleeds when hurt, and enemies leave a floor puddle when they die.
+        // Alice bleeds when hurt. CE (decal ctor FUN_1005e790 + FUN_100de6f0 hooks): kills add no extra puddle.
         let visit = save::visit_key(&maps[current], entry_spawn.as_deref());
         if blood_visit != visit {
             blood_visit = visit;
-            blood_seen = None;
             blood.clear_decals();
         }
-        let dead_now: std::collections::BTreeSet<usize> = npcs
-            .loot_sources()
-            .iter()
-            .filter(|s| s.dead)
-            .map(|s| s.id)
-            .collect();
-        if let Some(seen) = &blood_seen {
-            for &id in dead_now.difference(seen) {
-                if let (Some(model), Some(s)) = (
-                    npcs.model_name(id).map(str::to_owned),
-                    npcs.loot_sources().into_iter().find(|s| s.id == id),
-                ) {
-                    blood.splat(&mut assets, &blood_specs, &scene.world, &model, s.feet, true);
-                }
-            }
-        }
-        blood_seen = Some(dead_now);
         let sanity = stats.sanity();
         if active && sanity < blood_sanity && blood_cooldown <= 0. {
             let at = player.feet + Vec3::Z * 44.;
             // CE (FUN_100de6f0 spray entity +0x1b8): Alice's hurt spray is scale 1.0, like enemies'.
             blood.spawn(&mut assets, &blood_specs, "alice", at);
-            blood.splat(&mut assets, &blood_specs, &scene.world, "alice", player.feet, false);
+            blood.splat(&mut assets, &blood_specs, &scene.world, "alice", player.feet);
             blood_cooldown = 0.35;
         }
         blood_sanity = sanity;

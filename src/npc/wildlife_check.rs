@@ -362,3 +362,55 @@ pub fn fresh(assets: &mut Assets, read: bool) -> Result<()> {
     }
     Ok(())
 }
+#[cfg(test)]
+mod death_flow {
+    use super::*;
+    #[test]
+    #[ignore = "requires LOOKING_GLASS_TEST_DATA"]
+    fn resident_phantasm_death_flow() {
+        let base = std::env::var_os("LOOKING_GLASS_TEST_DATA").unwrap();
+        let mut assets = Assets::open(std::path::Path::new(&base)).unwrap();
+        let map = Bsp::parse(&assets.read("maps/hedge1.bsp").unwrap()).unwrap();
+        let world = World::actor_world(&map).unwrap();
+        let spawn = placements(&map, "hedge1", None, false)
+            .into_iter()
+            .find(|s| s.model == "c_phantasm")
+            .unwrap();
+        let data = Data::load(&mut assets, "c_phantasm", &[]).unwrap();
+        let mut p = resident::Resident::new(&spawn, &map, "hedge1").unwrap().unwrap();
+        p.place(&world);
+        let eye = p.target(0).center + vec3(300., 0., 0.);
+        let mut out = combat::Feedback::default();
+        for _ in 0..120 { p.update(1. / 60., &world, eye, &data, &mut out); }
+        for (label, kind) in [("knife", combat::DamageKind::Knife), ("jacks", combat::DamageKind::Other)] {
+            let mut r = p.clone();
+            let id = 0;
+            let sound = r.hit(combat::Hit { id, damage: 1000., kind, knockback: Vec3::ZERO });
+            assert_eq!(r.health(), 0., "{label} did not kill");
+            let mut cues: Vec<String> = Vec::new();
+            let mut ended_at = None;
+            let mut shrink_at = None;
+            println!("DEATH {label}: hit returned {:?} health {}", sound, r.health());
+            for i in 0..260 {
+                let mut out = combat::Feedback::default();
+                r.update(1. / 60., &world, eye, &data, &mut out);
+                cues.extend(out.cue_sounds.iter().map(|s| s.0.rsplit('/').next().unwrap_or("").to_string()));
+                if let resident::Body::Wildlife(g) = &r.body {
+                    if g.phase == crate::wildlife::Phase::Dead && ended_at.is_none() { ended_at = Some(i as f32 / 60.); }
+                    if g.visual_scale(&data) < 1. && shrink_at.is_none() { shrink_at = Some(i as f32 / 60.); }
+                }
+                if i % 20 == 0 || !out.cue_sounds.is_empty() {
+                    if let resident::Body::Wildlife(g) = &r.body {
+                        println!("DEATH {label} t={:.2} phase={:?} clip={} time={:.2} scale={:.2} alpha={:.2} sounds={:?}", i as f32 / 60., g.phase, g.clip(), g.time, g.visual_scale(&data), g.alpha(&data), out.cue_sounds.iter().map(|s| s.0.rsplit('/').next().unwrap_or("").to_string()).collect::<Vec<_>>());
+                    }
+                }
+            }
+            // Native (CE, fgamex86 Actor::Killed): death_loop 0.55 s, then death2_end*, shrink from
+            // ~1.9 s for 1.5 s, removal ~3.5 s after the kill.
+            assert!(cues.iter().any(|c| c == "death_2.wav"), "{label}: no death cry {cues:?}");
+            assert!(cues.iter().any(|c| c.starts_with("death2_end")), "{label}: no end cry {cues:?}");
+            assert!((ended_at.unwrap() - 0.55).abs() < 0.05);
+            assert!((1.7..2.1).contains(&shrink_at.unwrap()), "{shrink_at:?}");
+        }
+    }
+}

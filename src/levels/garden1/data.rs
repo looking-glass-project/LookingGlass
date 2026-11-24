@@ -135,7 +135,9 @@ impl Data {
             .pushes
             .iter()
             .find(|p| p.id.0 == 117)
-            .context("Missing arrival launch volume")?;
+            .context("Missing arrival launch volume")?
+            .clone();
+        // The body below receives the impulse once, by hand, so the trigger itself is off here.
         let feet = points["garden1_start1"].translation;
         ensure!(
             push.volume.touches(
@@ -145,15 +147,55 @@ impl Data {
             ),
             "Arrival outside launch volume"
         );
-        // The original's fake actor is a player-class entity: after the apex impulse it falls
-        // under normal player physics, so ground friction stops it where it lands instead of
-        // sliding on. Drive the port's own player movement from the same start and impulse.
-        let mut body = crate::movement::Player::new(feet);
-        body.velocity = push.direction;
-        let mut launch = vec![feet];
-        for _ in 0..1200 {
-            body.tick(&world, crate::movement::Controls::default());
-            launch.push(body.feet);
+        // Measured from the native game with Cheat Engine (fgamex86.dll): the fake actor sits at
+        // z=-688.2 under the start point when the push fires, flies the target-apex arc
+        // untouched by the level geometry (apex z=-195), meets the water surface at z=-418.5
+        // and is stopped by the water within ~0.4 s, floating at z=-414.8.
+        const WATER_Z: f32 = -418.5;
+        const FLOAT_Z: f32 = -414.8;
+        // The original steps its entities in 20 Hz server frames: the push test happens at the
+        // start of a frame and the whole frame then moves at that velocity, so the actor gets one
+        // more full-speed frame after it leaves the trigger volume.
+        const FRAME: f32 = 0.05;
+        let mut pos = vec3(feet.x, feet.y, -688.2);
+        let mut v = push.direction;
+        let mut frames = vec![pos];
+        let mut wet = false;
+        let mut hold = 0;
+        for _ in 0..400 {
+            if wet {
+                v *= 0.8;
+                pos += v * FRAME;
+                pos.z += (FLOAT_Z - pos.z) * 0.25;
+            } else {
+                let inside = push.volume.touches(
+                    pos + crate::collision::PLAYER_CENTER,
+                    pos + crate::collision::PLAYER_CENTER,
+                    crate::collision::PLAYER_HALF,
+                );
+                if inside {
+                    v = push.direction;
+                    hold = 2;
+                } else if hold > 0 {
+                    // The touch is processed after the move, so the push lands a frame late.
+                    hold -= 1;
+                    v = push.direction;
+                } else {
+                    v.z -= crate::movement::GRAVITY * FRAME;
+                }
+                pos += v * FRAME;
+                if v.z < 0. && pos.z <= WATER_Z {
+                    wet = true;
+                    v = vec3(v.x * 0.66, v.y * 0.66, 0.);
+                }
+            }
+            frames.push(pos);
+        }
+        let mut launch = Vec::new();
+        for i in 0..1200 {
+            let f = i as f32 * crate::movement::FIXED_DT / FRAME;
+            let n = (f as usize).min(frames.len() - 1);
+            launch.push(frames[n].lerp(frames[(n + 1).min(frames.len() - 1)], f.fract()));
         }
         Ok(Self {
             deadtree: [420, 421, 422, 423, 424, 460, 650, 647, 425, 426, 427]
@@ -242,7 +284,7 @@ mod launch_tests {
         let mut a = crate::assets::Assets::open(std::path::Path::new(&base)).unwrap();
         let map = crate::bsp::Bsp::parse(&a.read("maps/garden1.bsp").unwrap()).unwrap();
         let d = super::Data::load(&mut a, &map).unwrap();
-        for i in 0..20 {
+        for i in 0..40 {
             let t = i as f32 * 0.1;
             println!("LAUNCH t={t} {:?}", d.launch_pose(t).translation);
         }

@@ -397,6 +397,15 @@ impl Interactions {
         targets.extend(self.pool.iter().flat_map(|p| p.targets()));
         targets
     }
+    /// The actor model whose blood a level or Pool enemy shed, for the hit id.
+    pub fn levels_blood_model(&self, id: usize) -> Option<&'static str> {
+        if self.pool.as_ref().is_some_and(|p| p.targets().iter().any(|t| t.id == id)) {
+            return Some("c_armyant");
+        }
+        let slot = &self.levels[level::hit_owner(&self.levels, id)?];
+        let base = slot.reg.target_base?;
+        crate::blood::level_model(slot.ctl.id(), id - base)
+    }
     /// Apply a hit to the controller whose exact range holds it. `None` means no registration
     /// owns the id and the legacy dispatch continues; `Some(sound)` means it was handled. The
     /// viewer asks this after the legacy exact-id arms and before its `>= encounters::BASE`

@@ -2685,6 +2685,26 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
             } else {
                 hit.damage = stats.attack_damage(hit.damage);
             }
+            if hit.damage > 0. {
+                let id = hit.id;
+                let model = if id == crate::duchess::ID {
+                    Some("c_duchess")
+                } else if id >= crate::encounters::BASE {
+                    interactions
+                        .levels_blood_model(id)
+                        .or_else(|| interactions.encounters.as_ref().and_then(|s| s.blood_model(id)))
+                } else if id >= crate::interaction::SHOT_BASE {
+                    None
+                } else if id >= crate::school2::ENEMY_BASE {
+                    Some(if id - crate::school2::ENEMY_BASE < 100 { "c_boojum" } else { "cardguard_club" })
+                } else {
+                    npcs.model_name(id)
+                };
+                let model = model.or_else(|| interactions.levels_blood_model(id));
+                if let Some(model) = model.map(str::to_owned) {
+                    blood.hit(&mut assets, &blood_specs, &scene.world, &model, hit_origin, hit.kind);
+                }
+            }
             if hit.id == crate::duchess::ID {
                 // A projectile still in flight after Alice dies must not lock retry in a defeat cinematic.
                 if !stats.alive() {
@@ -2734,14 +2754,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
                 }
                 continue;
             }
-            let bleeds = hit.damage > 0. && hit.kind.means() != crate::combat::DamageKind::Ice;
             if let Some((message, sound)) = npcs.hit(hit) {
-                if bleeds {
-                    if let Some(model) = npcs.model_name(hit.id).map(str::to_owned) {
-                        blood.spawn(&mut assets, &blood_specs, &model, hit_origin);
-                        blood.splat(&mut assets, &blood_specs, &scene.world, &model, hit_origin, false);
-                    }
-                }
                 hud.announce(message);
                 audio.world_effect_at(sound, hit_origin);
             }
@@ -3051,6 +3064,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
         let mut lights = steam.lights();
         lights.extend(alice.lights());
         lights.extend(npcs.lights());
+        lights.extend(power_art.drop_lights(&stats, &loot_visit));
         for slot in &interactions.levels { lights.extend(slot.ctl.lights()); }
         scene.prepare_camera_portals_with(&world_camera, environment_clock, fullbright, &transforms, &mut |fb| {
             if show_alice_in_mirror {

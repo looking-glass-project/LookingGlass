@@ -272,8 +272,26 @@ pub struct Art {
     grow: Vec<crate::pickup_effects::Effect>,
     cued: std::collections::BTreeSet<(String, usize)>,
     ready: Vec<macroquad::prelude::Vec3>,
+    /// Each grade's authored `dlight` (w_me_*.tik light emitter: 0.25 0.25 0.5, radius 75-150).
+    grade_lights: Vec<Vec<crate::lighting::Light>>,
 }
 impl Art {
+    /// The purplish pool every dropped essence casts, in the gem's centre like placed ones.
+    pub fn drop_lights(&self, stats: &crate::inventory::Stats, visit: &str) -> Vec<crate::lighting::Light> {
+        let Some(loot) = stats.loot.get(visit) else { return Vec::new() };
+        loot.drops
+            .iter()
+            .filter_map(|d| {
+                let i = crate::loot_art::GRADES.iter().position(|g| *g == d.grade)?;
+                Some(self.grade_lights[i].iter().map(move |l| crate::lighting::Light {
+                    position: d.origin + l.position + macroquad::prelude::Vec3::Z * 14.,
+                    flare: true,
+                    ..*l
+                }))
+            })
+            .flatten()
+            .collect()
+    }
     pub fn load(assets: &mut crate::assets::Assets) -> Result<Self> {
         let specs = crate::texture::read_materials(assets)?;
         let mut props = Vec::new();
@@ -311,6 +329,10 @@ impl Art {
                 .collect::<Result<_>>()?,
             cued: Default::default(),
             ready: Vec::new(),
+            grade_lights: crate::loot_art::GRADES
+                .iter()
+                .map(|g| crate::particles::declared_lights(assets, g.model()).unwrap_or_default())
+                .collect(),
         })
     }
     pub fn collected(&mut self, item: &crate::inventory::Pickup, clock: f32) {

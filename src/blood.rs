@@ -20,6 +20,28 @@ pub struct Blood {
     textures: BTreeMap<String, Option<Texture2D>>,
     decals: Vec<Decal>,
     seed: u32,
+    /// Seconds of play, and when the last hit blood spawned (native: one burst per 0.2 s).
+    clock: f32,
+    last: Option<f32>,
+}
+/// Native `FUN_100d92c0` (Sentient damage) never bleeds for fire, eyebeam, lava, gas, slime,
+/// drowning, falling, lifedrain, radiation or sling damage. Everything else does, ice wand included.
+pub fn bleeds(kind: crate::combat::DamageKind) -> bool {
+    !matches!(kind, crate::combat::DamageKind::EyeStaff | crate::combat::DamageKind::Fire)
+}
+/// The actor model a level controller's enemy uses, by hit id offset from its registered base.
+pub fn level_model(controller: &str, local: usize) -> Option<&'static str> {
+    Some(match controller {
+        "centipede1" | "centipede2" | "garden2" | "potears2" => "c_armyant",
+        "grounds2" | "keep" => "cardguard_diamond",
+        "hatter2" if local < 100 => "c_madhatter",
+        "hatter2" => "c_clockwork",
+        "rchess1" if local < 100 => "c_chess_red_king",
+        "rchess1" => "c_chess_red_knight",
+        "wchess1" | "wchess2" => "c_chess_knight",
+        "funhouse" => "c_tweedle_dee",
+        _ => return None,
+    })
 }
 struct Decal {
     center: Vec3,
@@ -46,6 +68,27 @@ impl Blood {
                 })
             })
             .clone()
+    }
+    /// Native hit blood (`FUN_100de6f0`): a spray at the hit plus a 50% floor decal, for any
+    /// damage that bleeds, at most once every 0.2 s of play.
+    pub fn hit(
+        &mut self,
+        assets: &mut Assets,
+        specs: &BTreeMap<String, texture::MaterialSpec>,
+        world: &World,
+        model: &str,
+        at: Vec3,
+        kind: crate::combat::DamageKind,
+    ) {
+        if !bleeds(kind) || self.blood_model(assets, model).is_none() {
+            return;
+        }
+        if self.last.is_some_and(|t| self.clock - t < 0.2) {
+            return;
+        }
+        self.last = Some(self.clock);
+        self.spawn(assets, specs, model, at);
+        self.splat(assets, specs, world, model, at, false);
     }
     pub fn spawn(
         &mut self,
@@ -140,6 +183,7 @@ impl Blood {
         self.decals.clear();
     }
     pub fn update(&mut self, dt: f32) {
+        self.clock += dt;
         for d in &mut self.decals {
             d.age += dt;
         }

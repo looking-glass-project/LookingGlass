@@ -293,6 +293,13 @@ pub struct State {
     pub difficulty: crate::powerups::Difficulty,
     #[serde(default)]
     frame: f32,
+    /// Seconds after the throw at which the rift opens. `DemonDice::Throw` (FUN_1005ef90) posts the
+    /// rift event (0x101b5458, FUN_10060f80) after the frame time plus the length of the throw
+    /// velocity scaled by 0.005, and FUN_100605b0 opens the rift at the first die wherever it is
+    /// by then. Checked in the running game: an unlocked throw (1.5) opened at 1.56 s, locked
+    /// ones at 2.1 to 2.4 s. Zero for saves from before this was traced.
+    #[serde(default)]
+    land: f32,
     #[serde(default)]
     forced_king: bool,
     #[serde(default)]
@@ -326,6 +333,7 @@ impl Default for State {
             rage: false,
             difficulty: Default::default(),
             frame: 0.,
+            land: 0.,
             forced_king: false,
             next_id: 0,
             dice: vec![],
@@ -418,6 +426,9 @@ impl State {
                 Some(t) => ((t - origin + Vec3::Z * 400.) * 0.005, (t - origin).length()),
                 None => (forward * 300. * 0.005, 300.),
             };
+            if i == 0 {
+                self.land = FRAME + aim.length();
+            }
             let right = forward.cross(Vec3::Z).normalize_or_zero();
             let side = match i {
                 1 => -right * 0.2,
@@ -443,6 +454,7 @@ impl State {
                 && self.seed != 0
                 && (0.0..=6.).contains(&self.cooldown)
                 && (0.0..=9.).contains(&self.time)
+                && (0.0..=30.).contains(&self.land)
                 && self.accumulator.is_finite()
                 && self.accumulator.abs() < 0.01
                 && self.world_accumulator.is_finite()
@@ -723,7 +735,12 @@ impl State {
                     }
                 }
             }
-            if self.time >= 2. && self.dice.iter().all(|d| d.resting) || self.time >= 8. {
+            let landed = if self.land > 0. {
+                self.time >= self.land
+            } else {
+                self.time >= 2. && self.dice.iter().all(|d| d.resting)
+            };
+            if landed || self.time >= 8. {
                 let kind = if self.forced_king {
                     2
                 } else {
@@ -758,9 +775,17 @@ impl State {
                 }
                 // Measured in the running game: the thrown dice are removed exactly 3.0 s after the rift opens.
                 let left = 3.;
-                self.smoke
-                    .extend(self.dice.iter().map(|d| Smoke { position: d.position, age: 0., left }));
+                // The opener die gets the `hide` animation (no emitter); the others play `smoke`.
+                // If no rift opens the first die smokes too.
+                let skip = usize::from(self.demon.is_some());
+                self.smoke.extend(
+                    self.dice
+                        .iter()
+                        .skip(skip)
+                        .map(|d| Smoke { position: d.position, age: 0., left }),
+                );
                 self.dice.clear();
+                self.land = 0.;
                 self.time = 0.;
                 out.sounds
                     .push(if self.demon.is_some() { OPEN } else { CLOSE });

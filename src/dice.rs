@@ -1039,6 +1039,8 @@ pub struct Art {
     puppets: Vec<crate::npc::Puppet>,
     shield: crate::weapons::Prop,
     ice: crate::weapons::Prop,
+    rift_open: crate::weapons::Prop,
+    rift_full: crate::weapons::Prop,
     trails: Vec<crate::particles::Attached>,
     emitters: std::collections::BTreeMap<u32, crate::particles::Attached>,
     poof: Vec<crate::particles::Attached>,
@@ -1088,6 +1090,8 @@ impl Art {
                 "idle",
                 specs,
             )?,
+            rift_open: crate::weapons::Prop::load_animation(assets, "fx_rift", "idle", specs)?,
+            rift_full: crate::weapons::Prop::load_animation(assets, "fx_rift", "fullsize", specs)?,
             trails,
             emitters: Default::default(),
             poof,
@@ -1133,6 +1137,22 @@ impl Art {
                         v.color[3] = (255. * (d.shield / 0.35)) as u8;
                     }
                     crate::render_fx::effect(mesh, crate::materials::Blend::AlphaAdd);
+                }
+            }
+            // fgame FUN_100605b0: fx_rift plays `idle` (opening) then `fullsize` at the dice's
+            // landing point while the summon is present; the dismissal closes it again.
+            if d.phase != Phase::Vanish || d.time < 0.5 {
+                let pose = Transform {
+                    translation: d.feet,
+                    rotation: Quat::IDENTITY,
+                };
+                let (prop, time, looping) = match d.phase {
+                    Phase::Appear => (&mut self.rift_open, d.time, false),
+                    Phase::Vanish => (&mut self.rift_open, (0.5 - d.time).max(0.), false),
+                    _ => (&mut self.rift_full, d.time, true),
+                };
+                for mesh in prop.meshes_at(pose, 1., true, time, looping) {
+                    crate::render_fx::effect(mesh, crate::materials::Blend::Add);
                 }
             }
             if d.phase == Phase::Vanish {
@@ -1188,6 +1208,28 @@ impl Art {
                     &atmosphere,
                 );
         }
+    }
+}
+
+impl State {
+    /// fx_demondice_lensflare: a white 400-unit dynamic light on the rift while it is open.
+    pub fn lights(&self) -> Vec<crate::lighting::Light> {
+        self.demon
+            .iter()
+            .filter(|d| d.phase != Phase::Dead)
+            .map(|d| crate::lighting::Light {
+                position: d.feet + Vec3::Z * 48.,
+                color: Vec3::ONE
+                    * match d.phase {
+                        Phase::Appear => (d.time / 0.7).min(1.),
+                        Phase::Vanish => (1. - d.time / 0.5).max(0.),
+                        _ => 1.,
+                    },
+                radius: 400.,
+                only_models: false,
+                flare: false,
+            })
+            .collect()
     }
 }
 

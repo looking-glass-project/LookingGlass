@@ -61,7 +61,10 @@ struct Pentagram {
     glow: Texture2D,
     clock: f32,
 }
-const PENTAGRAM_RADIUS: f32 = 20.;
+/// Half-extent of the decal: `CG_EntityTargeted` sizes it as `R_ModelRadius(hModel) * scale * 1.25`.
+/// The aim entity is `fx_emitter_target.tik` at scale 1.0, whose engine radius (tiki struct +0xE0,
+/// read from the running game) is 30.665808. `CG_ImpactMark` then spans +/- that radius.
+const PENTAGRAM_RADIUS: f32 = 30.665808 * 1.25;
 pub struct Pointer {
     pentagram: Option<Pentagram>,
     dice: Option<usize>,
@@ -141,7 +144,8 @@ impl Pointer {
                 // The decal traces from 5 units above the marker down 32 units.
                 let top = at + Vec3::Z * 5.;
                 let hit = ctx.world.sweep(top, top - Vec3::Z * 32., Vec3::ZERO);
-                if !hit.start_solid && !hit.all_solid && hit.fraction < 1. && hit.normal.z > 0.5 {
+                // Native draws on any surface the 32-unit trace hits; it has no slope gate.
+                if !hit.start_solid && !hit.all_solid && hit.fraction < 1. {
                     let center = top.lerp(top - Vec3::Z * 32., hit.fraction) + hit.normal * 0.4;
                     let x = hit.normal.cross(Vec3::Z).try_normalize().unwrap_or(Vec3::X);
                     let y = hit.normal.cross(x);

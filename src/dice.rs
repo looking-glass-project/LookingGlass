@@ -1178,7 +1178,9 @@ impl Art {
                     Phase::Vanish => (&mut self.rift_open, (0.5 - d.time).max(0.), false),
                     _ => (&mut self.rift_full, d.time, true),
                 };
-                for mesh in prop.meshes_at(pose, 1., true, time, looping) {
+                // FUN_100605b0 scales the rift by the same factor as the summon: 1.25 by default,
+                // 1.5 and 2.0 for the higher pip totals (_DAT_101664d4, _DAT_1015ce58, _DAT_1015be20).
+                for mesh in prop.meshes_at(pose, [1.25, 1.5, 2.][d.kind], true, time, looping) {
                     crate::render_fx::effect(mesh, crate::materials::Blend::Add);
                 }
             }

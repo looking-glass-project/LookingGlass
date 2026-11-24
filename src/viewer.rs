@@ -2894,6 +2894,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
             player.feet + Vec3::Z * crate::camera::Bite::VIEW_HEIGHT,
             if active { dt } else { 0. },
         );
+        let bite_visible = bite_camera.is_some();
         let scripted_camera = pand_camera
             .or(bite_camera)
             .or_else(|| {
@@ -2974,6 +2975,8 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
             rage_scene.is_some_and(|(_, finished)| !finished)
                 || frozen_camera.is_some()
                 || glass_camera.is_some()
+                // The recorded bite camera looks down at Alice while the Duchess carries her.
+                || (bite_visible && pand_camera.is_none())
                 || (cinematic_camera.is_some_and(|(_, _, show)| show) && pand_camera.is_none())
         } else {
             gameplay_alice && camera.distance(player.feet + Vec3::Z * 32.) > 30.

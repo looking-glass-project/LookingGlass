@@ -278,6 +278,42 @@ pub struct Duchess {
     /// Always-on fire emitters riding a moving wall: (entity id, wall group).
     fires: Vec<(usize, usize, Vec3, Quat, bool)>,
 }
+/// PathNode positions and directed links from a FAKK `.pth` archive: each object is
+/// `u32 len, "PathNode"`, an id, a flag word, the origin at +12, then a link count followed by
+/// 24-byte records (`u16` target index, `u16` distance, 16 step bytes, 4 zero bytes).
+fn parse_pth(b: &[u8]) -> Option<(Vec<Vec3>, Vec<Vec<usize>>)> {
+    const MARK: &[u8] = b"\x08\x00\x00\x00PathNode";
+    let starts: Vec<usize> = (0..b.len().saturating_sub(MARK.len()))
+        .filter(|&i| &b[i..i + MARK.len()] == MARK)
+        .collect();
+    let f = |at: usize| Some(f32::from_le_bytes(b.get(at..at + 4)?.try_into().ok()?));
+    let mut nodes = Vec::new();
+    let mut raw: Vec<Vec<usize>> = Vec::new();
+    for (k, &s) in starts.iter().enumerate() {
+        let o = s + MARK.len();
+        let end = starts.get(k + 1).copied().unwrap_or(b.len());
+        nodes.push(vec3(f(o + 12)?, f(o + 16)?, f(o + 20)?));
+        let mut links = Vec::new();
+        for c in o + 24..(o + 160).min(end.saturating_sub(4)) {
+            let count = u32::from_le_bytes(b[c..c + 4].try_into().ok()?) as usize;
+            if (1..=16).contains(&count)
+                && c + 4 + count * 24 <= end
+                && (0..count).all(|i| {
+                    let r = c + 4 + i * 24;
+                    b[r + 4..r + 8] == [0x80; 4] && b[r + 20..r + 24] == [0; 4]
+                })
+            {
+                links = (0..count)
+                    .map(|i| u16::from_le_bytes([b[c + 4 + i * 24], b[c + 5 + i * 24]]) as usize)
+                    .collect();
+                break;
+            }
+        }
+        raw.push(links);
+    }
+    let n = nodes.len();
+    (n >= 2 && raw.iter().flatten().all(|&t| t < n)).then_some((nodes, raw))
+}
 fn entity<'a>(map: &'a Bsp, name: &str) -> Result<&'a BTreeMap<String, String>> {
     map.entities
         .iter()
@@ -477,6 +513,12 @@ impl Duchess {
                 })
                 .collect(),
         };
+        // The map's own `.pth` archive holds the PathNode positions and the links the original's
+        // Chase behavior searches; use them instead of re-deriving links from body sweeps.
+        if let Some((nodes, links)) = a.read("maps/potears3.pth").ok().and_then(|b| parse_pth(&b)) {
+            s.nodes = nodes;
+            s.links = Some(links);
+        }
         s.rebuild(map)?;
         Ok(s)
     }
@@ -1089,14 +1131,11 @@ impl Duchess {
                     // around the obstacle on the more open side until the way is clear.
                     // Test the Duchess's own body, not her line of sight: a low table can be
                     // seen over yet still block her. Keep a chosen side until the body path is clear.
-                    let body = vec3(32., 32., 64.);
-                    let c = self.state.feet + Vec3::Z * 64.1;
                     // The whole straight line to the enemy, not just the next few steps: the tub only blocks late.
                     let reach = (distance - 90.).max(0.);
-                    let clear = world
-                        .sweep(c, c + direct.extend(0.) * reach, body)
-                        .fraction
-                        >= 1.;
+                    // Judged exactly as the path graph's links are (body raised by her step height),
+                    // so a straight walk is only taken when the graph would also call it open.
+                    let clear = self.body_clear(world, self.state.feet, self.state.feet + direct.extend(0.) * reach);
                     if clear && self.state.detour != 0. {
                         self.state.clear_time += STEP;
                         if self.state.clear_time > 0.35 {
@@ -1915,15 +1954,16 @@ impl Art {
                     );
                 }
             }
-            // Oldest silhouettes first; a continuous current silhouette replaces blinking.
+            // Oldest silhouettes first. Native (fgame Phase behavior, shader `alphaGen fromEntity`):
+            // each fx_duchess_trail copy keeps entity alpha 1 for its whole second and is then
+            // removed; only the trail.tga alpha channel makes it translucent.
             for p in &self.trail.poses {
-                let opacity = (1. - (d.state.time - p.at)).clamp(0., 1.) * 0.22;
                 self.phase_model
-                    .draw_afterimage("run_away", p.clock, p.transform, opacity);
+                    .draw_afterimage("run_away", p.clock, p.transform, 1.);
             }
             if phase {
                 self.phase_model
-                    .draw_afterimage("run_away", d.state.clock, pose, 0.65);
+                    .draw_afterimage("run_away", d.state.clock, pose, 1.);
                 if let Some(grip) =
                     self.duchess
                         .looping_tag("tag_weapon", "run_away", d.state.clock, pose, 1.)
@@ -2354,5 +2394,16 @@ mod tests {
             serde_json::to_value(d.state).unwrap(),
             serde_json::to_value(resumed.state).unwrap()
         );
+    }
+}
+#[cfg(test)]
+mod pth_tests {
+    #[test]
+    fn potears3_path_file_links_match_the_original_graph() {
+        let Ok(bytes) = std::fs::read(std::env::var("POTEARS3_PTH").unwrap_or_default()) else { return };
+        let (nodes, links) = super::parse_pth(&bytes).expect("pth parses");
+        assert_eq!(nodes.len(), 60);
+        assert_eq!(links[0], vec![1, 9, 10, 47, 51]);
+        assert_eq!(links.iter().map(Vec::len).sum::<usize>(), 283);
     }
 }

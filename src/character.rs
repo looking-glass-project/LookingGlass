@@ -945,7 +945,10 @@ impl Character {
             player,
             running,
         );
+        // Native alice_torso.st HELD: the full-body `held` (shake) clip owns the whole skeleton and
+        // no torso/weapon layer is applied, exactly as for death and scripted poses.
         if self.animator.motion == Motion::Death
+            || self.animator.motion == Motion::Held
             || player.script_motion > 0
             || player.ledge.is_some()
         {
@@ -2873,6 +2876,24 @@ mod tests {
                 })
                 .collect(),
         )
+    }
+    #[test]
+    fn carried_alice_plays_the_looping_held_shake() {
+        let mut a = animator();
+        let mut p = Player::new(Vec3::ZERO);
+        p.held = true;
+        a.reset(&p);
+        let mut last = 0.;
+        let mut wrapped = false;
+        for _ in 0..90 {
+            // The Duchess moves the carried body every tick.
+            p.feet += Vec3::new(0.3, 0., 0.1);
+            a.update(1. / 60., &p, false);
+            assert_eq!(a.motion, Motion::Held);
+            wrapped |= a.time < last;
+            last = a.time;
+        }
+        assert!(wrapped, "held shake never looped (time {last})");
     }
     #[test]
     fn walking_cadence_tracks_resolved_speed_in_every_equipment_pose() {

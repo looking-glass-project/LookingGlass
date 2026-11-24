@@ -402,3 +402,64 @@ fn contracts(assets: &mut crate::assets::Assets) -> Result<()> {
     println!("PASS Duchess gates, pickup-only activation, paused state, phase restore, full-duration/skip outcomes");
     Ok(())
 }
+
+#[cfg(test)]
+mod chase_tests {
+    use super::*;
+    /// Diagnostic on the real potears3 map: where does a chasing Duchess stall?
+    #[test]
+    #[ignore = "requires LOOKING_GLASS_TEST_DATA"]
+    fn chase_report() {
+        let base = std::env::var_os("LOOKING_GLASS_TEST_DATA").unwrap();
+        let mut assets = crate::assets::Assets::open(std::path::Path::new(&base)).unwrap();
+        let mut r = crate::route::Route::new(&mut assets, "potears3", None).unwrap();
+        r.tactics = true;
+        for goal in [vec3(-832., -1000., 16.), vec3(-536., -520., 16.), vec3(-280., -264., 16.)] {
+            r.navigate(goal).unwrap();
+        }
+        for t in 0..2400 {
+            if r.stats.collected.contains("potears3:21") {
+                break;
+            }
+            let wish = (vec2(-114., 66.) - r.player.feet.truncate()).normalize_or_zero();
+            r.tick(Controls { wish, jump: t % 120 == 0, ..Default::default() }).unwrap();
+        }
+        for _ in 0..3000 {
+            r.tick(Controls::default()).unwrap();
+            if r.interactions.duchess.as_ref().unwrap().state.stage == Stage::Fighting {
+                break;
+            }
+        }
+        r.tactics = false;
+        let tub = std::env::var("TUB_PLAYER").ok();
+        let spots: Vec<Vec3> = match tub {
+            Some(s) => s
+                .split(';')
+                .map(|p| {
+                    let v: Vec<f32> = p.split(',').map(|v| v.parse().unwrap()).collect();
+                    vec3(v[0], v[1], v[2])
+                })
+                .collect(),
+            None => vec![vec3(80., 768., 8.)],
+        };
+        for spot in spots {
+            r.player.feet = spot;
+            r.player.velocity = Vec3::ZERO;
+            let mut best = f32::MAX;
+            let mut log = String::new();
+            for t in 0..2400 {
+                r.player.feet = spot;
+                r.player.velocity = Vec3::ZERO;
+                r.stats.full_stats();
+                r.interactions.duchess.as_mut().unwrap().state.health = 100000.;
+                r.tick(Controls::default()).unwrap();
+                let d = r.interactions.duchess.as_ref().unwrap();
+                best = best.min(d.state.feet.truncate().distance(spot.truncate()));
+                if t % 60 == 0 {
+                    log += &format!(" [{:.0},{:.0}|{:?}]", d.state.feet.x, d.state.feet.y, d.state.action);
+                }
+            }
+            if best > 120. { println!("STALL {spot:?} closest={best:.0} {}", &log[..log.len().min(400)]); } else { println!("ok {spot:?} closest={best:.0}"); }
+        }
+    }
+}

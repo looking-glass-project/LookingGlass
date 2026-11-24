@@ -273,6 +273,8 @@ pub struct Duchess {
     /// when the enemy is not directly reachable, instead of feeling around obstacles.
     nodes: Vec<Vec3>,
     links: Option<Vec<Vec<usize>>>,
+    /// The map's authored PathNode links; kept only where the Duchess's body can really walk them.
+    native: Option<Vec<Vec<usize>>>,
     route: Vec<usize>,
     route_age: f32,
     /// Always-on fire emitters riding a moving wall: (entity id, wall group).
@@ -286,6 +288,7 @@ fn parse_pth(b: &[u8]) -> Option<(Vec<Vec3>, Vec<Vec<usize>>)> {
     let starts: Vec<usize> = (0..b.len().saturating_sub(MARK.len()))
         .filter(|&i| &b[i..i + MARK.len()] == MARK)
         .collect();
+    let n = starts.len();
     let f = |at: usize| Some(f32::from_le_bytes(b.get(at..at + 4)?.try_into().ok()?));
     let mut nodes = Vec::new();
     let mut raw: Vec<Vec<usize>> = Vec::new();
@@ -293,26 +296,30 @@ fn parse_pth(b: &[u8]) -> Option<(Vec<Vec3>, Vec<Vec<usize>>)> {
         let o = s + MARK.len();
         let end = starts.get(k + 1).copied().unwrap_or(b.len());
         nodes.push(vec3(f(o + 12)?, f(o + 16)?, f(o + 20)?));
-        let mut links = Vec::new();
-        for c in o + 24..(o + 160).min(end.saturating_sub(4)) {
+        // Named nodes ("billstand", "turtle_jump_pos") carry a string before the link table, and
+        // a link's 16 step bytes are not always 0x80, so accept any run of 24-byte records whose
+        // targets are valid nodes and whose last word is zero; the real table is the one that
+        // ends closest to the next node.
+        let mut best: Option<(usize, usize, Vec<usize>)> = None;
+        for c in o + 24..end.saturating_sub(3) {
             let count = u32::from_le_bytes(b[c..c + 4].try_into().ok()?) as usize;
-            if (1..=16).contains(&count)
-                && c + 4 + count * 24 <= end
-                && (0..count).all(|i| {
-                    let r = c + 4 + i * 24;
-                    b[r + 4..r + 8] == [0x80; 4] && b[r + 20..r + 24] == [0; 4]
-                })
-            {
-                links = (0..count)
-                    .map(|i| u16::from_le_bytes([b[c + 4 + i * 24], b[c + 5 + i * 24]]) as usize)
-                    .collect();
-                break;
+            let stop = c + 4 + count * 24;
+            if !(1..=16).contains(&count) || stop > end {
+                continue;
+            }
+            let targets: Vec<usize> = (0..count)
+                .map(|i| c + 4 + i * 24)
+                .filter(|&r| b[r + 20..r + 24] == [0; 4])
+                .map(|r| u16::from_le_bytes([b[r], b[r + 1]]) as usize)
+                .filter(|&t| t < n)
+                .collect();
+            if targets.len() == count && best.as_ref().is_none_or(|(tail, _, _)| end - stop < *tail) {
+                best = Some((end - stop, c, targets));
             }
         }
-        raw.push(links);
+        raw.push(best.map(|(_, _, t)| t).unwrap_or_default());
     }
-    let n = nodes.len();
-    (n >= 2 && raw.iter().flatten().all(|&t| t < n)).then_some((nodes, raw))
+    (n >= 2).then_some((nodes, raw))
 }
 fn entity<'a>(map: &'a Bsp, name: &str) -> Result<&'a BTreeMap<String, String>> {
     map.entities
@@ -495,6 +502,7 @@ impl Duchess {
                 .filter_map(|e| e.get("origin").and_then(|v| crate::interaction::vector(v)))
                 .collect(),
             links: None,
+            native: None,
             route: Vec::new(),
             route_age: 0.,
             fires: map
@@ -517,7 +525,7 @@ impl Duchess {
         // Chase behavior searches; use them instead of re-deriving links from body sweeps.
         if let Some((nodes, links)) = a.read("maps/potears3.pth").ok().and_then(|b| parse_pth(&b)) {
             s.nodes = nodes;
-            s.links = Some(links);
+            s.native = Some(links);
         }
         s.rebuild(map)?;
         Ok(s)
@@ -1159,6 +1167,9 @@ impl Duchess {
                         };
                         self.state.detour = if open(1.4) >= open(-1.4) { 1. } else { -1. };
                     }
+                    if std::env::var_os("DUCHESS_TRACE").is_some() && (self.state.clock * 4.).fract() < 0.05 {
+                        eprintln!("CHASE feet={:?} d={distance:.0} clear={clear} nav={nav:?} detour={} route={:?}", self.state.feet, self.state.detour, self.route);
+                    }
                     let wish = if let Some(n) = nav {
                         self.state.detour = 0.;
                         n
@@ -1311,12 +1322,25 @@ impl Duchess {
         if self.links.is_none() {
             let n = self.nodes.len();
             let mut links = vec![Vec::new(); n];
-            for i in 0..n {
-                for j in i + 1..n {
-                    let d = self.nodes[i].truncate().distance(self.nodes[j].truncate());
-                    if d <= 800. && self.body_clear(world, self.nodes[i], self.nodes[j]) {
-                        links[i].push(j);
-                        links[j].push(i);
+            if let Some(native) = self.native.clone() {
+                // Authored topology. The original's actors slide along obstacles; this walker
+                // does not, so a link whose straight walk is blocked (59 -> 32 crosses the well)
+                // is dropped and the search goes round the long way instead.
+                for (i, targets) in native.iter().enumerate() {
+                    for &j in targets {
+                        if self.body_clear(world, self.nodes[i], self.nodes[j]) {
+                            links[i].push(j);
+                        }
+                    }
+                }
+            } else {
+                for i in 0..n {
+                    for j in i + 1..n {
+                        let d = self.nodes[i].truncate().distance(self.nodes[j].truncate());
+                        if d <= 800. && self.body_clear(world, self.nodes[i], self.nodes[j]) {
+                            links[i].push(j);
+                            links[j].push(i);
+                        }
                     }
                 }
             }
@@ -1379,6 +1403,9 @@ impl Duchess {
                 path.push(prev[last]);
             }
             path.reverse();
+            if std::env::var_os("DUCHESS_TRACE").is_some() {
+                eprintln!("ROUTE feet={:?} start={start} end={end} path={:?}", self.state.feet, path);
+            }
             self.route = path;
         }
         // Drop waypoints already reached or that can be skipped with a clear walk.
@@ -1954,16 +1981,18 @@ impl Art {
                     );
                 }
             }
-            // Oldest silhouettes first. Native (fgame Phase behavior, shader `alphaGen fromEntity`):
-            // each fx_duchess_trail copy keeps entity alpha 1 for its whole second and is then
-            // removed; only the trail.tga alpha channel makes it translucent.
+            // Oldest silhouettes first. Native (fgame Phase behavior, FUN_100443d0): each
+            // fx_duchess_trail copy is sent the `fadeout` event with fadetime = its 1.0 s lifetime.
+            // That handler (FUN_10067e80) lowers entity alpha by FRAMETIME/fadetime every frame, so
+            // alpha falls linearly from 1 to 0 over the copy's life and the entity is then removed.
             for p in &self.trail.poses {
+                let alpha = (1. - (self.trail.time - p.at)).clamp(0., 1.);
                 self.phase_model
-                    .draw_afterimage("run_away", p.clock, p.transform, 1.);
+                    .draw_afterimage("run_away", p.clock, p.transform, alpha);
             }
             if phase {
                 self.phase_model
-                    .draw_afterimage("run_away", d.state.clock, pose, 1.);
+                    .draw_afterimage("run_away", d.state.clock, pose, 0.65);
                 if let Some(grip) =
                     self.duchess
                         .looping_tag("tag_weapon", "run_away", d.state.clock, pose, 1.)
@@ -2272,6 +2301,7 @@ mod tests {
             essence_origins: [vec3(1000., 1000., 0.); 4],
             nodes: Vec::new(),
             links: None,
+            native: None,
             route: Vec::new(),
             route_age: 0.,
             fires: Vec::new(),
@@ -2404,6 +2434,8 @@ mod pth_tests {
         let (nodes, links) = super::parse_pth(&bytes).expect("pth parses");
         assert_eq!(nodes.len(), 60);
         assert_eq!(links[0], vec![1, 9, 10, 47, 51]);
-        assert_eq!(links.iter().map(Vec::len).sum::<usize>(), 283);
+        assert_eq!(links[32], vec![18, 17, 59]);
+        assert_eq!(links[59], vec![2, 3, 45, 32]);
+        assert_eq!(links.iter().map(Vec::len).sum::<usize>(), 290);
     }
 }

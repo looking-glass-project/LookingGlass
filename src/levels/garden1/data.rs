@@ -136,7 +136,7 @@ impl Data {
             .iter()
             .find(|p| p.id.0 == 117)
             .context("Missing arrival launch volume")?;
-        let mut feet = points["garden1_start1"].translation;
+        let feet = points["garden1_start1"].translation;
         ensure!(
             push.volume.touches(
                 feet + crate::collision::PLAYER_CENTER,
@@ -145,22 +145,15 @@ impl Data {
             ),
             "Arrival outside launch volume"
         );
-        let mut v = push.direction;
+        // The original's fake actor is a player-class entity: after the apex impulse it falls
+        // under normal player physics, so ground friction stops it where it lands instead of
+        // sliding on. Drive the port's own player movement from the same start and impulse.
+        let mut body = crate::movement::Player::new(feet);
+        body.velocity = push.direction;
         let mut launch = vec![feet];
         for _ in 0..1200 {
-            let dt = crate::movement::FIXED_DT;
-            v.z -= crate::movement::GRAVITY * dt;
-            let t = world.sweep(
-                feet + crate::collision::PLAYER_CENTER,
-                feet + crate::collision::PLAYER_CENTER + v * dt,
-                crate::collision::PLAYER_HALF,
-            );
-            feet += v * dt * t.fraction;
-            if t.fraction < 1. {
-                v -= t.normal * v.dot(t.normal).min(0.);
-                feet += t.normal * 0.01;
-            }
-            launch.push(feet);
+            body.tick(&world, crate::movement::Controls::default());
+            launch.push(body.feet);
         }
         Ok(Self {
             deadtree: [420, 421, 422, 423, 424, 460, 650, 647, 425, 426, 427]
@@ -237,5 +230,23 @@ impl Data {
             .actor_footing(pose.translation, Vec3::Z * half.z, half, 96.)
             .unwrap_or(pose.translation);
         pose
+    }
+}
+
+#[cfg(test)]
+mod launch_tests {
+    #[test]
+    #[ignore = "requires LOOKING_GLASS_TEST_DATA"]
+    fn launch_report() {
+        let base = std::env::var_os("LOOKING_GLASS_TEST_DATA").unwrap();
+        let mut a = crate::assets::Assets::open(std::path::Path::new(&base)).unwrap();
+        let map = crate::bsp::Bsp::parse(&a.read("maps/garden1.bsp").unwrap()).unwrap();
+        let d = super::Data::load(&mut a, &map).unwrap();
+        for i in 0..20 {
+            let t = i as f32 * 0.1;
+            println!("LAUNCH t={t} {:?}", d.launch_pose(t).translation);
+        }
+        println!("START {:?}", d.points["garden1_start1"].translation);
+        println!("WATERPOS {:?}", d.points["turtle_waterpos1"].translation);
     }
 }

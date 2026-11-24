@@ -1041,6 +1041,7 @@ pub struct Art {
     ice: crate::weapons::Prop,
     rift_open: crate::weapons::Prop,
     rift_full: crate::weapons::Prop,
+    flicker: Option<crate::particles::light_style::Style>,
     trails: Vec<crate::particles::Attached>,
     emitters: std::collections::BTreeMap<u32, crate::particles::Attached>,
     poof: Vec<crate::particles::Attached>,
@@ -1092,6 +1093,10 @@ impl Art {
             )?,
             rift_open: crate::weapons::Prop::load_animation(assets, "fx_rift", "idle", specs)?,
             rift_full: crate::weapons::Prop::load_animation(assets, "fx_rift", "fullsize", specs)?,
+            flicker: crate::particles::light_style::Style::load(
+                assets,
+                "gfx/light/demonportal_lighting.tga",
+            )?,
             trails,
             emitters: Default::default(),
             poof,
@@ -1211,15 +1216,17 @@ impl Art {
     }
 }
 
-impl State {
-    /// fx_demondice_lensflare: a white 400-unit dynamic light on the rift while it is open.
-    pub fn lights(&self) -> Vec<crate::lighting::Light> {
-        self.demon
+impl Art {
+    /// fx_demondice_lensflare: a 400-unit dynamic light on the rift, coloured by the
+    /// `demonportal_lighting` style image at 20 Hz.
+    pub fn lights(&self, state: &State) -> Vec<crate::lighting::Light> {
+        state
+            .demon
             .iter()
             .filter(|d| d.phase != Phase::Dead)
             .map(|d| crate::lighting::Light {
                 position: d.feet + Vec3::Z * 48.,
-                color: Vec3::ONE
+                color: self.flicker.as_ref().map_or(Vec3::ONE, |s| s.sample(d.life))
                     * match d.phase {
                         Phase::Appear => (d.time / 0.7).min(1.),
                         Phase::Vanish => (1. - d.time / 0.5).max(0.),

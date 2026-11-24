@@ -414,7 +414,7 @@ pub(crate) fn attached_lights(assets: &mut Assets, name: &str) -> Result<Vec<(St
         }))
     }).collect())
 }
-mod light_style;
+pub(crate) mod light_style;
 mod check;
 pub(crate) use check::ambient_render;
 

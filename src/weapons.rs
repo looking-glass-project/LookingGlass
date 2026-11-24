@@ -1523,8 +1523,8 @@ impl Visuals {
         atmosphere.apply(&self.effect_material, camera);
     }
     pub fn lights(&self) -> Vec<crate::lighting::Light> {
-        self.dice
-            .lights()
+        self.dice_art
+            .lights(&self.dice)
             .into_iter()
             .chain(self.jacks
             .pieces

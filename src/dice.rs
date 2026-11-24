@@ -169,7 +169,7 @@ pub struct Die {
     pub position: Vec3,
     velocity: Vec3,
     pub age: f32,
-    resting: bool,
+    pub resting: bool,
     pub pip: u8,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]

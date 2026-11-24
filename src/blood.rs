@@ -106,7 +106,23 @@ impl Blood {
         }
         self.last = Some(self.clock);
         self.spawn(assets, specs, model, at);
-        self.splat(assets, specs, world, model, at);
+        self.splat(assets, specs, world, model, at, 25.);
+    }
+    /// Alice hurt (CE, 8 hits): the same burst as an enemy's, spray at her origin (32 above her
+    /// feet, scale 1.0) and a decal ray from there; fire, lava and other no-blood types skip it.
+    pub fn alice(
+        &mut self,
+        assets: &mut Assets,
+        specs: &BTreeMap<String, texture::MaterialSpec>,
+        world: &World,
+        feet: Vec3,
+    ) {
+        if self.last.is_some_and(|t| self.clock - t < 0.2) {
+            return;
+        }
+        self.last = Some(self.clock);
+        self.spawn(assets, specs, "alice", feet + Vec3::Z * 32.);
+        self.splat(assets, specs, world, "alice", feet, 32.);
     }
     pub fn spawn(
         &mut self,
@@ -150,6 +166,7 @@ impl Blood {
         world: &World,
         model: &str,
         at: Vec3,
+        origin_above: f32,
     ) {
         let Some(name) = self.blood_model(assets, model) else { return };
         // Original hit blood (fgamex86 FUN_100de6f0) only places a floor decal when rand() > 0.5.
@@ -176,8 +193,8 @@ impl Blood {
         // CE (FUN_100de6f0, hooked over 12 hits): a point trace from the entity origin along
         // d = (centroid - origin) + (crandom(20), crandom(20), -50), reaching |d| + 10 units. The
         // decal sits at the trace end on any surface it meets; nothing beyond that reach.
-        let start = at + Vec3::Z * 25.;
-        let d = vec3((self.roll() * 2. - 1.) * 20., (self.roll() * 2. - 1.) * 20., -75.);
+        let start = at + Vec3::Z * origin_above;
+        let d = vec3((self.roll() * 2. - 1.) * 20., (self.roll() * 2. - 1.) * 20., -origin_above - 50.);
         let end = start + d * (1. + 10. / d.length());
         let trace = world.sweep(start, end, Vec3::splat(0.1));
         if trace.start_solid || trace.fraction >= 1. {

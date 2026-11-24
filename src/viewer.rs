@@ -713,7 +713,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
     let mut blood = crate::blood::Blood::default();
     let mut blood_visit = String::new();
     let mut blood_sanity = f32::MAX;
-    let mut blood_cooldown = 0.0f32;
+    let mut blood_skip = false;
     let blood_specs = crate::texture::read_materials(&mut assets)?;
     let mut rail_camera = crate::camera::Follow::default();
     let mut clock = FixedClock::default();
@@ -2018,6 +2018,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
                 }
                 let liquid_damage = std::mem::take(&mut player.liquid_damage);
                 stats.damage(liquid_damage);
+                blood_skip |= liquid_damage > 0.;
                 if player.breath.hits != before_drowning {
                     audio.world_effect("sound/character/alice/choke1.wav");
                 }
@@ -3104,15 +3105,12 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
             blood.clear_decals();
         }
         let sanity = stats.sanity();
-        if active && sanity < blood_sanity && blood_cooldown <= 0. {
-            let at = player.feet + Vec3::Z * 44.;
-            // CE (FUN_100de6f0 spray entity +0x1b8): Alice's hurt spray is scale 1.0, like enemies'.
-            blood.spawn(&mut assets, &blood_specs, "alice", at);
-            blood.splat(&mut assets, &blood_specs, &scene.world, "alice", player.feet);
-            blood_cooldown = 0.35;
+        // CE: lava, slime, drowning and fire never bleed (FUN_100d92c0); every other hurt does.
+        if active && sanity < blood_sanity && !blood_skip {
+            blood.alice(&mut assets, &blood_specs, &scene.world, player.feet);
         }
+        blood_skip = false;
         blood_sanity = sanity;
-        blood_cooldown = (blood_cooldown - if active { dt } else { 0. }).max(0.);
         blood.update(if active { dt } else { 0. });
         blood.draw_decals(pickup_clock);
         blood.draw(camera, &scene.atmosphere);

@@ -86,7 +86,7 @@ fn rage_three_dice_force_king_and_failed_summons_refund_once() {
         s.throw(count,Vec3::Z*60.,Vec3::X);
         for d in &mut s.dice { d.pip=1; }
         s=serde_json::from_value(encoded(&s)).unwrap();
-        for _ in 0..300 { s.advance(STEP,&ctx,Vec3::Z*60.,&data()); }
+        for _ in 0..900 { s.advance(STEP,&ctx,Vec3::Z*60.,&data()); }
         assert_eq!(s.demon.as_ref().unwrap().kind,if count==3 {2}else{0});
     }
     let world=World::fixture(&[(Vec3::splat(-1000.),Vec3::splat(1000.))]);

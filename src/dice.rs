@@ -264,6 +264,17 @@ impl Demon {
         }
     }
 }
+/// The open rift before the summon steps out of it. `FUN_10060f80` posts event 0x101b5400
+/// (`FUN_10061300`, which spawns the actor through SafeSpawn and launches it) 3.0 s after the rift
+/// opens (`_DAT_1015cd54`); a failed spawn there closes the rift and refunds the will.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Rift {
+    pub feet: Vec3,
+    pub kind: usize,
+    pub age: f32,
+}
+/// Seconds between the rift opening and the summon stepping out of it.
+const EMERGE: f32 = 3.;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct Bolt {
     position: Vec3,
@@ -310,6 +321,8 @@ pub struct State {
     #[serde(default)]
     pub smoke: Vec<Smoke>,
     pub demon: Option<Demon>,
+    #[serde(default)]
+    pub rift: Option<Rift>,
     bolts: Vec<Bolt>,
     #[serde(default)]
     pub beams: Vec<Beam>,
@@ -339,6 +352,7 @@ impl Default for State {
             dice: vec![],
             smoke: vec![],
             demon: None,
+            rift: None,
             bolts: vec![],
             beams: vec![],
             seed: 0x6d2b79f5,
@@ -388,7 +402,7 @@ impl State {
         (0. ..1.9).contains(&self.regen).then_some(self.regen)
     }
     pub fn ready(&self) -> bool {
-        self.cooldown <= 0. && self.dice.is_empty() && self.demon.is_none()
+        self.cooldown <= 0. && self.dice.is_empty() && self.demon.is_none() && self.rift.is_none()
     }
     pub fn throw(&mut self, count: u8, origin: Vec3, direction: Vec3) -> bool {
         self.throw_at(count, origin, direction, None)
@@ -467,6 +481,12 @@ impl State {
                 && (0.0..=8.1).contains(&d.age)
                 && (1..=6).contains(&d.pip)),
             "Invalid saved thrown dice"
+        );
+        ensure!(
+            self.rift.as_ref().is_none_or(|r| r.feet.is_finite()
+                && r.kind < 3
+                && (0.0..=EMERGE + 0.5).contains(&r.age)),
+            "Invalid saved Demon Dice rift"
         );
         if let Some(d) = &self.demon {
             ensure!(
@@ -617,7 +637,7 @@ impl State {
             self.cooldown = (self.cooldown - STEP).max(0.);
             // fx_thrownweapon: the dice return half a second before the cycle ends and the
             // reappearance burst plays on the hand, with weapon_reappear.wav.
-            if self.regen < 99. && self.cooldown <= 0.5 && self.dice.is_empty() && self.demon.is_none()
+            if self.regen < 99. && self.cooldown <= 0.5 && self.dice.is_empty() && self.demon.is_none() && self.rift.is_none()
             {
                 if self.regen < 0. {
                     self.regen = 0.;
@@ -747,7 +767,39 @@ impl State {
                     tier(&self.dice.iter().map(|d| d.pip).collect::<Vec<_>>())
                 };
                 let at = self.dice[0].position;
-                self.demon = spawn(ctx.world, at, kind).map(|feet| {
+                self.rift = spawn(ctx.world, at, kind).map(|feet| Rift { feet, kind, age: 0. });
+                if self.rift.is_none() {
+                    out.refund += combat::will_cost(6, false);
+                }
+                // Measured in the running game: the thrown dice are removed exactly 3.0 s after the rift opens.
+                let left = 3.;
+                // The opener die gets the `hide` animation (no emitter); the others play `smoke`.
+                // If no rift opens the first die smokes too.
+                let skip = usize::from(self.rift.is_some());
+                self.smoke.extend(
+                    self.dice
+                        .iter()
+                        .skip(skip)
+                        .map(|d| Smoke { position: d.position, age: 0., left }),
+                );
+                self.dice.clear();
+                self.land = 0.;
+                self.time = 0.;
+                out.sounds
+                    .push(if self.rift.is_some() { OPEN } else { CLOSE });
+            }
+        }
+        if !world_active {
+            return;
+        }
+        if let Some(r) = &mut self.rift {
+            r.age += STEP;
+            if r.age >= EMERGE {
+                let (age, kind) = (r.age, r.kind);
+                let feet = r.feet;
+                self.rift = None;
+                // The spawn point was validated when the rift opened.
+                self.demon = Some(feet).map(|feet| {
                     let center = feet + Vec3::Z * 40. * SIZE[kind];
                     let hostile = !enemies.iter().any(|t| {
                         t.center.distance(center) < 1200. && visible(ctx.world, center, t.center)
@@ -759,7 +811,7 @@ impl State {
                         health: HEALTH[kind],
                         phase: Phase::Appear,
                         time: 0.,
-                        life: 0.,
+                        life: age,
                         idle: 0.,
                         cooldown: 0.,
                         target: None,
@@ -770,29 +822,7 @@ impl State {
                         shield: 0.,
                     }
                 });
-                if self.demon.is_none() {
-                    out.refund += combat::will_cost(6, false);
-                }
-                // Measured in the running game: the thrown dice are removed exactly 3.0 s after the rift opens.
-                let left = 3.;
-                // The opener die gets the `hide` animation (no emitter); the others play `smoke`.
-                // If no rift opens the first die smokes too.
-                let skip = usize::from(self.demon.is_some());
-                self.smoke.extend(
-                    self.dice
-                        .iter()
-                        .skip(skip)
-                        .map(|d| Smoke { position: d.position, age: 0., left }),
-                );
-                self.dice.clear();
-                self.land = 0.;
-                self.time = 0.;
-                out.sounds
-                    .push(if self.demon.is_some() { OPEN } else { CLOSE });
             }
-        }
-        if !world_active {
-            return;
         }
         if let Some(d) = &mut self.demon {
             let before = d.life;
@@ -1249,6 +1279,20 @@ impl Art {
     }
     pub fn effects(&mut self, state: &State, camera: Vec3) {
         let atmosphere = self.atmosphere.borrow();
+        if let Some(r) = &state.rift {
+            let pose = Transform {
+                translation: r.feet,
+                rotation: Quat::IDENTITY,
+            };
+            let (prop, looping) = if r.age < 1. {
+                (&mut self.rift_open, false)
+            } else {
+                (&mut self.rift_full, true)
+            };
+            for mesh in prop.meshes_at(pose, [1.25, 1.5, 2.][r.kind], true, r.age, looping) {
+                crate::render_fx::effect(mesh, crate::materials::Blend::Add);
+            }
+        }
         if let Some(d) = &state.demon {
             let pose = Transform {
                 translation: d.center(),
@@ -1273,10 +1317,11 @@ impl Art {
                     translation: d.feet,
                     rotation: Quat::IDENTITY,
                 };
+                // `idle` plays on opening and `fullsize` is posted 1.0 s later (FUN_100605b0).
                 let (prop, time, looping) = match d.phase {
-                    Phase::Appear => (&mut self.rift_open, d.time, false),
                     Phase::Vanish => (&mut self.rift_open, (0.5 - d.time).max(0.), false),
-                    _ => (&mut self.rift_full, d.time, true),
+                    _ if d.life < 1. => (&mut self.rift_open, d.life, false),
+                    _ => (&mut self.rift_full, d.life, true),
                 };
                 // FUN_100605b0 scales the rift by the same factor as the summon: 1.25 by default,
                 // 1.5 and 2.0 for the higher pip totals (_DAT_101664d4, _DAT_1015ce58, _DAT_1015be20).
@@ -1360,6 +1405,14 @@ impl Art {
     /// fx_demondice_lensflare: a 400-unit dynamic light on the rift, coloured by the
     /// `demonportal_lighting` style image at 20 Hz.
     pub fn lights(&self, state: &State) -> Vec<crate::lighting::Light> {
+        let waiting = state.rift.iter().filter(|r| r.age < 4.9).map(|r| crate::lighting::Light {
+            position: r.feet + Vec3::Z * 48.,
+            color: self.flicker.as_ref().map_or(Vec3::ONE, |s| s.sample(r.age))
+                * (r.age / 0.7).min(1.),
+            radius: 400.,
+            only_models: false,
+            flare: false,
+        });
         state
             .demon
             .iter()
@@ -1369,14 +1422,14 @@ impl Art {
                 position: d.feet + Vec3::Z * 48.,
                 color: self.flicker.as_ref().map_or(Vec3::ONE, |s| s.sample(d.life))
                     * match d.phase {
-                        Phase::Appear => (d.time / 0.7).min(1.),
                         Phase::Vanish => (1. - d.time / 0.5).max(0.),
-                        _ => 1.,
+                        _ => (d.life / 0.7).min(1.),
                     },
                 radius: 400.,
                 only_models: false,
                 flare: false,
             })
+            .chain(waiting)
             .collect()
     }
 }
@@ -1781,7 +1834,7 @@ mod tests {
         b.validate().unwrap();
         b.advance(0., &ctx, eye, &data());
         assert_eq!(saved, encoded(&b));
-        for _ in 0..500 {
+        for _ in 0..900 {
             let x = a.advance(STEP, &ctx, eye, &data());
             let y = b.advance(STEP, &ctx, eye, &data());
             assert_eq!(encoded(&a), encoded(&b));
@@ -1933,7 +1986,7 @@ mod tests {
         let mut s = State::default();
         s.throw(1, eye, Vec3::X);
         let mut damage = 0.;
-        for _ in 0..1200 {
+        for _ in 0..2400 {
             for h in s.advance(STEP, &ctx, eye, &data()).hits {
                 assert_eq!(h.id, ALICE);
                 damage += h.damage;

@@ -30,6 +30,8 @@ pub struct Art {
     /// `fx_splashsmall`: spawned whenever Alice's feet first touch liquid (native player event 6).
     splash: Option<Attached>,
     splashes: Vec<Splash>,
+    /// `splash.tan`: the animated water crown (23 frames, additive `splashmap`).
+    splash_mesh: Option<crate::weapons::Prop>,
     /// `None` until the first step after a reset or restore: that step only records the state, so
     /// loading or teleporting into water is not a splash.
     last_level: Option<u8>,
@@ -319,6 +321,9 @@ impl Art {
                 .map(Attached::engine_sprite_size)
                 .map(Attached::flat_sprites),
             splashes: Vec::new(),
+            splash_mesh: crate::weapons::read_model_clip(a, "fx_splashsmall", Some("idle"))
+                .ok()
+                .and_then(|(def, model)| crate::weapons::Prop::build(a, def, model, specs).ok()),
             last_level: None,
             last_fall: 0.,
         })
@@ -374,6 +379,19 @@ impl Art {
                 rotation: Quat::IDENTITY,
             };
             s.fx.draw(s.age, s.scale, |_, _| origin, |_, _, default| default, *camera, atmosphere);
+            // The model's server script holds full alpha for 11 frames (0.55 s), fades it out over
+            // 0.5 s, then removes the entity at the end of the 1.15 s clip.
+            if let Some(mesh) = &mut self.splash_mesh {
+                let alpha = (1. - (s.age - 0.55) / 0.5).clamp(0., 1.);
+                if alpha > 0. && s.age < 1.15 {
+                    for m in mesh.meshes_at(origin, s.scale, true, s.age, false) {
+                        for v in &mut m.vertices {
+                            v.color[3] = (alpha * 255.) as u8;
+                        }
+                        crate::render_fx::skin(m);
+                    }
+                }
+            }
         }
     }
     pub fn burning(&self) -> bool {

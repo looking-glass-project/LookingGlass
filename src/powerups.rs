@@ -262,6 +262,9 @@ pub struct Art {
     props: Vec<crate::weapons::Prop>,
     resources: Vec<crate::weapons::Prop>,
     material: crate::character::SkinMaterial,
+    /// The casing shader's `deformVertexes move 0 0 1 sin 1 2 1 1`: every vial and shard
+    /// surface hops with it, which is the pickups' slight bounce.
+    bob: Option<crate::materials::Deform>,
     essence: crate::loot_art::Art,
     collection_fx: std::collections::BTreeMap<String, crate::pickup_effects::Effect>,
     collected: Vec<(String, macroquad::prelude::Vec3, f32)>,
@@ -286,6 +289,10 @@ impl Art {
                 .map(|name| crate::weapons::Prop::load_animation(assets, name, "idle", &specs))
                 .collect::<Result<_>>()?,
             material: crate::character::skin_material()?,
+            bob: ["models/pickups/health_casing", "models/pickups/mana_casing"]
+                .iter()
+                .filter_map(|k| specs.get(*k).or_else(|| specs.get(&k.to_ascii_lowercase())))
+                .find_map(|s| s.deforms.first().cloned()),
             essence: crate::loot_art::Art::load(assets, &specs)?,
             collection_fx: ["p_h1", "p_h2", "p_m1", "p_m2"]
                 .into_iter()
@@ -368,9 +375,20 @@ impl Art {
                 }
                 crate::inventory::PickupKind::Weapon(_) => continue,
             };
+            let hop = self.bob.as_ref().map_or(Vec3::ZERO, |d| {
+                d.position(Vec3::ZERO, Vec3::Z, Vec2::ZERO, clock)
+            });
             prop.draw_frame(
                 crate::skeletal::Transform {
-                    translation: item.origin,
+                    translation: item.origin
+                        + if matches!(
+                            item.kind,
+                            crate::inventory::PickupKind::Sanity | crate::inventory::PickupKind::Will
+                        ) {
+                            hop
+                        } else {
+                            Vec3::ZERO
+                        },
                     rotation: Quat::IDENTITY,
                 },
                 1.,

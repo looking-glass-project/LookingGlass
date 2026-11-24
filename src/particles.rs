@@ -422,6 +422,8 @@ pub(crate) use check::ambient_render;
 struct Emitter {
     id: usize,
     pickup: bool,
+    /// Meta-essence drops: their halo and light sit higher than the vials' own tag_light.
+    essence: bool,
     origin: Vec3,
     rotation: Quat,
     local: crate::skeletal::Transform,
@@ -532,11 +534,11 @@ impl Steam {
                         position: e.origin
                             + sampled(e.spec.offset, &mut 1) * e.scale
                             + e.rotation * sampled(e.spec.axis_offset, &mut 1) * e.scale
-                            + if e.pickup { Vec3::Z * 14. * e.scale } else { Vec3::ZERO },
+                            + if e.essence { Vec3::Z * 14. * e.scale } else { Vec3::ZERO },
                         color: e.light_color.unwrap_or(color),
                         radius: radius * e.scale,
                         only_models,
-                        flare: flare || e.pickup,
+                        flare: flare || e.essence,
                     },
                 )
             })
@@ -845,6 +847,9 @@ impl Steam {
                 emitters.push(Emitter {
                     id,
                     pickup: e.get("classname").is_some_and(|c| c.to_ascii_lowercase().starts_with("item_")),
+                    essence: e
+                        .get("classname")
+                        .is_some_and(|c| c.to_ascii_lowercase().starts_with("item_metaess")),
                     origin: point,
                     rotation: axes,
                     local: crate::skeletal::Transform {
@@ -1430,6 +1435,7 @@ impl Attached {
             emitters.push(Emitter {
                 id: 0,
                 pickup: false,
+                essence: false,
                 origin: Vec3::ZERO,
                 rotation: Quat::IDENTITY,
                 local: crate::skeletal::Transform {
@@ -1666,6 +1672,7 @@ mod tests {
                     .map(|_| Emitter {
                         id: 0,
                         pickup: false,
+                essence: false,
                         origin: Vec3::ZERO,
                         rotation: Quat::IDENTITY,
                         local: crate::skeletal::Transform {
@@ -1883,6 +1890,7 @@ mod tests {
             animations: vec![],
             emitters: vec![Emitter {
                 pickup: false,
+                essence: false,
                 id: 7,
                 origin: Vec3::ZERO,
                 rotation: Quat::IDENTITY,

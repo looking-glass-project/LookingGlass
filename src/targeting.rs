@@ -53,7 +53,18 @@ pub struct Sight {
     /// None suppresses the marker for menus, performances and unavailable weapons.
     pub weapon: Option<usize>,
 }
+/// cgame `CG_EntityTargeted` (FUN_3001e910): the dice's aim point carries the `pentagram_decal`
+/// shader (a filter layer plus an additive layer) projected on the floor within 32 units below
+/// it, spinning 120 degrees per second.
+struct Pentagram {
+    filter: Texture2D,
+    glow: Texture2D,
+    clock: f32,
+}
+const PENTAGRAM_RADIUS: f32 = 20.;
 pub struct Pointer {
+    pentagram: Option<Pentagram>,
+    dice: Option<usize>,
     effect: Attached,
     rules: Vec<Rule>,
     age: f32,
@@ -74,7 +85,28 @@ impl Pointer {
         // Overlapping additive births otherwise turn this sight into a large,
         // saturated flare. Keep the local artwork as a subdued aiming point.
         effect.attenuate(0.1);
+        let texture = |assets: &mut Assets, name: &str| -> Option<Texture2D> {
+            let path = crate::texture::resolve(assets, name, &materials)?;
+            let image = crate::texture::decode(assets, &path).ok()?;
+            Some(Texture2D::from_rgba8(
+                image.width,
+                image.height,
+                &image.pixels,
+            ))
+        };
+        let pentagram = texture(assets, "pentagram_decal").zip(texture(
+            assets,
+            "textures/decals/pentagram_decal2.tga",
+        ));
         Ok(Self {
+            pentagram: pentagram.map(|(filter, glow)| Pentagram {
+                filter,
+                glow,
+                clock: 0.,
+            }),
+            dice: crate::inventory::WEAPONS
+                .iter()
+                .position(|(name, _)| *name == "demondice"),
             effect,
             rules,
             age: 0.,
@@ -89,6 +121,52 @@ impl Pointer {
         camera: Vec3,
         atmosphere: &Atmosphere,
     ) {
+        if sight.weapon.is_some() && sight.weapon == self.dice {
+            self.previous = None;
+            self.age = 0.;
+            let rule = Rule {
+                kind: 1,
+                range: self.rules.get(sight.weapon.unwrap_or(0)).map_or(1000., |r| r.range),
+            };
+            if let (Some(art), Some(at)) = (
+                self.pentagram.as_mut(),
+                endpoint(ctx, sight.eye, sight.direction, rule),
+            ) {
+                art.clock += dt.clamp(0., 0.1);
+                // The decal traces from 5 units above the marker down 32 units.
+                let top = at + Vec3::Z * 5.;
+                let hit = ctx.world.sweep(top, top - Vec3::Z * 32., Vec3::ZERO);
+                if !hit.start_solid && !hit.all_solid && hit.fraction < 1. && hit.normal.z > 0.5 {
+                    let center = top.lerp(top - Vec3::Z * 32., hit.fraction) + hit.normal * 0.4;
+                    let x = hit.normal.cross(Vec3::Z).try_normalize().unwrap_or(Vec3::X);
+                    let y = hit.normal.cross(x);
+                    let (sin, cos) = (art.clock * 120_f32.to_radians()).sin_cos();
+                    let (x, y) = (
+                        (x * cos + y * sin) * PENTAGRAM_RADIUS,
+                        (y * cos - x * sin) * PENTAGRAM_RADIUS,
+                    );
+                    for (texture, blend) in [
+                        (&art.filter, crate::materials::Blend::Filter),
+                        (&art.glow, crate::materials::Blend::Add),
+                    ] {
+                        let mesh = Mesh {
+                            vertices: [
+                                (center - x - y, vec2(0., 0.)),
+                                (center + x - y, vec2(1., 0.)),
+                                (center + x + y, vec2(1., 1.)),
+                                (center - x + y, vec2(0., 1.)),
+                            ]
+                            .map(|(p, uv)| Vertex::new(p.x, p.y, p.z, uv.x, uv.y, WHITE))
+                            .to_vec(),
+                            indices: vec![0, 1, 2, 0, 2, 3],
+                            texture: Some(texture.clone()),
+                        };
+                        crate::render_fx::effect(&mesh, blend);
+                    }
+                }
+            }
+            return;
+        }
         let point = sight.weapon.and_then(|weapon| {
             let rule = *self.rules.get(weapon)?;
             Some((

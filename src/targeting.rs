@@ -47,6 +47,28 @@ fn endpoint(ctx: &combat::Context<'_>, eye: Vec3, direction: Vec3, rule: Rule) -
     Some(eye.lerp(end, fraction * 0.9))
 }
 
+/// fgame `Player::UpdateJumpingReticle` (FUN_100a8650) while the Demon Dice are equipped: a world
+/// trace of 640 units from the view origin along the aim (mask 0x2010001, actors ignored). The
+/// reticle is only valid (flag 0x20) when it hits a floor with normal.z > 0.7 and lies fewer than
+/// 300 units (integer distance, `FUN_1002a720`) from Alice's origin. The throw (FUN_1005ef90)
+/// lands on this point when valid; otherwise it flies forward.
+pub fn dice_reticle(world: &crate::collision::World, eye: Vec3, direction: Vec3) -> Option<Vec3> {
+    const TRACE: f32 = 640.;
+    const MIN_NORMAL_Z: f32 = 0.7;
+    const LOCK_RANGE: f32 = 300.;
+    let direction = direction.try_normalize()?;
+    if !eye.is_finite() {
+        return None;
+    }
+    let end = eye + direction * TRACE;
+    let hit = world.sweep(eye, end, Vec3::ZERO);
+    if hit.start_solid || hit.all_solid || hit.fraction >= 1. || hit.normal.z <= MIN_NORMAL_Z {
+        return None;
+    }
+    let at = eye.lerp(end, hit.fraction);
+    let feet = eye - Vec3::Z * crate::movement::EYE_HEIGHT;
+    (at.distance(feet).trunc() < LOCK_RANGE).then_some(at)
+}
 pub struct Sight {
     pub eye: Vec3,
     pub direction: Vec3,
@@ -132,13 +154,9 @@ impl Pointer {
         if sight.weapon.is_some() && sight.weapon == self.dice {
             self.previous = None;
             self.age = 0.;
-            let rule = Rule {
-                kind: 1,
-                range: self.rules.get(sight.weapon.unwrap_or(0)).map_or(1000., |r| r.range),
-            };
             if let (Some(art), Some(at)) = (
                 self.pentagram.as_mut(),
-                endpoint(ctx, sight.eye, sight.direction, rule),
+                dice_reticle(ctx.world, sight.eye, sight.direction),
             ) {
                 art.clock += dt.clamp(0., 0.1);
                 // The decal traces from 5 units above the marker down 32 units.

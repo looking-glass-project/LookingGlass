@@ -1941,9 +1941,8 @@ impl Visuals {
                     self.first_person,
                     8.,
                 );
-                let locked = projectile::target(context, eye - Vec3::Z * 20., direction)
-                    .and_then(|id| context.targets.iter().find(|t| t.id == id))
-                    .map(|t| t.center);
+                // The dice land on the pentagram reticle when it is valid, not on an enemy.
+                let locked = crate::targeting::dice_reticle(world, eye, direction);
                 self.dice.throw_at(self.dice_count, origin, aimed, locked);
                 return;
             }

@@ -224,6 +224,9 @@ pub struct Demon {
     recoil: combat::Recoil,
     #[serde(default)]
     shield: f32,
+    /// Seconds since the held target was last seen (Actor enemy memory, native default 30 s).
+    #[serde(default)]
+    unseen: f32,
 }
 impl Demon {
     fn scale(&self) -> f32 {
@@ -801,9 +804,21 @@ impl State {
                 // The spawn point was validated when the rift opened.
                 self.demon = Some(feet).map(|feet| {
                     let center = feet + Vec3::Z * 40. * SIZE[kind];
-                    let hostile = !enemies.iter().any(|t| {
-                        t.center.distance(center) < 1200. && visible(ctx.world, center, t.center)
-                    });
+                    // FUN_1005f730 picks the nearest visible valid actor out to a squared distance of
+                    // 5.0e8; with none the summon is told `enemy` and its enemy is Alice.
+                    let found = enemies
+                        .iter()
+                        .filter(|t| {
+                            t.center.distance_squared(center) < 5.0e8
+                                && visible(ctx.world, center, t.center)
+                        })
+                        .min_by(|a, b| {
+                            a.center
+                                .distance_squared(center)
+                                .total_cmp(&b.center.distance_squared(center))
+                        });
+                    let hostile = found.is_none();
+                    let first = found.map(|t| t.id).or(Some(alice.id));
                     Demon {
                         kind,
                         feet,
@@ -814,12 +829,13 @@ impl State {
                         life: age,
                         idle: 0.,
                         cooldown: 0.,
-                        target: None,
+                        target: first,
                         hostile,
                         fired: 0,
                         frozen: false,
                         recoil: Default::default(),
                         shield: 0.,
+                        unseen: 0.,
                     }
                 });
             }
@@ -885,7 +901,18 @@ impl State {
             };
             let center = d.center();
             let attacking = !matches!(d.phase, Phase::Idle | Phase::Move);
-            let target = targets.iter().find(|t| Some(t.id) == d.target).or_else(|| {
+            // Actor think: a remembered enemy is forgotten once it has gone unseen (vision distance
+            // 1200, 360 degree fov, line of sight) for the 30 s enemy memory.
+            let held = targets.iter().find(|t| Some(t.id) == d.target);
+            if let Some(t) = held {
+                if t.center.distance(center) < 1200. && visible(ctx.world, center, t.center) {
+                    d.unseen = 0.;
+                } else {
+                    d.unseen += STEP;
+                }
+            }
+            let held = held.filter(|_| d.unseen <= 30.);
+            let target = held.or_else(|| {
                 targets
                     .iter()
                     .filter(|t| {
@@ -897,6 +924,9 @@ impl State {
                             .total_cmp(&b.center.distance_squared(center))
                     })
             });
+            if held.is_none() {
+                d.unseen = 0.;
+            }
             if let Some(t) = target {
                 d.idle = 0.;
                 d.target = Some(t.id);
@@ -1466,6 +1496,7 @@ pub fn check(assets: &mut Assets) -> Result<()> {
                 frozen: false,
                 recoil: Default::default(),
                 shield: 0.,
+                unseen: 0.,
             }),
             ..Default::default()
         };
@@ -1627,6 +1658,7 @@ pub async fn render_check(assets: &mut Assets) -> Result<()> {
                 frozen: false,
                 recoil: Default::default(),
                 shield: 0.,
+                unseen: 0.,
             });
             let center = visuals.dice.demon.as_ref().unwrap().center();
             ensure!(
@@ -1745,6 +1777,7 @@ mod tests {
                 frozen: false,
                 recoil: Default::default(),
                 shield: 0.,
+                unseen: 0.,
             }),
             ..State::default()
         }

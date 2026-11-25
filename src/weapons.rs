@@ -36,6 +36,10 @@ pub(crate) use projectile::Projectile;
 
 /// The Vorpal Blade's melee volume (40 units, native +-15 X/Y and 0..24 Z) for
 /// headless route drivers, which use the same contact rules as the live weapon.
+/// The enemy the jacks, cards and mallet track (`Player::FindClosestEnemyInRadius`).
+pub(crate) fn aim_target(ctx: &CombatContext<'_>, origin: Vec3, aim: Vec3) -> Option<usize> {
+    projectile::target(ctx, origin, aim)
+}
 pub(crate) fn blade_melee(ctx: &CombatContext<'_>, origin: Vec3, aim: Vec3) -> Vec<Hit> {
     projectile::melee(ctx, origin, aim)
 }
@@ -865,9 +869,24 @@ impl Prop {
                 .or_else(|| def.skins.get("all"))
                 .with_context(|| format!("Weapon surface skin missing: {}/{}", def.path, s.name))?;
             let path = texture::resolve(assets, &format!("{}/{skin}", def.path), specs)
-                .or_else(|| texture::resolve(assets, skin, specs))
-                .with_context(|| format!("Weapon texture {skin}"))?;
-            let image = texture::decode(assets, &path)?;
+                .or_else(|| texture::resolve(assets, skin, specs));
+            // Shaders such as fx/rift_base draw `$whiteimage`, which has no file.
+            let white = path.is_none()
+                && specs.get(&skin.to_ascii_lowercase()).is_some_and(|spec| {
+                    spec.stages.iter().flat_map(|st| &st.images).any(|c| c == "$whiteimage" || c == "*white")
+                });
+            let image = if white {
+                texture::RgbaImage {
+                    width: 1,
+                    height: 1,
+                    pixels: vec![255; 4],
+                }
+            } else {
+                texture::decode(
+                    assets,
+                    &path.with_context(|| format!("Weapon texture {skin}"))?,
+                )?
+            };
             let tex = Texture2D::from_rgba8(image.width, image.height, &image.pixels);
             tex.set_filter(FilterMode::Linear);
             material_layers.push(crate::render_fx::register(
@@ -897,6 +916,9 @@ impl Prop {
             meshes,
             scale: def.scale,
         })
+    }
+    pub(crate) fn surface_names(&self) -> Vec<String> {
+        self.model.surfaces.iter().map(|s| s.name.clone()).collect()
     }
     pub(crate) fn point(&self, attachment: Transform, tag: &str, scale: f32) -> Vec3 {
         attachment.point(self.model.tags.get(tag).map_or(Vec3::ZERO, |v| v[0]) * self.scale * scale)
@@ -1347,6 +1369,12 @@ impl Visuals {
     pub fn stop_ice(&mut self) {
         self.ice.stop();
     }
+    pub fn frozen(&self) -> Option<(f32, Vec3, f32)> {
+        self.ice.frozen()
+    }
+    pub fn phantasm_freeze(&mut self, feet: Vec3, yaw: f32) -> bool {
+        self.ice.phantasm(feet, yaw)
+    }
     pub fn frozen_body(&self, meshes: &[Option<Mesh>]) {
         if self.ice.locked() {
             self.ice_art.frozen_body(meshes);
@@ -1514,7 +1542,10 @@ impl Visuals {
         atmosphere.apply(&self.effect_material, camera);
     }
     pub fn lights(&self) -> Vec<crate::lighting::Light> {
-        self.jacks
+        self.dice_art
+            .lights(&self.dice)
+            .into_iter()
+            .chain(self.jacks
             .pieces
             .iter()
             .filter(|p| !p.silent)
@@ -1610,6 +1641,7 @@ impl Visuals {
                         only_models: false,
                         flare: false,
                     }),
+            )
             )
             .collect()
     }
@@ -1909,7 +1941,9 @@ impl Visuals {
                     self.first_person,
                     8.,
                 );
-                self.dice.throw(self.dice_count, origin, aimed);
+                // The dice land on the pentagram reticle when it is valid, not on an enemy.
+                let locked = crate::targeting::dice_reticle(world, eye, direction);
+                self.dice.throw_at(self.dice_count, origin, aimed, locked);
                 return;
             }
             if weapon == 1 || p.alternate() {
@@ -2205,8 +2239,12 @@ impl Visuals {
                 self.props[10].draw(anchors[1], 1., fullbright);
             }
         }
-        if [0, 3, 5].contains(&index) {
-            if let Some(age) = actions.return_age() {
+        if [0, 3, 5, 6].contains(&index) {
+            if let Some(age) = if index == 6 {
+                self.dice.return_age()
+            } else {
+                actions.return_age()
+            } {
                 crate::render::depth_read_only(|| self.draw_return(anchors[0], age));
             }
         }
@@ -2299,6 +2337,14 @@ impl Visuals {
         }
         gl_use_default_material();
     }
+    pub fn advance_ice_clock_for_check(&mut self, dt: f64) {
+        self.ice.clock += dt;
+    }
+    /// The ice wand an idle gesture carries keeps its always-on `ice_effect` mist emitter.
+    pub fn attached_ice_mist(&mut self, pose: Transform, scale: f32, camera: Vec3) {
+        self.ice_art
+            .held_mist(pose, scale, self.ice.clock as f32, camera);
+    }
     pub fn draw_effects(
         &mut self,
         body_material: &crate::character::SkinMaterial,
@@ -2313,9 +2359,13 @@ impl Visuals {
         for d in &self.dice.dice {
             self.props[12].draw(
                 Transform {
-                    translation: d.position,
-                    rotation: Quat::from_rotation_x(d.age * 7.)
-                        * Quat::from_rotation_y(d.age * 11.),
+                    translation: d.shown(),
+                    // A die that has stopped no longer tumbles.
+                    rotation: if d.resting {
+                        Quat::IDENTITY
+                    } else {
+                        Quat::from_rotation_x(d.age * 7.) * Quat::from_rotation_y(d.age * 11.)
+                    },
                 },
                 1.,
                 fullbright,

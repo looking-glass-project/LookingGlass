@@ -8,13 +8,27 @@ use macroquad::prelude::{Vec2, Vec3};
 pub const EYE_HEIGHT: f32 = 48.;
 pub const FIXED_DT: f32 = 1. / 120.;
 // Brisk walk: about two authored strides per second (51.3-51.7 units each).
-pub const WALK_SPEED: f32 = 104.;
+pub const WALK_SPEED: f32 = 52.;
+pub const RUN_SPEED: f32 = 173.;
 pub(crate) const STEP_HEIGHT: f32 = 18.;
 pub const GRAVITY: f32 = 800.;
 // Local Player jump event: half gravity in the ordinary, unpowered state.
 // Horizontal acceleration and animation timing remain provisional.
 const JUMP_SPEED: f32 = GRAVITY * 0.5;
-const GROUND_Z: f32 = 0.65;
+const DEFAULT_GROUND_Z: f32 = 0.5;
+static MIN_GROUND_Z: std::sync::atomic::AtomicU32 =
+    std::sync::atomic::AtomicU32::new(DEFAULT_GROUND_Z.to_bits());
+/// Steepest walkable floor, as a normal's Z. A scripted slide (Centipede's Sanctum
+/// tunnel) makes the 49 degree slope unwalkable so Alice slides under gravity.
+pub fn set_min_ground_z(z: f32) {
+    MIN_GROUND_Z.store(z.to_bits(), std::sync::atomic::Ordering::Relaxed);
+}
+pub fn reset_min_ground_z() {
+    set_min_ground_z(DEFAULT_GROUND_Z);
+}
+fn ground_z() -> f32 {
+    f32::from_bits(MIN_GROUND_Z.load(std::sync::atomic::Ordering::Relaxed))
+}
 /// Upright swimmer's shoulders are near 44 units; keep the eye just above water.
 pub const FLOAT_DEPTH: f32 = 44.;
 
@@ -71,6 +85,9 @@ pub struct Player {
     pub script_rope_length: Option<f32>,
     #[serde(default)]
     pub script_facing: f32,
+    /// An enemy has Alice (the original IS_GRABBED): she plays `held` and the camera goes top-down.
+    #[serde(skip)]
+    pub held: bool,
     pub steam: bool,
     pub feet: Vec3,
     pub velocity: Vec3,
@@ -151,6 +168,7 @@ impl Player {
             script_rope_rise: 0.,
             script_rope_length: None,
             script_facing: 0.,
+            held: false,
             steam: false,
             feet,
             velocity: Vec3::ZERO,
@@ -315,7 +333,7 @@ impl Player {
                 player.grounded = !player.swimming
                     && !support.start_solid
                     && support.fraction < 1.
-                    && support.normal.z >= GROUND_Z;
+                    && support.normal.z >= ground_z();
                 if player.grounded {
                     player.ground_normal = support.normal;
                 }
@@ -384,7 +402,7 @@ impl Player {
         let ground = world.body_trace(self.feet, self.feet - Vec3::Z * 2.);
         self.grounded = !ground.start_solid
             && ground.fraction < 1.
-            && ground.normal.z >= GROUND_Z
+            && ground.normal.z >= ground_z()
             && self.velocity.dot(ground.normal) <= 1.;
         if self.grounded {
             self.ground_normal = ground.normal;
@@ -393,13 +411,14 @@ impl Player {
             self.grounded = false;
         }
         let was_swimming = self.swimming;
-        self.swimming = self.immersion.level == 3
+        // Lava is not swimmable: a body in it falls to the floor and wades.
+        self.swimming = self.immersion.kind != crate::water::Liquid::Lava && (self.immersion.level == 3
             // A jump from a shallow, supported pool must keep its ascent. Switching
             // to swimming here clamps it back to the float line before it can clear
             // an ordinary bank (notably Herbaceous Border's slime basin).
             || (self.immersion.level >= 2 && !self.grounded
                 && (was_swimming || self.velocity.z <= 0.))
-            || (was_swimming && self.immersion.level == 1 && !self.grounded);
+            || (was_swimming && self.immersion.level == 1 && !self.grounded));
         if ((self.swimming && input.rise > 0.)
             || (self.grounded && (input.jump || input.use_pressed)))
             && self.knockback_time <= 0.
@@ -427,7 +446,7 @@ impl Player {
             let bank = world.body_trace(next, next - Vec3::Z * 2.);
             let supported = !bank.start_solid
                 && bank.fraction < 1.
-                && bank.normal.z >= GROUND_Z
+                && bank.normal.z >= ground_z()
                 && Immersion::sample(world, next).level < 3;
             // Float at chest depth. Space at an edge attempts the checked climb above;
             // holding it in open water must not repeatedly launch Alice into the air.
@@ -451,7 +470,7 @@ impl Player {
                 // can occupy the lowered endpoint even though the original slide was clear.
                 let hit = world.body_trace(self.feet, capped);
                 // Preserve the uncapped slide when it climbed a walkable bank.
-                if hit.fraction >= 1. || hit.normal.z < GROUND_Z {
+                if hit.fraction >= 1. || hit.normal.z < ground_z() {
                     next = self.feet.lerp(capped, hit.fraction);
                     velocity.z = velocity.z.min(0.);
                 }
@@ -471,13 +490,30 @@ impl Player {
         let jump = input.jump && self.grounded;
         let wish = input.wish.clamp_length_max(1.);
         let target = wish
-            * if input.run { 320. } else { WALK_SPEED }
+            * if input.run { RUN_SPEED } else { WALK_SPEED }
             * if self.tea { 2. } else { 1. }
             * if self.immersion.level > 0 { 0.7 } else { 1. };
         let mut horizontal = self.velocity.truncate();
         if self.knockback_time <= 0. && (self.grounded || wish.length_squared() > 0.) {
-            let acceleration = if self.grounded { 1800. } else { 420. };
-            horizontal += (target - horizontal).clamp_length_max(acceleration * FIXED_DT);
+            if self.grounded && world.on_ice(self.feet) {
+                // Icy Reception, measured from the PC game: friction drops speed by
+                // max(speed, ~51) * 0.255 per second and input accelerates at ~420/s.
+                let speed = horizontal.length();
+                if speed > 0. {
+                    let drop = speed.max(51.) * 0.255 * FIXED_DT;
+                    horizontal *= (speed - drop).max(0.) / speed;
+                }
+                if wish.length_squared() > 0. {
+                    // PC game on ice: walk tops out at 64.3 and run at ~221, and the
+                    // acceleration scales with that top speed (~1.85/s: 116 walking, 420 running).
+                    let ice_target = target * if input.run { 221.5 / RUN_SPEED } else { 64.3 / WALK_SPEED };
+                    let acceleration = 1.85 * ice_target.length().max(64.3);
+                    horizontal += (ice_target - horizontal).clamp_length_max(acceleration * FIXED_DT);
+                }
+            } else {
+                let acceleration = if self.grounded { 1800. } else { 420. };
+                horizontal += (target - horizontal).clamp_length_max(acceleration * FIXED_DT);
+            }
         }
         self.velocity.x = horizontal.x;
         self.velocity.y = horizontal.y;
@@ -513,7 +549,7 @@ impl Player {
                 let raised = start + Vec3::Z * height;
                 let (step, step_velocity) = slide(world, raised, velocity, FIXED_DT);
                 let down = world.body_trace(step, step - Vec3::Z * (height + 2.));
-                if !down.start_solid && down.fraction < 1. && down.normal.z >= GROUND_Z {
+                if !down.start_solid && down.fraction < 1. && down.normal.z >= ground_z() {
                     let step = step - Vec3::Z * (height + 2.) * down.fraction;
                     if (step - start).truncate().length_squared()
                         > (next - start).truncate().length_squared() + 0.0001
@@ -560,7 +596,7 @@ impl Player {
         let down = world.body_trace(self.feet, self.feet - Vec3::Z * distance);
         self.grounded = !down.start_solid
             && down.fraction < 1.
-            && down.normal.z >= GROUND_Z
+            && down.normal.z >= ground_z()
             && !jump
             && (was_ground || self.velocity.dot(down.normal) <= 1.);
         if self.grounded {
@@ -627,7 +663,7 @@ impl Player {
         let forward = wish.normalize().extend(0.) * 42.;
         // There must be an actual low obstacle in front, not open water or a distant wall.
         let wall = world.body_trace(self.feet, self.feet + forward);
-        if wall.start_solid || wall.fraction >= 1. || wall.normal.z > GROUND_Z {
+        if wall.start_solid || wall.fraction >= 1. || wall.normal.z > ground_z() {
             return false;
         }
         // Water puts the collider's feet deeper than the old waist-high float.
@@ -643,7 +679,7 @@ impl Player {
             return false;
         }
         let down = world.body_trace(raised + forward, self.feet + forward);
-        if down.start_solid || down.fraction >= 1. || down.normal.z < GROUND_Z {
+        if down.start_solid || down.fraction >= 1. || down.normal.z < ground_z() {
             return false;
         }
         let end = (raised + forward).lerp(self.feet + forward, down.fraction);
@@ -727,7 +763,7 @@ fn slide(world: &World, mut position: Vec3, mut velocity: Vec3, dt: f32) -> (Vec
             normals.push(hit.normal);
         }
         let tangent_stall = hit.fraction <= 0.000001
-            && hit.normal.z < GROUND_Z
+            && hit.normal.z < ground_z()
             && velocity.dot(hit.normal).abs() < 0.01;
         velocity = constrain(velocity, &normals);
         // A tangent slide at large map coordinates can round back onto the
@@ -914,7 +950,7 @@ mod tests {
     #[test]
     fn brisk_walking_speed_and_running_are_stable() {
         let world = floor();
-        for (run, fraction, expected) in [(false, 1., 104.), (false, 0.125, 13.), (true, 1., 320.)]
+        for (run, fraction, expected) in [(false, 1., 52.), (false, 0.125, 6.5), (true, 1., 173.)]
         {
             let mut p = Player::new(Vec3::Z * 0.04);
             let input = Controls {
@@ -1031,7 +1067,7 @@ mod tests {
         ]);
         let mut p = Player::new(vec3(0., 0., 0.1));
         // Allow the brisk walking speed to reach and slide along the wall.
-        for _ in 0..360 {
+        for _ in 0..720 {
             p.tick(
                 &world,
                 Controls {
@@ -1052,8 +1088,8 @@ mod tests {
                 (vec3(50., -100., 0.), vec3(500., 100., height)),
             ]);
             let mut p = Player::new(vec3(0., 0., 0.1));
-            // Walk far enough to exercise the same step geometry at 104 units/s.
-            for _ in 0..240 {
+            // Walk far enough to exercise the same step geometry at 52 units/s.
+            for _ in 0..480 {
                 p.tick(
                     &world,
                     Controls {
@@ -1138,7 +1174,7 @@ mod tests {
     fn follows_slope_up_and_down_and_can_jump_while_climbing() {
         let world = World::ramp_fixture();
         let mut p = Player::new(vec3(0., 0., 8.));
-        for _ in 0..200 {
+        for _ in 0..400 {
             p.tick(
                 &world,
                 Controls {
@@ -1172,7 +1208,7 @@ mod tests {
         }
         assert!(p.grounded);
         let before = p.feet;
-        for _ in 0..60 {
+        for _ in 0..120 {
             p.tick(
                 &world,
                 Controls {

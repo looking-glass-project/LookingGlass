@@ -3,6 +3,12 @@ use crate::collision::World;
 use macroquad::prelude::*;
 pub(crate) mod navigation;
 
+/// The original Actor constructor (fgamex86 0x100195e0) sets `max_inactive_time`
+/// to 30 s (float at 0x1015ce5c). Per its event text, this is also how long an actor
+/// keeps hunting an enemy it can no longer see; `GetCloseToEnemy` heads for the
+/// enemy itself, not the last sighting.
+pub const MAX_INACTIVE_TIME: f32 = 30.;
+
 #[derive(Clone, Copy, Debug)]
 pub struct Target {
     pub id: usize,
@@ -226,9 +232,25 @@ pub struct Feedback {
     pub summon_hits: Vec<Hit>,
     pub sounds: Vec<&'static str>,
     pub spatial_sounds: Vec<(&'static str, Vec3)>,
+    /// Players encased in a Phantasmagoria ice block this tick.
+    pub freeze: Vec<usize>,
+    /// Velocity added to Alice without the knockback control lock (SuckEnemy).
+    pub pull: Vec3,
+    /// Alice is held hidden inside an evil mushroom at this origin (Digest).
+    pub swallow: Option<Vec3>,
+    /// Alice is spat out from this origin with this velocity.
+    pub launch: Option<(Vec3, Vec3)>,
 }
 impl Feedback {
+    pub fn freeze(&mut self, id: usize) {
+        if player_id(id) && !self.freeze.contains(&id) {
+            self.freeze.push(id);
+        }
+    }
     pub fn append(&mut self, other: Self) {
+        for id in other.freeze {
+            self.freeze(id);
+        }
         for (a, b) in self.players.iter_mut().zip(other.players) {
             a.damage += b.damage;
             a.impulse += b.impulse;
@@ -237,6 +259,9 @@ impl Feedback {
         self.damage += other.damage;
         self.impulse += other.impulse;
         self.will_drain += other.will_drain;
+        self.pull += other.pull;
+        self.swallow = self.swallow.or(other.swallow);
+        self.launch = self.launch.or(other.launch);
         self.summon_hits.extend(other.summon_hits);
         self.sounds.extend(other.sounds);
         self.spatial_sounds.extend(other.spatial_sounds);
@@ -250,6 +275,15 @@ impl Feedback {
         } else {
             self.strike(id, amount, Vec3::ZERO, DamageKind::Other);
         }
+    }
+    pub fn pull(&mut self, id: usize, velocity: Vec3) {
+        if id == crate::dice::ALICE { self.pull += velocity } else { self.strike(id, 0., velocity, DamageKind::Other) }
+    }
+    pub fn swallow(&mut self, id: usize, at: Vec3) {
+        if id == crate::dice::ALICE { self.swallow = Some(at) }
+    }
+    pub fn launch(&mut self, id: usize, from: Vec3, velocity: Vec3) {
+        if id == crate::dice::ALICE { self.launch = Some((from, velocity)) } else { self.strike(id, 0., velocity, DamageKind::Other) }
     }
     pub fn strike(&mut self, id: usize, damage: f32, impulse: Vec3, kind: DamageKind) {
         if let Some(slot) = player_slot(id) {
@@ -426,6 +460,22 @@ pub struct Guard {
     falling: f32,
     #[serde(default)]
     placed: bool,
+    /// Running after an enemy still far away (the original's CHARGE state).
+    #[serde(default)]
+    charging: bool,
+    #[serde(default)]
+    detour: navigation::Detour,
+    #[serde(default)]
+    roll: f32,
+    #[serde(default)]
+    lost: f32,
+    /// Seconds spent hunting without moving (no path), and whether to stand still.
+    #[serde(default)]
+    stuck: f32,
+    #[serde(default)]
+    holding: bool,
+    #[serde(default)]
+    rng: u32,
 }
 impl Guard {
     pub fn validate_save(&self) -> anyhow::Result<()> {
@@ -499,7 +549,23 @@ impl Guard {
             accumulator: 0.,
             falling: 0.,
             placed: false,
+            charging: false,
+            detour: Default::default(),
+            roll: 0.,
+            lost: 0.,
+            stuck: 0.,
+            holding: false,
+            rng: 0x9e37_79b9 ^ (feet.x.to_bits().rotate_left(7) ^ feet.y.to_bits()),
         }
+    }
+    fn last_known(&self, eye: Vec3) -> Vec3 {
+        eye
+    }
+    fn random(&mut self) -> f32 {
+        self.rng ^= self.rng << 13;
+        self.rng ^= self.rng >> 17;
+        self.rng ^= self.rng << 5;
+        (self.rng >> 8) as f32 / (1u32 << 24) as f32
     }
     pub fn target(&self, id: usize) -> Target {
         Target {
@@ -521,6 +587,11 @@ impl Guard {
             self.cut_variant.clip()
         } else if self.ranged && self.state == State::Attack {
             "stand_attack"
+        } else if self.holding && self.state == State::Chase {
+            // Original HOLD_POSITION / cooldown: stand and watch, never run in place.
+            "idle"
+        } else if self.charging && self.state == State::Chase {
+            "run"
         } else {
             self.state.clip()
         }
@@ -685,8 +756,8 @@ impl Guard {
             self.notarget,
             self.state == State::Attack,
             |eye| {
-                eye.distance_squared(center) < if ranged { 900. * 900. } else { 420. * 420. }
-                    && eye.distance_squared(home) < if ranged { 1000. * 1000. } else { 700. * 700. }
+                eye.distance_squared(center) < 1000. * 1000.
+                    && eye.distance_squared(home) < 4000. * 4000.
             },
         );
         let delta = eye - self.target(0).center;
@@ -699,24 +770,23 @@ impl Guard {
         };
         let distance = delta.truncate().length();
         let aware = !notarget
-            && delta.length_squared()
-                < if self.ranged {
-                    900. * 900.
-                } else {
-                    420. * 420.
-                }
-            && eye.distance_squared(self.home)
-                < if self.ranged {
-                    1000. * 1000.
-                } else {
-                    700. * 700.
-                };
+            // The original's `visiondistance 1000` with no leash to the spawn point.
+            && delta.length_squared() < 1000. * 1000.
+            && eye.distance_squared(self.home) < 4000. * 4000.;
         // Distant actors should not trace across the entire level at 120 Hz.
         let visible = aware && {
             let sight = world.sweep(self.target(0).center, eye, Vec3::splat(0.5));
             !sight.start_solid && sight.fraction >= 1.
         };
+        // Sighted: acquires from Idle. Engaged (in range, even round a corner):
+        // keeps hunting like HAVE_ENEMY until the target has been unseen for a while.
+        let engaged = aware;
         let aware = aware && visible;
+        if visible {
+            self.lost = 0.;
+        } else {
+            self.lost += dt;
+        }
         if !matches!(self.state, State::Attack | State::Pain) && aware {
             let angle = delta.y.atan2(delta.x);
             let difference = (angle - self.yaw + std::f32::consts::PI)
@@ -749,7 +819,7 @@ impl Guard {
                     }
                     if !self.ranged
                         && visible
-                        && distance <= 78. * self.scale + reach.x
+                        && distance <= 100. * self.scale + reach.x
                         && delta.z.abs() < 55. * self.scale + reach.z
                         && delta
                             .truncate()
@@ -766,23 +836,84 @@ impl Guard {
                 }
             }
             State::Chase => {
-                if !aware {
+                if !engaged || self.lost > 12. {
+                    self.holding = false;
+                    self.stuck = 0.;
+                    self.charging = false;
+                    self.detour.clear();
                     self.set_state(State::Idle);
-                } else if (self.ranged && distance < 600.)
-                    || (distance < 60. * self.scale + reach.x
-                        && delta.z.abs() < 55. * self.scale + reach.z)
-                {
-                    if self.cooldown <= 0. {
-                        self.set_state(State::Attack);
-                        out.sounds.push(if self.ranged {
-                            "sound/character/cardguard/diamond/stand_attack.wav"
+                } else {
+                    // CHARGE: run while the enemy is still far off, otherwise APPROACH on foot.
+                    let far = if self.ranged { 250. } else { 150. };
+                    self.charging = visible && distance > far && self.stuck < 0.5;
+                    let melee = distance < 100. * self.scale + reach.x
+                        && delta.z.abs() < 55. * self.scale + reach.z;
+                    // WALK_ATTACK/CHARGE_ATTACK: shoot now and then while hunting.
+                    self.roll += dt;
+                    let shoot = if self.ranged && visible && self.roll >= 0.8 {
+                        self.roll = 0.;
+                        let chance = if self.stuck >= 0.5 {
+                            // NO_PATH + CAN_SHOOT_ENEMY: HOLD_POSITION, shoot at 80 %.
+                            0.8
+                        } else if self.charging {
+                            0.2
                         } else {
-                            "sound/character/cardguard/club/attack1.wav"
-                        });
+                            1. / 3.
+                        };
+                        self.random() < chance
+                    } else {
+                        false
+                    };
+                    self.holding = false;
+                    if melee || shoot {
+                        // Waiting out the attack cooldown: stand, don't walk on the spot.
+                        self.holding = self.cooldown > 0.;
+                        self.stuck = 0.;
+                        if self.cooldown <= 0. {
+                            self.charging = false;
+                            self.detour.clear();
+                            self.set_state(State::Attack);
+                            out.sounds.push(if self.ranged {
+                                "sound/character/cardguard/diamond/stand_attack.wav"
+                            } else {
+                                "sound/character/cardguard/club/attack1.wav"
+                            });
+                        }
+                    } else {
+                        // Root motion of the original walk/run clips (distance per
+                        // loop x model scale), from the .ska data.
+                        let speed = self.scale
+                            * match (self.ranged, self.charging) {
+                                (false, false) => 68.7,
+                                (false, true) => 224.2,
+                                (true, false) => 62.2,
+                                (true, true) => 236.6,
+                            };
+                        let goal = if visible { eye } else { self.last_known(eye) };
+                        let before = self.feet;
+                        self.feet = self.detour.walk(
+                            world,
+                            self.feet,
+                            goal,
+                            vec3(24., 24., 40.) * self.scale,
+                            speed * dt,
+                            dt,
+                        );
+                        let step = (self.feet - before).truncate();
+                        if step.length() < 0.25 * speed * dt {
+                            self.stuck += dt;
+                        } else {
+                            self.stuck = 0.;
+                        }
+                        self.holding = self.stuck >= 0.5;
+                        if !visible && step.length_squared() > 1e-6 {
+                            let want = step.y.atan2(step.x);
+                            let d = (want - self.yaw + std::f32::consts::PI)
+                                .rem_euclid(std::f32::consts::TAU)
+                                - std::f32::consts::PI;
+                            self.yaw += d.clamp(-dt * 4., dt * 4.);
+                        }
                     }
-                } else if self.feet.distance(self.home) < 500. {
-                    let wish = delta.truncate().normalize_or_zero().extend(0.) * 95. * dt;
-                    self.feet = walk(world, self.feet, wish, self.scale);
                 }
             }
             _ => (),
@@ -826,7 +957,18 @@ pub(crate) fn walk_body_liquids(
     half: Vec3,
     allowed: i32,
 ) -> Vec3 {
-    let lift = Vec3::Z * 16.;
+    walk_body_lift(world, feet, delta, half, allowed, 16.)
+}
+/// As `walk_body_liquids`, with a taller step so a body can climb out of a pit.
+pub(crate) fn walk_body_lift(
+    world: &World,
+    feet: Vec3,
+    delta: Vec3,
+    half: Vec3,
+    allowed: i32,
+    step: f32,
+) -> Vec3 {
+    let lift = Vec3::Z * step;
     let center = feet + Vec3::Z * (half.z + 0.1);
     let up = world.sweep(center, center + lift, half);
     if up.start_solid {
@@ -843,11 +985,13 @@ pub(crate) fn walk_body_liquids(
     }
     let next =
         (raised + delta).lerp(raised + delta - Vec3::Z * 34., down.fraction) - Vec3::Z * half.z;
+    // Every hull corner needs ground, but within two stair treads: an 18-unit
+    // probe refused each descending stair (a 32-unit hull spans two 16-unit
+    // treads), stalling enemies at the top of steps. Real drops still stop them.
     for x in [-half.x + 1., half.x - 1.] {
         for y in [-half.y + 1., half.y - 1.] {
             let p = next + vec3(x, y, 2.);
-            // A hull straddling a legal step still needs support on its lower side.
-            let support = world.sweep(p, p - Vec3::Z * 18., Vec3::ZERO);
+            let support = world.sweep(p, p - Vec3::Z * 36., Vec3::ZERO);
             if support.start_solid || support.fraction >= 1. || support.normal.z < 0.65 {
                 return feet;
             }

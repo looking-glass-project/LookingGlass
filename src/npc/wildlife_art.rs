@@ -13,8 +13,14 @@ pub(super) struct Art {
 }
 impl Art {
     pub fn new(model: &Model) -> Self {
+        // The spider's poison_spit uses `randvel`/`velocity` relative to tag_mouth; read as world
+        // axes it fired straight up instead of along the mouth.
+        let mut effect = model.own_effect.as_ref().map(|t| t.fork());
+        if let Some(e) = &mut effect {
+            e.orient_velocity("poison_spit");
+        }
         Self {
-            effect: model.own_effect.as_ref().map(|t| t.fork()),
+            effect,
             templates: model
                 .effects
                 .iter()
@@ -31,6 +37,9 @@ impl Art {
             gl_use_default_material();
             draw_line_3d(g.target(0).center, anchor, Color::new(0.8, 0.8, 0.8, 0.6));
         }
+        for chain in &g.chains {
+            beams.ice_chain(chain.from, chain.tip, camera, g.time);
+        }
         if let Some(end) = g.beam {
             gl_use_default_material();
             let from = if g.kind.jabber() {
@@ -38,10 +47,17 @@ impl Art {
                     + Quat::from_rotation_z(g.yaw)
                         * data.tag(g.clip(), g.time, "tag_beam").translation
                         * g.scale
+            } else if g.kind == crate::wildlife::Kind::Phantom {
+                g.feet
+                    + Quat::from_rotation_z(g.yaw)
+                        * data.tag(g.clip(), g.time, "tag_head4").translation
+                        * g.scale
             } else {
                 g.target(0).center
             };
-            if g.kind.jabber() {
+            if g.kind == crate::wildlife::Kind::Phantom {
+                beams.mana_beam(from, end, camera, g.time, atmosphere);
+            } else if g.kind.jabber() {
                 beams.lightning(from, end, camera, (g.time-data.clips[g.clip()].frame_time).max(0.), 1000., false, atmosphere);
             } else {
                 draw_line_3d(from, end, Color::new(0.45, 0.75, 1., 0.7));
@@ -50,6 +66,7 @@ impl Art {
         if self.phase != Some(g.phase) || g.time < self.time {
             if let Some(effect) = &mut self.effect {
                 *effect = effect.fork();
+                effect.orient_velocity("poison_spit");
             }
             self.attachments.clear();
         }

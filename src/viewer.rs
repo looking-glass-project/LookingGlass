@@ -706,7 +706,15 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
     level_art.prepare(&mut assets, &scene, &interactions, true)?;
     let mut third_person = true;
     let mut follow_camera = crate::camera::Follow::default();
+    let mut idle_view = crate::camera::IdleView::default();
+    let mut bite_view = crate::camera::Bite::default();
     let mut camera_handoff = crate::camera::Handoff::default();
+    let frozen_orbit = crate::camera::FrozenOrbit::load(&mut assets)?;
+    let mut blood = crate::blood::Blood::default();
+    let mut blood_visit = String::new();
+    let mut blood_sanity = f32::MAX;
+    let mut blood_skip = false;
+    let blood_specs = crate::texture::read_materials(&mut assets)?;
     let mut rail_camera = crate::camera::Follow::default();
     let mut clock = FixedClock::default();
     let mut recovery = Recovery::default();
@@ -884,6 +892,8 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
     loop {
         crate::ui_probe::screen(if paused { "solo-paused" } else { "solo-play" }, &[], "");
         let mut frame_profile = crate::frame_profile::span("frame_cpu");
+        let frame_started = std::time::Instant::now();
+        let mut loop_span = crate::frame_profile::span("loop_input");
         input.update(&preferences, window_focused());
         let overlay_before = menu || inventory_menu || console.open || paused;
         let context_before = (menu, inventory_menu, console.open, paused);
@@ -1261,6 +1271,25 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
                                 "third person"
                             } else {
                                 "first person"
+                            }
+                        ));
+                    }
+                    Ok(Command::LockStrafe(value)) => {
+                        if let Some(value) = value {
+                            preferences.lock_strafe = value;
+                            if let Err(e) = preferences.save() {
+                                console.print(format!(
+                                    "Applied; settings could not be saved: {e}"
+                                ));
+                            }
+                        }
+                        console.print(format!(
+                            "cg_lockstrafe {} ({})",
+                            u8::from(preferences.lock_strafe),
+                            if preferences.lock_strafe {
+                                "body follows the view, native"
+                            } else {
+                                "free third-person turning"
                             }
                         ));
                     }
@@ -1962,7 +1991,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
                         control = Controls::default();
                         player.velocity = Vec3::ZERO;
                     }
-                    if alice.attack_movement_locked() {
+                    if alice.attack_movement_locked() || alice.glass_performing() {
                         control = Controls::default();
                     }
                     scene.world.set_weapon_obstacles(alice.ice_targets());
@@ -1989,6 +2018,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
                 }
                 let liquid_damage = std::mem::take(&mut player.liquid_damage);
                 stats.damage(liquid_damage);
+                blood_skip |= liquid_damage > 0.;
                 if player.breath.hits != before_drowning {
                     audio.world_effect("sound/character/alice/choke1.wav");
                 }
@@ -2089,6 +2119,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
             && focused
             && !flying
             && stats.alive();
+        loop_span = crate::frame_profile::span("loop_story");
         hints.sync(&interactions);
         if (summon_cat || (story_active && pressed(KeyCode::C))) && !in_transport {
             let outcome = if !stats.alive() || flying {
@@ -2336,6 +2367,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
                 }
             }
         }
+        loop_span = crate::frame_profile::span("loop_player");
         if !paused && !menu && !inventory_menu && !console_input && focused && stats.alive() {
             environment_clock += world_dt;
             steam.animate(environment_clock);
@@ -2347,6 +2379,10 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
                 steam.stop();
             }
             steam.sync(&interactions.event_world);
+            if let Some(d) = &interactions.duchess {
+                let (ids, on) = d.hearth_emitters();
+                steam.script_group(&ids, on);
+            }
             if let Some(v) = &interactions.village {
                 v.place_particles(&mut steam);
             }
@@ -2358,7 +2394,13 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
         }
         // Scene controllers may finish during movement, dialogue or boss updates.
         // Resolve the handoff once, after all three, before animation/aim/rendering.
+        // The looking-glass pose is its own camera shot: it must not hand off (and cancel
+        // the clip) mid-way, and its end must keep the player's own facing.
+        if alice.glass_performing() {
+            player.script_facing = yaw;
+        }
         let still_scripted = interactions.scripted()
+            || alice.glass_performing()
             || interactions.duchess.as_ref().is_some_and(|d| d.cinematic())
             || interactions
                 .school
@@ -2414,6 +2456,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
         if interactions.levels.iter().any(|s| s.ctl.dismiss_summons()) {
             alice.dismiss_summon();
         }
+        loop_span = crate::frame_profile::span("loop_encounters");
         interactions.activate_enemies();
         let scripted_motion = interactions.scripted();
         if let Some(s) = &mut interactions.encounters {
@@ -2473,6 +2516,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
             player.knockback(f.impulse);
             audio.feedback(&f);
         }
+        loop_span = crate::frame_profile::span("loop_npc_glue");
         npcs.summon(alice.ally_target());
         npcs.activate_levels(&interactions.levels);
         npcs.notarget(stats.ignores_alice());
@@ -2506,11 +2550,35 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
         for &hit in &feedback.summon_hits {
             alice.hit_summon(hit);
         }
+        {
+            // Enemies are solid to Alice: slide her out of any body she overlaps.
+            let push = npcs.player_push(player.feet);
+            if push.length_squared() > 1e-6 {
+                let hit = scene.world.body_trace(player.feet, player.feet + push);
+                if !hit.start_solid {
+                    player.feet += push * hit.fraction;
+                }
+            }
+        }
         stats.damage(feedback.damage);
         if feedback.will_drain > 0. {
             stats.spend_will(feedback.will_drain.min(stats.will()));
         }
         player.knockback(feedback.impulse);
+        player.velocity += feedback.pull;
+        let plant_swallowed = feedback.swallow.is_some() && stats.alive();
+        if let Some(at) = feedback.swallow.filter(|_| stats.alive()) {
+            player.feet = at;
+            player.velocity = Vec3::ZERO;
+        }
+        if let Some((from, v)) = feedback.launch.filter(|_| stats.alive()) {
+            player.feet = from;
+            player.velocity = v;
+            player.grounded = false;
+        }
+        if feedback.freeze.contains(&crate::dice::ALICE) && stats.alive() {
+            alice.phantasm_freeze(player.feet);
+        }
         if feedback.damage > 0. {
             println!(
                 "Guard struck Alice: {} damage, {} sanity",
@@ -2525,7 +2593,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
             weapon_buttons.block();
         }
         if !stats.alive() {
-            alice.die();
+            alice.die_from(feedback.damage, feedback.impulse);
         }
         let death_animation =
             !stats.alive() && focused && !paused && !menu && !inventory_menu && !console_input;
@@ -2553,9 +2621,11 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
             }
             targets.extend(interactions.levels_targets());
         }
+        loop_span = crate::frame_profile::span("loop_weapons");
         targets.extend(alice.ice_targets());
         alice.world_time(dt, world_dt);
         alice.notarget(stats.ignores_alice());
+        alice.lock_strafe = preferences.lock_strafe && !flying;
         let weapon_sounds = alice.update_funded(
             if (active && !pand_cinematic) || death_animation {
                 dt
@@ -2614,6 +2684,26 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
                 hit.kind = hit.kind.means();
             } else {
                 hit.damage = stats.attack_damage(hit.damage);
+            }
+            if hit.damage > 0. {
+                let id = hit.id;
+                let model = if id == crate::duchess::ID {
+                    Some("c_duchess")
+                } else if id >= crate::encounters::BASE {
+                    interactions
+                        .levels_blood_model(id)
+                        .or_else(|| interactions.encounters.as_ref().and_then(|s| s.blood_model(id)))
+                } else if id >= crate::interaction::SHOT_BASE {
+                    None
+                } else if id >= crate::school2::ENEMY_BASE {
+                    Some(if id - crate::school2::ENEMY_BASE < 100 { "c_boojum" } else { "cardguard_club" })
+                } else {
+                    npcs.model_name(id)
+                };
+                let model = model.or_else(|| interactions.levels_blood_model(id));
+                if let Some(model) = model.map(str::to_owned) {
+                    blood.hit(&mut assets, &blood_specs, &scene.world, &model, hit_origin, hit.kind, hit.damage);
+                }
             }
             if hit.id == crate::duchess::ID {
                 // A projectile still in flight after Alice dies must not lock retry in a defeat cinematic.
@@ -2704,6 +2794,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
         for sound in weapon_sounds {
             audio.weapon_effect(sound);
         }
+        loop_span = crate::frame_profile::span("loop_camera_audio");
         for (path, origin) in alice.take_world_audio() {
             audio.world_effect_at(path, origin);
         }
@@ -2779,19 +2870,55 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
             .as_ref()
             .and_then(|s| s.return_visit.as_ref())
             .and_then(|s| s.camera());
-        let scripted_camera = pand_camera.or_else(|| {
-            cinematic_camera.map(|(eye, target, _)| crate::cinematic::Camera::look(eye, target))
+        let frozen_camera = alice
+            .frozen()
+            .map(|(time, origin, yaw)| frozen_orbit.camera(&scene.world, time, origin, yaw));
+        let glass_camera = alice.glass_performing().then(|| {
+            let center = player.feet + crate::collision::PLAYER_CENTER;
+            let rotation = Quat::from_rotation_z(direction.y.atan2(direction.x));
+            // Pull in from the follow distance, then keep creeping closer.
+            let t = (alice.glass_age() / 0.9).clamp(0., 1.);
+            let t = t * t * (3. - 2. * t);
+            let creep = (alice.glass_age() * 0.04).min(0.12);
+            let near = vec3(-70., -40., 12.);
+            let far = vec3(-150., -60., 30.);
+            crate::cinematic::Camera::look(
+                center + rotation * (far.lerp(near, t) * (1. - creep)),
+                center + Vec3::Z * 14.,
+            )
         });
+        let bite_camera = bite_view.update(
+            &scene.world,
+            interactions.duchess.as_ref().and_then(|d| d.bite_frame()),
+            direction,
+            player.feet + Vec3::Z * crate::camera::Bite::VIEW_HEIGHT,
+            if active { dt } else { 0. },
+        );
+        let bite_visible = bite_camera.is_some();
+        let scripted_camera = pand_camera
+            .or(bite_camera)
+            .or_else(|| {
+                cinematic_camera
+                    .map(|(eye, target, _)| crate::cinematic::Camera::look(eye, target))
+            })
+            .or(frozen_camera)
+            .or(glass_camera);
         let (eye, aim, gameplay_alice) = if third_person && !flying {
+            let view = idle_view.update(
+                direction,
+                alice.idle_camera() && scripted_camera.is_none(),
+                if active { dt } else { 0. },
+            );
             follow_camera.update(
                 &scene.world,
                 player.feet,
-                direction,
+                view,
                 preferences.camera_distance,
                 if active { dt } else { 0. },
             )
         } else {
             follow_camera.reset();
+            idle_view.reset();
             (pos, pos + direction, false)
         };
         let fade = interactions
@@ -2846,6 +2973,10 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
         let (camera, target) = (view.eye + quake, view.target + quake);
         let show_alice = !interactions.level_hides_player() && if scripted_camera.is_some() {
             rage_scene.is_some_and(|(_, finished)| !finished)
+                || frozen_camera.is_some()
+                || glass_camera.is_some()
+                // The recorded bite camera looks down at Alice while the Duchess carries her.
+                || (bite_visible && pand_camera.is_none())
                 || (cinematic_camera.is_some_and(|(_, _, show)| show) && pand_camera.is_none())
         } else {
             gameplay_alice && camera.distance(player.feet + Vec3::Z * 32.) > 30.
@@ -2880,6 +3011,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
         if let Some(distance) = interactions.levels.iter().find_map(|s| s.ctl.fog_distance()) {
             scene.atmosphere.distance.w = distance;
         }
+        loop_span = crate::frame_profile::span("loop_pre_draw");
         clear_background(scene.atmosphere.background());
         let world_camera = Camera3D {
             position: camera,
@@ -2912,6 +3044,10 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
         scene.update_ropes(world_dt, rope_hand, &transforms);
         steam.animate(environment_clock);
         steam.sync(&interactions.event_world);
+        if let Some(d) = &interactions.duchess {
+            let (ids, on) = d.hearth_emitters();
+            steam.script_group(&ids, on);
+        }
         steam.collected(&pickups, &stats);
         if interactions
             .school
@@ -2927,25 +3063,34 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
             p.gate_particles(&mut steam);
         }
         interactions.place_level_particles(&mut steam);
+        let show_alice_in_mirror = !interactions.level_hides_player();
         let mut lights = steam.lights();
         lights.extend(alice.lights());
         lights.extend(npcs.lights());
+        lights.extend(power_art.drop_lights(&stats, &loot_visit));
         for slot in &interactions.levels { lights.extend(slot.ctl.lights()); }
-        scene.prepare_camera_portals(&world_camera, environment_clock, fullbright, &transforms);
-        crate::lighting::select(lights, camera, &scene.world);
+        scene.prepare_camera_portals_with(&world_camera, environment_clock, fullbright, &transforms, &mut |fb| {
+            if show_alice_in_mirror {
+                alice.draw_ghost(player.feet, fb, stats.invisible > 0. && !alice.glass_performing());
+            }
+        });
+        { let _p = crate::frame_profile::span("lighting_select");
+        crate::lighting::select(lights, camera, &scene.world); }
         crate::render_fx::begin_view(
             &world_camera,
             environment_clock,
             &scene.atmosphere,
             fullbright,
         );
+        loop_span = crate::frame_profile::span("loop_scene_draw");
         scene.draw(camera, environment_clock, fullbright, false, &transforms);
-        if show_alice && stats.invisible <= 0. {
-            crate::lighting::shadow(&scene.world, player.feet, 22.);
-        }
+        loop_span = crate::frame_profile::span("loop_actors_draw");
         alice.atmosphere(&scene.atmosphere, camera);
-        if show_alice && !interactions.school.as_ref().is_some_and(|s| s.cinematic()) {
-            alice.draw_ghost(player.feet, fullbright, stats.invisible > 0.);
+        if show_alice && !plant_swallowed && !interactions.school.as_ref().is_some_and(|s| s.cinematic()) {
+            alice.draw_ghost(player.feet, fullbright, stats.invisible > 0. && !alice.glass_performing());
+            if stats.invisible <= 0. && !plant_swallowed {
+                crate::lighting::figure_shadow(&scene.world, player.feet, &alice.shadow_triangles(), crate::lighting::FIGURE_LIGHT);
+            }
         }
         npcs.draw(
             camera,
@@ -2953,8 +3098,25 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
             &scene.atmosphere,
             fullbright,
         );
+        // Alice bleeds when hurt. CE (decal ctor FUN_1005e790 + FUN_100de6f0 hooks): kills add no extra puddle.
+        let visit = save::visit_key(&maps[current], entry_spawn.as_deref());
+        if blood_visit != visit {
+            blood_visit = visit;
+            blood.clear_decals();
+        }
+        let sanity = stats.sanity();
+        // CE: lava, slime, drowning and fire never bleed (FUN_100d92c0); every other hurt does.
+        if active && sanity < blood_sanity && !blood_skip {
+            blood.alice(&mut assets, &blood_specs, &scene.world, player.feet);
+        }
+        blood_skip = false;
+        blood_sanity = sanity;
+        blood.update(if active { dt } else { 0. });
+        blood.draw_decals(pickup_clock);
+        blood.draw(camera, &scene.atmosphere);
         level_art.story_pose(&story);
-        level_art.draw(&interactions, &hints, &scene.atmosphere, camera, fullbright);
+        { let _p = crate::frame_profile::span("level_art_draw");
+        level_art.draw(&interactions, &hints, &scene.atmosphere, camera, fullbright); }
         power_art.draw(
             &pickups,
             &stats,
@@ -2963,7 +3125,12 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
             camera,
             pickup_clock,
         );
+        for origin in power_art.take_drop_cues() {
+            audio.world_effect_at("sound/item/essence/small/mtespu.wav", origin);
+        }
+        crate::lighting::flush_figures(&scene.world, camera);
         {
+            let _p = crate::frame_profile::span("scene_particles_etc");
             scene.draw_with_particles(
                 camera,
                 (target - camera).normalize_or_zero(),
@@ -2980,7 +3147,8 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
                     b.draw_waves();
                 }
             }
-            level_art.effects(&interactions, camera, &scene.atmosphere);
+            { let _q = crate::frame_profile::span("level_art_effects");
+            level_art.effects(&interactions, camera, &scene.atmosphere); }
             alice.draw_effects(camera, fullbright, show_alice);
             let can_aim = !interactions.level_blocks_weapons() && !flying
                 && !pand_cinematic
@@ -3024,6 +3192,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
         if saves_enabled {
             save_frame.update();
         }
+        loop_span = crate::frame_profile::span("loop_ui");
         set_default_camera();
         if active {
             use crate::interaction::friendly::{use_owner, UseOwner};
@@ -3103,7 +3272,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
         let show_details = help || menu;
         if paused && !menu && !inventory_menu && !console_input && !help {
             ui.paused(&if input.using_pad {
-                "A or Start to resume".into()
+                crate::input::pad_text("A or Start to resume")
             } else {
                 format!("{} or click to resume", input.label(&preferences, "P"))
             });
@@ -3180,7 +3349,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
                 ),
                 format!(
                     "{}: menus   {}: chapters   {}: help",
-                    if input.using_pad { "Start" } else { "Esc" },
+                    if input.using_pad { crate::input::pad_label("Start") } else { "Esc".into() },
                     input.label(&preferences, "Tab"),
                     input.label(&preferences, "H")
                 ),
@@ -3312,7 +3481,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
                 skip_scene.draw(
                     &ui,
                     &if input.using_pad {
-                        "A".into()
+                        crate::input::pad_label("A")
                     } else {
                         input.label(&preferences, "Enter")
                     },
@@ -3389,6 +3558,11 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
         if context_before != (menu, inventory_menu, console.open, paused) {
             input.suppress();
         }
+        drop(loop_span);
+        let cpu_ms = frame_started.elapsed().as_secs_f32() * 1000.;
+        crate::frame_profile::set_live(preferences.show_fps);
+        crate::hud::set_split(cpu_ms, &crate::frame_profile::take_frame());
+        crate::hud::set_perf(cpu_ms, scene.stats.layers, scene.stats.verts);
         next_frame().await;
     }
     if saves_enabled && played && stats.alive() && options.frames.is_none() && !post_game {
@@ -3412,6 +3586,10 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
             scene.world.body_clear(player.feet),
             player.jumps
         );
+    }
+    if std::env::var_os("LOOKING_GLASS_FRAME_PROFILE").is_some() {
+        let d = &scene.stats;
+        println!("Draw stats: {} batches drawn, {} culled, {} triangles, {} verts updated, {} uncullable, {} layer draws", d.batches, d.culled, d.triangles, d.verts, d.uncullable, d.layers);
     }
     println!(
         "Weapon actions: {} emitted, {} impacts",

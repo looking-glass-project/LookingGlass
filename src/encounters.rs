@@ -321,6 +321,14 @@ impl Encounters {
             })
             .collect()
     }
+    /// The model whose `bloodmodel` the enemy behind this hit id sheds.
+    pub fn blood_model(&self, id: usize) -> Option<&'static str> {
+        Some(match &self.actors.get(id.checked_sub(BASE)?)?.enemy {
+            Enemy::Guard(_) => "cardguard_club",
+            Enemy::Boojum(_) => "c_boojum",
+            Enemy::Ladybug(_) => "c_ladybug",
+        })
+    }
     pub fn hit(&mut self, hit: combat::Hit) -> Option<&'static str> {
         let a = self.actors.get_mut(hit.id.checked_sub(BASE)?)?;
         if !a.active || !a.enabled {

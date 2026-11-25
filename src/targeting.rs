@@ -47,14 +47,53 @@ fn endpoint(ctx: &combat::Context<'_>, eye: Vec3, direction: Vec3, rule: Rule) -
     Some(eye.lerp(end, fraction * 0.9))
 }
 
+/// fgame `Player::UpdateJumpingReticle` (FUN_100a8650) while the Demon Dice are equipped: a world
+/// trace of 640 units from the view origin along the aim (mask 0x2010001, actors ignored). The
+/// reticle is only valid (flag 0x20) when it hits a floor with normal.z > 0.7 and lies fewer than
+/// 300 units (integer distance, `FUN_1002a720`) from Alice's origin. The throw (FUN_1005ef90)
+/// lands on this point when valid; otherwise it flies forward.
+pub fn dice_reticle(world: &crate::collision::World, eye: Vec3, direction: Vec3) -> Option<Vec3> {
+    const TRACE: f32 = 640.;
+    const MIN_NORMAL_Z: f32 = 0.7;
+    const LOCK_RANGE: f32 = 300.;
+    let direction = direction.try_normalize()?;
+    if !eye.is_finite() {
+        return None;
+    }
+    let end = eye + direction * TRACE;
+    let hit = world.sweep(eye, end, Vec3::ZERO);
+    if hit.start_solid || hit.all_solid || hit.fraction >= 1. || hit.normal.z <= MIN_NORMAL_Z {
+        return None;
+    }
+    let at = eye.lerp(end, hit.fraction);
+    let feet = eye - Vec3::Z * crate::movement::EYE_HEIGHT;
+    (at.distance(feet).trunc() < LOCK_RANGE).then_some(at)
+}
 pub struct Sight {
     pub eye: Vec3,
     pub direction: Vec3,
     /// None suppresses the marker for menus, performances and unavailable weapons.
     pub weapon: Option<usize>,
 }
+/// cgame `CG_EntityTargeted` (FUN_3001e910): the dice's aim point carries the `pentagram_decal`
+/// shader (a filter layer plus an additive layer) projected on the floor within 32 units below
+/// it, spinning 120 degrees per second.
+struct Pentagram {
+    filter: Texture2D,
+    glow: Texture2D,
+    clock: f32,
+}
+/// Half-extent of the decal: `CG_EntityTargeted` sizes it as `R_ModelRadius(hModel) * scale * 1.25`.
+/// The aim entity is `fx_emitter_target.tik` at scale 1.0, whose engine radius (tiki struct +0xE0,
+/// read from the running game) is 30.665808. `CG_ImpactMark` then spans +/- that radius.
+const PENTAGRAM_RADIUS: f32 = 30.665808 * 1.25;
 pub struct Pointer {
+    pentagram: Option<Pentagram>,
+    dice: Option<usize>,
     effect: Attached,
+    /// fgame Player reticle types 2 and 3: two emitters orbit the tracked enemy.
+    orbit: [Attached; 2],
+    clock: f32,
     rules: Vec<Rule>,
     age: f32,
     previous: Option<(usize, Vec3)>,
@@ -74,8 +113,31 @@ impl Pointer {
         // Overlapping additive births otherwise turn this sight into a large,
         // saturated flare. Keep the local artwork as a subdued aiming point.
         effect.attenuate(0.1);
+        let texture = |assets: &mut Assets, name: &str| -> Option<Texture2D> {
+            let path = crate::texture::resolve(assets, name, &materials)?;
+            let image = crate::texture::decode(assets, &path).ok()?;
+            Some(Texture2D::from_rgba8(
+                image.width,
+                image.height,
+                &image.pixels,
+            ))
+        };
+        let pentagram = texture(assets, "pentagram_decal").zip(texture(
+            assets,
+            "textures/decals/pentagram_decal2.tga",
+        ));
         Ok(Self {
+            pentagram: pentagram.map(|(filter, glow)| Pentagram {
+                filter,
+                glow,
+                clock: 0.,
+            }),
+            dice: crate::inventory::WEAPONS
+                .iter()
+                .position(|(name, _)| *name == "demondice"),
+            orbit: [effect.fork(), effect.fork()],
             effect,
+            clock: 0.,
             rules,
             age: 0.,
             previous: None,
@@ -89,6 +151,83 @@ impl Pointer {
         camera: Vec3,
         atmosphere: &Atmosphere,
     ) {
+        if sight.weapon.is_some() && sight.weapon == self.dice {
+            self.previous = None;
+            self.age = 0.;
+            if let (Some(art), Some(at)) = (
+                self.pentagram.as_mut(),
+                dice_reticle(ctx.world, sight.eye, sight.direction),
+            ) {
+                art.clock += dt.clamp(0., 0.1);
+                // The decal traces from 5 units above the marker down 32 units.
+                let top = at + Vec3::Z * 5.;
+                let hit = ctx.world.sweep(top, top - Vec3::Z * 32., Vec3::ZERO);
+                // Native draws on any surface the 32-unit trace hits; it has no slope gate.
+                if !hit.start_solid && !hit.all_solid && hit.fraction < 1. {
+                    let center = top.lerp(top - Vec3::Z * 32., hit.fraction) + hit.normal * 0.4;
+                    let x = hit.normal.cross(Vec3::Z).try_normalize().unwrap_or(Vec3::X);
+                    let y = hit.normal.cross(x);
+                    let (sin, cos) = (art.clock * 120_f32.to_radians()).sin_cos();
+                    let (x, y) = (
+                        (x * cos + y * sin) * PENTAGRAM_RADIUS,
+                        (y * cos - x * sin) * PENTAGRAM_RADIUS,
+                    );
+                    for (texture, blend) in [
+                        (&art.filter, crate::materials::Blend::Filter),
+                        (&art.glow, crate::materials::Blend::Add),
+                    ] {
+                        let mesh = Mesh {
+                            vertices: [
+                                (center - x - y, vec2(0., 0.)),
+                                (center + x - y, vec2(1., 0.)),
+                                (center + x + y, vec2(1., 1.)),
+                                (center - x + y, vec2(0., 1.)),
+                            ]
+                            .map(|(p, uv)| Vertex::new(p.x, p.y, p.z, uv.x, uv.y, WHITE))
+                            .to_vec(),
+                            indices: vec![0, 1, 2, 0, 2, 3],
+                            texture: Some(texture.clone()),
+                        };
+                        crate::render_fx::effect(&mesh, blend);
+                    }
+                }
+            }
+            return;
+        }
+        if sight.weapon.and_then(|w| self.rules.get(w)).is_some_and(|r| matches!(r.kind, 2 | 3)) {
+            // Types 2 (jacks, cards) and 3 (mallet) mark only the tracked enemy: two blue target
+            // emitters circle it at 8 rad/s, on opposite sides, at half its bounding radius.
+            self.previous = None;
+            self.age = 0.;
+            let origin = sight.eye - Vec3::Z * 20.;
+            let Some(target) = crate::weapons::aim_target(ctx, origin, sight.direction)
+                .and_then(|id| ctx.targets.iter().find(|t| t.id == id))
+            else {
+                self.clock = 0.;
+                return;
+            };
+            self.clock += dt.clamp(0., 0.1);
+            let radius = target.half.length() * 0.5;
+            let center = target.center;
+            for (i, orbit) in self.orbit.iter_mut().enumerate() {
+                let sign = if i == 0 { 1. } else { -1. };
+                orbit.draw(
+                    self.clock,
+                    0.2,
+                    |t, _| {
+                        let (sin, cos) = (t * 8.).sin_cos();
+                        crate::skeletal::Transform {
+                            translation: center + vec3(cos, sin, 0.) * radius * sign,
+                            rotation: Quat::IDENTITY,
+                        }
+                    },
+                    |name, _, _| name == "blue",
+                    camera,
+                    atmosphere,
+                );
+            }
+            return;
+        }
         let point = sight.weapon.and_then(|weapon| {
             let rule = *self.rules.get(weapon)?;
             Some((

@@ -63,6 +63,9 @@ pub struct Magma {
     pub shots: Vec<crate::snark::Shot>,
     /// A one-use source launch pad, resolved at placement creation, never on restore.
     pub launch: Option<Vec3>,
+    /// Visual and hit-volume lift while standing in a pit deeper than the body.
+    #[serde(default)]
+    pub wade: f32,
     velocity: Vec3,
     grounded: bool,
     launched: bool,
@@ -90,6 +93,7 @@ impl Magma {
             notarget: false,
             shots: vec![],
             launch: None,
+            wade: 0.,
             velocity: Vec3::ZERO,
             grounded: false,
             launched: false,
@@ -104,18 +108,39 @@ impl Magma {
     pub fn target(&self, id: usize) -> Target {
         Target {
             id,
+            center: self.feet + Vec3::Z * (32. * self.scale + self.wade),
+            half: vec3(44., 44., 32.) * self.scale,
+        }
+    }
+    /// The collision hull on the pit floor, independent of the wading lift.
+    fn body(&self) -> Target {
+        Target {
+            id: 0,
             center: self.feet + Vec3::Z * 32. * self.scale,
             half: vec3(44., 44., 32.) * self.scale,
         }
     }
+    /// Where the rig is drawn: Magma Men wade with their torso above the lava.
+    pub fn origin(&self) -> Vec3 {
+        self.feet + Vec3::Z * self.wade
+    }
+    /// The rig origin is at the feet; idle is a low puddle and walk/attack poses
+    /// stand ~95 units tall at scale 0.75.
+    pub(crate) fn update_wade(&mut self, world: &World) {
+        // Deep pits would bury the whole body; keep the legs (about 30 units at
+        // scale 1) under the surface so the torso stands clear, as on PC.
+        self.wade = lava_surface(world, self.feet, self.scale)
+            .map_or(0., |s| (s - LEGS_UNDER_LAVA * self.scale - self.feet.z).max(0.));
+    }
     pub fn place(&mut self, world: &World) {
         if !self.grounded && self.launch.is_none() {
-            let b = self.target(0);
+            let b = self.body();
             if let Some(p) = world.actor_footing(self.feet, Vec3::Z * b.half.z, b.half, 1024.) {
                 self.feet = p;
             }
             self.grounded = true;
         }
+        self.update_wade(world);
     }
     pub fn loops(&self) -> bool {
         matches!(self.phase, Phase::Idle | Phase::Walk)
@@ -247,7 +272,7 @@ impl Magma {
             self.launched = true;
         }
         self.velocity.z = (self.velocity.z - 800. * DT).max(-800.);
-        let b = self.target(0);
+        let b = self.body();
         let delta = self.velocity * DT;
         let t = world.sweep(b.center, b.center + delta, b.half);
         if !t.start_solid {
@@ -277,7 +302,7 @@ impl Magma {
         self.cooldown = (self.cooldown - DT).max(0.);
         self.pain = (self.pain - DT).max(0.);
         self.cooling = (self.cooling
-            + if world.liquid_at(self.feet + Vec3::Z * 4.) & 8 != 0 {
+            + if in_lava(world, self.feet, self.scale) {
                 -4. * DT
             } else {
                 DT
@@ -290,8 +315,9 @@ impl Magma {
                 self.time = 0.;
             }
         }
-        let recoil = self.recoil.step(DT, world, self.target(0));
-        self.feet = combat::walk_body_liquids(world, self.feet, recoil, self.target(0).half, 8);
+        let recoil = self.recoil.step(DT, world, self.body());
+        self.feet = combat::walk_body_liquids(world, self.feet, recoil, self.body().half, 8);
+        self.update_wade(world);
         let b = self.target(0);
         let (aim, notarget, _) = self.opponents.aim(
             world,
@@ -302,7 +328,10 @@ impl Magma {
         );
         let delta = aim - b.center;
         let distance = delta.length();
-        let trace = world.sweep(b.center, aim, Vec3::splat(0.5));
+        // Sight comes from head height: a low puddle in a sunken pool would otherwise be
+        // hidden behind the bank and never notice anyone standing at its edge.
+        let sight = b.center + Vec3::Z * 40. * self.scale;
+        let trace = world.sweep(sight, aim, Vec3::splat(0.5));
         let visible = !notarget && distance < 800. && !trace.start_solid && trace.fraction >= 1.;
         if visible && matches!(self.phase, Phase::Idle | Phase::Walk | Phase::Alert) {
             let angle = (delta.y.atan2(delta.x) - self.yaw + std::f32::consts::PI)
@@ -369,8 +398,13 @@ impl Magma {
                         * data.speed(MODEL, self.clip()).min(320.)
                         * self.scale
                         * DT;
-                    self.feet =
-                        combat::walk_body_liquids(world, self.feet, motion, self.target(0).half, 8);
+                    let half = self.target(0).half;
+                    let mut next = combat::walk_body_liquids(world, self.feet, motion, half, 8);
+                    if next == self.feet && in_lava(world, self.feet, self.scale) {
+                        // Pit walls are taller than a stair; climb out of the lava.
+                        next = combat::walk_body_lift(world, self.feet, motion, half, 8, 64.);
+                    }
+                    self.feet = next;
                 }
             }
             Phase::Punch | Phase::Rock | Phase::Bash => {
@@ -531,3 +565,37 @@ impl Magma {
 }
 #[cfg(test)]
 mod tests;
+
+/// Lava depth left over the legs when a deep pit lifts the drawn rig.
+const LEGS_UNDER_LAVA: f32 = 6.;
+/// The original MagmaMan think tests the actor's watertype (contents bit 8) over
+/// its body column, like Quake's waterlevel, not just the floor point. Pit lava
+/// brushes need not reach the floor, so sample up the 64-unit hull.
+fn lava_start(world: &World, feet: Vec3, scale: f32) -> Option<f32> {
+    (0..=8)
+        .map(|i| feet.z + (1. + i as f32 * 8.) * scale)
+        .find(|&z| world.liquid_at(vec3(feet.x, feet.y, z)) & 8 != 0)
+}
+fn in_lava(world: &World, feet: Vec3, scale: f32) -> bool {
+    lava_start(world, feet, scale).is_some()
+}
+/// Height of the lava surface over the actor, if any part of its body is in lava.
+fn lava_surface(world: &World, feet: Vec3, scale: f32) -> Option<f32> {
+    let start = lava_start(world, feet, scale)?;
+    let point = vec3(feet.x, feet.y, start);
+    let lava = |z: f32| world.liquid_at(vec3(point.x, point.y, z)) & 8 != 0;
+    let (mut low, mut high) = (point.z, point.z + 8.);
+    while lava(high) {
+        low = high;
+        high += 8.;
+        if high - point.z > 1024. {
+            return None;
+        }
+    }
+    for _ in 0..6 {
+        let mid = (low + high) * 0.5;
+        if lava(mid) { low = mid } else { high = mid }
+    }
+    Some(low)
+}
+

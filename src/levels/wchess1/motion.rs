@@ -225,7 +225,8 @@ impl Realm {
                         angle -= 6. * (i + 1) as f32 * (t - i as f32 * 0.3).clamp(0., 0.3);
                     }
                     angle -= 60. * (t - 3.).max(0.);
-                    o.pose.rotation = Quat::from_rotation_x(angle.to_radians());
+                    // rotateX is pitch (local Y): the wheel's axle runs along Y, as in rchess1.
+                    o.pose.rotation = Quat::from_rotation_y(angle.to_radians());
                 }
                 "elevator" => o.pose.translation.z += self.saved.elevator.height,
                 "elevator_weight_mounts" => o.pose.translation.z -= self.saved.elevator.height,

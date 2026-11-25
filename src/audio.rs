@@ -376,6 +376,24 @@ fn add_map_speaker(speakers: &mut Vec<Speaker>, speaker: Speaker, relocated: boo
         speakers.push(speaker);
     }
 }
+/// Sounds the original precaches for each placed creature (`model`/`modelname` of `c_*` actors).
+fn creature_sounds(assets: &mut Assets, map: &Bsp) -> Vec<String> {
+        let mut creature_models: Vec<String> = map
+            .entities
+            .iter()
+            .filter_map(|e| e.get("model").or_else(|| e.get("modelname")))
+            .map(|m| m.trim_start_matches("models/"))
+            .filter(|m| m.starts_with("c_") && m.ends_with(".tik"))
+            .map(|m| format!("models/{m}"))
+            .collect();
+        creature_models.sort_unstable();
+        creature_models.dedup();
+         creature_models
+            .iter()
+            .filter_map(|m| events::Model::load(assets, m).ok())
+            .flat_map(|m| m.paths().map(str::to_owned).collect::<Vec<_>>())
+            .collect()
+}
 fn level_spec(assets: &mut Assets, name: &str, map: &Bsp) -> Result<LevelAudio> {
     let mut level = LevelAudio::default();
     // tower3 explicitly reuses hedge1 in the authored map soundtrack command.
@@ -665,6 +683,8 @@ pub struct Audio {
     steps: u64,
     jumps: u64,
     landings: u64,
+    /// Main menu soundtrack (alice.exe starts sound/music/intro.mus at the front end).
+    frontend: Option<std::time::Instant>,
 }
 impl Audio {
     pub fn new(disabled: bool, capture: Option<PathBuf>) -> Self {
@@ -720,9 +740,11 @@ impl Audio {
             steps: 0,
             jumps: 0,
             landings: 0,
+            frontend: None,
         }
     }
     pub fn load(&mut self, assets: &mut Assets, name: &str, map: &Bsp) {
+        self.frontend = None;
         self.stop_voice();
         self.retire_music();
         self.world_sounds = world::State::default();
@@ -761,6 +783,10 @@ impl Audio {
         let mut cache_samples = 0;
         let mut alice_sounds = events::Model::load(assets, "models/alice.tik")?;
         alice_sounds.retain(&crate::character::CLIPS.map(crate::character::sound_alias));
+        // The original precaches every placed creature's `cache`/animation sounds at level load.
+        // Without this the first pain cry, death rattle or freeze of a creature decoded its WAV
+        // synchronously in `prepare` and hitched the frame.
+        let creature_sounds = creature_sounds(assets, map);
         for path in spec
             .speakers
             .iter()
@@ -777,6 +803,7 @@ impl Audio {
                     .iter()
                     .filter_map(|e| e.get("sound_move").map(String::as_str)),
             )
+            .chain(creature_sounds.iter().map(String::as_str))
         {
             if cache.contains_key(path) {
                 continue;
@@ -852,7 +879,31 @@ impl Audio {
         Ok(())
     }
     pub fn update(&mut self, dt: f32, listener: Vec3, yaw: f32, paused: bool, voice_paused: bool) {
+        if let Some(last) = self.frontend {
+            // The front end has no world clock; keep the menu track playing and fading in.
+            let now = std::time::Instant::now();
+            let real = now.duration_since(last).as_secs_f32();
+            self.frontend = Some(now);
+            self.update_clocks(real, 0., listener, yaw, false, voice_paused);
+            return;
+        }
         self.update_clocks(dt, dt, listener, yaw, paused, voice_paused);
+    }
+    /// Start the front-end soundtrack: `normal alice.mp3`, looped, 5 s fade, volume 0.6.
+    pub fn frontend_music(&mut self, assets: &mut Assets) {
+        if self.frontend.is_some() || self.playback.is_none() {
+            return;
+        }
+        let result = (|| -> Result<()> {
+            let text = assets.read("sound/music/intro.mus")?;
+            self.cues = music_cues(std::str::from_utf8(&text)?)?;
+            self.fade_elapsed = 0.;
+            self.mood(assets, "normal")
+        })();
+        match result {
+            Ok(()) => self.frontend = Some(std::time::Instant::now()),
+            Err(e) => eprintln!("Menu music unavailable: {e:#}"),
+        }
     }
     pub fn update_clocks(
         &mut self,
@@ -2118,5 +2169,24 @@ mod tests {
         assert_eq!(data.count.load(Ordering::Relaxed), 4);
         assert_eq!(data.samples.lock().unwrap().len(), 4);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod creature_sound_tests {
+    #[test]
+    #[ignore = "requires LOOKING_GLASS_TEST_DATA"]
+    fn hedge1_precaches_phantasmagoria_pain_and_death() {
+        let base = std::env::var_os("LOOKING_GLASS_TEST_DATA").unwrap();
+        let mut assets = crate::assets::Assets::open(std::path::Path::new(&base)).unwrap();
+        let map = crate::bsp::Bsp::parse(&assets.read("maps/hedge1.bsp").unwrap()).unwrap();
+        let sounds = super::creature_sounds(&mut assets, &map);
+        for want in ["pain1", "pain2", "pain3", "death", "death_2", "death2_enda", "death2_endb"] {
+            assert!(
+                sounds.iter().any(|s| s.ends_with(&format!("phantasmagoria/{want}.wav"))),
+                "missing {want}: {} sounds",
+                sounds.len()
+            );
+        }
     }
 }

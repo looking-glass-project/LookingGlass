@@ -287,6 +287,8 @@ struct Metadata {
     name: String,
     bounds: Option<(Vec3, Vec3)>,
     airborne: bool,
+    /// `noshadow` in the tiki's server block: CG_ModelAnim then never sets RF_SHADOW.
+    noshadow: bool,
 }
 /// Read only the init/server declaration, excluding comments, client effects and animation events.
 fn metadata(text: &str) -> Result<Metadata> {
@@ -325,6 +327,7 @@ fn metadata(text: &str) -> Result<Metadata> {
                         }
                     }
                     "friend" | "civilian" => result.friendly = true,
+                    "noshadow" => result.noshadow = true,
                     "name" if args.len() >= 2 => result.name = args[1].clone(),
                     "surface" if args.len() >= 3 && args[2] == "+nodraw" => {
                         result.hidden.insert(args[1].to_lowercase());
@@ -512,6 +515,7 @@ impl Data {
             names.extend(
                 [
                     "walk",
+                    "run",
                     "alert1",
                     "attack1",
                     "pain1",
@@ -1146,6 +1150,15 @@ impl Model {
         for (visible, mesh) in self.visible.iter_mut().zip(&self.meshes) {
             *visible = mesh.is_some();
         }
+        if !d.meta.noshadow && d.def.scale * scale > 0. {
+            let mut triangles = Vec::new();
+            for mesh in self.meshes.iter().flatten() {
+                for t in mesh.indices.chunks_exact(3) {
+                    triangles.push([0, 1, 2].map(|i| mesh.vertices[t[i] as usize].position));
+                }
+            }
+            crate::lighting::queue_figure(transform.translation, triangles);
+        }
         // Model instances are shared by many actors. Always restore every mesh.
         for (i, mesh) in removed {
             self.meshes[i] = mesh;
@@ -1504,6 +1517,12 @@ impl Model {
                             specs,
                         )?;
                     }
+                    // Blood spurts (fx_bspurt*) use 16 px blood_spray/blood_drip sprites; the engine
+                    // draws a sprite at texture width times scale, so they need the same sizing as
+                    // hit blood or they read as a big soft cloud.
+                    if model.starts_with("fx_bspurt") {
+                        effect = effect.map(crate::particles::Attached::engine_sprite_size);
+                    }
                     if let Some(effect) = effect {
                         effects.insert(model.clone(), effect);
                     }
@@ -1571,6 +1590,9 @@ struct Actor {
     watch: crate::facial::Watch,
     #[serde(skip)]
     mouth: f32,
+    /// Seconds until an idle insane child's next cry (`snd_idle`); the original redraws it every 10-40 s.
+    #[serde(skip)]
+    laugh: f32,
     story_visible: bool,
     speaking: bool,
     #[serde(default)]
@@ -2351,6 +2373,7 @@ impl Npcs {
                     speaking: false,
                     ending_talk: false,
                     mouth: 0.,
+                    laugh: 0.,
                     model,
                     clock: (s.model == crate::clockwork::MODEL
                         && !preview
@@ -2601,7 +2624,57 @@ impl Npcs {
     }
     pub fn update(&mut self, dt: f32, world: &World, eye: Vec3) -> combat::Feedback {
         self.player_targets(None);
-        self.update_targets(dt, world, eye, &[eye], &[Some(eye)])
+        let feedback = self.update_targets(dt, world, eye, &[eye], &[Some(eye)]);
+        self.separate_actors(world);
+        feedback
+    }
+    /// Live enemies are solid to each other, as in the original: overlapping
+    /// bodies are pushed apart instead of merging into one line.
+    fn separate_actors(&mut self, world: &World) {
+        // Every live enemy is a solid body of its own hit-box width: the old fixed 16-unit
+        // radius let 64-unit clockwork and card bodies overlap, and ants and residents
+        // were never included.
+        let bodies = self.targets();
+        let mut push = vec![Vec3::ZERO; bodies.len()];
+        for x in 0..bodies.len() {
+            for y in x + 1..bodies.len() {
+                let (a, b) = (&bodies[x], &bodies[y]);
+                let d = b.center - a.center;
+                let flat = d.truncate();
+                let gap = a.half.x + b.half.x;
+                if d.z.abs() >= a.half.z + b.half.z || flat.length() >= gap { continue; }
+                let dir = if flat.length() > 0.01 { flat.normalize() } else { Vec2::X };
+                let shove = dir.extend(0.) * (gap - flat.length()) * 0.5;
+                push[x] -= shove;
+                push[y] += shove;
+            }
+        }
+        for (t, delta) in bodies.into_iter().zip(push) {
+            if delta.length_squared() < 1e-6 { continue; }
+            let a = &mut self.actors[t.id];
+            let half = vec3(t.half.x, t.half.x, 25.);
+            if let Some(p) = &mut a.imp { p.feet = combat::walk_body(world, p.feet, delta, half); }
+            else if let Some(p) = &mut a.chess { p.feet = combat::walk_body(world, p.feet, delta, half); }
+            else if let Some(p) = &mut a.guard { p.feet = combat::walk_body(world, p.feet, delta, half); }
+            else if let Some(p) = &mut a.clock { p.feet = combat::walk_body(world, p.feet, delta, half); }
+            else if let Some(p) = &mut a.ant { p.feet = combat::walk_body(world, p.feet, delta, half); }
+        }
+    }
+    /// How far a player standing at `feet` must move to leave the live enemies, so Alice
+    /// cannot walk through them (the original treats actors as solid to the player).
+    pub fn player_push(&self, feet: Vec3) -> Vec3 {
+        let half = crate::collision::PLAYER_HALF;
+        let center = feet + crate::collision::PLAYER_CENTER;
+        let mut out = Vec3::ZERO;
+        for t in self.targets() {
+            let d = center - t.center;
+            let flat = d.truncate();
+            let gap = t.half.x + half.x;
+            if d.z.abs() >= t.half.z + half.z || flat.length() >= gap { continue; }
+            let dir = if flat.length() > 0.01 { flat.normalize() } else { Vec2::X };
+            out += dir.extend(0.) * (gap - flat.length());
+        }
+        out
     }
     /// The host advances the cast once, with both live bodies available to each
     /// enemy. A trigger can be reached by either player in that same step.
@@ -2610,7 +2683,9 @@ impl Npcs {
         let eyes: Vec<_> = players.iter().filter(|p| p.alive).map(|p| p.eye).collect();
         let eye = eyes.first().copied().unwrap_or(players[0].eye);
         let escort_eyes = players.map(|p| p.alive.then_some(p.eye));
-        self.update_targets(dt, world, eye, &eyes, &escort_eyes)
+        let feedback = self.update_targets(dt, world, eye, &eyes, &escort_eyes);
+        self.separate_actors(world);
+        feedback
     }
     fn player_targets(&mut self, players: Option<[combat::PlayerTarget; 2]>) {
         for a in &mut self.actors {
@@ -2734,6 +2809,7 @@ impl Npcs {
             }
         }
         for actor in &mut self.actors {
+            let before = actor.time;
             actor.electric = (actor.electric - dt.max(0.)).max(0.);
             if (self.owns_ladybugs && crate::pool::cinema::owns(&actor.spawn.name))
                 || (self.owns_school_first && crate::school::cinema::owns(&actor.spawn.name))
@@ -2851,6 +2927,65 @@ impl Npcs {
                 );
             } else {
                 actor.tick(dt, world, eye);
+            }
+            // The insane children's footsteps, fidget cries and swipes are authored as
+            // client-side events on their clips; nothing else plays them.
+            if actor.spawn.model.starts_with("c_insanechild")
+                && actor.time > before
+                && (actor.position() - eye).length_squared() < 1600. * 1600.
+            {
+                let d = &self.models[actor.model].data;
+                let idle = actor
+                    .spawn
+                    .animation
+                    .as_ref()
+                    .filter(|n| d.clips.contains_key(*n))
+                    .unwrap_or(&d.idle);
+                let idle = if let Some(g) = &actor.guide {
+                    g.clip()
+                } else if actor.walk.is_some() {
+                    "walk"
+                } else {
+                    idle
+                };
+                // The original's idle behavior draws `snd_idle1..3` at a random 10-40 s while
+                // the child is not following a path.
+                if actor.walk.is_none() && actor.guide.is_none() && !actor.spawn.model.contains("runner") {
+                    if actor.laugh <= 0. {
+                        let seed = (actor.spawn.origin.x * 7.3 + actor.spawn.origin.y * 3.1 + actor.time * 91.7).to_bits();
+                        let r = |k: u32| (seed.wrapping_mul(2654435761).rotate_left(k) % 10_000) as f32 / 10_000.;
+                        if actor.laugh < 0. || actor.time == 0. {
+                            let n = 1 + (r(5) * 3.) as u32 % 3;
+                            feedback.cue_sounds.push((
+                                format!("sound/character/insane_children/idle{n}.wav"),
+                                actor.position(),
+                            ));
+                        }
+                        actor.laugh = 10. + r(11) * 30.;
+                    }
+                    actor.laugh -= dt;
+                    if actor.laugh == 0. { actor.laugh = -1e-3; }
+                }
+                let talking = actor.greeting > 0. || actor.speaking;
+                let (_, was_clip, was, _) = d.performance(idle, talking, actor.ending_talk, before);
+                let (_, clip, now, looping) = d.performance(idle, talking, actor.ending_talk, actor.time);
+                let fresh = was_clip != clip || now < was;
+                let animation = &d.clips[&clip];
+                for command in d.events.between(
+                    &clip,
+                    crate::animation_events::Span {
+                        start: if fresh { 0. } else { was },
+                        end: now,
+                        duration: animation.duration(),
+                        frame_time: animation.frame_time,
+                        looping,
+                        entered: fresh,
+                    },
+                ) {
+                    if let crate::animation_events::Command::Sound { path, .. } = command {
+                        feedback.cue_sounds.push((path.clone(), actor.position()));
+                    }
+                }
             }
         }
         feedback
@@ -2977,6 +3112,9 @@ impl Npcs {
                 })
             })
             .collect()
+    }
+    pub fn model_name(&self, id: usize) -> Option<&str> {
+        self.actors.get(id).map(|a| a.spawn.model.as_str())
     }
     pub fn hit(&mut self, hit: combat::Hit) -> Option<(String, &'static str)> {
         let actor = self.actors.get_mut(hit.id)?;
@@ -4207,6 +4345,7 @@ mod tests {
             speaking: false,
             ending_talk: false,
             mouth: 0.,
+            laugh: 0.,
             model: 0,
             spawn: Spawn {
                 resident_spawn: None,

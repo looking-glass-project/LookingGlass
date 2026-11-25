@@ -64,6 +64,8 @@ pub struct Acting {
     dialogue: Option<String>,
     health: Option<f32>,
     hurt: bool,
+    /// Pose and scale of an ice wand carried by an idle gesture, for its mist emitter.
+    pub mount: Option<(Transform, f32)>,
 }
 #[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct State {
@@ -124,6 +126,7 @@ impl Acting {
             dialogue: None,
             health: None,
             hurt: false,
+            mount: None,
         })
     }
     pub fn restore(&mut self, state: &State) -> Result<()> {
@@ -279,14 +282,28 @@ impl Acting {
             return;
         };
         let clip = &self.clips[name].animation;
-        let weight = if looping {
-            1.
+        let (fade_in, fade_out) = if looping {
+            (1., 1.)
         } else {
-            (time / 0.15).min(1.) * ((clip.duration() - time) / 0.15).clamp(0., 1.)
+            (
+                (time / 0.15).min(1.),
+                ((clip.duration() - time) / 0.15).clamp(0., 1.),
+            )
         };
+        // Native: STAND_IDLE_PLAY hands over to STAND_IDLE, which plays idle_base_01 from frame
+        // zero. Ease the gesture out into that pose rather than the walk-idle base, or the legs
+        // and body pop when the loop begins.
+        let rest = (!looping && self.state.idle >= 25. && idle)
+            .then(|| self.clips.get("idle_base_01"))
+            .flatten()
+            .map(|c| c.animation.sample(0., true));
         for (i, sample) in clip.sample(time, looping).into_iter().enumerate() {
             if idle || upper[i] {
-                pose[i] = pose[i].blend(sample, weight);
+                let base = match &rest {
+                    Some(rest) => pose[i].blend(rest[i], 1. - fade_out),
+                    None => pose[i],
+                };
+                pose[i] = base.blend(sample, fade_in * fade_out);
             }
         }
     }
@@ -300,6 +317,14 @@ impl Acting {
                     .visual(&p.clip, p.time, c.duration(), c.frame_time, false)
             })
     }
+    /// Native `IDLE_CAMERA` (alice_torso.st, `camera frontright`) runs while the legs play
+    /// `STAND_IDLE_PLAY`: here the long idle loop or any idle gesture, but never talk or pain.
+    pub fn camera_idle(&self) -> bool {
+        match &self.state.current {
+            Some(p) => !p.clip.starts_with("talk_") && p.clip != "pain_front",
+            None => self.state.idle >= 25.,
+        }
+    }
     pub fn hide_weapon(&self) -> bool {
         self.visual().hide_weapon
     }
@@ -311,16 +336,21 @@ impl Acting {
         scale: f32,
         fullbright: bool,
     ) {
+        self.mount = None;
         if self.state.current.is_none() {
             return;
         }
         for (tag, attachment) in self.visual().attachments {
             let bone = skeleton.bones.iter().position(|b| b.name == tag).unwrap();
+            let at = Transform {
+                translation: transform.point(pose[bone].translation * scale),
+                rotation: transform.rotation * pose[bone].rotation,
+            };
+            if attachment.model.trim_end_matches(".tik") == "w_icewand" {
+                self.mount = Some((at, scale * attachment.scale));
+            }
             self.props.get_mut(&attachment.model).unwrap().draw_frame(
-                Transform {
-                    translation: transform.point(pose[bone].translation * scale),
-                    rotation: transform.rotation * pose[bone].rotation,
-                },
+                at,
                 scale * attachment.scale,
                 fullbright,
                 attachment.age,
@@ -428,7 +458,7 @@ mod tests {
             )
         })
         .collect();
-        Acting { clips, commands: Commands::parse("animations { mallet_idle1 test.ska { server { 2 hideweapon 1 2 attachmodel toy.tik tag_hand } } }").unwrap(), props: BTreeMap::new(), sounds: Sounds::default(), cues: vec![], state: State::default(), dialogue: None, health: None, hurt: false }
+        Acting { clips, commands: Commands::parse("animations { mallet_idle1 test.ska { server { 2 hideweapon 1 2 attachmodel toy.tik tag_hand } } }").unwrap(), props: BTreeMap::new(), sounds: Sounds::default(), cues: vec![], state: State::default(), dialogue: None, health: None, hurt: false, mount: None }
     }
     #[test]
     fn fidgets_pause_restore_and_cancel_on_attack_movement_or_equipment_change() {

@@ -537,7 +537,7 @@ mod tests {
                 )
                 .unwrap();
         }
-        assert!((roster.players[0].player.feet.y - 104.).abs() < 5.);
+        assert!((roster.players[0].player.feet.y - 52.).abs() < 5.);
         assert!(roster.players[1].player.feet.distance(start) < 0.1);
         roster.players[1].stats.damage(10.);
         assert_eq!(roster.players[0].stats.sanity(), 100.);

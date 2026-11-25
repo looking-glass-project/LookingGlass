@@ -20,6 +20,7 @@ const COMMANDS: &[&str] = &[
     "wuss",
     "health",
     "cg_cameradist",
+    "cg_lockstrafe",
     "give",
     "itemlist",
     "cheshire",
@@ -43,6 +44,7 @@ pub enum Command {
     Wuss,
     Health(f32),
     CameraDistance(Option<f32>),
+    LockStrafe(Option<bool>),
     Give(String),
     Items,
     Cheshire,
@@ -79,6 +81,9 @@ pub fn parse(line: &str) -> Result<Command, String> {
         ["cg_cameradist", value] => {
             number(value, -1024., 1024.).map(|v| Command::CameraDistance(Some(v)))
         }
+        ["cg_lockstrafe"] => Ok(Command::LockStrafe(None)),
+        ["cg_lockstrafe", "0"] => Ok(Command::LockStrafe(Some(false))),
+        ["cg_lockstrafe", "1"] => Ok(Command::LockStrafe(Some(true))),
         ["give", item] => give_name(item).map(Command::Give),
         ["itemlist"] => Ok(Command::Items),
         ["cheshire"] => Ok(Command::Cheshire),
@@ -311,6 +316,9 @@ mod tests {
             ("wuss", Command::Wuss),
             ("health 100", Command::Health(100.)),
             ("health 250", Command::Health(250.)),
+            ("cg_lockstrafe", Command::LockStrafe(None)),
+            ("cg_lockstrafe 0", Command::LockStrafe(Some(false))),
+            ("cg_lockstrafe 1", Command::LockStrafe(Some(true))),
             ("cg_cameradist -45", Command::CameraDistance(Some(-45.))),
             ("cg_cameradist 128", Command::CameraDistance(Some(128.))),
             ("give all", Command::Give("all".into())),

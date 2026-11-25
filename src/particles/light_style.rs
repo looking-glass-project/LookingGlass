@@ -4,9 +4,9 @@ use anyhow::Result;
 use macroquad::prelude::*;
 
 #[derive(Clone)]
-pub(super) struct Style(Vec<Vec3>);
+pub(crate) struct Style(Vec<Vec3>);
 impl Style {
-    pub(super) fn load(assets: &mut Assets, name: &str) -> Result<Option<Self>> {
+    pub(crate) fn load(assets: &mut Assets, name: &str) -> Result<Option<Self>> {
         // Text styles and scene-owned lights need their owning actor clock.
         if !name.ends_with(".tga") || !assets.contains(name) {
             return Ok(None);
@@ -24,7 +24,7 @@ impl Style {
                 .collect(),
         )
     }
-    pub(super) fn sample(&self, clock: f32) -> Vec3 {
+    pub(crate) fn sample(&self, clock: f32) -> Vec3 {
         if self.0.is_empty() || !clock.is_finite() {
             return Vec3::ONE;
         }

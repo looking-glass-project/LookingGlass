@@ -51,6 +51,12 @@ impl Effect {
         }
         Ok(effect)
     }
+    pub fn duration(&self) -> f32 {
+        self.duration
+    }
+    pub fn frame_time(&self) -> f32 {
+        self.model.frame_time
+    }
     pub fn draw(&self, age: f32, origin: Vec3, spin: f32, camera: Vec3, atmosphere: &Atmosphere) {
         let looping = self.clip == "idle";
         let pose = |t: f32, tag: Option<&str>| {

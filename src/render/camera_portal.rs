@@ -374,6 +374,18 @@ impl Scene {
         fullbright: bool,
         transforms: &[(usize, Vec3, Quat)],
     ) {
+        self.prepare_camera_portals_with(camera, time, fullbright, transforms, &mut |_| {});
+    }
+    /// As `prepare_camera_portals`; `actors(fullbright)` draws live characters (Alice)
+    /// into each planar mirror's pass so they are reflected like the room.
+    pub fn prepare_camera_portals_with(
+        &mut self,
+        camera: &Camera3D,
+        time: f32,
+        fullbright: bool,
+        transforms: &[(usize, Vec3, Quat)],
+        actors: &mut dyn FnMut(bool),
+    ) {
         if self.camera_portals.is_empty() {
             return;
         }
@@ -476,6 +488,9 @@ impl Scene {
             if let (Some(cat), Some(actor)) = (&mut portal.cat, portal.actor) {
                 cat.atmosphere(&atmosphere,eye);
                 cat.draw_dissolving("sit_talk1",actor.time,true,actor.pose,1.,fullbright,1.-actor.alpha);
+            }
+            if portal.mirror {
+                actors(fullbright);
             }
             crate::render_fx::finish();
             gl_use_default_material();

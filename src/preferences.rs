@@ -99,12 +99,26 @@ pub struct Preferences {
     pub invert_mouse: bool,
     pub camera_distance: f32,
     pub always_run: bool,
+    /// Native lock-strafe control (body always faces the view); false is free third-person turning.
+    pub lock_strafe: bool,
     pub subtitles: bool,
     pub bindings: Vec<String>,
     pub pad_bindings: Vec<String>,
     pub pad_sensitivity: f32,
     pub pad_deadzone: f32,
     pub invert_pad: bool,
+    /// DualSense motion aiming (the controller's gyro adds to right-stick look).
+    pub gyro_aiming: bool,
+    /// Anisotropic texture filtering level: 1 (off), 2, 4, 8 or 16. Vulkan (PS5) only.
+    pub anisotropy: u32,
+    /// Multisample anti-aliasing: 1 (off), 2, 4 or 8. Vulkan (PS5) only.
+    pub msaa: u32,
+    /// VorpalFix's console-style HUD position: meters pulled in from the screen edges and raised.
+    pub console_hud: bool,
+    /// Show a frames-per-second counter in the top-left corner.
+    pub show_fps: bool,
+    /// Draw a dark plate behind the FPS counter.
+    pub fps_plate: bool,
 }
 impl Default for Preferences {
     fn default() -> Self {
@@ -113,14 +127,21 @@ impl Default for Preferences {
             fullscreen: false,
             sensitivity: 1.,
             invert_mouse: false,
-            camera_distance: 132.,
+            camera_distance: 128.,
             always_run: false,
+            lock_strafe: true,
             subtitles: true,
             bindings: BINDINGS.iter().map(|(_, key)| (*key).to_owned()).collect(),
             pad_bindings: pad_defaults(),
             pad_sensitivity: 1.,
             pad_deadzone: 0.24,
             invert_pad: false,
+            gyro_aiming: false,
+            anisotropy: 1,
+            msaa: 1,
+            console_hud: false,
+            show_fps: false,
+            fps_plate: false,
         }
     }
 }

@@ -61,6 +61,8 @@ struct Spec {
     constrain: Option<Vec3>,
     tag: Option<String>,
     rate: f32,
+    /// `collision` with a `bouncefactor`: sparks rebound off surfaces instead of dying on them.
+    bounce: Option<f32>,
     size: Range,
     growth: f32,
     life: Range,
@@ -78,6 +80,10 @@ struct Spec {
     random_roll: bool,
     sphere: bool,
     start_off: bool,
+    /// First `angles` value: a sprite emitted at pitch 90 lies flat (the splash ripple rings).
+    angles_pitch: Option<f32>,
+    /// Opt-in (see `Attached::flat_sprites`): draw in the horizontal plane, not facing the camera.
+    flat: bool,
 }
 impl Default for Spec {
     fn default() -> Self {
@@ -93,6 +99,7 @@ impl Default for Spec {
             rate: 0.,
             size: Range::fixed(0.3),
             growth: 0.,
+            bounce: None,
             life: Range::fixed(1.),
             offset: [Range::default(); 3],
             axis_offset: [Range::default(); 3],
@@ -108,6 +115,8 @@ impl Default for Spec {
             random_roll: false,
             sphere: false,
             start_off: false,
+            angles_pitch: None,
+            flat: false,
         }
     }
 }
@@ -189,6 +198,7 @@ fn parse(text: &str) -> Vec<Spec> {
             "scalemin" => s.size.low = n(1).unwrap_or(s.size.low),
             "scalemax" => s.size.high = n(1).unwrap_or(s.size.high),
             "scalerate" => s.growth = n(1).unwrap_or(0.),
+            "bouncefactor" => s.bounce = n(1).filter(|v| *v > 0.),
             "life" => {
                 let mut i = 1;
                 s.life = scalar(&t, &mut i).unwrap_or_default();
@@ -226,6 +236,7 @@ fn parse(text: &str) -> Vec<Spec> {
             "randomroll" => s.random_roll = true,
             "sphere" => s.sphere = true,
             "startoff" => s.start_off = true,
+            "angles" => s.angles_pitch = n(1),
             _ => {}
         }
     }
@@ -327,6 +338,9 @@ fn supported(model: &str) -> bool {
                     | "fx_mushroom_steam.tik"
                     | "al_fire1.tik"
                     | "fx_emitter_fire_expensive.tik"
+                    | "fx_eyestaff_spark.tik"
+                    | "fx_eyestaff_splode.tik"
+                    | "prj_napalm.tik"
                     | "fx_bubbles_noair.tik"
                     | "fx_bubbles_air.tik"
                     | "fx_mockturtle_launcher.tik"
@@ -407,7 +421,7 @@ pub(crate) fn attached_lights(assets: &mut Assets, name: &str) -> Result<Vec<(St
         }))
     }).collect())
 }
-mod light_style;
+pub(crate) mod light_style;
 mod check;
 pub(crate) use check::ambient_render;
 
@@ -415,6 +429,8 @@ pub(crate) use check::ambient_render;
 struct Emitter {
     id: usize,
     pickup: bool,
+    /// Meta-essence drops: their halo and light sit higher than the vials' own tag_light.
+    essence: bool,
     origin: Vec3,
     rotation: Quat,
     local: crate::skeletal::Transform,
@@ -428,6 +444,8 @@ struct Emitter {
     carry: f32,
     enabled: bool,
     animation_enabled: Option<bool>,
+    /// Shown and hidden by map script rather than by animation events.
+    scripted: bool,
 }
 struct AnimationBinding {
     id: usize,
@@ -455,6 +473,8 @@ pub struct Steam {
     emitters: Vec<Emitter>,
     puffs: Vec<Puff>,
     seed: u32,
+    /// Frame counter that staggers the world-collision test across puffs.
+    tick: u32,
     materials: Vec<std::rc::Rc<Material>>,
 }
 fn random(seed: &mut u32) -> f32 {
@@ -489,6 +509,9 @@ impl Steam {
                 true,
             );
             for e in self.emitters.iter_mut().filter(|e| e.id == binding.id) {
+                if e.scripted {
+                    continue;
+                }
                 e.animation_enabled = visual.emitters.get(&e.spec.name).copied();
                 if let (Some(tag), Some(model)) = (&e.spec.tag, &binding.model) {
                     if let (Some(points), Some(axes)) =
@@ -514,13 +537,15 @@ impl Steam {
             .filter_map(|e| {
                 e.spec.light.map(
                     |(color, radius, only_models, flare)| crate::lighting::Light {
+                        // Essence pickups glow at their tag_light, the gem's centre, with a halo.
                         position: e.origin
                             + sampled(e.spec.offset, &mut 1) * e.scale
-                            + e.rotation * sampled(e.spec.axis_offset, &mut 1) * e.scale,
+                            + e.rotation * sampled(e.spec.axis_offset, &mut 1) * e.scale
+                            + if e.essence { Vec3::Z * 14. * e.scale } else { Vec3::ZERO },
                         color: e.light_color.unwrap_or(color),
                         radius: radius * e.scale,
                         only_models,
-                        flare,
+                        flare: flare || e.essence,
                     },
                 )
             })
@@ -606,6 +631,16 @@ impl Steam {
         self.puffs
             .retain(|p| !self.emitters[p.emitter].spec.start_off);
     }
+    /// Script `show`/`hide` of the Duchess hearth emitters (`firesparklies`).
+    pub fn script_group(&mut self, ids: &[usize], on: bool) {
+        for e in self.emitters.iter_mut().filter(|e| ids.contains(&e.id)) {
+            if on && !e.enabled {
+                e.carry = 1.;
+            }
+            e.animation_enabled = Some(on);
+            e.enabled = on;
+        }
+    }
     pub fn sync(&mut self, state: &crate::event::Runtime) {
         for e in &mut self.emitters {
             e.enabled = state.enabled(crate::entity::Id(e.id))
@@ -684,9 +719,12 @@ impl Steam {
             };
             let text =
                 String::from_utf8_lossy(&assets.read(&format!("models/{model}"))?).into_owned();
-            let definitions = parse(&text);
+            let mut definitions = parse(&text);
             let selected_clip = e.get("anim").map(String::as_str)
-                .or_else(|| (model == "lantern.tik").then_some("lantern"));
+                .or_else(|| (model == "lantern.tik").then_some("lantern"))
+                // Hollow Hideaway's waterfall spray tags idle "off" but no script ever
+                // switches them on; the original shows them running from level start.
+                .or_else(|| model.starts_with("fx_emitter_waterspray").then_some("on"));
             let tan = crate::weapons::read_model_clip(
                 assets, model.trim_end_matches(".tik"), selected_clip,
             ).ok();
@@ -710,15 +748,15 @@ impl Steam {
                 })
                 .unwrap_or(1.)
                 .max(0.001);
+            if matches!(model, "fx_eyestaff_spark.tik" | "fx_eyestaff_splode.tik") {
+                definitions.extend(burst_specs(&text, Some("idle"), frame_time));
+            }
             for mut spec in definitions {
-                // The original 200+100/s additive altar plume saturates this
-                // renderer's LDR target. Keep the weapon readable without
-                // reducing the authored motion, colours or other emitters.
-                if crate::inventory::WEAPONS
-                    .iter()
-                    .any(|(id, _)| model == format!("altar_{id}.tik"))
-                {
-                    spec.alpha *= 0.12;
+                // Measured live in the original (cgamex86 tempmodels): the hearth fire emits about
+                // 105 sprites a second and none outlive roughly two seconds.
+                if model == "fx_emitter_fire_expensive.tik" && spec.rate == 200. {
+                    spec.rate = 105.;
+                    spec.life = Range { low: 1., high: 2. };
                 }
                 let mut point = origin;
                 let mut axes = rotation;
@@ -745,7 +783,16 @@ impl Steam {
                     let Some(path) = texture::resolve(assets, frame, &specs) else {
                         continue;
                     };
-                    let image = texture::decode(assets, &path)?;
+                    let mut image = texture::decode(assets, &path)?;
+                    // GL_ONE GL_ONE ignores texture alpha. Some original sprites (waterfall mist
+                    // water1.ftx) store the picture in RGB with alpha 0 everywhere.
+                    if matches!(stage.blend, crate::materials::Blend::Add | crate::materials::Blend::AlphaAdd)
+                        && image.pixels.chunks_exact(4).all(|p| p[3] == 0)
+                    {
+                        for p in image.pixels.chunks_exact_mut(4) {
+                            p[3] = 255;
+                        }
+                    }
                     let t = Texture2D::from_rgba8(image.width, image.height, &image.pixels);
                     t.set_filter(FilterMode::Linear);
                     textures.push(t);
@@ -767,10 +814,54 @@ impl Steam {
                     spec.size.low *= factor;
                     spec.size.high *= factor;
                 }
+                if crate::inventory::WEAPONS
+                    .iter()
+                    .any(|(id, _)| model == format!("altar_{id}.tik"))
+                {
+                    // Engine sprite size is texture width times scale (CE-verified), so the 32 px
+                    // bam / 16 px metared plume is far smaller than this renderer's 64 px baseline.
+                    let width = textures.first().map_or(64., |t| t.width());
+                    let mean = (spec.size.low + spec.size.high) * 0.5;
+                    if mean > 0. {
+                        spec.growth /= mean;
+                    }
+                    spec.size.low *= width / 64.;
+                    spec.size.high *= width / 64.;
+                    // The original plume (clips side by side) tops out near the pickup box, about a
+                    // third of the height the authored accel gives in this renderer.
+                    for a in &mut spec.accel {
+                        a.low *= 0.36;
+                        a.high *= 0.36;
+                    }
+                }
+                // The underwater bubble emitters use the same engine sprite sizing: the 16-32 px
+                // bubble sprite at scale .25 is far smaller than this renderer's 64 px baseline.
+                if model.starts_with("fx_emitter_waterspray")
+                    || model.starts_with("fx_bubbles_")
+                    || model == "fx_mockturtle_launcher.tik"
+                {
+                    // Original engine sprites: half-extent = texture width / 2 * scale, and
+                    // scalerate adds to that scale (CE-verified on fx_metagas). The 16 px water
+                    // drop is therefore a quarter of the 64 px baseline this renderer assumes.
+                    let width = textures.first().map_or(64., |t| t.width());
+                    let mean = (spec.size.low + spec.size.high) * 0.5;
+                    if mean > 0. {
+                        spec.growth /= mean;
+                    }
+                    spec.size.low *= width / 64.;
+                    spec.size.high *= width / 64.;
+                }
                 let enabled = !spec.start_off;
+                // `originspawn` blocks fire their whole count each time the idle clip starts over.
+                if spec.burst.is_some() {
+                    spec.rate = 1. / duration;
+                }
                 emitters.push(Emitter {
                     id,
                     pickup: e.get("classname").is_some_and(|c| c.to_ascii_lowercase().starts_with("item_")),
+                    essence: e
+                        .get("classname")
+                        .is_some_and(|c| c.to_ascii_lowercase().starts_with("item_metaess")),
                     origin: point,
                     rotation: axes,
                     local: crate::skeletal::Transform {
@@ -787,7 +878,9 @@ impl Steam {
                     // One ten-second pixie is alive from entry, then replaced.
                     carry: if model == "lantern.tik" { 1. } else { 0. },
                     enabled,
-                    animation_enabled: None,
+                    // The Duchess hearth's `firesparklies` are hidden until the script shows them.
+                    animation_enabled: e.get("targetname").is_some_and(|n| n == "firesparklies").then_some(false),
+                    scripted: e.get("targetname").is_some_and(|n| n == "firesparklies"),
                 });
             }
             animations.push(AnimationBinding {
@@ -811,6 +904,7 @@ impl Steam {
             emitters,
             puffs: Vec::new(),
             seed: 0x56789abc,
+            tick: 0,
             materials,
         })
     }
@@ -823,7 +917,9 @@ impl Steam {
             return;
         }
         let dt = dt.min(0.05);
-        for p in &mut self.puffs {
+        self.tick = self.tick.wrapping_add(1);
+        let tick = self.tick;
+        for (index, p) in self.puffs.iter_mut().enumerate() {
             let dt = if self.emitters[p.emitter].spec.no_deadtime {
                 dt
             } else {
@@ -846,8 +942,19 @@ impl Steam {
             }
             // The enclosed pixie requests axis bounds, not world collision.
             // Its casing still occludes the sprite through the depth buffer.
-            if self.emitters[p.emitter].spec.constrain.is_none()
-                && world.sweep(p.position, next, Vec3::ZERO).fraction < 1.
+            // A trace per puff per frame dominated torch halls: test each puff every fourth
+            // frame, along the distance it will cover until its next test.
+            if let Some(bounce) = self.emitters[p.emitter].spec.bounce {
+                // Native tempmodels with `collision` and a bouncefactor rebound off the world.
+                let hit = world.sweep(p.position, next, Vec3::ZERO);
+                if hit.fraction < 1. {
+                    let n = hit.normal;
+                    p.velocity = (p.velocity - n * (2. * p.velocity.dot(n))) * bounce;
+                    next = p.position + n * 0.5;
+                }
+            } else if self.emitters[p.emitter].spec.constrain.is_none()
+                && (index as u32).wrapping_add(tick) % 4 == 0
+                && world.sweep(p.position, p.position + p.velocity * dt * 4., Vec3::ZERO).fraction < 1.
             {
                 p.age = p.life;
             }
@@ -866,7 +973,7 @@ impl Steam {
             if !e.enabled
                 || e.spec.rate <= 0.
                 || (e.spec.image.is_empty() && e.spec.light.is_some())
-                || e.origin.distance_squared(eye) > 3000. * 3000.
+                || e.origin.distance_squared(eye) > 2200. * 2200.
             {
                 // Keep the enclosed light ready when its lantern comes into range.
                 e.carry = if e.enabled && e.spec.constrain.is_some() {
@@ -877,6 +984,7 @@ impl Steam {
             e.carry = (e.carry + dt * e.spec.rate).min(32.);
             while e.carry >= 1. {
                 e.carry -= 1.;
+              for _ in 0..e.spec.burst.map_or(1, |(_, n)| n) {
                 if self.puffs.len() >= 4096 {
                     break;
                 }
@@ -908,6 +1016,7 @@ impl Steam {
                     },
                     emitter: index,
                 });
+              }
             }
         }
     }
@@ -923,10 +1032,14 @@ impl Steam {
         }
     }
     pub fn draw_one(&self, index: usize, camera: Vec3, direction: Vec3) {
-        let right = direction.cross(Vec3::Z).try_normalize().unwrap_or(Vec3::X);
-        let up = right.cross(direction).normalize_or_zero();
         let p = &self.puffs[index];
         let e = &self.emitters[p.emitter];
+        let (right, up) = if e.spec.flat {
+            (Vec3::X, Vec3::Y)
+        } else {
+            let right = direction.cross(Vec3::Z).try_normalize().unwrap_or(Vec3::X);
+            (right, right.cross(direction).normalize_or_zero())
+        };
         gl_use_material(&self.materials[usize::from(e.additive)]);
         let radius = p.size * (1. + e.spec.growth * p.age).max(0.);
         let x = (right * p.roll.cos() + up * p.roll.sin()) * radius;
@@ -982,9 +1095,12 @@ thread_local! {
 }
 impl PickupBurst {
     pub fn load(assets: &mut Assets) -> Result<Self> {
+        Self::load_sprite(assets, "supra_p")
+    }
+    pub fn load_sprite(assets: &mut Assets, name: &str) -> Result<Self> {
         let specs = texture::read_materials(assets)?;
-        let path = texture::resolve(assets, "supra_p", &specs)
-            .ok_or_else(|| anyhow::anyhow!("Missing gnome disappearance sprite"))?;
+        let path = texture::resolve(assets, name, &specs)
+            .ok_or_else(|| anyhow::anyhow!("Missing burst sprite {name}"))?;
         let image = texture::decode(assets, &path)?;
         let texture = Texture2D::from_rgba8(image.width, image.height, &image.pixels);
         texture.set_filter(FilterMode::Linear);
@@ -1016,6 +1132,60 @@ impl PickupBurst {
             Ok(m)
         })?;
         Ok(Self { texture, material })
+    }
+    /// fx_lookingglass `glasspoof`: 300 white puffs, offset crandom 12 / random 75, life up
+    /// to 1.5 s, scale .2-1, fade in .2 s then out, falling at 100 u/s^2. Deterministic in age.
+    pub fn draw_poof(&self, origin: Vec3, age: f32, camera: Vec3, atmosphere: &Atmosphere) {
+        if !(0. ..2.).contains(&age) {
+            return;
+        }
+        atmosphere.apply(&self.material, camera);
+        gl_use_material(&self.material);
+        let direction = (origin - camera).normalize_or_zero();
+        let right = direction.cross(Vec3::Z).try_normalize().unwrap_or(Vec3::X);
+        let up = right.cross(direction).normalize_or_zero();
+        let mut seed = 0x1a55_90f;
+        let mut vertices = Vec::new();
+        let mut indices = Vec::new();
+        for _ in 0..300 {
+            let offset = vec3(
+                (random(&mut seed) * 2. - 1.) * 12.,
+                (random(&mut seed) * 2. - 1.) * 12.,
+                random(&mut seed) * 75.,
+            );
+            let life = 0.4 + random(&mut seed) * 1.1;
+            let size = (0.2 + random(&mut seed) * 0.8) * 32.;
+            if age >= life {
+                continue;
+            }
+            let center = origin + offset - Vec3::Z * (0.5 * 100. * age * age);
+            let alpha = (age / 0.2).min(1.) * (1. - age / life) * 0.8;
+            let color: [u8; 4] = Color::new(1., 1., 1., alpha).into();
+            let base = vertices.len() as u16;
+            for (delta, uv) in [
+                (-right - up, vec2(0., 1.)),
+                (right - up, vec2(1., 1.)),
+                (right + up, vec2(1., 0.)),
+                (-right + up, vec2(0., 0.)),
+            ] {
+                vertices.push(Vertex {
+                    position: center + delta * size,
+                    uv,
+                    normal: Vec4::ZERO,
+                    color,
+                });
+            }
+            indices.extend([base, base + 1, base + 2, base, base + 2, base + 3]);
+        }
+        crate::render_fx::effect(
+            &Mesh {
+                vertices,
+                indices,
+                texture: Some(self.texture.clone()),
+            },
+            crate::materials::Blend::Add,
+        );
+        gl_use_default_material();
     }
     pub fn draw(&self, origin: Vec3, age: f32, camera: Vec3, atmosphere: &Atmosphere) {
         if !(0. ..4.).contains(&age) {
@@ -1184,6 +1354,27 @@ impl Attached {
             }
         }
     }
+    /// Engine sprite sizing for `.spr` models: half-extent is texture width / 2 times the
+    /// emitter scale, and `scalerate` adds to that scale (relative growth = rate / scale).
+    pub(crate) fn engine_sprite_size(mut self) -> Self {
+        for e in &mut self.steam.emitters {
+            let width = e.textures.first().map_or(64., |t| t.width());
+            let mean = (e.spec.size.low + e.spec.size.high) * 0.5;
+            if mean > 0. {
+                e.spec.growth /= mean;
+            }
+            e.spec.size.low *= width / 64.;
+            e.spec.size.high *= width / 64.;
+        }
+        self
+    }
+    /// Lay sprites authored with `angles 90 0 0` flat in the horizontal plane, as the engine does.
+    pub(crate) fn flat_sprites(mut self) -> Self {
+        for e in &mut self.steam.emitters {
+            e.spec.flat = e.spec.angles_pitch == Some(90.);
+        }
+        self
+    }
     /// A separate emitter clock sharing immutable textures/materials.
     pub(crate) fn fork(&self) -> Self {
         Self {
@@ -1194,6 +1385,7 @@ impl Attached {
                 emitters: self.steam.emitters.clone(),
                 puffs: Vec::new(),
                 seed: 1,
+                tick: 0,
                 materials: self.steam.materials.clone(),
             },
         }
@@ -1266,6 +1458,7 @@ impl Attached {
             emitters.push(Emitter {
                 id: 0,
                 pickup: false,
+                essence: false,
                 origin: Vec3::ZERO,
                 rotation: Quat::IDENTITY,
                 local: crate::skeletal::Transform {
@@ -1282,6 +1475,7 @@ impl Attached {
                 carry: 0.,
                 enabled: true,
                 animation_enabled: None,
+                scripted: false,
             });
         }
         Ok(Some(Self {
@@ -1292,6 +1486,7 @@ impl Attached {
                 emitters,
                 puffs: Vec::new(),
                 seed: 1,
+                tick: 0,
                 materials: shared_materials()?,
             },
         }))
@@ -1500,6 +1695,7 @@ mod tests {
                     .map(|_| Emitter {
                         id: 0,
                         pickup: false,
+                essence: false,
                         origin: Vec3::ZERO,
                         rotation: Quat::IDENTITY,
                         local: crate::skeletal::Transform {
@@ -1523,10 +1719,12 @@ mod tests {
                         carry: 0.,
                         enabled: true,
                         animation_enabled: None,
+                scripted: false,
                     })
                     .collect(),
                 puffs: vec![],
                 seed: 1,
+                tick: 0,
                 materials: vec![],
             },
         }
@@ -1715,6 +1913,7 @@ mod tests {
             animations: vec![],
             emitters: vec![Emitter {
                 pickup: false,
+                essence: false,
                 id: 7,
                 origin: Vec3::ZERO,
                 rotation: Quat::IDENTITY,
@@ -1737,9 +1936,11 @@ mod tests {
                 carry: 0.,
                 enabled: true,
                 animation_enabled: None,
+                scripted: false,
             }],
             puffs: vec![],
             seed: 12345,
+            tick: 0,
             materials: vec![],
         };
         let pose = Transform {
@@ -1809,5 +2010,15 @@ mod tests {
         assert!((p[0].alpha - 0.75).abs() < 0.0001);
         assert_eq!(p[0].offset, b.sample(0.45, 123)[0].offset);
         assert!(b.sample(1.21, 123).is_empty());
+    }
+
+    #[test]
+    fn metagas_tag_emitter_parses_for_phantasm_drain() {
+        let text = "TIKI\ninit\n{\n client\n {\n tagemitter tag_gas metagas\n (\n model meta.spr\n spawnrate 75\n velocity 220\n scalemin 4.2\n scalemax 5.0\n scalerate -4\n fade\n life 0.5\n )\n }\n}\n";
+        let specs = parse(text);
+        assert_eq!(specs.len(), 1);
+        assert_eq!(specs[0].rate, 75.);
+        assert_eq!(specs[0].forward, 220.);
+        assert_eq!(specs[0].image, "meta");
     }
 }

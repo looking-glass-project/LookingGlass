@@ -539,3 +539,9 @@ pub static REGISTRATION: super::Registration = super::Registration {
     save_cases: &[],
     visibility: &[],
 };
+
+impl Drop for Centipede {
+    fn drop(&mut self) {
+        crate::movement::reset_min_ground_z();
+    }
+}

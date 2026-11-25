@@ -169,9 +169,23 @@ pub struct Die {
     pub position: Vec3,
     velocity: Vec3,
     pub age: f32,
-    resting: bool,
+    pub resting: bool,
     pub pip: u8,
+    /// Position at the previous 20 Hz physics frame and how far the next one has progressed;
+    /// the native client interpolates between server frames.
+    #[serde(skip)]
+    prev: Option<Vec3>,
+    #[serde(skip)]
+    blend: f32,
 }
+impl Die {
+    pub fn shown(&self) -> Vec3 {
+        self.prev
+            .map_or(self.position, |p| p.lerp(self.position, self.blend.clamp(0., 1.)))
+    }
+}
+/// fgame `sv_fps` 20: entity physics (FUN_10077790) runs once per 0.05 s server frame.
+const FRAME: f32 = 0.05;
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Phase {
     Appear,
@@ -210,6 +224,9 @@ pub struct Demon {
     recoil: combat::Recoil,
     #[serde(default)]
     shield: f32,
+    /// Seconds since the held target was last seen (Actor enemy memory, native default 30 s).
+    #[serde(default)]
+    unseen: f32,
 }
 impl Demon {
     fn scale(&self) -> f32 {
@@ -250,6 +267,17 @@ impl Demon {
         }
     }
 }
+/// The open rift before the summon steps out of it. `FUN_10060f80` posts event 0x101b5400
+/// (`FUN_10061300`, which spawns the actor through SafeSpawn and launches it) 3.0 s after the rift
+/// opens (`_DAT_1015cd54`); a failed spawn there closes the rift and refunds the will.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Rift {
+    pub feet: Vec3,
+    pub kind: usize,
+    pub age: f32,
+}
+/// Seconds between the rift opening and the summon stepping out of it.
+const EMERGE: f32 = 3.;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct Bolt {
     position: Vec3,
@@ -278,20 +306,41 @@ pub struct State {
     #[serde(skip)]
     pub difficulty: crate::powerups::Difficulty,
     #[serde(default)]
+    frame: f32,
+    /// Seconds after the throw at which the rift opens. `DemonDice::Throw` (FUN_1005ef90) posts the
+    /// rift event (0x101b5458, FUN_10060f80) after the frame time plus the length of the throw
+    /// velocity scaled by 0.005, and FUN_100605b0 opens the rift at the first die wherever it is
+    /// by then. Checked in the running game: an unlocked throw (1.5) opened at 1.56 s, locked
+    /// ones at 2.1 to 2.4 s. Zero for saves from before this was traced.
+    #[serde(default)]
+    land: f32,
+    #[serde(default)]
     forced_king: bool,
     #[serde(default)]
     next_id: u32,
     pub dice: Vec<Die>,
+    /// Landed dice: w_throwndice's `smoke` animation hides the die and starts its smoke emitter
+    /// until the projectile's 8 second life ends.
+    #[serde(default)]
+    pub smoke: Vec<Smoke>,
     pub demon: Option<Demon>,
+    #[serde(default)]
+    pub rift: Option<Rift>,
     bolts: Vec<Bolt>,
     #[serde(default)]
     pub beams: Vec<Beam>,
     seed: u32,
     pub cooldown: f32,
+    /// Seconds since the thrown dice reappeared in Alice's hand; negative while they are away.
+    #[serde(default = "no_regen")]
+    regen: f32,
     time: f32,
     accumulator: f64,
     #[serde(default)]
     world_accumulator: f64,
+}
+fn no_regen() -> f32 {
+    99.
 }
 impl Default for State {
     fn default() -> Self {
@@ -299,19 +348,30 @@ impl Default for State {
             notarget: false,
             rage: false,
             difficulty: Default::default(),
+            frame: 0.,
+            land: 0.,
             forced_king: false,
             next_id: 0,
             dice: vec![],
+            smoke: vec![],
             demon: None,
+            rift: None,
             bolts: vec![],
             beams: vec![],
             seed: 0x6d2b79f5,
             cooldown: 0.,
+            regen: no_regen(),
             time: 0.,
             accumulator: 0.,
             world_accumulator: 0.,
         }
     }
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct Smoke {
+    pub position: Vec3,
+    pub age: f32,
+    pub left: f32,
 }
 #[derive(Default)]
 pub struct Feedback {
@@ -340,10 +400,27 @@ pub fn tier(pips: &[u8]) -> usize {
     }
 }
 impl State {
+    /// Age of the hand reappearance burst, while it is still visible.
+    pub fn return_age(&self) -> Option<f32> {
+        (0. ..1.9).contains(&self.regen).then_some(self.regen)
+    }
     pub fn ready(&self) -> bool {
-        self.cooldown <= 0. && self.dice.is_empty() && self.demon.is_none()
+        self.cooldown <= 0. && self.dice.is_empty() && self.demon.is_none() && self.rift.is_none()
     }
     pub fn throw(&mut self, count: u8, origin: Vec3, direction: Vec3) -> bool {
+        self.throw_at(count, origin, direction, None)
+    }
+    /// fgame `DemonDice::Throw` (FUN_1005ef90). Unlocked: the view forward times 300, scaled by
+    /// 0.005, launched at speed 300. Locked on an enemy (the pentagram target): the offset to it
+    /// plus half of sv_gravity upward, scaled by 0.005 and launched at the distance. Dice 2 and 3
+    /// leave 0.2 of a speed to the left and right of the first.
+    pub fn throw_at(
+        &mut self,
+        count: u8,
+        origin: Vec3,
+        direction: Vec3,
+        target: Option<Vec3>,
+    ) -> bool {
         if !self.ready()
             || !(1..=3).contains(&count)
             || !origin.is_finite()
@@ -354,20 +431,35 @@ impl State {
         self.time = 0.;
         self.forced_king = count == 3 && self.rage;
         self.cooldown = 6.;
+        self.regen = -1.;
         for i in 0..count {
             // Private deterministic generator: saving mid-throw cannot reroll a summon.
             self.seed ^= self.seed << 13;
             self.seed ^= self.seed >> 17;
             self.seed ^= self.seed << 5;
             let pip = (self.seed % 6 + 1) as u8;
-            let spread = (i as f32 - (count - 1) as f32 * 0.5) * 0.16;
+            let forward = direction.normalize_or_zero();
+            let (aim, speed) = match target.filter(|t| t.is_finite()) {
+                Some(t) => ((t - origin + Vec3::Z * 400.) * 0.005, (t - origin).length()),
+                None => (forward * 300. * 0.005, 300.),
+            };
+            if i == 0 {
+                self.land = FRAME + aim.length();
+            }
+            let right = forward.cross(Vec3::Z).normalize_or_zero();
+            let side = match i {
+                1 => -right * 0.2,
+                2 => right * 0.2,
+                _ => Vec3::ZERO,
+            };
             self.dice.push(Die {
                 position: origin,
-                velocity: Quat::from_rotation_z(spread) * direction.normalize_or_zero() * 200.
-                    + Vec3::Z * 110.,
+                velocity: (aim + side) * speed,
                 age: 0.,
                 resting: false,
                 pip,
+                prev: None,
+                blend: 1.,
             });
         }
         true
@@ -379,6 +471,7 @@ impl State {
                 && self.seed != 0
                 && (0.0..=6.).contains(&self.cooldown)
                 && (0.0..=9.).contains(&self.time)
+                && (0.0..=30.).contains(&self.land)
                 && self.accumulator.is_finite()
                 && self.accumulator.abs() < 0.01
                 && self.world_accumulator.is_finite()
@@ -391,6 +484,12 @@ impl State {
                 && (0.0..=8.1).contains(&d.age)
                 && (1..=6).contains(&d.pip)),
             "Invalid saved thrown dice"
+        );
+        ensure!(
+            self.rift.as_ref().is_none_or(|r| r.feet.is_finite()
+                && r.kind < 3
+                && (0.0..=EMERGE + 0.5).contains(&r.age)),
+            "Invalid saved Demon Dice rift"
         );
         if let Some(d) = &self.demon {
             ensure!(
@@ -539,6 +638,16 @@ impl State {
     ) {
         if real_active {
             self.cooldown = (self.cooldown - STEP).max(0.);
+            // fx_thrownweapon: the dice return half a second before the cycle ends and the
+            // reappearance burst plays on the hand, with weapon_reappear.wav.
+            if self.regen < 99. && self.cooldown <= 0.5 && self.dice.is_empty() && self.demon.is_none() && self.rift.is_none()
+            {
+                if self.regen < 0. {
+                    self.regen = 0.;
+                    out.sounds.push("sound/weapon/shared/weapon_reappear.wav");
+                }
+                self.regen = (self.regen + STEP).min(99.);
+            }
         }
         if world_active {
             self.beams.retain_mut(|b| {
@@ -595,43 +704,121 @@ impl State {
                 contact.is_none() && !wall.start_solid && wall.fraction >= 1. && b.age < 2.
             });
         }
+        if real_active {
+            self.smoke.retain_mut(|s| {
+                s.age += STEP;
+                s.age < s.left
+            });
+        }
         if real_active && !self.dice.is_empty() {
             self.time += STEP;
+            self.frame += STEP;
+            let step = self.frame >= FRAME;
+            if step {
+                self.frame -= FRAME;
+            }
             for die in &mut self.dice {
                 die.age += STEP;
                 if die.resting {
                     continue;
                 }
-                die.velocity.z -= 800. * STEP;
-                let end = die.position + die.velocity * STEP;
+                if !step {
+                    die.blend = self.frame / FRAME;
+                    continue;
+                }
+                die.prev = Some(die.position);
+                die.blend = self.frame / FRAME;
+                // FUN_10075b10: gravity (sv_gravity 800 times the entity's 1.0) is applied
+                // before the move, then the move is traced with the 8 unit box.
+                die.velocity.z -= 800. * FRAME;
+                let end = die.position + die.velocity * FRAME;
                 let hit = ctx.world.sweep(die.position, end, Vec3::splat(8.));
                 die.position = die.position.lerp(end, hit.fraction);
                 if hit.start_solid {
+                    die.velocity = Vec3::ZERO;
                     die.resting = true;
                 } else if hit.fraction < 1. {
                     if die.velocity.length() > 40. {
                         out.sounds.push(SOUNDS[3]);
                     }
-                    die.velocity =
-                        (die.velocity - hit.normal * 2. * die.velocity.dot(hit.normal)) * 0.4;
-                    die.position += hit.normal * 0.1;
-                    if hit.normal.z > 0.7 && die.velocity.length() < 50. {
+                    // movetype 10 clips with an overbounce of 1.5 (FUN_10075810): the normal
+                    // component reverses at half strength and tangential speed is kept; values
+                    // inside (-0.1, 0.1) snap to zero.
+                    let mut v = die.velocity - hit.normal * die.velocity.dot(hit.normal) * 1.5;
+                    for c in [&mut v.x, &mut v.y, &mut v.z] {
+                        if *c > -0.1 && *c < 0.1 {
+                            *c = 0.;
+                        }
+                    }
+                    die.velocity = v;
+                    // A floor steeper than 0.7 that leaves the die rising slower than 60 stops it.
+                    if hit.normal.z > 0.7 && v.z < 60. {
+                        die.velocity = Vec3::ZERO;
                         die.resting = true;
                     }
                 }
             }
-            if self.time >= 2. && self.dice.iter().all(|d| d.resting) || self.time >= 8. {
+            let landed = if self.land > 0. {
+                self.time >= self.land
+            } else {
+                self.time >= 2. && self.dice.iter().all(|d| d.resting)
+            };
+            if landed || self.time >= 8. {
                 let kind = if self.forced_king {
                     2
                 } else {
                     tier(&self.dice.iter().map(|d| d.pip).collect::<Vec<_>>())
                 };
                 let at = self.dice[0].position;
-                self.demon = spawn(ctx.world, at, kind).map(|feet| {
+                self.rift = spawn(ctx.world, at, kind).map(|feet| Rift { feet, kind, age: 0. });
+                if self.rift.is_none() {
+                    out.refund += combat::will_cost(6, false);
+                }
+                // Measured in the running game: the thrown dice are removed exactly 3.0 s after the rift opens.
+                let left = 3.;
+                // The opener die gets the `hide` animation (no emitter); the others play `smoke`.
+                // If no rift opens the first die smokes too.
+                let skip = usize::from(self.rift.is_some());
+                self.smoke.extend(
+                    self.dice
+                        .iter()
+                        .skip(skip)
+                        .map(|d| Smoke { position: d.position, age: 0., left }),
+                );
+                self.dice.clear();
+                self.land = 0.;
+                self.time = 0.;
+                out.sounds
+                    .push(if self.rift.is_some() { OPEN } else { CLOSE });
+            }
+        }
+        if !world_active {
+            return;
+        }
+        if let Some(r) = &mut self.rift {
+            r.age += STEP;
+            if r.age >= EMERGE {
+                let (age, kind) = (r.age, r.kind);
+                let feet = r.feet;
+                self.rift = None;
+                // The spawn point was validated when the rift opened.
+                self.demon = Some(feet).map(|feet| {
                     let center = feet + Vec3::Z * 40. * SIZE[kind];
-                    let hostile = !enemies.iter().any(|t| {
-                        t.center.distance(center) < 1200. && visible(ctx.world, center, t.center)
-                    });
+                    // FUN_1005f730 picks the nearest visible valid actor out to a squared distance of
+                    // 5.0e8; with none the summon is told `enemy` and its enemy is Alice.
+                    let found = enemies
+                        .iter()
+                        .filter(|t| {
+                            t.center.distance_squared(center) < 5.0e8
+                                && visible(ctx.world, center, t.center)
+                        })
+                        .min_by(|a, b| {
+                            a.center
+                                .distance_squared(center)
+                                .total_cmp(&b.center.distance_squared(center))
+                        });
+                    let hostile = found.is_none();
+                    let first = found.map(|t| t.id).or(Some(alice.id));
                     Demon {
                         kind,
                         feet,
@@ -639,31 +826,27 @@ impl State {
                         health: HEALTH[kind],
                         phase: Phase::Appear,
                         time: 0.,
-                        life: 0.,
+                        life: age,
                         idle: 0.,
                         cooldown: 0.,
-                        target: None,
+                        target: first,
                         hostile,
                         fired: 0,
                         frozen: false,
                         recoil: Default::default(),
                         shield: 0.,
+                        unseen: 0.,
                     }
                 });
-                if self.demon.is_none() {
-                    out.refund += combat::will_cost(6, false);
-                }
-                self.dice.clear();
-                self.time = 0.;
-                out.sounds
-                    .push(if self.demon.is_some() { OPEN } else { CLOSE });
             }
         }
-        if !world_active {
-            return;
-        }
         if let Some(d) = &mut self.demon {
+            let before = d.life;
             d.life = (d.life + STEP).min(1e9);
+            // FUN_100605b0 posts `dice_vortex_close` (the rift close sound) 5.0 s after the rift opens.
+            if before < 5. && d.life >= 5. && d.phase != Phase::Vanish {
+                out.sounds.push(CLOSE);
+            }
             d.shield = (d.shield - STEP).max(0.);
             d.feet += d.recoil.step(STEP, ctx.world, d.target());
             if d.time == 0. && d.phase == Phase::Vanish {
@@ -718,7 +901,18 @@ impl State {
             };
             let center = d.center();
             let attacking = !matches!(d.phase, Phase::Idle | Phase::Move);
-            let target = targets.iter().find(|t| Some(t.id) == d.target).or_else(|| {
+            // Actor think: a remembered enemy is forgotten once it has gone unseen (vision distance
+            // 1200, 360 degree fov, line of sight) for the 30 s enemy memory.
+            let held = targets.iter().find(|t| Some(t.id) == d.target);
+            if let Some(t) = held {
+                if t.center.distance(center) < 1200. && visible(ctx.world, center, t.center) {
+                    d.unseen = 0.;
+                } else {
+                    d.unseen += STEP;
+                }
+            }
+            let held = held.filter(|_| d.unseen <= 30.);
+            let target = held.or_else(|| {
                 targets
                     .iter()
                     .filter(|t| {
@@ -730,6 +924,9 @@ impl State {
                             .total_cmp(&b.center.distance_squared(center))
                     })
             });
+            if held.is_none() {
+                d.unseen = 0.;
+            }
             if let Some(t) = target {
                 d.idle = 0.;
                 d.target = Some(t.id);
@@ -1017,10 +1214,16 @@ pub struct Art {
     puppets: Vec<crate::npc::Puppet>,
     shield: crate::weapons::Prop,
     ice: crate::weapons::Prop,
+    rift_open: crate::weapons::Prop,
+    rift_full: crate::weapons::Prop,
+    flicker: Option<crate::particles::light_style::Style>,
     trails: Vec<crate::particles::Attached>,
     emitters: std::collections::BTreeMap<u32, crate::particles::Attached>,
     poof: Vec<crate::particles::Attached>,
     spawn: crate::particles::Attached,
+    /// w_throwndice `smoke` originemitter (firesmoke.spr, 7/s, 2.5 s life, scale 0.5 growing 0.4/s).
+    smoke: crate::particles::Attached,
+    smoke_forks: Vec<crate::particles::Attached>,
     pub atmosphere: std::cell::RefCell<crate::environment::Atmosphere>,
 }
 impl Art {
@@ -1066,11 +1269,20 @@ impl Art {
                 "idle",
                 specs,
             )?,
+            rift_open: crate::weapons::Prop::load_animation(assets, "fx_rift", "idle", specs)?,
+            rift_full: crate::weapons::Prop::load_animation(assets, "fx_rift", "fullsize", specs)?,
+            flicker: crate::particles::light_style::Style::load(
+                assets,
+                "gfx/light/demonportal_lighting.tga",
+            )?,
             trails,
             emitters: Default::default(),
             poof,
             spawn: crate::particles::Attached::load(assets, "fx_demonspawn", specs)?
                 .ok_or_else(|| anyhow::anyhow!("Missing demon spawn effect"))?,
+            smoke: crate::particles::Attached::load(assets, "w_throwndice", specs)?
+                .ok_or_else(|| anyhow::anyhow!("Missing thrown dice smoke"))?,
+            smoke_forks: vec![],
             atmosphere: Default::default(),
         })
     }
@@ -1097,6 +1309,20 @@ impl Art {
     }
     pub fn effects(&mut self, state: &State, camera: Vec3) {
         let atmosphere = self.atmosphere.borrow();
+        if let Some(r) = &state.rift {
+            let pose = Transform {
+                translation: r.feet,
+                rotation: Quat::IDENTITY,
+            };
+            let (prop, looping) = if r.age < 1. {
+                (&mut self.rift_open, false)
+            } else {
+                (&mut self.rift_full, true)
+            };
+            for mesh in prop.meshes_at(pose, [1.25, 1.5, 2.][r.kind], true, r.age, looping) {
+                crate::render_fx::effect(mesh, crate::materials::Blend::Add);
+            }
+        }
         if let Some(d) = &state.demon {
             let pose = Transform {
                 translation: d.center(),
@@ -1111,6 +1337,26 @@ impl Art {
                         v.color[3] = (255. * (d.shield / 0.35)) as u8;
                     }
                     crate::render_fx::effect(mesh, crate::materials::Blend::AlphaAdd);
+                }
+            }
+            // fgame FUN_100605b0: fx_rift plays `idle` (opening) then `fullsize` at the dice's
+            // landing point while the summon is present; the dismissal closes it again.
+            // Measured: the rift entity is removed exactly 10.0 s after it opens.
+            if d.life < 10. && (d.phase != Phase::Vanish || d.time < 0.5) {
+                let pose = Transform {
+                    translation: d.feet,
+                    rotation: Quat::IDENTITY,
+                };
+                // `idle` plays on opening and `fullsize` is posted 1.0 s later (FUN_100605b0).
+                let (prop, time, looping) = match d.phase {
+                    Phase::Vanish => (&mut self.rift_open, (0.5 - d.time).max(0.), false),
+                    _ if d.life < 1. => (&mut self.rift_open, d.life, false),
+                    _ => (&mut self.rift_full, d.life, true),
+                };
+                // FUN_100605b0 scales the rift by the same factor as the summon: 1.25 by default,
+                // 1.5 and 2.0 for the higher pip totals (_DAT_101664d4, _DAT_1015ce58, _DAT_1015be20).
+                for mesh in prop.meshes_at(pose, [1.25, 1.5, 2.][d.kind], true, time, looping) {
+                    crate::render_fx::effect(mesh, crate::materials::Blend::Add);
                 }
             }
             if d.phase == Phase::Vanish {
@@ -1139,6 +1385,22 @@ impl Art {
                 );
             }
         }
+        while self.smoke_forks.len() < state.smoke.len() {
+            self.smoke_forks.push(self.smoke.fork());
+        }
+        for (fork, s) in self.smoke_forks.iter_mut().zip(&state.smoke) {
+            fork.draw(
+                s.age,
+                1.,
+                |_, _| Transform {
+                    translation: s.position,
+                    rotation: Quat::IDENTITY,
+                },
+                |_, _, _| true,
+                camera,
+                &atmosphere,
+            );
+        }
         self.emitters
             .retain(|id, _| state.bolts.iter().any(|p| p.id == *id));
         for p in &state.bolts {
@@ -1166,6 +1428,39 @@ impl Art {
                     &atmosphere,
                 );
         }
+    }
+}
+
+impl Art {
+    /// fx_demondice_lensflare: a 400-unit dynamic light on the rift, coloured by the
+    /// `demonportal_lighting` style image at 20 Hz.
+    pub fn lights(&self, state: &State) -> Vec<crate::lighting::Light> {
+        let waiting = state.rift.iter().filter(|r| r.age < 4.9).map(|r| crate::lighting::Light {
+            position: r.feet + Vec3::Z * 48.,
+            color: self.flicker.as_ref().map_or(Vec3::ONE, |s| s.sample(r.age))
+                * (r.age / 0.7).min(1.),
+            radius: 400.,
+            only_models: false,
+            flare: false,
+        });
+        state
+            .demon
+            .iter()
+            // The lens flares on the rift are removed 4.9 s after it opens (event 0x101b8248).
+            .filter(|d| d.phase != Phase::Dead && d.life < 4.9)
+            .map(|d| crate::lighting::Light {
+                position: d.feet + Vec3::Z * 48.,
+                color: self.flicker.as_ref().map_or(Vec3::ONE, |s| s.sample(d.life))
+                    * match d.phase {
+                        Phase::Vanish => (1. - d.time / 0.5).max(0.),
+                        _ => (d.life / 0.7).min(1.),
+                    },
+                radius: 400.,
+                only_models: false,
+                flare: false,
+            })
+            .chain(waiting)
+            .collect()
     }
 }
 
@@ -1201,6 +1496,7 @@ pub fn check(assets: &mut Assets) -> Result<()> {
                 frozen: false,
                 recoil: Default::default(),
                 shield: 0.,
+                unseen: 0.,
             }),
             ..Default::default()
         };
@@ -1362,6 +1658,7 @@ pub async fn render_check(assets: &mut Assets) -> Result<()> {
                 frozen: false,
                 recoil: Default::default(),
                 shield: 0.,
+                unseen: 0.,
             });
             let center = visuals.dice.demon.as_ref().unwrap().center();
             ensure!(
@@ -1480,6 +1777,7 @@ mod tests {
                 frozen: false,
                 recoil: Default::default(),
                 shield: 0.,
+                unseen: 0.,
             }),
             ..State::default()
         }
@@ -1569,7 +1867,7 @@ mod tests {
         b.validate().unwrap();
         b.advance(0., &ctx, eye, &data());
         assert_eq!(saved, encoded(&b));
-        for _ in 0..500 {
+        for _ in 0..900 {
             let x = a.advance(STEP, &ctx, eye, &data());
             let y = b.advance(STEP, &ctx, eye, &data());
             assert_eq!(encoded(&a), encoded(&b));
@@ -1721,7 +2019,7 @@ mod tests {
         let mut s = State::default();
         s.throw(1, eye, Vec3::X);
         let mut damage = 0.;
-        for _ in 0..1200 {
+        for _ in 0..2400 {
             for h in s.advance(STEP, &ctx, eye, &data()).hits {
                 assert_eq!(h.id, ALICE);
                 damage += h.damage;

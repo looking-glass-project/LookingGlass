@@ -707,6 +707,9 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
     let mut third_person = true;
     let mut follow_camera = crate::camera::Follow::default();
     let mut camera_handoff = crate::camera::Handoff::default();
+    let frozen_orbit = crate::camera::FrozenOrbit::load(&mut assets)?;
+    let mut blood = crate::blood::Blood::default();
+    let blood_specs = crate::texture::read_materials(&mut assets)?;
     let mut rail_camera = crate::camera::Follow::default();
     let mut clock = FixedClock::default();
     let mut recovery = Recovery::default();
@@ -2511,6 +2514,9 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
             stats.spend_will(feedback.will_drain.min(stats.will()));
         }
         player.knockback(feedback.impulse);
+        if feedback.freeze.contains(&crate::dice::ALICE) && stats.alive() {
+            alice.phantasm_freeze(player.feet);
+        }
         if feedback.damage > 0. {
             println!(
                 "Guard struck Alice: {} damage, {} sanity",
@@ -2525,7 +2531,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
             weapon_buttons.block();
         }
         if !stats.alive() {
-            alice.die();
+            alice.die_from(feedback.damage, feedback.impulse);
         }
         let death_animation =
             !stats.alive() && focused && !paused && !menu && !inventory_menu && !console_input;
@@ -2664,7 +2670,13 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
                 }
                 continue;
             }
+            let bleeds = hit.damage > 0. && hit.kind.means() != crate::combat::DamageKind::Ice;
             if let Some((message, sound)) = npcs.hit(hit) {
+                if bleeds {
+                    if let Some(model) = npcs.model_name(hit.id).map(str::to_owned) {
+                        blood.spawn(&mut assets, &blood_specs, &model, hit_origin);
+                    }
+                }
                 hud.announce(message);
                 audio.world_effect_at(sound, hit_origin);
             }
@@ -2779,9 +2791,15 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
             .as_ref()
             .and_then(|s| s.return_visit.as_ref())
             .and_then(|s| s.camera());
-        let scripted_camera = pand_camera.or_else(|| {
-            cinematic_camera.map(|(eye, target, _)| crate::cinematic::Camera::look(eye, target))
-        });
+        let frozen_camera = alice
+            .frozen()
+            .map(|(time, origin, yaw)| frozen_orbit.camera(&scene.world, time, origin, yaw));
+        let scripted_camera = pand_camera
+            .or_else(|| {
+                cinematic_camera
+                    .map(|(eye, target, _)| crate::cinematic::Camera::look(eye, target))
+            })
+            .or(frozen_camera);
         let (eye, aim, gameplay_alice) = if third_person && !flying {
             follow_camera.update(
                 &scene.world,
@@ -2846,6 +2864,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
         let (camera, target) = (view.eye + quake, view.target + quake);
         let show_alice = !interactions.level_hides_player() && if scripted_camera.is_some() {
             rage_scene.is_some_and(|(_, finished)| !finished)
+                || frozen_camera.is_some()
                 || (cinematic_camera.is_some_and(|(_, _, show)| show) && pand_camera.is_none())
         } else {
             gameplay_alice && camera.distance(player.feet + Vec3::Z * 32.) > 30.
@@ -2953,6 +2972,8 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
             &scene.atmosphere,
             fullbright,
         );
+        blood.update(if active { dt } else { 0. });
+        blood.draw(camera, &scene.atmosphere);
         level_art.story_pose(&story);
         level_art.draw(&interactions, &hints, &scene.atmosphere, camera, fullbright);
         power_art.draw(

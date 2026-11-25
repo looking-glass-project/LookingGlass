@@ -151,6 +151,8 @@ pub struct Stage {
     pub environment: bool,
     pub vector_uv: Option<(Vec3, Vec3)>,
     pub vertex_alpha: bool,
+    /// `alphaGen fromEntity`: the only stage entity alpha fades when scoped to such stages.
+    pub entity_alpha: bool,
     pub dot_alpha: Option<Vec2>,
     pub inverse_dot: bool,
     pub constant_rgb: Option<Vec3>,
@@ -462,7 +464,11 @@ pub fn parse(text: &str) -> Result<BTreeMap<String, MaterialSpec>> {
             "alphagen" => match arg {
                 "wave" => stage.alpha = wave(&t[2..]),
                 "const" | "constant" => stage.constant_alpha = t.get(2).and_then(|s| number(s)),
-                "vertex" | "fromentity" => stage.vertex_alpha = true,
+                "vertex" => stage.vertex_alpha = true,
+                "fromentity" => {
+                    stage.vertex_alpha = true;
+                    stage.entity_alpha = true;
+                }
                 "dot" | "oneminusdot" => {
                     stage.dot_alpha = t
                         .get(2)

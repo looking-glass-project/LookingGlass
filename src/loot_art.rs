@@ -218,7 +218,7 @@ pub async fn check(assets: &mut Assets) -> Result<()> {
     let mut stats = Stats::default();
     stats.loot.insert(
         "render".into(),
-        Loot {
+        Loot { pending: Vec::new(),
             awarded: (0..4).collect(),
             drops: GRADES
                 .into_iter()

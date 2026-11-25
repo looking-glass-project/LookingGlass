@@ -73,49 +73,55 @@ impl Model {
         let time = g.sample_time(&self.data);
         let pose = self.data.clips[g.clip()].sample(time, g.loops());
         let skins = self.magma_skins.as_ref().unwrap();
-        let mut original = Vec::new();
-        let mut removed = Vec::new();
-        for (i, surface) in self.data.skeleton.surfaces.iter().enumerate() {
-            if self
-                .data
-                .meta
-                .hidden
-                .iter()
-                .any(|p| crate::animation_events::matches(p, &surface.name))
-            {
-                removed.push((i, self.meshes[i].take()));
-                continue;
-            }
-            if let Some(mesh) = &mut self.meshes[i] {
-                original.push((i, mesh.texture.clone()));
-                if let Some(tex) = &skins.textures[i][g.form as usize] {
-                    mesh.texture = Some(tex.clone());
+        // aaron.shader: each skin's last stage is `alphaGen fromEntity`, the crust of
+        // the next cooler form. The entity alpha is the cooling progress within the
+        // current form (0 = molten orange, 1 = fully crusted); the base and lava
+        // stages stay opaque. Feeding 1 here buried the hot body under grey crust.
+        let within = (g.cooling - 6. * g.form as f32) / 6.;
+        let passes: &[(usize, f32)] = &[(g.form.min(2) as usize, if g.form >= 2 { 1. } else { within.clamp(0., 1.) })];
+        for &(skin_form, alpha) in passes {
+            let mut original = Vec::new();
+            let mut removed = Vec::new();
+            for (i, surface) in self.data.skeleton.surfaces.iter().enumerate() {
+                if self
+                    .data
+                    .meta
+                    .hidden
+                    .iter()
+                    .any(|p| crate::animation_events::matches(p, &surface.name))
+                {
+                    removed.push((i, self.meshes[i].take()));
+                    continue;
                 }
-                self.visible[i] = true;
+                if let Some(mesh) = &mut self.meshes[i] {
+                    original.push((i, mesh.texture.clone()));
+                    if let Some(tex) = &skins.textures[i][skin_form] {
+                        mesh.texture = Some(tex.clone());
+                    }
+                    self.visible[i] = true;
+                }
             }
-        }
-        material.bind();
-        crate::character::draw_skin_alpha(
-            &self.data.skeleton,
-            &mut self.meshes,
-            &pose,
-            Transform {
-                translation: g.feet,
-                rotation: Quat::from_rotation_z(g.yaw),
-            },
-            self.data.def.scale * scale,
-            fullbright,
-            if g.form < 2 {
-                (g.cooling / 6. - g.form as f32).clamp(0., 1.)
-            } else {
-                1.
-            },
-        );
-        for (i, tex) in original {
-            self.meshes[i].as_mut().unwrap().texture = tex;
-        }
-        for (i, mesh) in removed {
-            self.meshes[i] = mesh;
+            material.bind();
+            crate::render_fx::with_entity_stages_only(|| {
+                crate::character::draw_skin_alpha(
+                    &self.data.skeleton,
+                    &mut self.meshes,
+                    &pose,
+                    Transform {
+                        translation: g.origin(),
+                        rotation: Quat::from_rotation_z(g.yaw),
+                    },
+                    self.data.def.scale * scale,
+                    fullbright,
+                    alpha,
+                );
+            });
+            for (i, tex) in original {
+                self.meshes[i].as_mut().unwrap().texture = tex;
+            }
+            for (i, mesh) in removed {
+                self.meshes[i] = mesh;
+            }
         }
         if g.frozen {
             self.draw_frozen();
@@ -177,7 +183,7 @@ impl Art {
             return;
         }
         let transform = Transform {
-            translation: g.feet,
+            translation: g.origin(),
             rotation: Quat::from_rotation_z(g.yaw),
         };
         let clip = &data.clips[g.clip()];

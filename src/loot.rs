@@ -66,7 +66,12 @@ pub struct Drop {
 pub struct Loot {
     pub awarded: BTreeSet<usize>,
     pub drops: Vec<Drop>,
+    /// Defeated enemies whose essence appears once the corpse has gone.
+    #[serde(default)]
+    pub pending: Vec<(f32, Drop)>,
 }
+/// Seconds a corpse lingers before its essence is released.
+pub const CORPSE_SECONDS: f32 = 4.;
 impl Loot {
     pub fn validate(&self) -> Result<()> {
         ensure!(
@@ -91,6 +96,15 @@ impl Loot {
         if !dt.is_finite() || dt <= 0. {
             return;
         }
+        let mut ready = Vec::new();
+        self.pending.retain_mut(|(wait, d)| {
+            *wait -= dt;
+            if *wait <= 0. {
+                ready.push(d.clone());
+            }
+            *wait > 0.
+        });
+        self.drops.extend(ready);
         self.drops.retain_mut(|d| {
             d.remaining -= dt;
             while d.remaining <= 0. {
@@ -116,12 +130,15 @@ impl Loot {
             } else {
                 start.lerp(start - Vec3::Z * 4096., floor.fraction)
             };
-            self.drops.push(Drop {
-                id: s.id,
-                origin,
-                grade: s.grade,
-                remaining: s.grade.duration(),
-            });
+            self.pending.push((
+                CORPSE_SECONDS,
+                Drop {
+                    id: s.id,
+                    origin,
+                    grade: s.grade,
+                    remaining: s.grade.duration(),
+                },
+            ));
         }
     }
     pub fn pickups(&self, visit: &str) -> Vec<Pickup> {
@@ -193,7 +210,7 @@ pub fn check_school_contacts(assets: &mut crate::assets::Assets) -> Result<()> {
                 stats.spend_will(spent);
                 stats.loot.insert(
                     "skool1$first".into(),
-                    Loot {
+                    Loot { pending: Vec::new(),
                         awarded: BTreeSet::from([9]),
                         drops: vec![Drop {
                             id: 9,
@@ -260,6 +277,7 @@ mod tests {
         let mut stats = Stats::default();
         // A full player leaves it available; an old live drop needs no migration.
         assert!(tick(&mut stats, "step", 0.1, &before, &after, feet, &world).is_empty());
+        tick(&mut stats, "step", CORPSE_SECONDS, &after, &after, vec3(9000., 0., 0.), &world);
         let origin = stats.loot["step"].drops[0].origin;
         let old_ray = world.sweep(feet + Vec3::Z * 24., origin + Vec3::Z * 24., Vec3::ZERO);
         assert!(
@@ -292,7 +310,7 @@ mod tests {
             stats.spend_will(50.);
             stats.loot.insert(
                 "corner".into(),
-                Loot {
+                Loot { pending: Vec::new(),
                     awarded: BTreeSet::from([4]),
                     drops: vec![Drop {
                         id: 4,
@@ -339,6 +357,7 @@ mod tests {
             &world
         )
         .is_empty());
+        tick(&mut stats, "school$first", CORPSE_SECONDS, &after, &after, vec3(9000., 0., 0.), &world);
         assert_eq!(stats.loot["school$first"].drops.len(), 1);
         let mut restored: Stats =
             serde_json::from_str(&serde_json::to_string(&stats).unwrap()).unwrap();
@@ -374,7 +393,7 @@ mod tests {
     }
     #[test]
     fn decay_and_reload_preserve_tier_and_expiry() {
-        let mut a = Loot {
+        let mut a = Loot { pending: Vec::new(),
             awarded: BTreeSet::from([7]),
             drops: vec![Drop {
                 id: 7,

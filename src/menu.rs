@@ -392,6 +392,7 @@ pub struct Menu {
     pub(crate) chapter_labels: crate::chapters::Labels,
     ui: std::rc::Rc<Ui>,
     selected: usize,
+    ui_sounds: usize,
     previous_pointer: Vec2,
     mouse_navigation: bool,
     draft: Preferences,
@@ -563,6 +564,7 @@ impl Menu {
             chapter_labels,
             ui: Ui::load(assets)?,
             selected: 0,
+            ui_sounds: 0,
             previous_pointer: Vec2::splat(-10000.),
             mouse_navigation: false,
             draft: Preferences::default(),
@@ -1737,8 +1739,15 @@ impl Menu {
                     }
                     if page == Page::LoadSave && self.selected != previous_selected {
                         self.save_film.sound(audio, 1);
+                    } else if page != Page::LoadSave && self.selected != previous_selected {
+                        self.ui_sounds += 1;
+                        audio.world_effect(&format!("sound/ui/hover_{}.wav", 1 + self.ui_sounds % 5));
                     }
                     if let Some(click) = click {
+                        if page.layout() != "loadsave" {
+                            self.ui_sounds += 1;
+                            audio.world_effect(&format!("sound/ui/click_{}.wav", 1 + self.ui_sounds % 4));
+                        }
                         if page.layout() == "loadsave" && !matches!(click, Click::Slot(_)) {
                             self.save_film.sound(audio, 2);
                         }

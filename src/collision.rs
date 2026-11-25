@@ -449,6 +449,8 @@ pub struct World {
     dynamic: Vec<Collider>,
     settled_supports: Vec<Collider>,
     weapon_obstacles: Vec<(usize, Collider)>,
+    /// Upward-facing icy floor triangles (shader name contains "ice"); walking on them slides.
+    ice: Vec<[Vec3; 3]>,
     camera_obstacles: Vec<Collider>,
     liquids: Vec<(i32, Hull)>,
     dynamic_liquids: Vec<Liquid>,
@@ -532,6 +534,25 @@ impl World {
                 }
             }
         }
+        let mut ice = Vec::new();
+        for index in map.world_surfaces.clone() {
+            let surface = &map.surfaces[index];
+            let name = map.shaders[surface.shader].name.to_ascii_lowercase();
+            // Whole words only: "device", "notice" or "slice" textures are not frozen floors.
+            let frozen = name
+                .split(|c: char| !c.is_ascii_alphabetic())
+                .any(|w| w.starts_with("iceground") || w.starts_with("snow"));
+            if !frozen {
+                continue;
+            }
+            let (v, i) = map.triangulate(surface);
+            for t in i.chunks_exact(3) {
+                let (a, b, c) = (v[t[0] as usize].position, v[t[1] as usize].position, v[t[2] as usize].position);
+                if (b - a).cross(c - a).normalize_or_zero().z.abs() > 0.7 {
+                    ice.push([a, b, c]);
+                }
+            }
+        }
         let patch_count = hulls.len() - brush_count;
         let tree = if hulls.is_empty() {
             None
@@ -546,6 +567,7 @@ impl World {
             dynamic: Vec::new(),
             settled_supports: Vec::new(),
             weapon_obstacles: Vec::new(),
+            ice,
             camera_obstacles: Vec::new(),
             liquids,
             dynamic_liquids: Vec::new(),
@@ -558,6 +580,14 @@ impl World {
         })
     }
 
+    /// Whether ground here is slippery. The original treats Icy Reception's whole frozen
+    /// cavern as slick, rock and snow floors beside the ice included, so any map that
+    /// contains an ice floor is slippery everywhere.
+    pub fn on_ice(&self, _feet: Vec3) -> bool {
+        // Only maps that really contain an ice/snow floor (whole-word texture match, so lava
+        // "alicelava" never counts), and then everywhere: rock beside the ice is slick too.
+        !self.ice.is_empty()
+    }
     /// Trace a box centre from start to end. Zero extents give a point trace.
     pub fn sweep(&self, start: Vec3, end: Vec3, half: Vec3) -> Trace {
         self.sweep_except(start, end, half, None)
@@ -789,6 +819,7 @@ impl World {
             dynamic: Vec::new(),
             settled_supports: Vec::new(),
             weapon_obstacles: Vec::new(),
+            ice: Vec::new(),
             camera_obstacles: Vec::new(),
             liquids: Vec::new(),
             dynamic_liquids: Vec::new(),

@@ -94,6 +94,9 @@ struct Button {
     click: Click,
     lettering: Option<Lettering>,
     setting: Option<SettingView>,
+    /// Original hoversound/clicksound from the menu definition ("" = generic).
+    hover_sound: String,
+    click_sound: String,
 }
 #[derive(Clone)]
 struct SettingView {
@@ -172,7 +175,7 @@ impl Button {
             hover: "ui/buttons/apply_hover".into(),
             click,
             lettering: None,
-            setting: None,
+            setting: None, hover_sound: String::new(), click_sound: String::new(),
         }
     }
 }
@@ -205,6 +208,8 @@ impl Widget {
             click,
             lettering: Some(Lettering::from_widget(self)),
             setting: None,
+            hover_sound: self.value("hoversound").into(),
+            click_sound: self.value("clicksound").into(),
         }
     }
 }
@@ -274,6 +279,33 @@ fn menu_texture_path(
     texture::resolve(assets, key, specs)
 }
 
+/// Quake III's smooth value noise in [-1, 1], as used by `rgbGen/alphaGen wave noise`.
+fn menu_noise(x: f32) -> f32 {
+    let hash = |i: i32| {
+        let mut n = (i as u32).wrapping_mul(0x9e3779b1) ^ 0x85ebca6b;
+        n = (n ^ (n >> 15)).wrapping_mul(0x2c1b3c6d);
+        n ^= n >> 12;
+        (n & 0xffff) as f32 / 32767.5 - 1.
+    };
+    let (i, f) = (x.floor() as i32, x.fract());
+    let f = f * f * (3. - 2. * f);
+    hash(i) * (1. - f) + hash(i + 1) * f
+}
+/// The border art is GPL-licensed VorpalFix content, so it is read from the player's game data
+/// (`ui/border1_left.tga` in a pak, or a loose `border1_left.tga` next to the paks) and never
+/// bundled. Without it the pillarbox stays black.
+fn load_menu_border(assets: &mut Assets) -> Option<Texture2D> {
+    load_loose_texture(assets, "border1_left.tga")
+}
+/// A texture from a pak (`ui/<name>`) or, as the remaster ships these, loose beside the paks.
+fn load_loose_texture(assets: &mut Assets, name: &str) -> Option<Texture2D> {
+    let bytes = assets.read(&format!("ui/{name}")).ok()
+        .or_else(|| std::fs::read(assets.base.join(name)).ok())?;
+    let image = texture::decode_bytes(bytes, name).ok()?;
+    let texture = Texture2D::from_rgba8(image.width, image.height, &image.pixels);
+    texture.set_filter(FilterMode::Linear);
+    Some(texture)
+}
 fn main_background_glow(art: &str) -> bool {
     art.starts_with("ui/main/main") && art.ends_with("_glow")
 }
@@ -310,7 +342,7 @@ fn setting_buttons(widgets: &[Widget], page: Page) -> Vec<Button> {
         let (label, control) = setting_view(widgets, cvar)?;
         Some(Button { rect: bounds(label.rect, control.rect), text: label.value("title").into(),
             art: String::new(), hover: String::new(), click: Click::Row(row), lettering: None,
-            setting: Some(SettingView {label: label.clone(), control: control.clone()}) })
+            setting: Some(SettingView {label: label.clone(), control: control.clone()}), hover_sound: String::new(), click_sound: String::new() })
     }).collect()
 }
 
@@ -355,7 +387,8 @@ fn load_texture_geometry(assets: &mut Assets, path: &str, additive: bool) -> Res
     if additive {
         for p in im.pixels.chunks_exact_mut(4) {
             let a = p[0].max(p[1]).max(p[2]);
-            p[3] = ((p[3] as u16 * a as u16) / 255) as u8;
+            // GL_ONE GL_ONE ignores the file's alpha; the smoke trail's is ~half strength.
+            p[3] = if path.contains("smoke_trail") { a } else { ((p[3] as u16 * a as u16) / 255) as u8 };
             if a > 0 {
                 for c in &mut p[..3] {
                     *c = ((*c as u16 * 255) / a as u16) as u8;
@@ -386,12 +419,19 @@ pub struct Menu {
     pub frontend: bool,
     layouts: BTreeMap<String, Vec<Widget>>,
     textures: BTreeMap<String, Texture2D>,
+    /// Optional ornate side border for widescreen menus (VorpalFix's `border1_left.tga`).
+    border: Option<Texture2D>,
+    /// The console-style title screen shown once at launch (the remaster's loose `title_bg.tga`).
+    title: Option<Texture2D>,
     button_bounds: BTreeMap<String, (f32, f32)>,
     binding_labels: BTreeMap<String, String>,
     map_titles: BTreeMap<String, String>,
     pub(crate) chapter_labels: crate::chapters::Labels,
     ui: std::rc::Rc<Ui>,
     selected: usize,
+    ui_sounds: usize,
+    ui_cache: std::collections::HashMap<String, std::sync::Arc<[u8]>>,
+    ui_playing: Vec<rodio::Sink>,
     previous_pointer: Vec2,
     mouse_navigation: bool,
     draft: Preferences,
@@ -413,6 +453,16 @@ pub struct Menu {
     material: crate::character::SkinMaterial,
 }
 impl Menu {
+    /// Play a front-end cue directly; the gameplay request queue is not drained in menus.
+    fn ui_cue(&mut self, audio: &audio::Audio, path: &str) {
+        let Some(bytes) = self.ui_cache.get(&path.to_lowercase().replace('\\', "/")) else { return };
+        if let Ok(Some(sink)) = audio.menu_sound(bytes.clone()) {
+            self.ui_playing.push(sink);
+        }
+        if self.ui_playing.len() > 8 {
+            self.ui_playing.remove(0).stop();
+        }
+    }
     pub fn load(assets: &mut Assets) -> Result<Self> {
         let specs = texture::read_materials(assets)?;
         let mut layouts = BTreeMap::new();
@@ -563,6 +613,20 @@ impl Menu {
             chapter_labels,
             ui: Ui::load(assets)?,
             selected: 0,
+            ui_sounds: 0,
+            ui_cache: {
+                let mut cache = std::collections::HashMap::new();
+                let names = (1..=5).map(|i| format!("hover_{i}")).chain((1..=4).map(|i| format!("click_{i}")))
+                    .chain(["loadsave", "new", "quit", "controls"].iter().flat_map(|n| [format!("{n}_h"), format!("{n}_c")]));
+                for name in names {
+                    let path = format!("sound/ui/{name}.wav");
+                    if let Ok(bytes) = assets.read(&path) {
+                        cache.insert(path, std::sync::Arc::<[u8]>::from(bytes));
+                    }
+                }
+                cache
+            },
+            ui_playing: Vec::new(),
             previous_pointer: Vec2::splat(-10000.),
             mouse_navigation: false,
             draft: Preferences::default(),
@@ -574,6 +638,8 @@ impl Menu {
             save_previews: Default::default(),
             save_selected: 0,
             save_film: save_screen::Film::load(assets)?,
+            border: load_menu_border(assets),
+            title: load_loose_texture(assets, "title_bg.tga"),
             controls_pad: false,
             controls_page: 0,
             using_pad: false,
@@ -644,6 +710,36 @@ impl Menu {
     pub fn close(&mut self) {
         self.page = None;
         self.save_film.stop();
+    }
+    /// `tcMod scroll 0 0.1`: the texture wraps vertically, drawn as two slices.
+    fn scrolling_art(&self, canvas: Canvas, name: &str, rect: Rect, offset: f32) {
+        let Some(t) = self.textures.get(&name.to_ascii_lowercase()) else { return };
+        let r = canvas.rect(rect);
+        let off = offset.rem_euclid(1.);
+        let h = t.height();
+        for (source_y, source_h, dest_y, dest_h) in [
+            (off * h, (1. - off) * h, 0., (1. - off) * r.h),
+            (0., off * h, (1. - off) * r.h, off * r.h),
+        ] {
+            if source_h < 0.5 {
+                continue;
+            }
+            // The original adds the trail over the wall (GL_ONE GL_ONE); the stock alpha
+            // pipeline is dimmer, so draw each slice twice to stand out like on PC.
+            for _ in 0..2 {
+                draw_texture_ex(
+                    t,
+                    r.x,
+                    r.y + dest_y,
+                    WHITE,
+                    DrawTextureParams {
+                        dest_size: Some(vec2(r.w, dest_h)),
+                        source: Some(Rect::new(0., source_y, t.width(), source_h)),
+                        ..Default::default()
+                    },
+                );
+            }
+        }
     }
     fn art(&self, canvas: Canvas, name: &str, rect: Rect, alpha: f32) {
         if let Some(t) = self.textures.get(&name.to_ascii_lowercase()) {
@@ -779,7 +875,7 @@ impl Menu {
             hover: "ui/back_button_hover".into(),
             click: Click::Back,
             lettering: None,
-            setting: None,
+            setting: None, hover_sound: String::new(), click_sound: String::new(),
         });
         let mut buttons = match page {
             Page::Main => {
@@ -876,7 +972,7 @@ impl Menu {
                         hover: String::new(),
                         click: Click::Slot(i),
                         lettering: None,
-                        setting: None,
+                        setting: None, hover_sound: String::new(), click_sound: String::new(),
                     })
                     .collect::<Vec<_>>();
                 buttons.push(self.button_named("loadsave", "LoadingButton", Click::LoadSelection));
@@ -906,7 +1002,7 @@ impl Menu {
                     hover: String::new(),
                     click: Click::Device,
                     lettering: None,
-                    setting: None,
+                    setting: None, hover_sound: String::new(), click_sound: String::new(),
                 }];
                 let start = self.controls_page * 8;
                 for (row, (label, _)) in BINDINGS.iter().enumerate().skip(start).take(8) {
@@ -917,7 +1013,7 @@ impl Menu {
                         hover: String::new(),
                         click: Click::Row(row),
                         lettering: None,
-                        setting: None,
+                        setting: None, hover_sound: String::new(), click_sound: String::new(),
                     });
                 }
                 if self.controls_pad && self.controls_page == BINDINGS.len().div_ceil(8) {
@@ -932,7 +1028,7 @@ impl Menu {
                             hover: String::new(),
                             click: Click::Row(BINDINGS.len() + i),
                             lettering: None,
-                            setting: None,
+                            setting: None, hover_sound: String::new(), click_sound: String::new(),
                         });
                     }
                 }
@@ -978,7 +1074,7 @@ impl Menu {
                     // Mute is a Rust feature without an original widget.
                     buttons.push(Button { rect: Rect::new(68., 298., 220., 24.),
                         text: "Mute".into(), art: String::new(), hover: String::new(),
-                        click: Click::Row(2), lettering: None, setting: None });
+                        click: Click::Row(2), lettering: None, setting: None, hover_sound: String::new(), click_sound: String::new() });
                 }
                 let group = match page {
                     Page::Video => "group_video", Page::Audio => "group_audio", _ => "group_game",
@@ -1307,6 +1403,23 @@ impl Menu {
         gl_use_default_material();
         set_default_camera();
     }
+    /// Fills the pillarbox of a widescreen menu with the border art, scaled to the screen height
+    /// (the art is 320x720 and its inner edge meets the 4:3 menu area, as VorpalFix draws it).
+    fn draw_border(&self, canvas: Canvas) {
+        let Some(border) = &self.border else { return };
+        let pillar = canvas.rect(Rect::new(0., 0., 0., 0.)).x;
+        if pillar < 1. {
+            return;
+        }
+        let width = border.width() * screen_height() / 720.;
+        let params = |flip_x| DrawTextureParams {
+            dest_size: Some(vec2(width, screen_height())),
+            flip_x,
+            ..Default::default()
+        };
+        draw_texture_ex(border, pillar - width, 0., WHITE, params(false));
+        draw_texture_ex(border, screen_width() - pillar, 0., WHITE, params(true));
+    }
     fn draw(&mut self, page: Page, buttons: &[Button]) {
         self.draw_into(page, buttons, None);
     }
@@ -1323,6 +1436,7 @@ impl Menu {
             });
         }
         clear_background(BLACK);
+        self.draw_border(canvas);
         if page.layout() == "loadsave" {
             self.draw_save_underlay(canvas, get_time());
         }
@@ -1374,15 +1488,21 @@ impl Menu {
                         .windows(2).find(|p| p[0] == "shader").map(|p| p[1].trim_end_matches("\\n").to_owned()))
             } else { None };
             let art = hovered_title.as_deref().unwrap_or_else(|| widget.art());
-            let alpha = if art.contains("/glow")
-                || art.contains("wick")
-                || page == Page::Main && main_background_glow(art)
-            {
-                0.15 + (get_time() as f32 * 3.).sin().abs() * 0.15
+            let time = get_time() as f32;
+            let alpha = if art.contains("wick") {
+                // alphaGen wave sin .7 .35 0 .2
+                (0.7 + 0.35 * (time * 0.2 * std::f32::consts::TAU).sin()).clamp(0., 1.)
+            } else if art.contains("/glow") || page == Page::Main && main_background_glow(art) {
+                // alphaGen wave noise 0 1 0 3: the window light flickers like lightning.
+                menu_noise(time * 3.).clamp(0., 1.)
             } else {
                 1.
             };
-            self.art(canvas, art, widget.rect, alpha);
+            if page == Page::Main && art.eq_ignore_ascii_case("ui/main/smoke") {
+                self.scrolling_art(canvas, art, widget.rect, 0.1 * time);
+            } else {
+                self.art(canvas, art, widget.rect, alpha);
+            }
             if !widget.value("title").is_empty()
                 && !(page.layout() == "loadsave" && ["MapName", "DateTime", "PageNum"].contains(&widget.value("name"))) {
                 self.draw_lettering(canvas, widget, widget.value("title"), false);
@@ -1490,9 +1610,10 @@ impl Menu {
                         cell.rect = Rect::new(r.x, r.y, r.w-key_width, r.h);
                         self.draw_lettering(canvas, &cell, &b.text, selected);
                         cell.rect = Rect::new(r.right()-key_width, r.y, key_width, r.h);
-                        self.draw_lettering(canvas, &cell, if self.controls_pad {
-                            &self.draft.pad_bindings[row]
-                        } else {&self.draft.bindings[row]}, selected);
+                        let shown = if self.controls_pad {
+                            crate::input::pad_label(&self.draft.pad_bindings[row])
+                        } else { self.draft.bindings[row].clone() };
+                        self.draw_lettering(canvas, &cell, &shown, selected);
                     } else if page != Page::Video {
                         let width = if self.toggle(page, row).is_some() {
                             r.w - 38.
@@ -1546,16 +1667,16 @@ impl Menu {
         if page.settings() {
             self.ui.font.draw(
                 canvas,
-                if self.binding.is_some() {
+                &if self.binding.is_some() {
                     if self.controls_pad {
-                        "Press a button   Start / Esc cancel   Delete clear"
+                        crate::input::pad_text("Press a button   Start / Esc cancel   Delete clear")
                     } else {
-                        "Press a key, mouse button or wheel   Esc cancels"
+                        "Press a key, mouse button or wheel   Esc cancels".to_owned()
                     }
                 } else if self.using_pad {
-                    "D-pad / stick: browse   A: select   B: back"
+                    crate::input::pad_text("D-pad / stick: browse   A: select   B: back")
                 } else {
-                    "Arrows adjust   Enter select   Esc cancel"
+                    "Arrows adjust   Enter select   Esc cancel".to_owned()
                 },
                 Rect::new(80., 442., 478., 24.),
                 19.,
@@ -1579,12 +1700,12 @@ impl Menu {
         if page == Page::Main && !buttons.is_empty() {
             self.ui.font.draw(
                 canvas,
-                if self.frontend || self.post_game {
-                    "Tab: chapters"
+                &if self.frontend || self.post_game {
+                    "Tab: chapters".to_owned()
                 } else if self.using_pad {
-                    "Tab: chapters   Start / B: back to game"
+                    crate::input::pad_text("Tab: chapters   Start / B: back to game")
                 } else {
-                    "Tab: chapters   Esc: back to game"
+                    "Tab: chapters   Esc: back to game".to_owned()
                 },
                 Rect::new(285., 451., 345., 25.),
                 18.,
@@ -1610,6 +1731,40 @@ impl Menu {
         }
     }
     /// The world loop does not advance while this modal loop is running.
+    /// The original console title screen: art covering the window and a "Press START" prompt.
+    /// Returns false when the player quit. Does nothing without the art.
+    pub async fn title_screen(&mut self, prefs: &Preferences, audio: &mut audio::Audio, input: &mut crate::input::Input) -> bool {
+        let Some(title) = self.title.clone() else { return true };
+        show_mouse(false);
+        let started = get_time();
+        loop {
+            if is_quit_requested() {
+                return false;
+            }
+            let focused = crate::look::window_focused();
+            input.update(prefs, focused);
+            audio.update(0., Vec3::ZERO, 0., true, true);
+            let (w, h) = (screen_width(), screen_height());
+            clear_background(BLACK);
+            let scale = (w / 1280.).max(h / 720.);
+            let size = vec2(1280., 720.) * scale;
+            draw_texture_ex(&title, (w - size.x) * 0.5, (h - size.y) * 0.5, WHITE,
+                DrawTextureParams { dest_size: Some(size), ..Default::default() });
+            let canvas = Canvas::new(w, h);
+            let pulse = 0.75 + 0.25 * ((get_time() * 2.).sin() as f32);
+            self.ui.font.draw(canvas, &crate::input::pad_text(if input.using_pad { "Press Start" } else { "Press Enter" }),
+                Rect::new(160., 365., 320., 50.), 36., Color::new(1., 1., 1., pulse));
+            let pressed = focused && get_time() - started > 0.3 && (is_key_pressed(KeyCode::Enter)
+                || is_key_pressed(KeyCode::Space) || is_key_pressed(KeyCode::KpEnter)
+                || is_mouse_button_pressed(MouseButton::Left)
+                || input.pad_pressed("Start") || input.pad_pressed("A"));
+            next_frame().await;
+            if pressed {
+                input.suppress();
+                return true;
+            }
+        }
+    }
     pub async fn run(
         &mut self,
         prefs: &mut Preferences,
@@ -1628,6 +1783,7 @@ impl Menu {
             input.update(prefs, focused);
             self.using_pad = input.using_pad;
             self.save_film.update_audio(audio.settings, focused);
+            self.ui_playing.retain(|s| !s.empty());
             let previous_selected = self.selected;
             let buttons = self.buttons(page);
             self.selected = self.selected.min(buttons.len().saturating_sub(1));
@@ -1737,8 +1893,25 @@ impl Menu {
                     }
                     if page == Page::LoadSave && self.selected != previous_selected {
                         self.save_film.sound(audio, 1);
+                    } else if page != Page::LoadSave && self.selected != previous_selected {
+                        self.ui_sounds += 1;
+                        let own = &buttons[self.selected].hover_sound;
+                        if own.is_empty() {
+                            self.ui_cue(audio, &format!("sound/ui/hover_{}.wav", 1 + self.ui_sounds % 5));
+                        } else {
+                            { let own = own.clone(); self.ui_cue(audio, &own); }
+                        }
                     }
                     if let Some(click) = click {
+                        if page.layout() != "loadsave" {
+                            self.ui_sounds += 1;
+                            let own = &buttons[self.selected].click_sound;
+                            if own.is_empty() {
+                                self.ui_cue(audio, &format!("sound/ui/click_{}.wav", 1 + self.ui_sounds % 4));
+                            } else {
+                                { let own = own.clone(); self.ui_cue(audio, &own); }
+                            }
+                        }
                         if page.layout() == "loadsave" && !matches!(click, Click::Slot(_)) {
                             self.save_film.sound(audio, 2);
                         }

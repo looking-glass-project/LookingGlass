@@ -175,6 +175,9 @@ pub struct Piece {
     last_seen: Vec3,
     block_cooldown: f32,
     random: u32,
+    /// Planned detours around obstacles and step edges (shared with spiders/ants).
+    #[serde(default)]
+    detour: crate::combat::navigation::Detour,
 }
 impl Piece {
     pub fn new(kind: Kind, feet: Vec3, yaw: f32, scale: f32, seed: usize) -> Self {
@@ -203,6 +206,7 @@ impl Piece {
             last_seen: feet,
             block_cooldown: 0.,
             random: seed as u32,
+            detour: Default::default(),
         }
     }
     pub fn target(&self, id: usize) -> Target {
@@ -378,6 +382,8 @@ impl Piece {
                 if *delay == 0. {
                     self.active = true;
                     self.spawn_delay = None;
+                    // Script spawns call attackplayer: they start with the player as enemy.
+                    self.memory = crate::combat::MAX_INACTIVE_TIME;
                 }
                 continue;
             }
@@ -436,10 +442,14 @@ impl Piece {
         let visible =
             !notarget && delta.length() < 800. && !sight.start_solid && sight.fraction >= 1.;
         if visible {
-            self.memory = 3.;
+            self.memory = crate::combat::MAX_INACTIVE_TIME;
             self.last_seen = eye;
         } else {
             self.memory = (self.memory - dt).max(0.);
+            if self.memory > 0. && !notarget {
+                // GetCloseToEnemy: keep heading for the enemy while hunting.
+                self.last_seen = eye;
+            }
         }
         if notarget {
             self.memory = 0.;
@@ -585,8 +595,6 @@ impl Piece {
                             data.speed(self.kind.model(), self.clip()) * dt,
                             true,
                         );
-                    } else if !visible {
-                        self.memory = 0.;
                     }
                     // Loop the rendered clip, but retain the short attack decision timer.
                     self.time = self.time.min(10.);
@@ -598,6 +606,20 @@ impl Piece {
     }
     fn walk(&mut self, world: &World, delta: Vec3, step: f32, sidestep: bool) -> bool {
         let direction = delta.truncate().extend(0.).normalize_or_zero();
+        if sidestep {
+            // Direct step first, then the persistent A* detour when the hull is blocked.
+            let before = self.feet;
+            let goal = self.feet + delta.truncate().extend(0.);
+            self.feet = self.detour.walk(
+                world,
+                self.feet,
+                goal,
+                self.kind.half() * self.scale,
+                step * self.scale,
+                1. / 120.,
+            );
+            return self.feet.truncate().distance_squared(before.truncate()) > 0.0001;
+        }
         for angle in if sidestep {
             &[0., 0.65, -0.65, 1.1, -1.1][..]
         } else {
@@ -631,8 +653,9 @@ impl Piece {
                 && (self.health == 0.) == (self.phase == Phase::Dead)
                 && (!self.frozen || self.health == 0.)
                 && self.recoil.valid()
+                && self.detour.valid()
                 && self.last_seen.is_finite()
-                && (0. ..=3.).contains(&self.memory)
+                && (0. ..=crate::combat::MAX_INACTIVE_TIME).contains(&self.memory)
                 && (0. ..=2.).contains(&self.block_cooldown)
                 && (0. ..=800.).contains(&self.falling)
                 && (0. ..=0.01).contains(&self.accumulator)

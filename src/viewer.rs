@@ -706,7 +706,15 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
     level_art.prepare(&mut assets, &scene, &interactions, true)?;
     let mut third_person = true;
     let mut follow_camera = crate::camera::Follow::default();
+    let mut bite_view = crate::camera::Bite::default();
     let mut camera_handoff = crate::camera::Handoff::default();
+    let frozen_orbit = crate::camera::FrozenOrbit::load(&mut assets)?;
+    let mut blood = crate::blood::Blood::default();
+    let mut blood_visit = String::new();
+    let mut blood_seen: Option<std::collections::BTreeSet<usize>> = None;
+    let mut blood_sanity = f32::MAX;
+    let mut blood_cooldown = 0.0f32;
+    let blood_specs = crate::texture::read_materials(&mut assets)?;
     let mut rail_camera = crate::camera::Follow::default();
     let mut clock = FixedClock::default();
     let mut recovery = Recovery::default();
@@ -1962,7 +1970,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
                         control = Controls::default();
                         player.velocity = Vec3::ZERO;
                     }
-                    if alice.attack_movement_locked() {
+                    if alice.attack_movement_locked() || alice.glass_performing() {
                         control = Controls::default();
                     }
                     scene.world.set_weapon_obstacles(alice.ice_targets());
@@ -2358,7 +2366,13 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
         }
         // Scene controllers may finish during movement, dialogue or boss updates.
         // Resolve the handoff once, after all three, before animation/aim/rendering.
+        // The looking-glass pose is its own camera shot: it must not hand off (and cancel
+        // the clip) mid-way, and its end must keep the player's own facing.
+        if alice.glass_performing() {
+            player.script_facing = yaw;
+        }
         let still_scripted = interactions.scripted()
+            || alice.glass_performing()
             || interactions.duchess.as_ref().is_some_and(|d| d.cinematic())
             || interactions
                 .school
@@ -2511,6 +2525,20 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
             stats.spend_will(feedback.will_drain.min(stats.will()));
         }
         player.knockback(feedback.impulse);
+        player.velocity += feedback.pull;
+        let plant_swallowed = feedback.swallow.is_some() && stats.alive();
+        if let Some(at) = feedback.swallow.filter(|_| stats.alive()) {
+            player.feet = at;
+            player.velocity = Vec3::ZERO;
+        }
+        if let Some((from, v)) = feedback.launch.filter(|_| stats.alive()) {
+            player.feet = from;
+            player.velocity = v;
+            player.grounded = false;
+        }
+        if feedback.freeze.contains(&crate::dice::ALICE) && stats.alive() {
+            alice.phantasm_freeze(player.feet);
+        }
         if feedback.damage > 0. {
             println!(
                 "Guard struck Alice: {} damage, {} sanity",
@@ -2525,7 +2553,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
             weapon_buttons.block();
         }
         if !stats.alive() {
-            alice.die();
+            alice.die_from(feedback.damage, feedback.impulse);
         }
         let death_animation =
             !stats.alive() && focused && !paused && !menu && !inventory_menu && !console_input;
@@ -2664,7 +2692,14 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
                 }
                 continue;
             }
+            let bleeds = hit.damage > 0. && hit.kind.means() != crate::combat::DamageKind::Ice;
             if let Some((message, sound)) = npcs.hit(hit) {
+                if bleeds {
+                    if let Some(model) = npcs.model_name(hit.id).map(str::to_owned) {
+                        blood.spawn(&mut assets, &blood_specs, &model, hit_origin);
+                        blood.splat(&mut assets, &blood_specs, &scene.world, &model, hit_origin, false);
+                    }
+                }
                 hud.announce(message);
                 audio.world_effect_at(sound, hit_origin);
             }
@@ -2779,9 +2814,38 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
             .as_ref()
             .and_then(|s| s.return_visit.as_ref())
             .and_then(|s| s.camera());
-        let scripted_camera = pand_camera.or_else(|| {
-            cinematic_camera.map(|(eye, target, _)| crate::cinematic::Camera::look(eye, target))
+        let frozen_camera = alice
+            .frozen()
+            .map(|(time, origin, yaw)| frozen_orbit.camera(&scene.world, time, origin, yaw));
+        let glass_camera = alice.glass_performing().then(|| {
+            let center = player.feet + crate::collision::PLAYER_CENTER;
+            let rotation = Quat::from_rotation_z(direction.y.atan2(direction.x));
+            // Pull in from the follow distance, then keep creeping closer.
+            let t = (alice.glass_age() / 0.9).clamp(0., 1.);
+            let t = t * t * (3. - 2. * t);
+            let creep = (alice.glass_age() * 0.04).min(0.12);
+            let near = vec3(-70., -40., 12.);
+            let far = vec3(-150., -60., 30.);
+            crate::cinematic::Camera::look(
+                center + rotation * (far.lerp(near, t) * (1. - creep)),
+                center + Vec3::Z * 14.,
+            )
         });
+        let bite_camera = bite_view.update(
+            &scene.world,
+            interactions.duchess.as_ref().and_then(|d| d.bite_frame()),
+            direction,
+            player.feet + Vec3::Z * 75.,
+            if active { dt } else { 0. },
+        );
+        let scripted_camera = pand_camera
+            .or(bite_camera)
+            .or_else(|| {
+                cinematic_camera
+                    .map(|(eye, target, _)| crate::cinematic::Camera::look(eye, target))
+            })
+            .or(frozen_camera)
+            .or(glass_camera);
         let (eye, aim, gameplay_alice) = if third_person && !flying {
             follow_camera.update(
                 &scene.world,
@@ -2846,6 +2910,8 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
         let (camera, target) = (view.eye + quake, view.target + quake);
         let show_alice = !interactions.level_hides_player() && if scripted_camera.is_some() {
             rage_scene.is_some_and(|(_, finished)| !finished)
+                || frozen_camera.is_some()
+                || glass_camera.is_some()
                 || (cinematic_camera.is_some_and(|(_, _, show)| show) && pand_camera.is_none())
         } else {
             gameplay_alice && camera.distance(player.feet + Vec3::Z * 32.) > 30.
@@ -2927,11 +2993,16 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
             p.gate_particles(&mut steam);
         }
         interactions.place_level_particles(&mut steam);
+        let show_alice_in_mirror = !interactions.level_hides_player();
         let mut lights = steam.lights();
         lights.extend(alice.lights());
         lights.extend(npcs.lights());
         for slot in &interactions.levels { lights.extend(slot.ctl.lights()); }
-        scene.prepare_camera_portals(&world_camera, environment_clock, fullbright, &transforms);
+        scene.prepare_camera_portals_with(&world_camera, environment_clock, fullbright, &transforms, &mut |fb| {
+            if show_alice_in_mirror {
+                alice.draw_ghost(player.feet, fb, stats.invisible > 0. && !alice.glass_performing());
+            }
+        });
         crate::lighting::select(lights, camera, &scene.world);
         crate::render_fx::begin_view(
             &world_camera,
@@ -2940,12 +3011,12 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
             fullbright,
         );
         scene.draw(camera, environment_clock, fullbright, false, &transforms);
-        if show_alice && stats.invisible <= 0. {
+        if show_alice && !plant_swallowed && stats.invisible <= 0. {
             crate::lighting::shadow(&scene.world, player.feet, 22.);
         }
         alice.atmosphere(&scene.atmosphere, camera);
-        if show_alice && !interactions.school.as_ref().is_some_and(|s| s.cinematic()) {
-            alice.draw_ghost(player.feet, fullbright, stats.invisible > 0.);
+        if show_alice && !plant_swallowed && !interactions.school.as_ref().is_some_and(|s| s.cinematic()) {
+            alice.draw_ghost(player.feet, fullbright, stats.invisible > 0. && !alice.glass_performing());
         }
         npcs.draw(
             camera,
@@ -2953,6 +3024,42 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
             &scene.atmosphere,
             fullbright,
         );
+        // Alice bleeds when hurt, and enemies leave a floor puddle when they die.
+        let visit = save::visit_key(&maps[current], entry_spawn.as_deref());
+        if blood_visit != visit {
+            blood_visit = visit;
+            blood_seen = None;
+            blood.clear_decals();
+        }
+        let dead_now: std::collections::BTreeSet<usize> = npcs
+            .loot_sources()
+            .iter()
+            .filter(|s| s.dead)
+            .map(|s| s.id)
+            .collect();
+        if let Some(seen) = &blood_seen {
+            for &id in dead_now.difference(seen) {
+                if let (Some(model), Some(s)) = (
+                    npcs.model_name(id).map(str::to_owned),
+                    npcs.loot_sources().into_iter().find(|s| s.id == id),
+                ) {
+                    blood.splat(&mut assets, &blood_specs, &scene.world, &model, s.feet, true);
+                }
+            }
+        }
+        blood_seen = Some(dead_now);
+        let sanity = stats.sanity();
+        if active && sanity < blood_sanity && blood_cooldown <= 0. {
+            let at = player.feet + Vec3::Z * 44.;
+            blood.spawn_scaled(&mut assets, &blood_specs, "alice", at, 0.2);
+            blood.splat(&mut assets, &blood_specs, &scene.world, "alice", player.feet, false);
+            blood_cooldown = 0.35;
+        }
+        blood_sanity = sanity;
+        blood_cooldown = (blood_cooldown - if active { dt } else { 0. }).max(0.);
+        blood.update(if active { dt } else { 0. });
+        blood.draw_decals(pickup_clock);
+        blood.draw(camera, &scene.atmosphere);
         level_art.story_pose(&story);
         level_art.draw(&interactions, &hints, &scene.atmosphere, camera, fullbright);
         power_art.draw(
@@ -3103,7 +3210,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
         let show_details = help || menu;
         if paused && !menu && !inventory_menu && !console_input && !help {
             ui.paused(&if input.using_pad {
-                "A or Start to resume".into()
+                crate::input::pad_text("A or Start to resume")
             } else {
                 format!("{} or click to resume", input.label(&preferences, "P"))
             });
@@ -3180,7 +3287,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
                 ),
                 format!(
                     "{}: menus   {}: chapters   {}: help",
-                    if input.using_pad { "Start" } else { "Esc" },
+                    if input.using_pad { crate::input::pad_label("Start") } else { "Esc".into() },
                     input.label(&preferences, "Tab"),
                     input.label(&preferences, "H")
                 ),
@@ -3312,7 +3419,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
                 skip_scene.draw(
                     &ui,
                     &if input.using_pad {
-                        "A".into()
+                        crate::input::pad_label("A")
                     } else {
                         input.label(&preferences, "Enter")
                     },

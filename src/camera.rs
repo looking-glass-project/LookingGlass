@@ -287,3 +287,111 @@ mod tests {
         assert_eq!(target.z, 54.);
     }
 }
+
+/// `camera bulletcam 0 0 0 1 damped animate waterice` (alice_torso.st FROZEN):
+/// an `fx_bulletcam` (scale 1.7) at Alice's origin and facing plays
+/// models/camera/waterice.tan; the view sits on `tag_camera` and looks at
+/// `tag_target`, orbiting and closing in while she is encased.
+pub struct FrozenOrbit {
+    camera: Vec<Vec3>,
+    target: Vec<Vec3>,
+    frame_time: f32,
+}
+impl FrozenOrbit {
+    const SCALE: f32 = 1.7;
+    pub fn load(assets: &mut crate::assets::Assets) -> anyhow::Result<Self> {
+        let tan = crate::tan::Model::parse(&assets.read("models/camera/waterice.tan")?)?;
+        let tag = |name: &str| {
+            tan.tags
+                .get(name)
+                .cloned()
+                .ok_or_else(|| anyhow::anyhow!("waterice.tan lacks {name}"))
+        };
+        Ok(Self {
+            camera: tag("tag_camera")?,
+            target: tag("tag_target")?,
+            frame_time: tan.frame_time,
+        })
+    }
+    fn sample(points: &[Vec3], frame_time: f32, time: f32) -> Vec3 {
+        let last = points.len() - 1;
+        let at = (time.max(0.) / frame_time).min(last as f32);
+        let i = (at.floor() as usize).min(last);
+        points[i].lerp(points[(i + 1).min(last)], at - i as f32)
+    }
+    pub fn camera(
+        &self,
+        world: &World,
+        time: f32,
+        origin: Vec3,
+        yaw: f32,
+    ) -> crate::cinematic::Camera {
+        let rotation = Quat::from_rotation_z(yaw);
+        let place = |p: Vec3| origin + rotation * (p * Self::SCALE);
+        let target = place(Self::sample(&self.target, self.frame_time, time));
+        let wanted = place(Self::sample(&self.camera, self.frame_time, time));
+        // Keep the lens out of walls: pull it in along the line to the target.
+        let hit = world.sweep(target, wanted, HALF);
+        let eye = if hit.start_solid {
+            target
+        } else {
+            target.lerp(wanted, hit.fraction)
+        };
+        crate::cinematic::Camera::look(eye, target)
+    }
+}
+
+/// The original's camera while the Duchess holds Alice, recorded from the running game:
+/// yaw locks where the player was looking, pitch eases down to 75 degrees (rate about 11/s),
+/// each of the three bites kicks it a further 4.7 degrees decaying at about 2/s, and on
+/// release it eases back to the player's own view. 128 units out, head as the focus.
+#[derive(Default)]
+pub struct Bite {
+    active: bool,
+    yaw: f32,
+    pitch: f32,
+    kick: f32,
+    frame: f32,
+}
+impl Bite {
+    pub fn update(
+        &mut self,
+        world: &crate::collision::World,
+        frame: Option<f32>,
+        direction: Vec3,
+        head: Vec3,
+        dt: f32,
+    ) -> Option<crate::cinematic::Camera> {
+        let player_yaw = direction.y.atan2(direction.x);
+        let player_pitch = (-direction.normalize_or_zero().z).clamp(-1., 1.).asin();
+        let rate = 1. - (-11. * dt).exp();
+        if let Some(frame) = frame {
+            if !self.active {
+                *self = Self { active: true, yaw: player_yaw, pitch: player_pitch, kick: 0., frame };
+            }
+            self.pitch += (75f32.to_radians() - self.pitch) * rate;
+            if [34., 44., 54.].iter().any(|&f| self.frame < f && frame >= f) {
+                self.kick = 4.7f32.to_radians();
+            }
+            self.frame = frame;
+        } else if self.active {
+            let turn = (player_yaw - self.yaw + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU) - std::f32::consts::PI;
+            self.yaw += turn * rate;
+            self.pitch += (player_pitch - self.pitch) * rate;
+            if (self.pitch - player_pitch).abs() < 2f32.to_radians() {
+                self.active = false;
+                return None;
+            }
+        } else {
+            return None;
+        }
+        self.kick *= (-2.05 * dt).exp();
+        let pitch = self.pitch + self.kick;
+        let forward = vec3(pitch.cos() * self.yaw.cos(), pitch.cos() * self.yaw.sin(), -pitch.sin());
+        let origin = head + Vec3::Z * 16.;
+        let eye = origin - forward * 128. + Vec3::Z * 16.;
+        let trace = world.sweep(origin, eye, Vec3::splat(4.));
+        let eye = if trace.start_solid { eye } else { origin.lerp(eye, (trace.fraction - 0.01).clamp(0., 1.)) };
+        Some(crate::cinematic::Camera::look(eye, eye + forward * 128.))
+    }
+}

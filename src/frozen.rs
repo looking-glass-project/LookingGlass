@@ -46,7 +46,10 @@ impl Art {
                 } else {
                     0.2
                 };
-                v.color = [255; 4];
+                // cg_freezetype defaults to 2 (cgamex86 0x3001d400): iceblock1 with
+                // entity RGB 255 and iceblock2 with entity RGB 80 (0x30020150).
+                let rgb = if i == 1 { 80 } else { 255 };
+                v.color = [rgb, rgb, rgb, 255];
             }
             render_fx::skin(&m);
         }

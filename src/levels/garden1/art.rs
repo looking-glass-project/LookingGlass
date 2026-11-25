@@ -31,6 +31,7 @@ impl Art {
             )?
             .context("Missing shell particles")?,
             bubbles: crate::particles::Attached::load(a, "fx_mockturtle_launcher", &specs)?
+                .map(crate::particles::Attached::engine_sprite_size)
                 .context("Missing Turtle bubbles")?,
         })
     }

@@ -37,6 +37,7 @@ impl Art {
             shell: Prop::load(a, "mock_shell", &specs)?,
             props,
             bubbles: crate::particles::Attached::load(a, "fx_mockturtle_launcher", &specs)?
+                .map(crate::particles::Attached::engine_sprite_size)
                 .context("Turtle particles missing")?,
         })
     }

@@ -104,11 +104,20 @@ pub struct State {
     accumulator: f64,
     home: Vec3,
     pub notarget: bool,
+    /// Side the Duchess circles an obstacle that blocks her way to Alice (+1/-1, 0 = none).
+    #[serde(default)]
+    detour: f32,
+    #[serde(default)]
+    stuck: u32,
+    #[serde(default)]
+    clear_time: f32,
 }
 pub struct Timing {
     intro_tracks: Vec<crate::fortress::spline::Spline>,
     pub clips: BTreeMap<String, (f32, f32)>,
     death_focus: Vec<Vec3>,
+    /// Model-space `tag_pickup` (hand) and `tag_pigbaby` (mouth; the map defines no `tag_gut`, and the clip damages from this tag) per frame of the bite clip.
+    bite_tags: Vec<(Vec3, Vec3)>,
 }
 impl Timing {
     fn load(a: &mut Assets) -> Result<Self> {
@@ -116,6 +125,7 @@ impl Timing {
         let s = Skeleton::parse(&a.read(&format!("{}/{}", d.path, d.model))?)?;
         let mut clips = BTreeMap::new();
         let mut death_focus = Vec::new();
+        let mut bite_tags = Vec::new();
         for name in [
             "idle_1", "run", "run_away", "attack_1", "raise", "attack_2", "attack_3", "attack_4",
             "pain1", "death",
@@ -144,6 +154,18 @@ impl Timing {
                         .push(pose[head].translation.lerp(pose[neck].translation, blend) * d.scale);
                 }
             }
+            if name == "raise" {
+                let find = |tag: &str| s.bones.iter().position(|b| b.name == tag);
+                if let (Some(hand), Some(gut)) = (find("tag_pickup"), find("tag_pigbaby")) {
+                    for frame in 0..c.frames.len() {
+                        let pose = s.global_pose(&c.sample(frame as f32 * c.frame_time, false));
+                        bite_tags.push((
+                            pose[hand].translation * d.scale,
+                            pose[gut].translation * d.scale,
+                        ));
+                    }
+                }
+            }
             clips.insert(name.into(), (c.duration(), c.frame_time));
         }
         let mut intro_tracks = Vec::new();
@@ -161,6 +183,7 @@ impl Timing {
         Ok(Self {
             clips,
             death_focus,
+            bite_tags,
             intro_tracks,
         })
     }
@@ -169,6 +192,17 @@ impl Timing {
     }
     fn frame(&self, action: Action, frame: f32) -> f32 {
         self.clips[action.clip()].1 * frame
+    }
+    /// Where the original `DragEnemy "tag_pickup" "tag_gut"` carries the victim, model space:
+    /// picked up at the hand, then drawn to the mouth by the first bite, following the clip.
+    fn held(&self, time: f32) -> Option<Vec3> {
+        let frame = (time / self.clips["raise"].1).max(0.);
+        let last = self.bite_tags.len().checked_sub(1)?;
+        let at = |f: usize| self.bite_tags[f.min(last)];
+        let (a, b) = (at(frame as usize), at(frame as usize + 1));
+        let (hand, gut) = (a.0.lerp(b.0, frame.fract()), a.1.lerp(b.1, frame.fract()));
+        let t = ((frame - 8.) / 26.).clamp(0., 1.);
+        Some(hand.lerp(gut, t * t * (3. - 2. * t)))
     }
     fn focus(&self, time: f32) -> Vec3 {
         let frame = (time / self.clips["death"].1).max(0.);
@@ -196,6 +230,14 @@ pub struct Duchess {
     points: BTreeMap<String, Vec3>,
     pub pickup_id: String,
     essence_origins: [Vec3; 4],
+    /// info_pathnode origins: the original's Chase behavior paths over this graph (PathNode/Path)
+    /// when the enemy is not directly reachable, instead of feeling around obstacles.
+    nodes: Vec<Vec3>,
+    links: Option<Vec<Vec<usize>>>,
+    route: Vec<usize>,
+    route_age: f32,
+    /// Always-on fire emitters riding a moving wall: (entity id, wall group).
+    fires: Vec<(usize, usize, Vec3, Quat)>,
 }
 fn entity<'a>(map: &'a Bsp, name: &str) -> Result<&'a BTreeMap<String, String>> {
     map.entities
@@ -336,6 +378,9 @@ impl Duchess {
                 accumulator: 0.,
                 home: Vec3::ZERO,
                 notarget: false,
+                detour: 0.,
+                stuck: 0,
+                clear_time: 0.,
             },
             timing,
             objects,
@@ -343,6 +388,29 @@ impl Duchess {
             points,
             pickup_id: format!("potears3:{pickup_index}"),
             essence_origins,
+            nodes: map
+                .entities
+                .iter()
+                .filter(|e| e.get("classname").is_some_and(|c| c == "info_pathnode"))
+                .filter_map(|e| e.get("origin").and_then(|v| crate::interaction::vector(v)))
+                .collect(),
+            links: None,
+            route: Vec::new(),
+            route_age: 0.,
+            fires: map
+                .entities
+                .iter()
+                .enumerate()
+                .filter(|(_, e)| e.get("model").is_some_and(|m| m.trim_start_matches("models/") == "fx_emitter_fire_expensive.tik"))
+                .filter_map(|(i, e)| {
+                    Some((
+                        i,
+                        group(e.get("targetname")?)?,
+                        crate::interaction::vector(e.get("origin")?)?,
+                        crate::decorations::rotation(e),
+                    ))
+                })
+                .collect(),
         };
         s.rebuild(map)?;
         Ok(s)
@@ -578,6 +646,21 @@ impl Duchess {
     }
     pub fn colliders(&self) -> impl Iterator<Item = Collider> + '_ {
         self.objects.iter().map(|o| o.collider.clone())
+    }
+    /// Pose offsets for the fire emitters bound to the moving walls.
+    pub fn emitter_poses(&self) -> Vec<(crate::entity::Id, Transform)> {
+        self.fires
+            .iter()
+            .map(|&(id, g, origin, rotation)| {
+                (
+                    crate::entity::Id(id),
+                    Transform {
+                        translation: origin + self.group_offset(g),
+                        rotation,
+                    },
+                )
+            })
+            .collect()
     }
     pub fn transforms(&self) -> impl Iterator<Item = (usize, Vec3, Quat)> + '_ {
         self.objects
@@ -898,11 +981,65 @@ impl Duchess {
                         self.state.feet + Vec3::Z * 64.,
                     ));
                 } else if distance > 90. {
-                    self.walk(
-                        world,
-                        delta.truncate().normalize_or_zero(),
-                        if distance > 350. { 190. } else { 100. },
-                    );
+                    let direct = delta.truncate().normalize_or_zero();
+                    let speed = if distance > 350. { 190. } else { 100. };
+                    // The original circles around obstacles (the Just Desserts tub) to reach
+                    // Alice: when she can't be seen or the straight walk stalls, sidestep
+                    // around the obstacle on the more open side until the way is clear.
+                    // Test the Duchess's own body, not her line of sight: a low table can be
+                    // seen over yet still block her. Keep a chosen side until the body path is clear.
+                    let body = vec3(32., 32., 64.);
+                    let c = self.state.feet + Vec3::Z * 64.1;
+                    // The whole straight line to the enemy, not just the next few steps: the tub only blocks late.
+                    let reach = (distance - 90.).max(0.);
+                    let clear = world
+                        .sweep(c, c + direct.extend(0.) * reach, body)
+                        .fraction
+                        >= 1.;
+                    if clear && self.state.detour != 0. {
+                        self.state.clear_time += STEP;
+                        if self.state.clear_time > 0.35 {
+                            self.state.detour = 0.;
+                            self.state.clear_time = 0.;
+                        }
+                    } else if !clear {
+                        self.state.clear_time = 0.;
+                    }
+                    let nav = if clear {
+                        self.route.clear();
+                        None
+                    } else {
+                        self.nav_wish(world, target_feet)
+                    };
+                    if !clear && nav.is_none() && self.state.detour == 0. {
+                        let open = |turn: f32| {
+                            let dir = Quat::from_rotation_z(turn) * direct.extend(0.);
+                            let c = self.state.feet + Vec3::Z * 64.1;
+                            world.sweep(c, c + dir * 400., vec3(32., 32., 64.)).fraction
+                        };
+                        self.state.detour = if open(1.4) >= open(-1.4) { 1. } else { -1. };
+                    }
+                    let wish = if let Some(n) = nav {
+                        self.state.detour = 0.;
+                        n
+                    } else if self.state.detour == 0. {
+                        direct
+                    } else {
+                        let r = Quat::from_rotation_z(self.state.detour * 1.2) * direct.extend(0.);
+                        vec2(r.x, r.y)
+                    };
+                    let before = self.state.feet;
+                    self.walk(world, wish, speed);
+                    if self.state.feet.distance(before) < speed * STEP * 0.3 {
+                        self.state.stuck += 1;
+                        if self.state.stuck >= 8 {
+                            // Blocked even while circling: try the other way round.
+                            self.state.detour = if self.state.detour == 0. { 1. } else { -self.state.detour };
+                            self.state.stuck = 0;
+                        }
+                    } else {
+                        self.state.stuck = 0;
+                    }
                 }
             }
             Action::Phase => {
@@ -971,7 +1108,14 @@ impl Duchess {
             }
             Action::Bite => {
                 let front = vec3(self.state.yaw.cos(), self.state.yaw.sin(), 0.);
-                let hold = self.state.feet + front * 65. + Vec3::Z * 35.;
+                let hold = match self.timing.held(self.state.clock) {
+                    // The tag marks the victim's centre; the player's origin is at the feet.
+                    Some(tag) => {
+                        self.state.feet + Quat::from_rotation_z(self.state.yaw) * tag - Vec3::Z * 36.
+                    }
+                    None => self.state.feet + front * 65. + Vec3::Z * 35.,
+                };
+                if std::env::var_os("DUCHESS_TRACE").is_some() { eprintln!("BITE clock {:.2} tag {:?}", self.state.clock, self.timing.held(self.state.clock)); }
                 if self.state.clock < self.timing.frame(Action::Bite, 64.) && world.body_clear(hold)
                     && self.coop_hold_clear(victim, hold)
                 {
@@ -1008,6 +1152,107 @@ impl Duchess {
             Action::Death => (),
         }
     }
+    /// Can the Duchess's body walk straight between two floor points at her own height?
+    fn body_clear(&self, world: &World, a: Vec3, b: Vec3) -> bool {
+        let z = Vec3::Z * (self.state.feet.z + 64.1);
+        let (a, b) = (vec3(a.x, a.y, 0.) + z, vec3(b.x, b.y, 0.) + z);
+        let t = world.sweep(a, b, vec3(32., 32., 64.));
+        !t.start_solid && t.fraction >= 1.
+    }
+    /// Original Chase over the PathNode graph: walk node to node along the shortest route to the
+    /// node nearest the enemy. Returns the heading toward the next waypoint, or None without a
+    /// usable route (caller falls back to feeling around the obstacle).
+    fn nav_wish(&mut self, world: &World, goal: Vec3) -> Option<Vec2> {
+        if self.nodes.len() < 2 {
+            return None;
+        }
+        if self.links.is_none() {
+            let n = self.nodes.len();
+            let mut links = vec![Vec::new(); n];
+            for i in 0..n {
+                for j in i + 1..n {
+                    let d = self.nodes[i].truncate().distance(self.nodes[j].truncate());
+                    if d <= 800. && self.body_clear(world, self.nodes[i], self.nodes[j]) {
+                        links[i].push(j);
+                        links[j].push(i);
+                    }
+                }
+            }
+            self.links = Some(links);
+        }
+        self.route_age += STEP;
+        let feet = self.state.feet;
+        if self.route_age >= 0.4 || self.route.is_empty() {
+            self.route_age = 0.;
+            let flat = |a: Vec3, b: Vec3| a.truncate().distance(b.truncate());
+            let nearest = |from: Vec3, need_clear: bool, me: &Self| -> Option<usize> {
+                let mut best: Option<(f32, usize)> = None;
+                for (i, n) in me.nodes.iter().enumerate() {
+                    if need_clear && !me.body_clear(world, from, *n) {
+                        continue;
+                    }
+                    let d = flat(from, *n);
+                    if best.map_or(true, |(b, _)| d < b) {
+                        best = Some((d, i));
+                    }
+                }
+                best.map(|(_, i)| i)
+            };
+            let start = nearest(feet, true, self).or_else(|| nearest(feet, false, self))?;
+            let end = nearest(goal, true, self).or_else(|| nearest(goal, false, self))?;
+            let links = self.links.as_ref()?;
+            let n = self.nodes.len();
+            let mut dist = vec![f32::INFINITY; n];
+            let mut prev = vec![usize::MAX; n];
+            let mut open = vec![start];
+            dist[start] = 0.;
+            while let Some(k) = (0..open.len()).min_by(|&a, &b| {
+                let f = |i: usize| dist[open[i]] + flat(self.nodes[open[i]], self.nodes[end]);
+                f(a).total_cmp(&f(b))
+            }) {
+                let u = open.swap_remove(k);
+                if u == end {
+                    break;
+                }
+                for &v in &links[u] {
+                    let nd = dist[u] + flat(self.nodes[u], self.nodes[v]);
+                    if nd < dist[v] {
+                        dist[v] = nd;
+                        prev[v] = u;
+                        if !open.contains(&v) {
+                            open.push(v);
+                        }
+                    }
+                }
+            }
+            if dist[end].is_infinite() {
+                self.route.clear();
+                return None;
+            }
+            let mut path = vec![end];
+            while let Some(&last) = path.last() {
+                if prev[last] == usize::MAX {
+                    break;
+                }
+                path.push(prev[last]);
+            }
+            path.reverse();
+            self.route = path;
+        }
+        // Drop waypoints already reached or that can be skipped with a clear walk.
+        while self.route.len() > 1 {
+            let reached = feet.truncate().distance(self.nodes[self.route[0]].truncate()) < 56.;
+            let skip = self.body_clear(world, feet, self.nodes[self.route[1]]);
+            if reached || skip {
+                self.route.remove(0);
+            } else {
+                break;
+            }
+        }
+        let next = self.nodes[*self.route.first()?];
+        let d = (next - feet).truncate();
+        (d.length() > 8.).then(|| d.normalize_or_zero())
+    }
     fn walk(&mut self, world: &World, wish: Vec2, speed: f32) {
         for turn in [0_f32, 0.6, -0.6, 1.2, -1.2] {
             let q = Quat::from_rotation_z(turn);
@@ -1028,6 +1273,11 @@ impl Duchess {
                 break;
             }
         }
+    }
+    /// Frame of the `raise` clip while the Duchess holds the player.
+    pub fn bite_frame(&self) -> Option<f32> {
+        (self.controlled() && self.state.stage == Stage::Fighting && self.state.action == Action::Bite)
+            .then(|| self.state.clock / self.timing.frame(Action::Bite, 1.))
     }
     pub fn camera(&self, world: &World) -> Option<crate::cinematic::Camera> {
         if !self.cinematic() {
@@ -1388,11 +1638,30 @@ impl Art {
                     1.
                 };
                 let mut pos = d.points[start].lerp(d.points[goal], f);
+                // Face the way they walk in, then the room's centre once standing.
+                let heading = d.points[goal] - d.points[start];
+                let mut yaw = if f < 1. && heading.truncate().length_squared() > 1. {
+                    heading.y.atan2(heading.x)
+                } else {
+                    2.4
+                };
+                let (mut clip, mut clip_time, mut looping) =
+                    (if f < 1. { "walk" } else { "idle" }, d.state.time, true);
+                if goal == "billstand" && d.state.stage == Stage::Well {
+                    // Bill waves at the well to open it (script: talk_no).
+                    let t = d.state.time - 1.5;
+                    if t >= 0. {
+                        (clip, clip_time, looping) = ("talk_no", t, false);
+                    }
+                }
                 if goal == "turtlestand" && matches!(d.state.stage, Stage::Well | Stage::Complete) {
                     let t = ((d.state.time - 2.) / 1.).clamp(0., 1.);
                     if d.state.stage == Stage::Complete || t >= 1. {
                         continue;
                     }
+                    let jump = d.points["jumpinthewell"] - d.points["turtle_jump_pos"];
+                    yaw = jump.y.atan2(jump.x);
+                    (clip, clip_time, looping) = ("jump", d.state.time - 2., false);
                     pos = d.points["turtle_jump_pos"].lerp(vec3(320., 224., -120.), t)
                         + Vec3::Z * (120. * (std::f32::consts::PI * t).sin());
                 }
@@ -1400,12 +1669,12 @@ impl Art {
                     actor.show_attachments(d.state.shell_returned);
                 }
                 actor.draw(
-                    if f < 1. { "walk" } else { "idle" },
-                    d.state.time,
-                    true,
+                    clip,
+                    clip_time,
+                    looping,
                     Transform {
                         translation: pos,
-                        rotation: Quat::from_rotation_z(2.4),
+                        rotation: Quat::from_rotation_z(yaw),
                     },
                     1.,
                     fullbright,
@@ -1414,21 +1683,26 @@ impl Art {
         }
         if d.cinematic() {
             let mut p = d.points["fuck_pos"];
+            let (mut clip, mut clip_time, mut looping) = ("idle_base_02", d.state.time, true);
+            let mut yaw = std::f32::consts::FRAC_PI_2;
             if matches!(d.state.stage, Stage::Rescue | Stage::Farewell | Stage::Well) {
                 p = d.points["alice_end_pos"];
                 if d.state.stage == Stage::Well && d.state.time > 3.5 {
                     let t = ((d.state.time - 3.5) / 1.5).min(1.);
                     p = d.points["turtle_jump_pos"].lerp(vec3(320., 224., -120.), t)
                         + Vec3::Z * (100. * (std::f32::consts::PI * t).sin());
+                    let jump = d.points["jumpinthewell"] - d.points["turtle_jump_pos"];
+                    yaw = jump.y.atan2(jump.x);
+                    (clip, clip_time, looping) = ("jump", d.state.time - 3.5, false);
                 }
             }
             self.alice.draw(
-                "idle_base_02",
-                d.state.time,
-                true,
+                clip,
+                clip_time,
+                looping,
                 Transform {
                     translation: p,
-                    rotation: Quat::from_rotation_z(std::f32::consts::FRAC_PI_2),
+                    rotation: Quat::from_rotation_z(yaw),
                 },
                 1.,
                 fullbright,
@@ -1822,17 +2096,26 @@ mod tests {
                 accumulator: 0.,
                 home: Vec3::ZERO,
                 notarget: false,
+                detour: 0.,
+                stuck: 0,
+                clear_time: 0.,
             },
             timing: Timing {
                 intro_tracks: vec![],
                 clips,
                 death_focus: vec![Vec3::Z * 100.],
+                bite_tags: Vec::new(),
             },
             objects: vec![],
             groups: vec![],
             points: BTreeMap::new(),
             pickup_id: "potears3:21".into(),
             essence_origins: [vec3(1000., 1000., 0.); 4],
+            nodes: Vec::new(),
+            links: None,
+            route: Vec::new(),
+            route_age: 0.,
+            fires: Vec::new(),
         }
     }
     fn floor() -> World {

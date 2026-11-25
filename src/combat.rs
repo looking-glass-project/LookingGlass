@@ -3,6 +3,12 @@ use crate::collision::World;
 use macroquad::prelude::*;
 pub(crate) mod navigation;
 
+/// The original Actor constructor (fgamex86 0x100195e0) sets `max_inactive_time`
+/// to 30 s (float at 0x1015ce5c). Per its event text, this is also how long an actor
+/// keeps hunting an enemy it can no longer see; `GetCloseToEnemy` heads for the
+/// enemy itself, not the last sighting.
+pub const MAX_INACTIVE_TIME: f32 = 30.;
+
 #[derive(Clone, Copy, Debug)]
 pub struct Target {
     pub id: usize,
@@ -226,9 +232,25 @@ pub struct Feedback {
     pub summon_hits: Vec<Hit>,
     pub sounds: Vec<&'static str>,
     pub spatial_sounds: Vec<(&'static str, Vec3)>,
+    /// Players encased in a Phantasmagoria ice block this tick.
+    pub freeze: Vec<usize>,
+    /// Velocity added to Alice without the knockback control lock (SuckEnemy).
+    pub pull: Vec3,
+    /// Alice is held hidden inside an evil mushroom at this origin (Digest).
+    pub swallow: Option<Vec3>,
+    /// Alice is spat out from this origin with this velocity.
+    pub launch: Option<(Vec3, Vec3)>,
 }
 impl Feedback {
+    pub fn freeze(&mut self, id: usize) {
+        if player_id(id) && !self.freeze.contains(&id) {
+            self.freeze.push(id);
+        }
+    }
     pub fn append(&mut self, other: Self) {
+        for id in other.freeze {
+            self.freeze(id);
+        }
         for (a, b) in self.players.iter_mut().zip(other.players) {
             a.damage += b.damage;
             a.impulse += b.impulse;
@@ -237,6 +259,9 @@ impl Feedback {
         self.damage += other.damage;
         self.impulse += other.impulse;
         self.will_drain += other.will_drain;
+        self.pull += other.pull;
+        self.swallow = self.swallow.or(other.swallow);
+        self.launch = self.launch.or(other.launch);
         self.summon_hits.extend(other.summon_hits);
         self.sounds.extend(other.sounds);
         self.spatial_sounds.extend(other.spatial_sounds);
@@ -250,6 +275,15 @@ impl Feedback {
         } else {
             self.strike(id, amount, Vec3::ZERO, DamageKind::Other);
         }
+    }
+    pub fn pull(&mut self, id: usize, velocity: Vec3) {
+        if id == crate::dice::ALICE { self.pull += velocity } else { self.strike(id, 0., velocity, DamageKind::Other) }
+    }
+    pub fn swallow(&mut self, id: usize, at: Vec3) {
+        if id == crate::dice::ALICE { self.swallow = Some(at) }
+    }
+    pub fn launch(&mut self, id: usize, from: Vec3, velocity: Vec3) {
+        if id == crate::dice::ALICE { self.launch = Some((from, velocity)) } else { self.strike(id, 0., velocity, DamageKind::Other) }
     }
     pub fn strike(&mut self, id: usize, damage: f32, impulse: Vec3, kind: DamageKind) {
         if let Some(slot) = player_slot(id) {
@@ -826,7 +860,18 @@ pub(crate) fn walk_body_liquids(
     half: Vec3,
     allowed: i32,
 ) -> Vec3 {
-    let lift = Vec3::Z * 16.;
+    walk_body_lift(world, feet, delta, half, allowed, 16.)
+}
+/// As `walk_body_liquids`, with a taller step so a body can climb out of a pit.
+pub(crate) fn walk_body_lift(
+    world: &World,
+    feet: Vec3,
+    delta: Vec3,
+    half: Vec3,
+    allowed: i32,
+    step: f32,
+) -> Vec3 {
+    let lift = Vec3::Z * step;
     let center = feet + Vec3::Z * (half.z + 0.1);
     let up = world.sweep(center, center + lift, half);
     if up.start_solid {
@@ -843,11 +888,13 @@ pub(crate) fn walk_body_liquids(
     }
     let next =
         (raised + delta).lerp(raised + delta - Vec3::Z * 34., down.fraction) - Vec3::Z * half.z;
+    // Every hull corner needs ground, but within two stair treads: an 18-unit
+    // probe refused each descending stair (a 32-unit hull spans two 16-unit
+    // treads), stalling enemies at the top of steps. Real drops still stop them.
     for x in [-half.x + 1., half.x - 1.] {
         for y in [-half.y + 1., half.y - 1.] {
             let p = next + vec3(x, y, 2.);
-            // A hull straddling a legal step still needs support on its lower side.
-            let support = world.sweep(p, p - Vec3::Z * 18., Vec3::ZERO);
+            let support = world.sweep(p, p - Vec3::Z * 36., Vec3::ZERO);
             if support.start_solid || support.fraction >= 1. || support.normal.z < 0.65 {
                 return feet;
             }

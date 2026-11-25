@@ -686,7 +686,10 @@ impl Steam {
                 String::from_utf8_lossy(&assets.read(&format!("models/{model}"))?).into_owned();
             let definitions = parse(&text);
             let selected_clip = e.get("anim").map(String::as_str)
-                .or_else(|| (model == "lantern.tik").then_some("lantern"));
+                .or_else(|| (model == "lantern.tik").then_some("lantern"))
+                // Hollow Hideaway's waterfall spray tags idle "off" but no script ever
+                // switches them on; the original shows them running from level start.
+                .or_else(|| model.starts_with("fx_emitter_waterspray").then_some("on"));
             let tan = crate::weapons::read_model_clip(
                 assets, model.trim_end_matches(".tik"), selected_clip,
             ).ok();
@@ -711,15 +714,6 @@ impl Steam {
                 .unwrap_or(1.)
                 .max(0.001);
             for mut spec in definitions {
-                // The original 200+100/s additive altar plume saturates this
-                // renderer's LDR target. Keep the weapon readable without
-                // reducing the authored motion, colours or other emitters.
-                if crate::inventory::WEAPONS
-                    .iter()
-                    .any(|(id, _)| model == format!("altar_{id}.tik"))
-                {
-                    spec.alpha *= 0.12;
-                }
                 let mut point = origin;
                 let mut axes = rotation;
                 if let Some(tag) = &spec.tag {
@@ -745,7 +739,16 @@ impl Steam {
                     let Some(path) = texture::resolve(assets, frame, &specs) else {
                         continue;
                     };
-                    let image = texture::decode(assets, &path)?;
+                    let mut image = texture::decode(assets, &path)?;
+                    // GL_ONE GL_ONE ignores texture alpha. Some original sprites (waterfall mist
+                    // water1.ftx) store the picture in RGB with alpha 0 everywhere.
+                    if matches!(stage.blend, crate::materials::Blend::Add | crate::materials::Blend::AlphaAdd)
+                        && image.pixels.chunks_exact(4).all(|p| p[3] == 0)
+                    {
+                        for p in image.pixels.chunks_exact_mut(4) {
+                            p[3] = 255;
+                        }
+                    }
                     let t = Texture2D::from_rgba8(image.width, image.height, &image.pixels);
                     t.set_filter(FilterMode::Linear);
                     textures.push(t);
@@ -766,6 +769,38 @@ impl Steam {
                     let factor = textures.first().map_or(1., |t| t.width() / 64.);
                     spec.size.low *= factor;
                     spec.size.high *= factor;
+                }
+                if crate::inventory::WEAPONS
+                    .iter()
+                    .any(|(id, _)| model == format!("altar_{id}.tik"))
+                {
+                    // Engine sprite size is texture width times scale (CE-verified), so the 32 px
+                    // bam / 16 px metared plume is far smaller than this renderer's 64 px baseline.
+                    let width = textures.first().map_or(64., |t| t.width());
+                    let mean = (spec.size.low + spec.size.high) * 0.5;
+                    if mean > 0. {
+                        spec.growth /= mean;
+                    }
+                    spec.size.low *= width / 64.;
+                    spec.size.high *= width / 64.;
+                    // The original plume (clips side by side) tops out near the pickup box, about a
+                    // third of the height the authored accel gives in this renderer.
+                    for a in &mut spec.accel {
+                        a.low *= 0.36;
+                        a.high *= 0.36;
+                    }
+                }
+                if model.starts_with("fx_emitter_waterspray") {
+                    // Original engine sprites: half-extent = texture width / 2 * scale, and
+                    // scalerate adds to that scale (CE-verified on fx_metagas). The 16 px water
+                    // drop is therefore a quarter of the 64 px baseline this renderer assumes.
+                    let width = textures.first().map_or(64., |t| t.width());
+                    let mean = (spec.size.low + spec.size.high) * 0.5;
+                    if mean > 0. {
+                        spec.growth /= mean;
+                    }
+                    spec.size.low *= width / 64.;
+                    spec.size.high *= width / 64.;
                 }
                 let enabled = !spec.start_off;
                 emitters.push(Emitter {
@@ -982,9 +1017,12 @@ thread_local! {
 }
 impl PickupBurst {
     pub fn load(assets: &mut Assets) -> Result<Self> {
+        Self::load_sprite(assets, "supra_p")
+    }
+    pub fn load_sprite(assets: &mut Assets, name: &str) -> Result<Self> {
         let specs = texture::read_materials(assets)?;
-        let path = texture::resolve(assets, "supra_p", &specs)
-            .ok_or_else(|| anyhow::anyhow!("Missing gnome disappearance sprite"))?;
+        let path = texture::resolve(assets, name, &specs)
+            .ok_or_else(|| anyhow::anyhow!("Missing burst sprite {name}"))?;
         let image = texture::decode(assets, &path)?;
         let texture = Texture2D::from_rgba8(image.width, image.height, &image.pixels);
         texture.set_filter(FilterMode::Linear);
@@ -1016,6 +1054,60 @@ impl PickupBurst {
             Ok(m)
         })?;
         Ok(Self { texture, material })
+    }
+    /// fx_lookingglass `glasspoof`: 300 white puffs, offset crandom 12 / random 75, life up
+    /// to 1.5 s, scale .2-1, fade in .2 s then out, falling at 100 u/s^2. Deterministic in age.
+    pub fn draw_poof(&self, origin: Vec3, age: f32, camera: Vec3, atmosphere: &Atmosphere) {
+        if !(0. ..2.).contains(&age) {
+            return;
+        }
+        atmosphere.apply(&self.material, camera);
+        gl_use_material(&self.material);
+        let direction = (origin - camera).normalize_or_zero();
+        let right = direction.cross(Vec3::Z).try_normalize().unwrap_or(Vec3::X);
+        let up = right.cross(direction).normalize_or_zero();
+        let mut seed = 0x1a55_90f;
+        let mut vertices = Vec::new();
+        let mut indices = Vec::new();
+        for _ in 0..300 {
+            let offset = vec3(
+                (random(&mut seed) * 2. - 1.) * 12.,
+                (random(&mut seed) * 2. - 1.) * 12.,
+                random(&mut seed) * 75.,
+            );
+            let life = 0.4 + random(&mut seed) * 1.1;
+            let size = (0.2 + random(&mut seed) * 0.8) * 32.;
+            if age >= life {
+                continue;
+            }
+            let center = origin + offset - Vec3::Z * (0.5 * 100. * age * age);
+            let alpha = (age / 0.2).min(1.) * (1. - age / life) * 0.8;
+            let color: [u8; 4] = Color::new(1., 1., 1., alpha).into();
+            let base = vertices.len() as u16;
+            for (delta, uv) in [
+                (-right - up, vec2(0., 1.)),
+                (right - up, vec2(1., 1.)),
+                (right + up, vec2(1., 0.)),
+                (-right + up, vec2(0., 0.)),
+            ] {
+                vertices.push(Vertex {
+                    position: center + delta * size,
+                    uv,
+                    normal: Vec4::ZERO,
+                    color,
+                });
+            }
+            indices.extend([base, base + 1, base + 2, base, base + 2, base + 3]);
+        }
+        crate::render_fx::effect(
+            &Mesh {
+                vertices,
+                indices,
+                texture: Some(self.texture.clone()),
+            },
+            crate::materials::Blend::Add,
+        );
+        gl_use_default_material();
     }
     pub fn draw(&self, origin: Vec3, age: f32, camera: Vec3, atmosphere: &Atmosphere) {
         if !(0. ..4.).contains(&age) {
@@ -1183,6 +1275,20 @@ impl Attached {
                 e.spec.tag_velocity = true;
             }
         }
+    }
+    /// Engine sprite sizing for `.spr` models: half-extent is texture width / 2 times the
+    /// emitter scale, and `scalerate` adds to that scale (relative growth = rate / scale).
+    pub(crate) fn engine_sprite_size(mut self) -> Self {
+        for e in &mut self.steam.emitters {
+            let width = e.textures.first().map_or(64., |t| t.width());
+            let mean = (e.spec.size.low + e.spec.size.high) * 0.5;
+            if mean > 0. {
+                e.spec.growth /= mean;
+            }
+            e.spec.size.low *= width / 64.;
+            e.spec.size.high *= width / 64.;
+        }
+        self
     }
     /// A separate emitter clock sharing immutable textures/materials.
     pub(crate) fn fork(&self) -> Self {
@@ -1809,5 +1915,15 @@ mod tests {
         assert!((p[0].alpha - 0.75).abs() < 0.0001);
         assert_eq!(p[0].offset, b.sample(0.45, 123)[0].offset);
         assert!(b.sample(1.21, 123).is_empty());
+    }
+
+    #[test]
+    fn metagas_tag_emitter_parses_for_phantasm_drain() {
+        let text = "TIKI\ninit\n{\n client\n {\n tagemitter tag_gas metagas\n (\n model meta.spr\n spawnrate 75\n velocity 220\n scalemin 4.2\n scalemax 5.0\n scalerate -4\n fade\n life 0.5\n )\n }\n}\n";
+        let specs = parse(text);
+        assert_eq!(specs.len(), 1);
+        assert_eq!(specs[0].rate, 75.);
+        assert_eq!(specs[0].forward, 220.);
+        assert_eq!(specs[0].image, "meta");
     }
 }

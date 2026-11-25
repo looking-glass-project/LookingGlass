@@ -541,6 +541,15 @@ pub fn skin(mesh: &Mesh) {
     SKIN_OPACITY.with(|a| skin_timed(mesh, None, a.get()));
 }
 
+thread_local! {
+    static ENTITY_STAGES_ONLY: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+/// Entity alpha fades only `alphaGen fromEntity` stages (Magma Man crust).
+pub fn with_entity_stages_only(draw: impl FnOnce()) {
+    let previous = ENTITY_STAGES_ONLY.with(|f| f.replace(true));
+    draw();
+    ENTITY_STAGES_ONLY.with(|f| f.set(previous));
+}
 /// Scope entity translucency to one actor, including its attachment meshes.
 pub fn with_skin_opacity(alpha: f32, draw: impl FnOnce()) {
     struct Restore(f32);
@@ -602,7 +611,10 @@ fn skin_timed(mesh: &Mesh, clock: Option<f32>, alpha: f32) {
         return;
     };
     let mut passes = Vec::new();
+    let entity_only = ENTITY_STAGES_ONLY.with(|f| f.get());
+    let whole = alpha;
     for layer in &surface.layers {
+        let alpha = if entity_only && !layer.stage.entity_alpha { 1. } else { whole };
         let mut copy = copy_mesh(mesh);
         copy.texture = Some(
             layer.textures[if layer.stage.images.is_empty() {

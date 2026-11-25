@@ -78,6 +78,9 @@ impl Interactions {
         for s in &self.levels {
             s.ctl.particles(steam);
         }
+        if let Some(d) = &self.duchess {
+            steam.place(&d.emitter_poses());
+        }
     }
     /// Whether one of the typed legacy controllers owns this visit (F1.4a). Registry hooks that
     /// legacy code answers itself (gates) are consulted only when none does.

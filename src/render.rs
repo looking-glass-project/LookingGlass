@@ -54,7 +54,7 @@ void main(){
  if((Cutout>0.5&&Cutout<1.5&&alpha<=0.0)||(Cutout>1.5&&Cutout<2.5&&alpha<0.5)||(Cutout>2.5&&Cutout<3.5&&alpha>=0.5)||(Cutout>3.5&&Cutout<4.5&&alpha<0.35))discard;
  if((Cutout>4.5&&Cutout<5.5&&alpha<CutoutReference)||(Cutout>5.5&&Cutout<6.5&&alpha<=CutoutReference)||(Cutout>6.5&&Cutout<7.5&&alpha>=CutoutReference)||(Cutout>7.5&&alpha>CutoutReference))discard;
  vec3 lighting=max(color.rgb,vec3(0.18));
- if(lm.z>0.5&&FxModel<0.5){float index=floor(lm.z-1.0+0.1);vec2 tile=vec2(mod(index,AtlasGrid.x),floor(index/AtlasGrid.x));vec2 sampleUV=(tile+clamp(lm.xy,vec2(0.5/128.0),vec2(127.5/128.0)))/AtlasGrid;lighting=min(vec3(1.0),texture2D(LightAtlas,sampleUV).rgb*2.0);}
+ if(lm.z>0.5&&FxModel<0.5){float index=floor(lm.z-1.0+0.1);vec2 tile=vec2(mod(index,AtlasGrid.x),floor(index/AtlasGrid.x));vec2 sampleUV=(tile+clamp(lm.xy,vec2(0.5/128.0),vec2(127.5/128.0)))/AtlasGrid;lighting=min(vec3(1.0),texture2D(LightAtlas,sampleUV).rgb);}
  vec3 rgb=diffuse.rgb*mix(vec3(1.0),lighting,Lit*(1.0-Fullbright))*Gain.rgb;
  if(FxModel>0.5&&Lit<0.5)rgb*=color.rgb;
  rgb+=diffuse.rgb*dynamicLight(worldPosition)*Gain.rgb;

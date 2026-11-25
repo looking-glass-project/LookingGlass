@@ -100,6 +100,10 @@ pub fn resolve(
 
 pub fn decode(assets: &mut Assets, name: &str) -> Result<RgbaImage> {
     let bytes = assets.read(name)?;
+    decode_bytes(bytes, name)
+}
+
+pub fn decode_bytes(bytes: Vec<u8>, name: &str) -> Result<RgbaImage> {
     if name.ends_with(".ftx") {
         return decode_ftx(&bytes).with_context(|| name.to_owned());
     }

@@ -450,7 +450,7 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
                         let jump=p.ledge.as_ref().is_some_and(|h|!h.pulling)
                             || p.grounded && (delta.z>24. || flight[i]>0 && !jumped[i]);
                         jumped[i]|=jump;
-                        inputs[i].0=Controls{wish:(delta.truncate()*3.-p.velocity.truncate()*0.7).clamp_length_max(320.)/320.,
+                        inputs[i].0=Controls{wish:(delta.truncate()*3.-p.velocity.truncate()*0.7).clamp_length_max(crate::movement::RUN_SPEED)/crate::movement::RUN_SPEED,
                             swim:delta.normalize_or_zero(),rise:delta.z.signum(),run:true,jump,..Default::default()};
                         work=true;
                     }
@@ -473,13 +473,13 @@ async fn run(a: &mut Assets, spec: Spec) -> Result<()> {
                             || p.grounded && (mode=="hop" || matches!(mode.as_str(),"jump"|"air"|"course_air"|"precise") && (!jumped[i] || delta.z>24.));
                         jumped[i]|=jump;
                         inputs[i].0=Controls{wish:if matches!(mode.as_str(),"precise"|"air") || mode=="course_air" && delta.truncate().length()<30. {
-                            (delta.truncate()*3.-p.velocity.truncate()*0.7).clamp_length_max(320.)/320.
+                            (delta.truncate()*3.-p.velocity.truncate()*0.7).clamp_length_max(crate::movement::RUN_SPEED)/crate::movement::RUN_SPEED
                         } else {delta.truncate().normalize_or_zero()},swim:delta.normalize_or_zero(),rise:delta.z.signum(),run:true,jump,..Default::default()};
                         work=true;
                     }
                 } else if matches!(command,Command::Phase{..}|Command::Cycle{hold:true,..}) {
                     inputs[i].0=Controls{wish:((home[i]-p.feet).truncate()*3.-p.velocity.truncate()*0.7)
-                        .clamp_length_max(320.)/320.,run:true,..Default::default()};
+                        .clamp_length_max(crate::movement::RUN_SPEED)/crate::movement::RUN_SPEED,run:true,..Default::default()};
                 } else if let Command::Walk(at)=command {
                     let delta=Vec3::from_array(*at)-p.feet;
                     if delta.truncate().length()>=8. || delta.z.abs()>=35. {

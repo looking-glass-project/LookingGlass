@@ -659,11 +659,14 @@ impl Duchess {
             self.state.bursts.clear();
             Some("sound/character/duchess/death.wav")
         } else {
+            // Native: the pain clip's frame-0 client event plays the sound, so only entering
+            // the PAIN state is audible, not every hit during it.
             if self.state.pain >= 50. && self.state.action != Action::Pain {
                 self.state.pain = 0.;
                 self.action(Action::Pain);
+                return Some("sound/character/duchess/pain1.wav");
             }
-            Some("sound/character/duchess/pain1.wav")
+            None
         }
     }
     pub fn threatened(&mut self, incoming: bool) {

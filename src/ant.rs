@@ -235,11 +235,12 @@ impl Ant {
             self.frozen = hit.kind.means() == DamageKind::Ice;
             self.set(Phase::Dead);
             Some(self.sound(true))
-        } else {
-            if self.phase != Phase::Pain {
-                self.set(Phase::Pain);
-            }
+        } else if self.phase != Phase::Pain {
+            // Pain sound belongs to the pain clip's frame-0 event: silent while it plays.
+            self.set(Phase::Pain);
             Some(self.sound(false))
+        } else {
+            None
         }
     }
     fn sound(&self, death: bool) -> &'static str {

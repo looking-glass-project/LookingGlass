@@ -335,6 +335,10 @@ impl Piece {
             self.block_cooldown = 2.;
             return Some("sound/character/chess_piece/knight/block_2.wav");
         }
+        // Native Actor::Pain (FUN_100b5260) only records the damage; the PAIN state's clip
+        // plays its sound from a frame-0 client event, and PAIN lists no self-transition, so
+        // hits landing during the clip are silent.
+        let was_pain = self.phase == Phase::Pain;
         self.health = (self.health - hit.damage).max(0.);
         self.recoil.hit(hit.knockback, 100.);
         if self.phase != Phase::Pain || self.health == 0. {
@@ -346,7 +350,7 @@ impl Piece {
         } else if self.phase != Phase::Pain {
             self.set(Phase::Pain);
         }
-        Some(self.sound())
+        (!was_pain || self.health == 0.).then(|| self.sound())
     }
     fn sound(&self) -> &'static str {
         match (self.kind, self.health <= 0.) {

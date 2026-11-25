@@ -261,8 +261,9 @@ impl Ladybug {
         } else {
             if self.state != State::Pain {
                 self.enter(State::Pain);
+                return Some(SOUNDS[1]);
             }
-            Some(SOUNDS[1])
+            None
         }
     }
     pub fn clip(&self, timing: Timing) -> (&'static str, f32, bool) {

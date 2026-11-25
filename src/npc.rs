@@ -1517,6 +1517,12 @@ impl Model {
                             specs,
                         )?;
                     }
+                    // Blood spurts (fx_bspurt*) use 16 px blood_spray/blood_drip sprites; the engine
+                    // draws a sprite at texture width times scale, so they need the same sizing as
+                    // hit blood or they read as a big soft cloud.
+                    if model.starts_with("fx_bspurt") {
+                        effect = effect.map(crate::particles::Attached::engine_sprite_size);
+                    }
                     if let Some(effect) = effect {
                         effects.insert(model.clone(), effect);
                     }

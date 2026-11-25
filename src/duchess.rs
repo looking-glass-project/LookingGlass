@@ -1780,8 +1780,10 @@ impl Art {
                 } else {
                     &["cap_head"][..]
                 };
-            // The phase body and its afterimages belong in the translucent pass.
-            if d.state.action != Action::Phase {
+            // Native PHASE_DODGE (ai/c_duchess.st) only adds `surface all +skin1` and the Phase
+            // behaviour's trail copies: her own body stays an ordinary opaque model (native
+            // recording 2026-11-25_01-01-29), so it is drawn like every other action.
+            {
                 let scales: Vec<_> = (d.state.stage == Stage::Fighting)
                     .then(|| growth(d.state.action, d.state.clock / d.timing.frame(d.state.action, 1.)))
                     .flatten()
@@ -1991,15 +1993,13 @@ impl Art {
                     .draw_afterimage("run_away", p.clock, p.transform, alpha);
             }
             if phase {
-                self.phase_model
-                    .draw_afterimage("run_away", d.state.clock, pose, 0.65);
                 if let Some(grip) =
                     self.duchess
                         .looping_tag("tag_weapon", "run_away", d.state.clock, pose, 1.)
                 {
                     for mesh in self.gun.meshes_at(grip, 1., true, 0., false) {
                         for vertex in &mut mesh.vertices {
-                            vertex.color = [32, 32, 32, 166];
+                            vertex.color = [255, 255, 255, 255];
                         }
                         crate::render_fx::effect(mesh, crate::materials::Blend::Alpha);
                     }

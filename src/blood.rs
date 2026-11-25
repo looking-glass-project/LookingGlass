@@ -241,14 +241,17 @@ impl Blood {
             effect.draw(*age, *scale, |_, _| origin, |_, t, default| default && t < EMIT, camera, atmosphere);
         }
     }
-    pub fn draw_decals(&self, clock: f32) {
+    pub fn draw_decals(&self, _clock: f32) {
         for d in &self.decals {
             let Some(Some(texture)) = self.textures.get(&d.texture) else { continue };
             let x = d.normal.cross(Vec3::Z).try_normalize().unwrap_or(Vec3::X);
             let y = d.normal.cross(x);
             let (sin, cos) = d.spin.sin_cos();
             let (x, y) = ((x * cos + y * sin) * d.radius, (y * cos - x * sin) * d.radius);
-            let alpha = decal_alpha(d.life, d.age);
+            // Native `blood*_decal` / `g_` / `o_` materials: unlit (nolightmap), GL_SRC_ALPHA /
+            // GL_ONE_MINUS_SRC_ALPHA, alphagen vertex over white vertex colour. Drawing them through the
+            // lit cutout fallback gave hard, shaded edges and the wrong colour.
+            let fade = (decal_alpha(d.life, d.age) * 255.) as u8;
             let mesh = Mesh {
                 vertices: [
                     (d.center - x - y, vec2(0., 0.)),
@@ -256,12 +259,14 @@ impl Blood {
                     (d.center + x + y, vec2(1., 1.)),
                     (d.center - x + y, vec2(0., 1.)),
                 ]
-                .map(|(p, uv)| Vertex::new(p.x, p.y, p.z, uv.x, uv.y, WHITE))
+                .map(|(p, uv)| {
+                    Vertex::new(p.x, p.y, p.z, uv.x, uv.y, Color::from_rgba(255, 255, 255, fade))
+                })
                 .to_vec(),
                 indices: vec![0, 1, 2, 0, 2, 3],
                 texture: Some(texture.clone()),
             };
-            crate::render_fx::skin_effect(&mesh, clock, alpha);
+            crate::render_fx::effect(&mesh, crate::materials::Blend::Alpha);
         }
     }
 }

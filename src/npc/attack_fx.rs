@@ -10,9 +10,10 @@ use std::{collections::BTreeMap, rc::Rc};
 pub struct Art {
     layers: BTreeMap<&'static str, (Texture2D, Rc<render_fx::Surface>)>,
     impact: Attached,
+    gas: Option<Attached>,
 }
 thread_local! { static CACHE: std::cell::RefCell<std::rc::Weak<Art>> = Default::default(); }
-const MATERIALS: [&str; 2] = ["queenbeam1", "emap1"];
+const MATERIALS: [&str; 3] = ["queenbeam1", "emap1", "textures/special/icechain"];
 
 fn ribbon(from: Vec3, to: Vec3, camera: Vec3, width: f32, repeats: f32) -> Option<Mesh> {
     let axis = (to - from).try_normalize()?;
@@ -65,6 +66,10 @@ impl Art {
             layers,
             impact: Attached::load_clip_bursts(a, "fx_lightning_hit", Some("idle"), 0.05, specs)?
                 .context("Missing lightning interception effect")?,
+            gas: Attached::load(a, "fx_metagas", specs)
+                .ok()
+                .flatten()
+                .map(Attached::engine_sprite_size),
         });
         CACHE.with(|c| *c.borrow_mut() = Rc::downgrade(&art));
         Ok(art)
@@ -85,6 +90,30 @@ impl Art {
         mesh.texture = Some(self.layers[material].0.clone());
         // Original material stages own colour, blending and scrolling; no debug tint.
         render_fx::skin_effect(&mesh, age, 1.);
+    }
+    /// Phantasm mana drain (PhantasmAttack mode 1): the original spawns `fx_metagas` at
+    /// tag_head4, angled at the enemy; its tag_gas emitter streams `meta.spr` sprites.
+    /// The gas entity sits at the enemy's origin (Evaluate mode 1) and is angled along the
+    /// vector from tag_head4 to that origin, so the stream envelops the victim.
+    pub fn mana_beam(&self, head: Vec3, victim: Vec3, camera: Vec3, age: f32, atm: &Atmosphere) {
+        // CE capture: entity origin = victim origin + 32 z; stream rises back toward the head.
+        let (from, to) = (victim, head);
+        let Some(gas) = &self.gas else { return };
+        let mut effect = gas.fork();
+        let rotation = Quat::from_rotation_arc(Vec3::X, (to - from).try_normalize().unwrap_or(Vec3::X));
+        effect.draw(
+            age.max(0.),
+            1.,
+            |_, _| Transform { translation: from, rotation },
+            |_, _, on| on,
+            camera,
+            atm,
+        );
+    }
+    /// Phantasmagoria ice chain; the shader tiles it 5x per repeat.
+    pub fn ice_chain(&self, from: Vec3, to: Vec3, camera: Vec3, age: f32) {
+        let repeat = (from.distance(to) / 160.).max(0.1);
+        self.draw("textures/special/icechain", from, to, camera, 3., age, repeat);
     }
     pub fn lightning(
         &self,

@@ -14,8 +14,12 @@ pub struct Light {
 }
 thread_local! {
     static LIGHTS: RefCell<Vec<Light>> = const {RefCell::new(Vec::new())};
+    static FIGURE: RefCell<Vec<Option<Texture2D>>> = const {RefCell::new(Vec::new())};
+    static FIGURE_QUEUE: RefCell<Vec<(Vec3, Vec<[Vec3; 3]>)>> = const {RefCell::new(Vec::new())};
     static SHADOW: RefCell<Option<Texture2D>> = const {RefCell::new(None)};
     static FLARE: RefCell<Option<Texture2D>> = const {RefCell::new(None)};
+    static GENERATION: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    static APPLIED: RefCell<Vec<(usize, u64, bool)>> = const { RefCell::new(Vec::new()) };
     static CROQUET: RefCell<Vec<Light>> = const {RefCell::new(Vec::new())};
 }
 pub fn select(mut lights: Vec<Light>, eye: Vec3, world: &World) {
@@ -28,12 +32,14 @@ pub fn select(mut lights: Vec<Light>, eye: Vec3, world: &World) {
     lights.retain(|l| world.sweep(eye, l.position, Vec3::ZERO).fraction >= 0.995);
     lights.truncate(8);
     LIGHTS.with(|v| *v.borrow_mut() = lights);
+    GENERATION.with(|g| g.set(g.get() + 1));
 }
 fn score(light: Light, eye: Vec3) -> f32 {
     light.radius / (light.position.distance(eye) + light.radius)
 }
 pub(crate) fn fixture_lights(lights: Vec<Light>) {
     LIGHTS.with(|v| *v.borrow_mut() = lights.into_iter().take(8).collect());
+    GENERATION.with(|g| g.set(g.get() + 1));
 }
 pub(crate) fn count() -> usize {
     LIGHTS.with(|l| l.borrow().len())
@@ -60,7 +66,31 @@ pub fn fragment(source: &str) -> String {
     s += "return light;}\n";
     source.replace("// LIGHTS", &s)
 }
+const LIGHT_NAMES: [&str; 8] = ["FxLight0", "FxLight1", "FxLight2", "FxLight3", "FxLight4", "FxLight5", "FxLight6", "FxLight7"];
+const COLOR_NAMES: [&str; 8] = ["FxColor0", "FxColor1", "FxColor2", "FxColor3", "FxColor4", "FxColor5", "FxColor6", "FxColor7"];
 pub fn apply(material: &Material, model: bool, enabled: bool) {
+    // Another caller's flags may now be on the material.
+    APPLIED.with(|a| a.borrow_mut().clear());
+    write_lights(material, model, enabled);
+}
+/// World-geometry variant: a material already carrying this frame's lights with the same
+/// `enabled` flag is left alone (the shared materials are drawn hundreds of times a frame).
+pub fn apply_world(material: &Material, enabled: bool) {
+    let key = (material as *const Material as usize, GENERATION.with(|g| g.get()), enabled);
+    let fresh = APPLIED.with(|a| {
+        let mut a = a.borrow_mut();
+        if a.iter().any(|k| *k == key) {
+            return false;
+        }
+        a.retain(|k| k.0 != key.0);
+        a.push(key);
+        true
+    });
+    if fresh {
+        write_lights(material, false, enabled);
+    }
+}
+fn write_lights(material: &Material, model: bool, enabled: bool) {
     LIGHTS.with(|lights| {
         let lights = lights.borrow();
         for i in 0..8 {
@@ -68,11 +98,11 @@ pub fn apply(material: &Material, model: bool, enabled: bool) {
                 .get(i)
                 .filter(|l| enabled && (model || !l.only_models));
             material.set_uniform(
-                &format!("FxLight{i}"),
+                LIGHT_NAMES[i],
                 light.map_or(Vec4::ZERO, |l| l.position.extend(l.radius)),
             );
             material.set_uniform(
-                &format!("FxColor{i}"),
+                COLOR_NAMES[i],
                 light.map_or(Vec4::ZERO, |l| l.color.extend(1.)),
             );
         }
@@ -184,7 +214,7 @@ pub fn flares(eye: Vec3, direction: Vec3) {
         for l in lights.borrow().iter().filter(|l| l.flare) {
             let right = direction.cross(Vec3::Z).try_normalize().unwrap_or(Vec3::X);
             let up = right.cross(direction).normalize_or_zero();
-            let r = l.radius.clamp(8., 48.);
+            let r = (if l.radius > 1. { l.radius * 0.3 } else { l.radius }).clamp(8., 48.);
             let color: [u8; 4] = Color::new(
                 l.color.x,
                 l.color.y,
@@ -254,4 +284,147 @@ mod tests {
         );
         assert_eq!(count(), 0);
     }
+}
+/// Half-extent in world units and mask resolution of the figure shadow.
+const FIGURE_RADIUS: f32 = 64.;
+const FIGURE_SIZE: usize = 128;
+/// Light direction the original measured on Alice's entity (`lightDir`, backEnd entity +0x1d8) in
+/// the Duchess/Hatter area; the game reads it from the level lighting at her position.
+pub const FIGURE_LIGHT: Vec3 = Vec3::new(-0.490, 0.235, 0.840);
+/// The original's `projectionShadow` shader (scripts/common.shader) with `deformVertexes
+/// projectionShadow` (RB_ProjectionShadowDeform, FUN_004a2970): every model triangle is slid along
+/// the entity light direction onto the floor plane at its origin (light.z clamped to >= 0.5 as
+/// `lightDir + (0.5 - d) * up`), then drawn black with `GL_SRC_ALPHA GL_ONE_MINUS_SRC_ALPHA` and
+/// `alphaGen entity`. The entity alpha comes from CG_EntityShadow (FUN_3001eb60): trace 128.5 units
+/// down from 5 above the origin and use `(1 - fraction) * 0.7`. Overlapping front-facing
+/// triangles blend again, exactly as the separate draws do natively.
+pub fn figure_shadow(world: &World, feet: Vec3, triangles: &[[Vec3; 3]], light: Vec3) {
+    figure_shadow_slot(0, world, feet, triangles, light);
+}
+/// Enemies and other model actors that the original shadows (every tiki without `noshadow`,
+/// renderfx 0x800|0x4000000 in CG_ModelAnim) queue their posed triangles while drawing.
+pub fn queue_figure(feet: Vec3, triangles: Vec<[Vec3; 3]>) {
+    FIGURE_QUEUE.with(|q| {
+        let mut q = q.borrow_mut();
+        if q.len() < 64 && !triangles.is_empty() {
+            q.push((feet, triangles));
+        }
+    });
+}
+/// Draw (and clear) the queued actor shadows: nearest `MAX_FIGURES` to the camera.
+pub fn flush_figures(world: &World, camera: Vec3) {
+    const MAX_FIGURES: usize = 16;
+    const MAX_DISTANCE: f32 = 2500.;
+    let mut queued = FIGURE_QUEUE.with(|q| std::mem::take(&mut *q.borrow_mut()));
+    queued.retain(|(feet, _)| feet.distance(camera) < MAX_DISTANCE);
+    queued.sort_by(|a, b| a.0.distance(camera).total_cmp(&b.0.distance(camera)));
+    queued.dedup_by(|a, b| a.0.distance(b.0) < 0.5);
+    for (i, (feet, triangles)) in queued.into_iter().take(MAX_FIGURES).enumerate() {
+        figure_shadow_slot(i + 1, world, feet, &triangles, FIGURE_LIGHT);
+    }
+}
+fn figure_shadow_slot(slot: usize, world: &World, feet: Vec3, triangles: &[[Vec3; 3]], light: Vec3) {
+    let from = feet + Vec3::Z * 5.;
+    let to = from - Vec3::Z * 128.5;
+    let hit = world.sweep(from, to, Vec3::ZERO);
+    if hit.fraction >= 1. || hit.normal.z < 0.4 || triangles.is_empty() {
+        return;
+    }
+    let center = from.lerp(to, hit.fraction) + hit.normal * 0.3;
+    let alpha = ((1. - hit.fraction) * 0.7).clamp(0., 1.);
+    let mut light = light.normalize_or_zero();
+    if light.z < 0.5 {
+        light.z += 0.5 - light.z;
+    }
+    let slide = light / light.z;
+    let n = FIGURE_SIZE;
+    // Large actors need a larger mask than Alice's 64-unit half-extent.
+    let radius = triangles
+        .iter()
+        .flatten()
+        .map(|p| {
+            let flat = *p - light / light.z * (p.z - feet.z);
+            (flat.x - feet.x).abs().max((flat.y - feet.y).abs())
+        })
+        .fold(FIGURE_RADIUS, f32::max)
+        .min(768.)
+        * 1.02;
+    let scale = n as f32 / (2. * radius);
+    let mut layers = vec![0_u8; n * n];
+    let pixel = |p: Vec3| {
+        let flat = p - slide * (p.z - feet.z);
+        vec2(
+            (flat.x - feet.x) * scale + n as f32 * 0.5,
+            (flat.y - feet.y) * scale + n as f32 * 0.5,
+        )
+    };
+    for t in triangles {
+        let [a, b, c] = [pixel(t[0]), pixel(t[1]), pixel(t[2])];
+        let area = (b - a).perp_dot(c - a);
+        if area <= 1e-6 {
+            continue;
+        }
+        let lo = a.min(b).min(c).floor().max(Vec2::ZERO);
+        let hi = a.max(b).max(c).ceil().min(Vec2::splat(n as f32 - 1.));
+        for y in lo.y as usize..=hi.y as usize {
+            for x in lo.x as usize..=hi.x as usize {
+                let p = vec2(x as f32 + 0.5, y as f32 + 0.5);
+                let w0 = (b - p).perp_dot(c - p) / area;
+                let w1 = (c - p).perp_dot(a - p) / area;
+                let w2 = 1. - w0 - w1;
+                if w0 >= 0. && w1 >= 0. && w2 >= 0. {
+                    let l = &mut layers[y * n + x];
+                    *l = l.saturating_add(1);
+                }
+            }
+        }
+    }
+    let mut bytes = Vec::with_capacity(n * n * 4);
+    for k in layers {
+        let covered = 1. - (1. - alpha).powi(k as i32);
+        bytes.extend([0, 0, 0, (covered * 255.) as u8]);
+    }
+    let texture = FIGURE.with(|f| {
+        let mut f = f.borrow_mut();
+        if f.len() <= slot {
+            f.resize(slot + 1, None);
+        }
+        let image = Image {
+            bytes,
+            width: n as u16,
+            height: n as u16,
+        };
+        match f[slot].as_ref() {
+            Some(t) => t.update(&image),
+            None => {
+                let t = Texture2D::from_image(&image);
+                t.set_filter(FilterMode::Linear);
+                f[slot] = Some(t);
+            }
+        }
+        f[slot].clone().unwrap()
+    });
+    // The mask is centred on the feet; the quad lies on the floor plane found by the trace.
+    let vertices = [(-1., -1.), (1., -1.), (1., 1.), (-1., 1.)]
+        .into_iter()
+        .map(|(x, y): (f32, f32)| {
+            let dx = x * radius;
+            let dy = y * radius;
+            let dz = -(hit.normal.x * dx + hit.normal.y * dy) / hit.normal.z;
+            Vertex {
+                position: vec3(feet.x, feet.y, center.z) + vec3(dx, dy, dz),
+                uv: vec2(x * 0.5 + 0.5, y * 0.5 + 0.5),
+                normal: Vec4::ZERO,
+                color: [255, 255, 255, 255],
+            }
+        })
+        .collect();
+    crate::render_fx::effect(
+        &Mesh {
+            vertices,
+            indices: vec![0, 1, 2, 0, 2, 3],
+            texture: Some(texture),
+        },
+        crate::materials::Blend::Alpha,
+    );
 }

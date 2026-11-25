@@ -40,6 +40,13 @@ const OBJECTS: &[&str] = &[
     "bookshelf2",
     "library_spiral_lift",
     "elevator2",
+    // Fixed braces and arms around the elevator shaft; the script never moves them.
+    "elevator2_arm2_left",
+    "elevator2_arm2_right",
+    "elevator2_brace_left",
+    "elevator2_brace_right",
+    "elevator2_arm_left",
+    "elevator2_arm_right",
     "observatory_clip",
     "removeme",
     "flyingsupport1",
@@ -408,8 +415,8 @@ impl School {
             for name in ["secret_shelf", "shelf_book"] {
                 s.object_mut(name).pose.origin.y += 648.;
             }
-            s.object_mut("bookshelf1").pose.angles.y = 45.;
-            s.object_mut("bookshelf2").pose.angles.y = -45.;
+            s.object_mut("bookshelf1").pose.angles.y = -45.;
+            s.object_mut("bookshelf2").pose.angles.y = 45.;
             for o in &mut s.objects {
                 o.collider = Collider::model(map, o.model, o.pose.origin, o.pose.rotation(), true)?;
             }
@@ -719,7 +726,7 @@ impl School {
                         let o = self.object_mut(&format!("bookshelf{}", i + 1));
                         o.move_to(
                             Pose {
-                                angles: vec3(0., if i == 0 { 45. } else { -45. }, 0.),
+                                angles: vec3(0., if i == 0 { -45. } else { 45. }, 0.),
                                 ..o.base
                             },
                             2.,

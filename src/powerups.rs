@@ -265,6 +265,10 @@ pub struct Art {
     essence: crate::loot_art::Art,
     collection_fx: std::collections::BTreeMap<String, crate::pickup_effects::Effect>,
     collected: Vec<(String, macroquad::prelude::Vec3, f32)>,
+    /// The authored `grow` clip plays when an enemy's essence first appears.
+    grow: Vec<crate::pickup_effects::Effect>,
+    cued: std::collections::BTreeSet<(String, usize)>,
+    ready: Vec<macroquad::prelude::Vec3>,
 }
 impl Art {
     pub fn load(assets: &mut crate::assets::Assets) -> Result<Self> {
@@ -294,6 +298,12 @@ impl Art {
                 })
                 .collect::<Result<_>>()?,
             collected: Vec::new(),
+            grow: crate::loot_art::GRADES
+                .iter()
+                .map(|g| crate::pickup_effects::Effect::load(assets, g.model(), "grow", &specs))
+                .collect::<Result<_>>()?,
+            cued: Default::default(),
+            ready: Vec::new(),
         })
     }
     pub fn collected(&mut self, item: &crate::inventory::Pickup, clock: f32) {
@@ -304,6 +314,12 @@ impl Art {
     }
     pub fn clear_effects(&mut self) {
         self.collected.clear();
+        self.cued.clear();
+        self.ready.clear();
+    }
+    /// World positions where a freshly grown drop plays its authored `mtespu` sound.
+    pub fn take_drop_cues(&mut self) -> Vec<macroquad::prelude::Vec3> {
+        std::mem::take(&mut self.ready)
     }
     pub fn draw(
         &mut self,
@@ -346,7 +362,7 @@ impl Art {
                         .iter()
                         .find(|g| g.model() == item.model)
                     {
-                        essences.push((*grade, item.origin));
+                        essences.push((*grade, item.origin, None));
                     }
                     continue;
                 }
@@ -364,7 +380,9 @@ impl Art {
             );
         }
         if let Some(loot) = stats.loot.get(visit) {
-            essences.extend(loot.drops.iter().map(|d| (d.grade, d.origin)));
+            essences.extend(loot.drops.iter().map(|d| {
+                (d.grade, d.origin, (d.age < crate::loot::GROW_CLIP_SECONDS).then_some(d.age))
+            }));
         }
         // Placed and dropped translucent items share both the material passes
         // and ordering, including when they overlap in the same view.
@@ -373,8 +391,28 @@ impl Art {
                 .distance_squared(b.1)
                 .total_cmp(&camera.distance_squared(a.1))
         });
-        for (grade, origin) in essences {
-            self.essence.draw(grade, origin, atmosphere, camera, clock);
+        for (grade, origin, growing) in essences {
+            self.essence
+                .draw_with(grade, origin, atmosphere, camera, clock, growing);
+        }
+        if let Some(loot) = stats.loot.get(visit) {
+            for d in &loot.drops {
+                let Some(i) = crate::loot_art::GRADES.iter().position(|g| *g == d.grade) else {
+                    continue;
+                };
+                // The clip's own emitters (go_up from frame 40, light) run while it grows.
+                if d.age < self.grow[i].duration() {
+                    crate::render::depth_read_only(|| {
+                        self.grow[i].draw(d.age, d.origin, 0.4, camera, atmosphere)
+                    });
+                }
+                // mtespu.wav plays at frame 40, once, when the drop turns solid.
+                if (crate::loot::GROW_SECONDS..crate::loot::GROW_SECONDS + 0.75).contains(&d.age)
+                    && self.cued.insert((visit.to_string(), d.id))
+                {
+                    self.ready.push(d.origin);
+                }
+            }
         }
         // These authored bursts live at most 3 seconds. Keep a short tail,
         // bounded even if many items are collected between rendered frames.

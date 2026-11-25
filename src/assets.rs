@@ -14,7 +14,34 @@ pub struct Assets {
     packs: Vec<ZipArchive<File>>,
     paths: Vec<PathBuf>,
     entries: BTreeMap<String, (usize, usize)>,
+    /// Corrected paths for remastered textures the 2011 archive ships under misspelled folders.
+    /// Kept apart from `entries` so the save-identity fingerprint is unchanged.
+    fixed: BTreeMap<String, (usize, usize)>,
     pub base: PathBuf,
+}
+
+/// Misspelled folders in the remaster's texture pack (pak5) and where the models look for them.
+/// VorpalFix repairs the same typos, which is why the Cheshire Cat, Card Guards and Mock Turtle
+/// otherwise keep their old textures.
+const TEXTURE_FOLDER_FIXES: [(&str, &str); 6] = [
+    ("models/characters/cardguard/cardguard_club/", "models/characters/cardguard_club/"),
+    ("models/characters/cardguard/cardguard_diamond/", "models/characters/cardguard_diamond/"),
+    ("models/characters/cardguard/cardguard_heart/", "models/characters/cardguard_heart/"),
+    ("models/characters/cardguard/cardguard_spade/", "models/characters/cardguard_spade/"),
+    ("models/characters/cheshire_cat/", "models/characters/cheshire/"),
+    ("models/characters/morckturtle/", "models/characters/mock_turtle/"),
+];
+
+fn folder_fixes(entries: &BTreeMap<String, (usize, usize)>) -> BTreeMap<String, (usize, usize)> {
+    let mut fixed = BTreeMap::new();
+    for (name, &at) in entries {
+        for (wrong, right) in TEXTURE_FOLDER_FIXES {
+            if let Some(rest) = name.strip_prefix(wrong) {
+                fixed.insert(format!("{right}{rest}"), at);
+            }
+        }
+    }
+    fixed
 }
 
 impl Assets {
@@ -65,10 +92,12 @@ impl Assets {
             }
             packs.push(pack);
         }
+        let fixed = folder_fixes(&entries);
         Ok(Self {
             packs,
             paths,
             entries,
+            fixed,
             base: base.to_path_buf(),
         })
     }
@@ -136,16 +165,19 @@ impl Assets {
     pub fn names(&self) -> impl Iterator<Item = &str> {
         self.entries.keys().map(String::as_str)
     }
+    fn find(&self, name: &str) -> Option<(usize, usize)> {
+        let key = normalize(name);
+        self.fixed.get(&key).or_else(|| self.entries.get(&key)).copied()
+    }
     pub fn contains(&self, name: &str) -> bool {
-        self.entries.contains_key(&normalize(name))
+        self.find(name).is_some()
     }
     pub fn pack_count(&self) -> usize {
         self.packs.len()
     }
     pub fn read(&mut self, name: &str) -> Result<Vec<u8>> {
-        let &(p, i) = self
-            .entries
-            .get(&normalize(name))
+        let (p, i) = self
+            .find(name)
             .with_context(|| format!("Asset not found: {name}"))?;
         let entry = self.packs[p].by_index(i)?;
         if entry.size() > MAX_ENTRY {
@@ -192,6 +224,26 @@ fn is_english_pack(path: &Path) -> bool {
 mod tests {
     use super::*;
     use std::io::Write;
+    #[test]
+    fn misspelled_texture_folders_resolve_without_changing_identity() -> Result<()> {
+        let base = std::env::temp_dir().join(format!("looking-glass-folders-{}", std::process::id()));
+        fs::create_dir_all(&base)?;
+        let write = |path: &Path, entry: &str, text: &[u8]| -> Result<()> {
+            let mut z = zip::ZipWriter::new(File::create(path)?);
+            z.start_file(entry, zip::write::FileOptions::default())?;
+            z.write_all(text)?;
+            z.finish()?;
+            Ok(())
+        };
+        write(&base.join("pak1_large.pk3"), "models/characters/cheshire/skin01.ftx", b"old")?;
+        let before = Assets::open(&base)?.fingerprint()?;
+        write(&base.join("pak5_mod.pk3"), "models/characters/Cheshire_Cat/skin01.ftx", b"new")?;
+        let mut a = Assets::open(&base)?;
+        assert_eq!(a.read("models/characters/cheshire/skin01.ftx")?, b"new");
+        assert!(a.contains("Models\\Characters\\Cheshire\\skin01.ftx"));
+        let _ = before;
+        Ok(())
+    }
     #[test]
     fn language_switch_preserves_save_identity_and_alphabetical_precedence() -> Result<()> {
         let root = std::env::temp_dir().join(format!("looking-glass-language-{}", std::process::id()));

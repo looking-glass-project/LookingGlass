@@ -79,13 +79,25 @@ impl Resident {
                 Body::Ladybug(b)
             }
             model if crate::plants::Kind::from_model(model).is_some() => {
-                Body::Plant(crate::plants::Plant::new(
+                let mut plant = crate::plants::Plant::new(
                     crate::plants::Kind::from_model(model).unwrap(),
                     spawn.origin,
                     spawn.yaw,
                     spawn.scale,
                     spawn.resident_spawn.unwrap_or(0),
-                ))
+                );
+                let named = |n: &str| map.entities.iter().find(|e| e.get("targetname").is_some_and(|t| t == n));
+                plant.spit_to = (!spawn.name.is_empty())
+                    .then(|| named(&spawn.name))
+                    .flatten()
+                    .and_then(|e| e.get("target"))
+                    .and_then(|t| named(t))
+                    .and_then(|e| e.get("origin"))
+                    .and_then(|o| {
+                        let v: Vec<f32> = o.split_whitespace().filter_map(|x| x.parse().ok()).collect();
+                        (v.len() == 3).then(|| Vec3::new(v[0], v[1], v[2]))
+                    });
+                Body::Plant(plant)
             }
             model if crate::cards::Kind::from_model(model).is_some() => {
                 let mut g = crate::cards::Guard::new(

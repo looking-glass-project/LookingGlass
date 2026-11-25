@@ -54,7 +54,7 @@ void main(){
  if((Cutout>0.5&&Cutout<1.5&&alpha<=0.0)||(Cutout>1.5&&Cutout<2.5&&alpha<0.5)||(Cutout>2.5&&Cutout<3.5&&alpha>=0.5)||(Cutout>3.5&&Cutout<4.5&&alpha<0.35))discard;
  if((Cutout>4.5&&Cutout<5.5&&alpha<CutoutReference)||(Cutout>5.5&&Cutout<6.5&&alpha<=CutoutReference)||(Cutout>6.5&&Cutout<7.5&&alpha>=CutoutReference)||(Cutout>7.5&&alpha>CutoutReference))discard;
  vec3 lighting=max(color.rgb,vec3(0.18));
- if(lm.z>0.5&&FxModel<0.5){float index=floor(lm.z-1.0+0.1);vec2 tile=vec2(mod(index,AtlasGrid.x),floor(index/AtlasGrid.x));vec2 sampleUV=(tile+clamp(lm.xy,vec2(0.5/128.0),vec2(127.5/128.0)))/AtlasGrid;lighting=min(vec3(1.0),texture2D(LightAtlas,sampleUV).rgb*2.0);}
+ if(lm.z>0.5&&FxModel<0.5){float index=floor(lm.z-1.0+0.1);vec2 tile=vec2(mod(index,AtlasGrid.x),floor(index/AtlasGrid.x));vec2 sampleUV=(tile+clamp(lm.xy,vec2(0.5/128.0),vec2(127.5/128.0)))/AtlasGrid;lighting=min(vec3(1.0),texture2D(LightAtlas,sampleUV).rgb);}
  vec3 rgb=diffuse.rgb*mix(vec3(1.0),lighting,Lit*(1.0-Fullbright))*Gain.rgb;
  if(FxModel>0.5&&Lit<0.5)rgb*=color.rgb;
  rgb+=diffuse.rgb*dynamicLight(worldPosition)*Gain.rgb;
@@ -81,8 +81,12 @@ struct Layer {
     textures: Vec<Texture2D>,
     material: usize,
     lit: bool,
+    /// Baked uv and colour for a layer that never changes (offset the vertices were posed at).
+    cache: Option<(Vec3, Vec<(Vec2, [u8; 4])>)>,
 }
 struct Batch {
+    /// Offset at which a pose-free batch's vertex positions are already written.
+    posed: Option<Vec3>,
     face_side: crate::materials::FaceSide,
     motion: Option<crate::sky_sequence::Motion>,
     full_indices: Vec<u16>,
@@ -128,6 +132,9 @@ pub struct DrawStats {
     pub culled: usize,
     pub triangles: usize,
     pub detail_saved: usize,
+    pub verts: usize,
+    pub uncullable: usize,
+    pub layers: usize,
 }
 struct Part {
     face: usize,
@@ -415,6 +422,7 @@ fn load_layers(
         }
         let lit = index == 0 && !spec.is_some_and(|s| s.unlit) && (lightmapped || !stage.identity);
         layers.push(Layer {
+cache: None,
             material: blend_index(stage.blend)
                 + if stage.depth_equal && index > 0 {
                     BLEND_COUNT
@@ -560,7 +568,19 @@ fn draw_batch(
         }
     }
     context.stats.triangles += batch.mesh.indices.len() / 3 * batch.layers.len();
+    context.stats.verts += batch.mesh.vertices.len();
+    context.stats.layers += batch.layers.len();
+    if !can_cull { context.stats.uncullable += 1; }
+    let pose_free = batch.animation.is_none()
+        && batch.deforms.is_empty()
+        && batch.motion.is_none()
+        && transform.is_none();
+    let posed = pose_free && batch.posed == Some(offset);
+    batch.posed = pose_free.then_some(offset);
     for (j, (v, base)) in batch.mesh.vertices.iter_mut().zip(&batch.base).enumerate() {
+        if posed {
+            break;
+        }
         // Billboards use source UV corners to build geometry. Animated layer
         // UVs from the previous frame must not move or rotate those corners.
         v.uv = base.uv;
@@ -637,18 +657,43 @@ fn draw_batch(
         batch.mesh.indices = triangles.into_iter().flatten().collect();
     }
     let mut queued = Vec::new();
-    for layer in &batch.layers {
+    let transparent = batch.transparent();
+    for layer in &mut batch.layers {
         let material = &materials[layer.material];
-        for (j, (v, base)) in batch.mesh.vertices.iter_mut().zip(&batch.base).enumerate() {
-            let mut n = batch.normals[j];
-            for deform in &batch.deforms {
-                n = deform.normal(base.position, n, time);
+        let needs_normal = layer.spec.environment || layer.spec.dot_alpha.is_some();
+        let constant = pose_free
+            && !batch.sky
+            && layer.spec.mods.is_empty()
+            && !layer.spec.environment
+            && layer.spec.dot_alpha.is_none();
+        let baked = constant
+            && layer.cache.as_ref().is_some_and(|(o, c)| *o == offset && c.len() == batch.mesh.vertices.len());
+        if baked {
+            if let Some((_, cache)) = &layer.cache {
+                for (v, (uv, color)) in batch.mesh.vertices.iter_mut().zip(cache) {
+                    v.uv = *uv;
+                    v.color = *color;
+                }
             }
-            let n = batch
-                .motion
-                .as_ref()
-                .map_or(n, |m| m.normal(n, time));
-            let normal = transform.map_or(n, |(_, _, r)| *r * n);
+        }
+        for (j, (v, base)) in batch.mesh.vertices.iter_mut().zip(&batch.base).enumerate() {
+            if baked {
+                break;
+            }
+            // Only environment mapping and view-dependent alpha read the normal.
+            let normal = if needs_normal {
+                let mut n = batch.normals[j];
+                for deform in &batch.deforms {
+                    n = deform.normal(base.position, n, time);
+                }
+                let n = batch
+                    .motion
+                    .as_ref()
+                    .map_or(n, |m| m.normal(n, time));
+                transform.map_or(n, |(_, _, r)| *r * n)
+            } else {
+                Vec3::Z
+            };
             let uv = if batch.sky && !batch.portal {
                 let ray = (v.position - camera).normalize_or_zero();
                 // Infinite, curved cloud projection; no translation with player motion.
@@ -665,8 +710,11 @@ fn draw_batch(
                     base.color[3],
                 )) as u8;
         }
+        if constant && !baked {
+            layer.cache = Some((offset, batch.mesh.vertices.iter().map(|v| (v.uv, v.color)).collect()));
+        }
         batch.mesh.texture = Some(layer.textures[layer.spec.frame(time)].clone());
-        if crate::render_fx::active() && batch.transparent() && !backdrop && !batch.sky {
+        if crate::render_fx::active() && transparent && !backdrop && !batch.sky {
             if let Ok(mut pass) = crate::render_fx::pass(
                 selected_mesh(
                     &batch.mesh,
@@ -684,9 +732,8 @@ fn draw_batch(
         }
         material.set_uniform("FxModel", 0_f32);
         material.set_uniform("FxAppearance", Vec4::ZERO);
-        crate::lighting::apply(
+        crate::lighting::apply_world(
             material,
-            false,
             crate::render_fx::active() && layer.lit && !backdrop && !batch.sky,
         );
         material.set_uniform(
@@ -1050,6 +1097,9 @@ impl Scene {
         self.stats.culled += context.stats.culled;
         self.stats.triangles += context.stats.triangles;
         self.stats.detail_saved += context.stats.detail_saved;
+        self.stats.verts += context.stats.verts;
+        self.stats.uncullable += context.stats.uncullable;
+        self.stats.layers += context.stats.layers;
     }
     pub fn load(assets: &mut Assets, name: &str) -> Result<Self> {
         Self::load_for(assets, name, Default::default())
@@ -1191,6 +1241,7 @@ impl Scene {
                     )?;
                     if sky && portal && sky_origin.is_some() {
                         layers = vec![Layer {
+cache: None,
                             spec: Stage {
                                 blend: Blend::Invisible,
                                 ..Default::default()
@@ -1202,6 +1253,7 @@ impl Scene {
                     }
                     let i = batches.len();
                     batches.push(Batch {
+posed: None,
                         face_side: crate::materials::FaceSide::Both,
                         motion: None,
                         full_indices: Vec::new(),
@@ -1281,6 +1333,7 @@ impl Scene {
             let vertices = shape.vertices(rope.origin, Quat::IDENTITY);
             let count = vertices.len();
             batches.push(Batch {
+posed: None,
                 face_side: crate::materials::FaceSide::Both,
                 motion: None,
                 full_indices: Vec::new(),
@@ -1299,6 +1352,7 @@ impl Scene {
                 sky: false,
                 portal: false,
                 layers: vec![Layer {
+cache: None,
                     spec: Stage::default(),
                     textures: vec![image],
                     material: 0,
@@ -1362,6 +1416,7 @@ impl Scene {
                     *n = n.normalize_or_zero();
                 }
                 let batch = Batch {
+posed: None,
                     face_side: if placement.sky {
                         spec.map_or(crate::materials::FaceSide::Front, |s| s.face_side)
                     } else {
@@ -1709,6 +1764,9 @@ impl Scene {
         self.stats.culled += context.stats.culled;
         self.stats.triangles += context.stats.triangles;
         self.stats.detail_saved += context.stats.detail_saved;
+        self.stats.verts += context.stats.verts;
+        self.stats.uncullable += context.stats.uncullable;
+        self.stats.layers += context.stats.layers;
     }
 }
 
@@ -1789,6 +1847,7 @@ pub async fn check_layers(scene: &Scene) -> Result<()> {
         })
         .collect::<Vec<_>>();
         let mut b = Batch {
+posed: None,
             face_side: crate::materials::FaceSide::Both,
             motion: None,
             full_indices: vec![0, 1, 2, 0, 2, 3],
@@ -1809,6 +1868,7 @@ pub async fn check_layers(scene: &Scene) -> Result<()> {
                 texture: None,
             },
             layers: vec![Layer {
+cache: None,
                 textures: vec![Texture2D::from_rgba8(1, 1, &rgba)],
                 spec: Stage {
                     blend: blend_mode,

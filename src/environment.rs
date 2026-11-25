@@ -1,4 +1,6 @@
-//! Authored distance atmosphere and bounded fog volumes; the density curve is provisional.
+//! Authored distance atmosphere and bounded fog volumes. Distance fog is the original's linear
+//! GL fog: start 0 (never set), end = setfarplane distance, colour = farplane colour (CE-verified
+//! from alice.exe glFogf/glFogfv on Hollow Hideaway).
 use crate::{assets::Assets, bsp::Bsp, texture::MaterialSpec};
 use anyhow::Result;
 use macroquad::prelude::*;
@@ -166,7 +168,7 @@ vec3 fogged(vec3 rgb,float additive){
  // second layer of coloured fog. Additive light fades toward black.
  vec3 neutral=additive>2.5?vec3(0.5):vec3(1.0);
  float dist=length(worldPosition-FogEye);
- if(DistanceFog.w>0.0){float a=clamp((dist-DistanceFog.w*0.35)/(DistanceFog.w*0.65),0.0,1.0);rgb=mix(rgb,additive>1.5?neutral:DistanceFog.rgb*(1.0-additive),a);}
+ if(DistanceFog.w>0.0){float a=clamp(dist/DistanceFog.w,0.0,1.0);rgb=mix(rgb,additive>1.5?neutral:DistanceFog.rgb*(1.0-additive),a);}
  if(FogA.w>0.0)rgb=mix(rgb,additive>1.5?neutral:FogA.rgb*(1.0-additive),clamp(fogLength(FogAMin,FogAMax)/FogA.w,0.0,1.0));
  if(FogB.w>0.0)rgb=mix(rgb,additive>1.5?neutral:FogB.rgb*(1.0-additive),clamp(fogLength(FogBMin,FogBMax)/FogB.w,0.0,1.0));
  if(LiquidFog.w>0.0)rgb=mix(rgb,additive>1.5?neutral:LiquidFog.rgb*(1.0-additive),clamp(0.12+dist/LiquidFog.w,0.0,0.96));

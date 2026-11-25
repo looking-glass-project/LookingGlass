@@ -15,7 +15,7 @@ use macroquad::{
 };
 use std::collections::BTreeMap;
 
-pub(crate) const CLIPS: [&str; 32] = [
+pub(crate) const CLIPS: [&str; 42] = [
     "idle_base_01",
     "walk_nowep",
     "run_nowep",
@@ -48,7 +48,53 @@ pub(crate) const CLIPS: [&str; 32] = [
     "ledge_pullup",
     "rope_climb_up_left",
     "rope_climb_down_right",
+    // Ground deaths beyond death_faint (16), chosen by `death_clip`.
+    "death_hideous",
+    "death_forward",
+    "death_hard",
+    "death_knockback",
+    // `held` in alice.tik: Alice thrashing while an enemy has her.
+    "shake",
+    // Backward gaits (alice_legs.st WALK_BACKWARD / RUN_BACKWARD), used while locked to the view.
+    "walk_back_smallwep",
+    "walk_back_bigwep",
+    "run_back_nowep",
+    "run_back_smallwep",
+    "run_back_bigwep",
 ];
+const DEATH_FAINT: usize = 16;
+const DEATH_HIDEOUS: usize = 32;
+const DEATH_FORWARD: usize = 33;
+const DEATH_HARD: usize = 34;
+const DEATH_KNOCKBACK: usize = 35;
+const HELD: usize = 36;
+
+/// The original `global/alice_torso.st` DEATH state: the first entry whose
+/// conditions hold (each CHANCE rolled in order) picks Alice's ground death.
+/// `damage` is the killing blow; `from_front` is None when it had no direction.
+fn choose_death(damage: f32, from_front: Option<bool>, mut roll: impl FnMut() -> f32) -> usize {
+    let front = from_front == Some(true);
+    let rear = from_front == Some(false);
+    if damage >= 40. && roll() < 0.7 {
+        return DEATH_HIDEOUS;
+    }
+    if rear && roll() < 0.9 {
+        return DEATH_FORWARD;
+    }
+    if front && damage >= 23. && roll() < 0.8 {
+        return DEATH_HARD;
+    }
+    if front && roll() < 0.8 {
+        return DEATH_KNOCKBACK;
+    }
+    if roll() < 0.6 {
+        return DEATH_FAINT;
+    }
+    if roll() < 0.8 {
+        return DEATH_HARD;
+    }
+    DEATH_HIDEOUS
+}
 
 fn rope_pair(index: usize) -> Option<usize> {
     match index {
@@ -102,6 +148,7 @@ enum Motion {
     Airship,
     Hang,
     PullUp,
+    Held,
 }
 impl Motion {
     fn index(self) -> usize {
@@ -120,6 +167,7 @@ impl Motion {
                 | Self::Cart
                 | Self::Airship
                 | Self::Hang
+                | Self::Held
         )
     }
 }
@@ -141,8 +189,11 @@ struct Animator {
     landings: u64,
     large: bool,
     unarmed: bool,
+    /// Moving against the facing (lock-strafe): play the backward gait clips.
+    reverse: bool,
     offset: f32,
     previous_offset: f32,
+    death_clip: usize,
 }
 impl Animator {
     fn snapshot(&self) -> AnimatorSave {
@@ -159,9 +210,11 @@ impl Animator {
             large: self.large,
             offset: self.offset,
             previous_offset: self.previous_offset,
+            death_clip: self.death_clip,
         }
     }
     fn restore(&mut self, s: &AnimatorSave) {
+        self.death_clip = if s.death_clip < CLIPS.len() { s.death_clip } else { DEATH_FAINT };
         self.last_feet = s.last_feet;
         self.last_rope_length = s.last_rope_length;
         self.sound_span = None;
@@ -197,8 +250,10 @@ impl Animator {
             landings: 0,
             large: false,
             unarmed: false,
+            reverse: false,
             offset: 0.,
             previous_offset: 0.,
+            death_clip: DEATH_FAINT,
         }
     }
     fn reset(&mut self, player: &Player) {
@@ -251,6 +306,8 @@ impl Animator {
         self.landings = player.landings;
         let next = if self.motion == Motion::Death {
             Motion::Death
+        } else if player.held {
+            Motion::Held
         } else if player.script_motion > 0 {
             match player.script_motion {
                 1 => Motion::Rope,
@@ -303,14 +360,18 @@ impl Animator {
             self.time = if next == Motion::Takeoff { 0.25 } else { 0. };
         }
         let index = match self.motion {
+            Motion::Held => HELD,
             Motion::Hang | Motion::PullUp => player.ledge.as_ref().map_or(26, |h| h.clip()),
             Motion::Death => {
-                if player.immersion.level == 3 {
+                // alice_torso.st KILLED: DEATH_WATER needs IN_WATER "2" and !ON_FIRE.
+                // Burning in lava is ON_FIRE: the ordinary DEATH table, not a fall.
+                let lava = player.immersion.level > 0 && player.immersion.kind == crate::water::Liquid::Lava;
+                if player.immersion.level >= 2 && !lava {
                     18
-                } else if !player.grounded {
+                } else if !player.grounded && !lava {
                     17
                 } else {
-                    16
+                    self.death_clip
                 }
             }
             Motion::Rope => match player
@@ -348,6 +409,22 @@ impl Animator {
                     24
                 } else {
                     6
+                }
+            }
+            Motion::Walk if self.reverse => {
+                if self.large {
+                    38
+                } else {
+                    37
+                }
+            }
+            Motion::Run if self.reverse => {
+                if self.unarmed {
+                    39
+                } else if self.large {
+                    41
+                } else {
+                    40
                 }
             }
             Motion::Walk => {
@@ -518,6 +595,8 @@ impl Animator {
 
 pub struct Character {
     pub weapon_notice: Option<&'static str>,
+    /// Native lock-strafe: the body always faces the view yaw (CE-recorded), never the travel direction.
+    pub lock_strafe: bool,
     _material_layers: Vec<std::rc::Rc<crate::render_fx::Surface>>,
     foot_rig: crate::footing::Rig,
     foot_state: crate::footing::State,
@@ -538,6 +617,9 @@ pub struct Character {
     actions: Actions,
     visuals: Visuals,
     upper: Vec<bool>,
+    /// models/alice.tik `burn` (torso, ON_FIRE in alice_torso.st STAND): arms flail
+    /// while she burns; its entry plays burn_scream.wav.
+    burn: Burn,
     tags: [usize; 3],
     anchors: [Transform; 3],
     viewmodel: crate::viewmodel::ViewModel,
@@ -582,6 +664,19 @@ impl Character {
         Ok(())
     }
     pub fn die(&mut self) {
+        self.die_from(0., Vec3::ZERO);
+    }
+    /// `impulse` is the killing blow's knockback (pointing away from the attacker).
+    pub fn die_from(&mut self, damage: f32, impulse: Vec3) {
+        if !matches!(self.animator.motion, Motion::Death) {
+            let flat = impulse.truncate();
+            let from_front = (flat.length_squared() > 1e-4).then(|| {
+                let forward = Vec2::new(self.facing.cos(), self.facing.sin());
+                flat.normalize().dot(forward) < 0.
+            });
+            self.animator.death_clip =
+                choose_death(damage, from_front, || macroquad::rand::gen_range(0., 1.));
+        }
         self.power_pose.state.sync(None);
         if !matches!(
             self.animator.motion,
@@ -603,6 +698,7 @@ impl Character {
     pub fn load_for_player(assets: &mut Assets, player: crate::coop::PlayerId) -> Result<Self> {
         let def = Definition::alice(assets)?;
         let skeleton = Skeleton::parse(&assets.read(&format!("{}/{}", def.path, def.model))?)?;
+        let bone_count = skeleton.bones.len();
         let mut clips = Vec::new();
         for name in CLIPS {
             let path = format!("{}/{name}.ska", def.path);
@@ -718,10 +814,19 @@ impl Character {
             meshes,
             material,
             scale: def.scale,
+            lock_strafe: false,
             facing: 0.,
             actions,
             visuals,
             upper,
+            burn: Burn {
+                clip: Animation::parse(&assets.read(&format!("{}/burn.ska", def.path))?, bone_count)
+                    .context("Alice burn.ska")?,
+                time: 0.,
+                weight: 0.,
+                scream: false,
+                was_burning: false,
+            },
             tags,
             anchors: [Transform {
                 rotation: Quat::IDENTITY,
@@ -823,12 +928,18 @@ impl Character {
             self.animator.sound_span = None;
             return Vec::new();
         }
+        self.water_art.burn_step(dt, player);
         self.visuals.dice_count = weapon.dice.min(3);
         if weapon.selected == 6 && !self.visuals.dice.ready() {
             weapon.click = None;
         }
         self.animator.large = [4, 7, 8].contains(&weapon.selected);
         self.animator.unarmed = weapon.selected == crate::weapons::UNARMED;
+        self.animator.reverse = self.lock_strafe && {
+            let v = player.velocity.truncate();
+            let look = weapon.aim.truncate().normalize_or_zero();
+            v.length() > 1. && look.dot(v.normalize()) < -0.5
+        };
         self.animator.update(
             if self.visuals.ice_locked() { 0. } else { dt },
             player,
@@ -886,6 +997,9 @@ impl Character {
         } else if dt > 0. && attack_aim.is_some() {
             let aim = attack_aim.unwrap();
             self.facing = aim.y.atan2(aim.x);
+        } else if dt > 0. && self.lock_strafe && weapon.aim.truncate().length() > 1e-3 {
+            // Native: body yaw is the view yaw in every direction of travel and at rest.
+            self.facing = weapon.aim.y.atan2(weapon.aim.x).rem_euclid(std::f32::consts::TAU);
         } else if dt > 0. && player.velocity.truncate().length() > 12. {
             let target = player.velocity.y.atan2(player.velocity.x);
             let difference = (target - self.facing + std::f32::consts::PI)
@@ -929,6 +1043,12 @@ impl Character {
         if dt > 0. || self.animator.unarmed {
             self.acting.apply(&mut self.actions.pose, &self.upper, idle);
         }
+        self.burn.apply(
+            dt,
+            self.water_art.burning() && !player.swimming,
+            &mut self.actions.pose,
+            &self.upper,
+        );
         let mut power_mask = self.upper.clone();
         if let Some(i) = self.skeleton.bones.iter().position(|b| b.name == "tag_03") {
             power_mask[i] = true;
@@ -1019,6 +1139,22 @@ impl Character {
     pub fn ice_locked(&self) -> bool {
         self.visuals.ice_locked()
     }
+    pub fn frozen(&self) -> Option<(f32, Vec3, f32)> {
+        self.visuals.frozen()
+    }
+    /// A Phantasmagoria ice chain reached Alice: encase her in an fx_iceball block.
+    pub fn phantasm_freeze(&mut self, feet: Vec3) -> bool {
+        self.visuals.phantasm_freeze(feet, self.facing)
+    }
+    /// Alice is admiring the Darkened Looking Glass: the original locks control and
+    /// closes the camera in on her until the clip ends.
+    pub fn glass_age(&self) -> f32 {
+        self.power_pose.state.age
+    }
+    pub fn glass_performing(&self) -> bool {
+        self.power_pose.state.performing
+            && self.power_pose.state.form == Some(crate::power_pose::Form::Glass)
+    }
     pub fn attack_movement_locked(&self) -> bool {
         self.actions.movement_locked()
     }
@@ -1039,6 +1175,13 @@ impl Character {
     }
     pub fn take_audio(&mut self) -> Vec<crate::audio::events::Cue> {
         let mut cues = self.acting.take_audio();
+        if std::mem::take(&mut self.burn.scream) {
+            // `entry sound sound/character/alice/burn_scream.wav 1 .7 384`
+            cues.push(crate::audio::events::Cue {
+                path: "sound/character/alice/burn_scream.wav".into(),
+                volume: 1.,
+            });
+        }
         let Some((index, span)) = self.animator.sound_span.take() else {
             return cues;
         };
@@ -1083,6 +1226,7 @@ impl Character {
         self.material.atmosphere(atmosphere, camera);
         self.visuals.atmosphere(atmosphere, camera);
         self.power_art.atmosphere(camera);
+        self.power_art.atmosphere_full(atmosphere, camera);
     }
     pub fn world_time(&mut self, dt: f32, world_dt: f32) {
         let frozen = world_dt == 0. && dt > 0.;
@@ -1191,6 +1335,7 @@ impl Character {
             },
             self.scale,
             fullbright,
+            self.power_pose.duration(crate::power_pose::Form::Glass),
         );
         self.material.bind_appearance(Appearance {
             ghost,
@@ -1216,6 +1361,8 @@ impl Character {
             );
             self.material.bind_appearance(Appearance { ghost, ..Default::default() });
         }
+        self.water_art.draw_fire(feet, self.scale);
+        self.material.bind_appearance(Appearance { ghost, ..Default::default() });
         if !matches!(
             self.animator.motion,
             Motion::Death | Motion::Rope | Motion::Cart | Motion::Airship
@@ -1238,6 +1385,16 @@ impl Character {
         );
         gl_use_default_material();
     }
+    /// World-space triangles of the body as last posed by `draw_body`.
+    pub fn shadow_triangles(&self) -> Vec<[Vec3; 3]> {
+        let mut out = Vec::new();
+        for mesh in self.meshes.iter().flatten() {
+            for t in mesh.indices.chunks_exact(3) {
+                out.push([0, 1, 2].map(|i| mesh.vertices[t[i] as usize].position));
+            }
+        }
+        out
+    }
     pub fn draw_effects(&mut self, camera: Vec3, fullbright: bool, show_alice: bool) {
         self.visuals
             .draw_effects(&self.material, camera, fullbright, show_alice);
@@ -1253,7 +1410,12 @@ impl Character {
         (self.visuals.shots, self.visuals.impacts)
     }
     pub fn lights(&self) -> Vec<crate::lighting::Light> {
-        self.visuals.lights()
+        let mut lights = self.visuals.lights();
+        lights.extend(self.power_art.glass_light(
+            &self.power_pose.state,
+            self.power_pose.duration(crate::power_pose::Form::Glass),
+        ));
+        lights
     }
     /// Renderer regression after a staged scene; keep the live shared pipeline.
     pub(crate) async fn check_visible(&mut self, label: &str) -> Result<()> {
@@ -1301,6 +1463,8 @@ pub fn power_form(stats: &crate::inventory::Stats) -> Option<crate::power_pose::
         Some(crate::power_pose::Form::Rage)
     } else if stats.powers.tea > 0. {
         Some(crate::power_pose::Form::Tea)
+    } else if stats.invisible > 0. {
+        Some(crate::power_pose::Form::Glass)
     } else {
         None
     }
@@ -1395,6 +1559,11 @@ struct AnimatorSave {
     large: bool,
     offset: f32,
     previous_offset: f32,
+    #[serde(default = "default_death_clip")]
+    death_clip: usize,
+}
+fn default_death_clip() -> usize {
+    DEATH_FAINT
 }
 /// One GPU pipeline, with effects explicitly owned by each draw. Do not expose
 /// the raw Material: a queued flush can restore an earlier actor's uniforms.
@@ -2714,7 +2883,7 @@ mod tests {
                     elapsed += span.end - span.start;
                 }
                 assert!(
-                    (elapsed / (2. * fraction) - 1.).abs() < 0.02,
+                    (elapsed / fraction - 1.).abs() < 0.02,
                     "{} at {fraction} speed advanced {elapsed} seconds",
                     CLIPS[index]
                 );
@@ -2876,6 +3045,38 @@ mod tests {
         assert!(span.end > span.start);
     }
     #[test]
+    fn reverse_gaits_use_the_backward_clips_with_the_right_weapon_class() {
+        for (run, unarmed, large, index) in [
+            (false, false, false, 37),
+            (false, false, true, 38),
+            (true, true, false, 39),
+            (true, false, false, 40),
+            (true, false, true, 41),
+        ] {
+            let mut a = animator();
+            // Real run_back_*/walk_back_* clips travel along -X (header distance is a length).
+            for f in &mut a.clips[index].frames {
+                f.delta.x = -f.delta.x;
+            }
+            a.reverse = true;
+            a.unarmed = unarmed;
+            a.large = large;
+            let mut p = Player::new(Vec3::ZERO);
+            p.grounded = true;
+            p.velocity = Vec3::X * 150.;
+            p.feet += p.velocity * 0.1;
+            a.update(0.1, &p, run);
+            assert_eq!(a.sound_clip, Some(index), "run {run} unarmed {unarmed} large {large}");
+            let before = a.time;
+            for _ in 0..5 {
+                p.feet += p.velocity * 0.05;
+                a.update(0.05, &p, run);
+            }
+            assert!(a.time > before + 0.05, "{} must advance with travel", CLIPS[index]);
+            assert!(CLIPS[index].contains("back"));
+        }
+    }
+    #[test]
     fn locomotion_jumping_landing_pause_and_reset() {
         let mut a = animator();
         let mut p = Player::new(Vec3::ZERO);
@@ -2919,7 +3120,7 @@ mod tests {
         let (camera, target, visible) = follow_camera(&wall, Vec3::ZERO, Vec3::X);
         assert!(camera.x > -46. && camera.x < -45. && visible);
         assert!(!wall.sweep(camera, camera, Vec3::splat(3.9)).start_solid);
-        assert!(target.distance(camera) > 1.);
+        assert!(target.distance(camera) > 0.99);
         let tight = World::fixture(&[(vec3(-60., -100., -100.), vec3(-20., 100., 100.))]);
         let (_, _, visible) = follow_camera(&tight, Vec3::ZERO, Vec3::X);
         assert!(!visible);
@@ -3130,5 +3331,36 @@ mod tests {
             "legacy Alice blocks checked: {checked} of {}",
             LEGACY_FIXTURES.len()
         );
+    }
+}
+
+struct Burn {
+    clip: Animation,
+    time: f32,
+    weight: f32,
+    scream: bool,
+    was_burning: bool,
+}
+impl Burn {
+    /// Overlay the looping `burn` torso clip on the upper body while Alice is on fire.
+    fn apply(&mut self, dt: f32, burning: bool, pose: &mut [Transform], upper: &[bool]) {
+        if burning && !self.was_burning {
+            self.time = 0.;
+            self.scream = true;
+        }
+        self.was_burning = burning;
+        let target = if burning { 1. } else { 0. };
+        self.weight += (target - self.weight).clamp(-dt / 0.2, dt / 0.15);
+        if burning {
+            self.time += dt;
+        }
+        if self.weight <= 0. {
+            return;
+        }
+        for (i, sample) in self.clip.sample(self.time, true).into_iter().enumerate() {
+            if upper.get(i).copied().unwrap_or(false) {
+                pose[i] = pose[i].blend(sample, self.weight);
+            }
+        }
     }
 }

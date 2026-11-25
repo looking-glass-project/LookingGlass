@@ -143,7 +143,7 @@ struct Command {
 }
 fn default_arrival_radius() -> f32 { 8. }
 fn hold_wish(delta:Vec2)->Vec2 {
-    let wish=(delta*(4./320.)).clamp_length_max(1.);
+    let wish=(delta*(4./crate::movement::RUN_SPEED)).clamp_length_max(1.);
     if wish.length_squared()<0.000001 {vec2(0.001,0.)} else {wish}
 }
 fn delayed_hold_wish(delta:Vec2, velocity:Vec2, lead:f32)->Vec2 {
@@ -158,7 +158,7 @@ fn delayed_hold_wish(delta:Vec2, velocity:Vec2, lead:f32)->Vec2 {
 
 pub(crate) fn straight_wish(delta: Vec2, velocity: Vec2, lead: f32, run: bool, limit: Option<f32>) -> Vec2 {
     let steering = delta - velocity * lead;
-    let full = if run { 320. } else { crate::movement::WALK_SPEED };
+    let full = if run { crate::movement::RUN_SPEED } else { crate::movement::WALK_SPEED };
     // Delayed velocity feedback also needs a smaller gain. Keeping the local
     // gain makes a remote runner reverse repeatedly around a small waypoint.
     let wish = (steering / (48. + 2. * full * lead)).clamp_length_max(1.);
@@ -178,7 +178,7 @@ pub(crate) fn direct_goal_wish(world:&World,player:&Player,goal:Vec3,lead:f32,ru
         // support is enough here; the planner handoff below additionally needs
         // a fully supported footprint before discarding its movement plan.
         let steering=delta-velocity*lead;
-        let full=if run {320.} else {crate::movement::WALK_SPEED};
+        let full=if run {crate::movement::RUN_SPEED} else {crate::movement::WALK_SPEED};
         let wish=steering.normalize_or_zero()*((2.*420.*steering.length()).sqrt().min(full)*0.95/full);
         limit.map_or(wish,|speed|wish.clamp_length_max((speed/full).min(1.)))
     } else {straight_wish(delta,velocity,lead,run,limit)}
@@ -785,7 +785,7 @@ pub(crate) fn carried_goal_control(player: &Player, goal: Vec3, carry: Vec3, lea
     // Request ordinary running input against the carrier's motion, then add
     // delayed positional feedback. Keep compensating after arrival: neutral
     // input would immediately carry the waiting player away from the waypoint.
-    let wish=(straight_wish(delta.truncate(),velocity,lead,true,None)-carry.truncate()/320.).clamp_length_max(1.);
+    let wish=(straight_wish(delta.truncate(),velocity,lead,true,None)-carry.truncate()/crate::movement::RUN_SPEED).clamp_length_max(1.);
     (wish,settled)
 }
 fn planning_hold_control(anchor: &mut Option<Vec3>, player: &Player, carry: Option<Vec3>, lead: f32) -> (Vec2,bool) {
@@ -1123,7 +1123,7 @@ pub(crate) fn combat_dodge(world:&World, player:&Player, home:Vec3, enemy:Vec3, 
     // Remote snapshots describe an earlier body. Cover its in-flight motion,
     // the time a new input can remain unseen, and its ordinary braking tail.
     // Shorter analogue sidesteps remain available on a narrow supported strip.
-    let pending=player.velocity.truncate()/320.;
+    let pending=player.velocity.truncate()/crate::movement::RUN_SPEED;
     for wish in [wish,-wish,retreat,wish*0.35,-wish*0.35,retreat*0.35] {
         if wish==Vec2::ZERO {continue;}
         let mut trial=player.clone();
@@ -3173,7 +3173,7 @@ mod tests {
         assert!(!carried_goal_control(&p,p.feet,carry,0.,8.).1,"Idle input is still moving with the gear");
         p.velocity=-carry;
         let (wish,settled)=carried_goal_control(&p,p.feet,carry,0.,8.);
-        assert!(settled && (wish*320.+carry.truncate()).length()<0.001,
+        assert!(settled && (wish*crate::movement::RUN_SPEED+carry.truncate()).length()<0.001,
             "Arrived waiter must retain ordinary counter-motion input");
     }
     #[test]

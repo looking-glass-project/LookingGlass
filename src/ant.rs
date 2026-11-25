@@ -769,7 +769,7 @@ mod tests {
                 }];
                 let mut loot = crate::loot::Loot::default();
                 loot.defeated(&before, &after, &floor());
-                loot.defeated(&before, &after, &floor());
+                loot.update(crate::loot::CORPSE_SECONDS);
                 assert_eq!(loot.drops.len(), 1);
                 assert_eq!(loot.drops[0].grade, a.grade());
                 assert_eq!(

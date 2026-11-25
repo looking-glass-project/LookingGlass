@@ -440,6 +440,7 @@ fn fixture(spawn: Spawn, map: &str) -> Actor {
         walk: None,
         watch: Default::default(),
         mouth: 0.,
+        laugh: 0.,
         story_visible: false,
         speaking: false,
         ending_talk: false,

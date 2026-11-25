@@ -31,6 +31,43 @@ pub fn air(breath: &crate::water::Breath, ui: &crate::ui::Ui) {
     ui.toast(&text, screen_height() - 76.);
 }
 
+thread_local! {
+    static PERF: std::cell::Cell<(f32, usize, usize)> = const { std::cell::Cell::new((0., 0, 0)) };
+    static SPLIT: std::cell::Cell<[f32; 5]> = const { std::cell::Cell::new([0.; 5]) };
+    static LOOP: std::cell::Cell<[f32; 11]> = const { std::cell::Cell::new([0.; 11]) };
+}
+/// Where the frame's CPU time went (world draw, actors, effects, lighting, everything else).
+pub fn set_split(cpu_ms: f32, spans: &std::collections::BTreeMap<&'static str, f64>) {
+    let get = |names: &[&str]| names.iter().map(|n| spans.get(n).copied().unwrap_or(0.) as f32).sum::<f32>();
+    let mut v = [
+        get(&["world_draw"]),
+        get(&["npcs", "movers"]),
+        get(&["particles", "scene_particles_etc", "level_art_draw", "level_art_effects"]),
+        get(&["lighting_select"]),
+        0.,
+    ];
+    v[4] = (cpu_ms - v[..4].iter().sum::<f32>()).max(0.);
+    let names = [
+        "loop_input", "loop_story", "loop_player", "loop_encounters", "loop_npc_glue", "loop_weapons",
+        "loop_camera_audio", "loop_pre_draw", "loop_scene_draw", "loop_actors_draw", "loop_ui",
+    ];
+    let l: [f32; 11] = std::array::from_fn(|i| spans.get(names[i]).copied().unwrap_or(0.) as f32);
+    LOOP.with(|p| {
+        let old = p.get();
+        p.set(std::array::from_fn(|i| old[i] * 0.9 + l[i] * 0.1));
+    });
+    SPLIT.with(|p| {
+        let old = p.get();
+        p.set(std::array::from_fn(|i| old[i] * 0.9 + v[i] * 0.1));
+    });
+}
+/// CPU milliseconds spent building the last frame, with its draw-pass and animated-vertex counts.
+pub fn set_perf(cpu_ms: f32, draws: usize, verts: usize) {
+    PERF.with(|p| {
+        let (old, ..) = p.get();
+        p.set((old * 0.9 + cpu_ms * 0.1, draws, verts));
+    });
+}
 pub struct Hud {
     pub ui: std::rc::Rc<crate::ui::Ui>,
     meters: [Texture2D; 2],
@@ -223,6 +260,48 @@ impl Hud {
         show_retry: bool,
     ) {
         let text_scale = crate::ui::overlay_scale();
+        if prefs.show_fps {
+            let fps = get_fps();
+            let (cpu, draws, verts) = PERF.with(std::cell::Cell::get);
+            let size = 24. * text_scale;
+            // Fixed columns, so growing numbers never run into the next field.
+            let fields = [
+                (format!("{fps} FPS"), "000 FPS"),
+                (format!("cpu {cpu:.1}ms"), "cpu 00.0ms"),
+                (format!("{draws} draws"), "0000 draws"),
+                (format!("{verts} verts"), "000000 verts"),
+            ];
+            let gap = 14. * text_scale;
+            let total: f32 = fields.iter().map(|(_, w)| self.ui.font.width(w, size) + gap).sum::<f32>() - gap;
+            if prefs.fps_plate {
+                draw_rectangle(
+                    6. * text_scale,
+                    4. * text_scale,
+                    total + 12. * text_scale,
+                    size * 3.4 + 14. * text_scale,
+                    Color::new(0., 0., 0., 0.7),
+                );
+            }
+            let mut x = 12. * text_scale;
+            for (text, widest) in &fields {
+                self.ui.label(text, x, 28. * text_scale, size, Color::from_hex(0xffffff));
+                x += self.ui.font.width(widest, size) + gap;
+            }
+            let s = SPLIT.with(std::cell::Cell::get);
+            let line = format!(
+                "world {:.1}  actors {:.1}  fx {:.1}  light {:.1}  other {:.1}",
+                s[0], s[1], s[2], s[3], s[4]
+            );
+            self.ui.label(&line, 12. * text_scale, 28. * text_scale + size, size * 0.8, Color::from_hex(0xffffff));
+            let l = LOOP.with(std::cell::Cell::get);
+            let rows = [
+                format!("input {:.1}  story {:.1}  player {:.1}  enc {:.1}  glue {:.1}  weapons {:.1}", l[0], l[1], l[2], l[3], l[4], l[5]),
+                format!("camera {:.1}  predraw {:.1}  scene {:.1}  actors {:.1}  ui {:.1}", l[6], l[7], l[8], l[9], l[10]),
+            ];
+            for (n, row) in rows.iter().enumerate() {
+                self.ui.label(row, 12. * text_scale, 28. * text_scale + size * (1.8 + 0.8 * n as f32), size * 0.8, Color::from_hex(0xffffff));
+            }
+        }
         if !inventory {
             if let Some((kind, time)) = stats.active_power() {
                 self.ui.label(
@@ -257,12 +336,28 @@ impl Hud {
         }
         let (w, h) = (screen_width(), screen_height());
         let s = (h / 900.).clamp(0.55, 4.).min(w / 900.);
-        let y = h - 64. * s - 385. * s;
-        let weapon_rect = self.meter_icon_rect(24. * s, y, s, false);
+        // VorpalFix's console HUD, measured from the native game at 16:9: the meters keep the
+        // original's height-based size (about 0.83 of the screen tall, no lift) and sit in from
+        // each edge; the inset follows VorpalFix's width/aspect rule on wider screens.
+        let console = prefs.console_hud && w / h > 4. / 3.;
+        let text_s = s;
+        let (s, left, right, y) = if console {
+            let c = h / 461.;
+            let edge = 0.0878 * w * ((w / h) / (16. / 9.));
+            (
+                c,
+                edge - 24. * c,
+                w - edge - c,
+                h * (1. - 0.0894) - 385. * c,
+            )
+        } else {
+            (s, 24. * s, w - 48. * s, h - 64. * s - 385. * s)
+        };
+        let weapon_rect = self.meter_icon_rect(left, y, s, false);
         if let Some((kind, _)) = stats.active_power() {
             self.foldout_icon(
                 &self.power_icons[kind as usize],
-                self.meter_icon_rect(w - 48. * s, y, s, true),
+                self.meter_icon_rect(right, y, s, true),
                 true,
                 WHITE,
             );
@@ -271,16 +366,16 @@ impl Hud {
             self.icon(selected, weapon_rect, WHITE);
             self.ui.fit_label(
                 WEAPONS[selected].1,
-                weapon_rect.right() + 10. * s,
-                weapon_rect.y + weapon_rect.h * 0.5 + 11. * s,
-                25. * s,
-                235. * s,
+                weapon_rect.right() + 10. * text_s,
+                weapon_rect.y + weapon_rect.h * 0.5 + 11. * text_s,
+                25. * text_s,
+                235. * text_s,
                 Color::from_hex(0xeee4d4),
             );
         }
         // The handles cover the cards' hinges on both sides.
-        self.meter(0, stats.sanity(), 24. * s, y, s);
-        self.meter(1, stats.will(), w - 48. * s, y, s);
+        self.meter(0, stats.sanity(), left, y, s);
+        self.meter(1, stats.will(), right, y, s);
         if show_retry && !stats.alive() {
             let r = Rect::new(
                 (w - 440. * text_scale).max(16. * text_scale) * 0.5,
@@ -299,7 +394,7 @@ impl Hud {
                 &format!(
                     "{} - retry",
                     if input.using_pad {
-                        "A".into()
+                        crate::input::pad_label("A")
                     } else {
                         input.label(prefs, "Enter")
                     }
@@ -309,10 +404,10 @@ impl Hud {
                 crate::ui::INK,
             );
             self.ui.center(
-                if input.using_pad {
-                    "Start - load a game or change options"
+                &if input.using_pad {
+                    crate::input::pad_text("Start - load a game or change options")
                 } else {
-                    "Esc - load a game or change options"
+                    "Esc - load a game or change options".to_owned()
                 },
                 Rect::new(r.x + 20. * text_scale, r.y + 102. * text_scale, r.w - 40. * text_scale, 26. * text_scale),
                 22. * text_scale,
@@ -359,7 +454,7 @@ impl Hud {
         );
         self.ui.center(
             &if input.using_pad {
-                "D-pad: select    A: equip    B: return".into()
+                crate::input::pad_text("D-pad: select    A: equip    B: return")
             } else {
                 format!(
                     "Arrows / click: select    {} / Esc: return",

@@ -20,6 +20,10 @@ pub async fn choose(
     maps: &[String],
 ) -> Start {
     menu.frontend = true;
+    audio.frontend_music(assets);
+    if !menu.title_screen(preferences, audio, input).await {
+        return Start::Quit;
+    }
     menu.open(Page::Main, preferences, audio.settings);
     loop {
         match menu

@@ -665,6 +665,8 @@ pub struct Audio {
     steps: u64,
     jumps: u64,
     landings: u64,
+    /// Main menu soundtrack (alice.exe starts sound/music/intro.mus at the front end).
+    frontend: Option<std::time::Instant>,
 }
 impl Audio {
     pub fn new(disabled: bool, capture: Option<PathBuf>) -> Self {
@@ -720,9 +722,11 @@ impl Audio {
             steps: 0,
             jumps: 0,
             landings: 0,
+            frontend: None,
         }
     }
     pub fn load(&mut self, assets: &mut Assets, name: &str, map: &Bsp) {
+        self.frontend = None;
         self.stop_voice();
         self.retire_music();
         self.world_sounds = world::State::default();
@@ -852,7 +856,31 @@ impl Audio {
         Ok(())
     }
     pub fn update(&mut self, dt: f32, listener: Vec3, yaw: f32, paused: bool, voice_paused: bool) {
+        if let Some(last) = self.frontend {
+            // The front end has no world clock; keep the menu track playing and fading in.
+            let now = std::time::Instant::now();
+            let real = now.duration_since(last).as_secs_f32();
+            self.frontend = Some(now);
+            self.update_clocks(real, 0., listener, yaw, false, voice_paused);
+            return;
+        }
         self.update_clocks(dt, dt, listener, yaw, paused, voice_paused);
+    }
+    /// Start the front-end soundtrack: `normal alice.mp3`, looped, 5 s fade, volume 0.6.
+    pub fn frontend_music(&mut self, assets: &mut Assets) {
+        if self.frontend.is_some() || self.playback.is_none() {
+            return;
+        }
+        let result = (|| -> Result<()> {
+            let text = assets.read("sound/music/intro.mus")?;
+            self.cues = music_cues(std::str::from_utf8(&text)?)?;
+            self.fade_elapsed = 0.;
+            self.mood(assets, "normal")
+        })();
+        match result {
+            Ok(()) => self.frontend = Some(std::time::Instant::now()),
+            Err(e) => eprintln!("Menu music unavailable: {e:#}"),
+        }
     }
     pub fn update_clocks(
         &mut self,

@@ -171,6 +171,48 @@ pub const PAD_BUTTONS: &[(&str, u32)] = &[
     ("LT", 0x10000),
     ("RT", 0x20000),
 ];
+/// Name shown for a stored pad button (preferences keep the Xbox names). The PS5 build shows
+/// the DualSense names; other platforms are unchanged.
+pub fn pad_label(name: &str) -> String {
+    if !cfg!(target_os = "freebsd") {
+        return name.to_owned();
+    }
+    match name {
+        "A" => "Cross",
+        "B" => "Circle",
+        "X" => "Square",
+        "Y" => "Triangle",
+        "LB" => "L1",
+        "RB" => "R1",
+        "LT" => "L2",
+        "RT" => "R2",
+        "L Stick" => "L3",
+        "R Stick" => "R3",
+        "Back" => "Create",
+        "Start" => "Options",
+        other => other,
+    }
+    .to_owned()
+}
+/// Hint sentences written with Xbox names, re-worded word by word for the DualSense.
+pub fn pad_text(text: &str) -> String {
+    if !cfg!(target_os = "freebsd") {
+        return text.to_owned();
+    }
+    let mut out = String::new();
+    let mut word = String::new();
+    let flush = |word: &mut String, out: &mut String| {
+        if !word.is_empty() {
+            out.push_str(&pad_label(word));
+            word.clear();
+        }
+    };
+    for c in text.chars() {
+        if c.is_ascii_alphanumeric() { word.push(c) } else { flush(&mut word, &mut out); out.push(c) }
+    }
+    flush(&mut word, &mut out);
+    out
+}
 fn pad_mask(name: &str) -> u32 {
     if name == "Start" {
         0x10
@@ -289,7 +331,8 @@ impl Pad {
         self.pressed = 0;
         self.nav_down = 0;
         self.nav_pressed = 0;
-        self.neutral_sticks = true;
+        // Sticks stay live across menu/pause boundaries: only buttons need releasing. Requiring the
+        // sticks to re-centre made movement and camera look frozen after opening Alice's Toys.
         self.move_axis = Vec2::ZERO;
         self.look_axis = Vec2::ZERO;
     }
@@ -436,7 +479,7 @@ impl Input {
                 || original.to_owned(),
                 |i| {
                     if self.using_pad && prefs.pad_bindings[i] != "None" {
-                        prefs.pad_bindings[i].clone()
+                        pad_label(&prefs.pad_bindings[i])
                     } else {
                         prefs.bindings[i].clone()
                     }

@@ -98,6 +98,7 @@ impl Blood {
         model: &str,
         at: Vec3,
         kind: crate::combat::DamageKind,
+        damage: f32,
     ) {
         if !bleeds(kind) || self.blood_model(assets, model).is_none() {
             return;
@@ -107,7 +108,7 @@ impl Blood {
         }
         self.last = Some(self.clock);
         self.spawn(assets, specs, model, at);
-        self.splat(assets, specs, world, model, at, 25.);
+        self.splat(assets, specs, world, model, at, 25., damage);
     }
     /// Alice hurt (CE, 8 hits): the same burst as an enemy's, spray at her origin (32 above her
     /// feet, scale 1.0) and a decal ray from there; fire, lava and other no-blood types skip it.
@@ -123,7 +124,7 @@ impl Blood {
         }
         self.last = Some(self.clock);
         self.spawn(assets, specs, "alice", feet + Vec3::Z * 32.);
-        self.splat(assets, specs, world, "alice", feet, 32.);
+        self.splat(assets, specs, world, "alice", feet, 32., 0.);
     }
     pub fn spawn(
         &mut self,
@@ -172,6 +173,7 @@ impl Blood {
         model: &str,
         at: Vec3,
         origin_above: f32,
+        damage: f32,
     ) {
         let Some(name) = self.blood_model(assets, model) else { return };
         // Original hit blood (fgamex86 FUN_100de6f0) only places a floor decal when rand() > 0.5.
@@ -206,7 +208,14 @@ impl Blood {
             return;
         }
         let center = start.lerp(end, trace.fraction);
-        let radius = 8. + self.roll() * 8.;
+        // Native (FUN_100de6f0 / FUN_100d94c0): s = ((clamp(entity+0xb8, 50, 250) - 50) / 200) * 6 + 10
+        // scaled by clamp(damage / 30, 0.3, 2.0) when damage > 0; decal radius = s + rand() * s.
+        // The entity field at +0xb8 is unidentified, so the 10..16 base takes its midpoint.
+        let mut s = 13.;
+        if damage > 0. {
+            s *= (damage / 30.).clamp(0.3, 2.);
+        }
+        let radius = s + self.roll() * s;
         if self.decals.len() >= MAX_DECALS {
             self.decals.remove(0);
         }

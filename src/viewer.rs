@@ -2702,7 +2702,7 @@ pub async fn run(mut assets: Assets, mut options: Options) -> Result<()> {
                 };
                 let model = model.or_else(|| interactions.levels_blood_model(id));
                 if let Some(model) = model.map(str::to_owned) {
-                    blood.hit(&mut assets, &blood_specs, &scene.world, &model, hit_origin, hit.kind);
+                    blood.hit(&mut assets, &blood_specs, &scene.world, &model, hit_origin, hit.kind, hit.damage);
                 }
             }
             if hit.id == crate::duchess::ID {

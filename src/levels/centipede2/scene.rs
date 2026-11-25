@@ -22,6 +22,13 @@ impl Centipede {
         Ok(())
     }
     pub fn advance_scene(&mut self, map: &Bsp, w: &mut World, p: &mut Player) -> Result<()> {
+        // The tunnel slope is unwalkable in the original: Alice slides down it with
+        // gravity alone, no input needed.
+        if self.saved.phase == Phase::Slide {
+            crate::movement::set_min_ground_z(0.7);
+        } else {
+            crate::movement::reset_min_ground_z();
+        }
         match self.saved.phase {
             Phase::Intro => {
                 if self.saved.time >= self.slide_start() + 3.5 {

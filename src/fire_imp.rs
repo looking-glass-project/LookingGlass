@@ -166,7 +166,7 @@ impl Imp {
         self.opponents.demon |= hit.kind.is_demon();
         self.health = (self.health - hit.damage).max(0.);
         self.recoil.hit(hit.knockback, 100.);
-        self.memory = 3.;
+        self.memory = crate::combat::MAX_INACTIVE_TIME;
         self.last_seen = self.feet - hit.knockback.normalize_or_zero() * 100.;
         self.pain = (self.pain + hit.damage).min(35.);
         if self.health == 0. {
@@ -324,10 +324,14 @@ impl Imp {
         let visible =
             !notarget && delta.length() < 800. && !sight.start_solid && sight.fraction >= 1.;
         if visible {
-            self.memory = 3.;
+            self.memory = crate::combat::MAX_INACTIVE_TIME;
             self.last_seen = eye;
         } else {
             self.memory = (self.memory - STEP).max(0.);
+            if self.memory > 0. && !notarget {
+                // GetCloseToEnemy: keep heading for the enemy while hunting.
+                self.last_seen = eye;
+            }
         }
         if notarget {
             self.memory = 0.;
@@ -411,8 +415,6 @@ impl Imp {
                                 break;
                             }
                         }
-                    } else if !visible {
-                        self.memory = 0.;
                     }
                     if self.time >= duration {
                         self.time %= duration;
@@ -450,7 +452,7 @@ impl Imp {
                 && self.recoil.valid()
                 && self.launch.into_iter().chain(self.flight).all(|v| v.is_finite() && v.length() < 4000.)
                 && self.last_seen.is_finite()
-                && (0. ..=3.).contains(&self.memory)
+                && (0. ..=crate::combat::MAX_INACTIVE_TIME).contains(&self.memory)
                 && (0. ..=35.).contains(&self.pain)
                 && (0. ..=800.).contains(&self.falling)
                 && (0. ..=0.01).contains(&self.accumulator)

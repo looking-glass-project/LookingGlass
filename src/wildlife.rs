@@ -8,6 +8,20 @@ use crate::{
 use anyhow::{ensure, Result};
 use macroquad::prelude::*;
 pub const DT: f32 = 1. / 120.;
+/// fgamex86 PhantasmAttack mode 3 (Begin 0x1003d690, Evaluate 0x10044720).
+const CHAIN_TAGS: [&str; 2] = ["tag_head1", "tag_head3"];
+/// Chain tips advance at `frametime * 1200` toward Alice's origin + crandom 32.
+const CHAIN_SPEED: f32 = 1200.;
+/// PhantasmAttack mode 1 drains 0.5 will per 20 Hz server frame.
+const DRAIN_PER_SECOND: f32 = 10.;
+/// One Phantasmagoria ice chain (`textures/special/icechain`), simulation-owned.
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Chain {
+    pub from: Vec3,
+    pub tip: Vec3,
+    pub(crate) target: Vec3,
+    pub(crate) done: bool,
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Kind {
     Phantom,
@@ -207,6 +221,11 @@ pub struct Creature {
     last_seen: Option<Vec3>,
     #[serde(default)]
     memory: f32,
+    #[serde(default)]
+    pub chains: Vec<Chain>,
+    /// CHARGE_ENEMY time left after a chain encased the enemy (ENEMY_STUNNED).
+    #[serde(default)]
+    stunned: f32,
 }
 impl Creature {
     pub fn new(kind: Kind, feet: Vec3, yaw: f32, scale: f32, seed: usize) -> Self {
@@ -241,6 +260,8 @@ impl Creature {
             detour: Default::default(),
             last_seen: None,
             memory: 0.,
+            chains: Vec::new(),
+            stunned: 0.,
         }
     }
     pub fn target(&self, id: usize) -> Target {
@@ -412,6 +433,7 @@ impl Creature {
         self.contacts = 0;
         self.cues = 0;
         self.beam = None;
+        self.chains.clear();
         if !matches!(phase, Phase::WebStart | Phase::Web) {
             self.web = None;
         }
@@ -633,7 +655,19 @@ impl Creature {
                     }
                     return;
                 }
-                if visible && facing && self.cooldown == 0. {
+                if self.kind == Kind::Phantom && self.phase == Phase::Run {
+                    self.stunned = (self.stunned - DT).max(0.);
+                    if visible && distance <= 110. {
+                        self.stunned = 0.;
+                        self.variant = 0;
+                        self.set(Phase::Windup);
+                        return;
+                    }
+                    if self.stunned == 0. {
+                        self.set(Phase::Walk);
+                        return;
+                    }
+                } else if visible && facing && self.cooldown == 0. {
                     if self.kind == Kind::Phantom
                         && (distance < 110. || (distance > 150. && self.time >= duration))
                     {
@@ -715,12 +749,13 @@ impl Creature {
             }
             Phase::Melee => {
                 if self.kind == Kind::Phantom {
-                    if self.cues == 0 && self.time >= duration * 0.5 {
-                        self.cues = 1;
-                        if visible && distance <= 125. {
-                            out.drain_will(victim, 10.);
-                            self.beam = Some(aim);
-                        }
+                    // ATTACK_PART2_MANADRAIN: drains for all of attack_2, aimed from tag_head4.
+                    // Cover breaks the drain (the port's line-of-sight rule for every cue).
+                    if visible {
+                        out.drain_will(victim, DRAIN_PER_SECOND * DT);
+                        self.beam = Some(aim);
+                    } else {
+                        self.beam = None;
                     }
                 } else {
                     let (cue, damage) = if self.kind.spider() {
@@ -773,17 +808,7 @@ impl Creature {
                         }
                     }
                 } else if self.kind == Kind::Phantom {
-                    if visible && self.time <= duration.min(0.75) {
-                        self.beam = Some(aim);
-                        out.strike(
-                            victim,
-                            0.,
-                            -delta.normalize_or_zero() * 160. * DT,
-                            DamageKind::Other,
-                        );
-                    } else {
-                        self.beam = None;
-                    }
+                    self.ice_chains(world, eye, aim, data, out);
                 } else if self.time >= frame && self.time < frame + 0.5 && visible {
                     let from = self.feet
                         + Quat::from_rotation_z(self.yaw)
@@ -862,10 +887,68 @@ impl Creature {
                 }
             }
             Phase::Recover if self.time >= duration => {
-                self.set(Phase::Walk);
-                self.cooldown = 0.8;
+                if self.kind == Kind::Phantom && self.stunned > 0. {
+                    // CHARGE_ENEMY: fly_fast for 3-5 s, then mana drain within 110.
+                    self.set(Phase::Run);
+                } else {
+                    self.set(Phase::Walk);
+                    self.cooldown = 0.8;
+                }
             }
             _ => {}
+        }
+    }
+    fn ice_chains(
+        &mut self,
+        world: &World,
+        eye: Vec3,
+        aim: Vec3,
+        data: &impl Rig,
+        out: &mut Feedback,
+    ) {
+        let rotation = Quat::from_rotation_z(self.yaw);
+        let froms = CHAIN_TAGS.map(|name| {
+            self.feet + rotation * data.tag(self.clip(), self.time, name).translation * self.scale
+        });
+        if self.chains.is_empty() {
+            for from in froms {
+                let mut crandom = || (self.random() % 2001) as f32 / 1000. - 1.;
+                let jitter = vec3(crandom() * 32., crandom() * 32., 0.);
+                self.chains.push(Chain { from, tip: from, target: aim + jitter, done: false });
+            }
+        }
+        let targets = self.opponents.bodies(eye);
+        let context = combat::Context { world, targets: &targets };
+        let mut frozen = false;
+        for (chain, from) in self.chains.iter_mut().zip(froms) {
+            chain.from = from;
+            if chain.done {
+                continue;
+            }
+            let ahead = chain.target - chain.tip;
+            let step = CHAIN_SPEED * DT;
+            let next = if ahead.length() <= step {
+                chain.target
+            } else {
+                chain.tip + ahead.normalize() * step
+            };
+            let ray = world.sweep(from, next, Vec3::splat(0.5));
+            let mut reach = if ray.start_solid { 1. } else { ray.fraction };
+            if let Some((id, f)) = combat::contact(&context, from, next, 0.5) {
+                if f <= reach {
+                    reach = f;
+                    out.freeze(id);
+                    frozen = true;
+                    chain.done = true;
+                }
+            }
+            if reach < 1. {
+                chain.done = true;
+            }
+            chain.tip = from.lerp(next, reach);
+        }
+        if frozen && self.stunned == 0. {
+            self.stunned = 3. + (self.random() % 2001) as f32 / 1000.;
         }
     }
     fn rock_step(&mut self, world: &World, delta: Vec3, visible: bool, data: &impl Rig) {
@@ -925,7 +1008,10 @@ impl Creature {
                 && (0. ..=10.).contains(&self.airborne)
                 && self.contacts < 4
                 && self.recoil.valid()
-                && self.beam.is_none_or(|b| b.is_finite()),
+                && self.beam.is_none_or(|b| b.is_finite())
+                && self.chains.len() <= CHAIN_TAGS.len()
+                && self.chains.iter().all(|c| c.from.is_finite() && c.tip.is_finite() && c.target.is_finite())
+                && (0. ..=5.).contains(&self.stunned),
             "Invalid creature state"
         );
         ensure!(

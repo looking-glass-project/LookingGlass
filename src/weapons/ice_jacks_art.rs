@@ -6,7 +6,17 @@ use crate::{
 use anyhow::{Context, Result};
 use macroquad::prelude::*;
 use std::collections::BTreeMap;
-fn shell_frame(age: f32) -> (usize, f32) {
+/// Prop indices: 0 idle, 1 up, 2 down.
+fn shell_frame(age: f32, phantasm: bool) -> (usize, f32) {
+    if phantasm {
+        return if age >= 3. {
+            (1, age - 3.)
+        } else if age >= 1. {
+            (0, age - 1.)
+        } else {
+            (2, age)
+        };
+    }
     if age >= 8. {
         (2, age - 8.)
     } else if age >= 6.5 {
@@ -232,7 +242,8 @@ impl Art {
         }
         if let Some(s) = &ice.shell {
             let age = s.age as f32;
-            let (index, time) = shell_frame(age);
+            let phantasm = s.phantasm;
+            let (index, time) = shell_frame(age, phantasm);
             let pose = Transform {
                 translation: s.origin,
                 rotation: Quat::from_rotation_z(s.yaw),
@@ -245,14 +256,14 @@ impl Art {
                 age,
                 1.,
                 |birth, tag| {
-                    let (i, t) = shell_frame(birth);
+                    let (i, t) = shell_frame(birth, phantasm);
                     Transform {
                         translation: self.shell[i].point_at(pose, tag.unwrap_or("tag_1"), t),
                         rotation: pose.rotation,
                     }
                 },
                 |name, birth, _| {
-                    let (index, t) = shell_frame(birth);
+                    let (index, t) = shell_frame(birth, phantasm);
                     let frame = (t / self.shell[index].model.frame_time) as usize;
                     let large = name
                         .strip_prefix("smoke")

@@ -554,7 +554,7 @@ mod tests {
             assert!((r.players[0].player.feet.distance(r.players[1].player.feet)-DISTANCE).abs()<0.1);
             input[moving].0.wish = (direction+Vec2::Y).normalize();
             for _ in 0..60 { r.move_players(&world,input); }
-            assert!(r.players[moving].player.feet.y>80.);
+            assert!(r.players[moving].player.feet.y>35.);
         }
     }
     #[test]

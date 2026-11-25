@@ -151,6 +151,8 @@ pub struct Guard {
     memory: f32,
     last_seen: Vec3,
     random: u32,
+    #[serde(default)]
+    detour: combat::navigation::Detour,
     serial: u32,
 }
 impl Guard {
@@ -181,6 +183,7 @@ impl Guard {
             memory: 0.,
             last_seen: feet,
             random: seed as u32,
+            detour: Default::default(),
             serial: 0,
         }
     }
@@ -213,7 +216,7 @@ impl Guard {
             return;
         }
         self.last_seen = eye;
-        self.memory = 6.;
+        self.memory = combat::MAX_INACTIVE_TIME;
         if self.phase == Phase::Idle {
             self.set(Phase::Chase);
         }
@@ -361,7 +364,7 @@ impl Guard {
         self.health = (self.health - hit.damage).max(0.);
         self.opponents.demon |= hit.kind.is_demon();
         self.recoil.hit(hit.knockback, 200.);
-        self.memory = 6.;
+        self.memory = combat::MAX_INACTIVE_TIME;
         if self.health == 0. {
             self.variant = self.random() % 12;
             self.frozen = hit.kind.means() == DamageKind::Ice;
@@ -549,7 +552,10 @@ impl Guard {
                         -0.766
                     });
         if visible {
-            self.memory = 6.;
+            self.memory = combat::MAX_INACTIVE_TIME;
+            self.last_seen = aim;
+        } else if self.memory > 0. && !notarget {
+            // GetCloseToEnemy: keep heading for the enemy while hunting.
             self.last_seen = aim;
         }
         let movement = if self.phase == Phase::Flee {
@@ -622,11 +628,21 @@ impl Guard {
                 if movement.truncate().length() > 50. {
                     let stride = rig.speed(self.kind.model(), self.clip()) * STEP * self.scale;
                     let dir = movement.with_z(0.).normalize_or_zero();
-                    for angle in [0., 0.65, -0.65, 1.1, -1.1] {
+                    let before = self.feet;
+                    self.feet = self.detour.walk(
+                        world,
+                        self.feet,
+                        self.feet + dir * 200.,
+                        self.target(0).half,
+                        stride,
+                        STEP,
+                    );
+                    let moved = (self.feet - before).truncate().length_squared() > 0.0001;
+                    for angle in if moved { &[][..] } else { &[0., 0.65, -0.65, 1.1, -1.1][..] } {
                         let next = combat::walk_body(
                             world,
                             self.feet,
-                            Quat::from_rotation_z(angle) * dir * stride,
+                            Quat::from_rotation_z(*angle) * dir * stride,
                             self.target(0).half,
                         );
                         if (next - self.feet).truncate().length_squared() > 0.0001 {
@@ -725,7 +741,8 @@ impl Guard {
                 && (0. ..=86400.).contains(&self.time)
                 && self.variant < 12
                 && (0. ..=1.).contains(&self.cooldown)
-                && (0. ..=6.).contains(&self.memory)
+                && (0. ..=combat::MAX_INACTIVE_TIME).contains(&self.memory)
+                && self.detour.valid()
                 && self.last_seen.is_finite()
                 && self.pain.is_finite()
                 && self.pain >= 0.

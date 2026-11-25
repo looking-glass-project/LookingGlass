@@ -31,6 +31,9 @@ impl Art {
             gl_use_default_material();
             draw_line_3d(g.target(0).center, anchor, Color::new(0.8, 0.8, 0.8, 0.6));
         }
+        for chain in &g.chains {
+            beams.ice_chain(chain.from, chain.tip, camera, g.time);
+        }
         if let Some(end) = g.beam {
             gl_use_default_material();
             let from = if g.kind.jabber() {

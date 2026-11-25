@@ -898,6 +898,9 @@ impl Prop {
             scale: def.scale,
         })
     }
+    pub(crate) fn surface_names(&self) -> Vec<String> {
+        self.model.surfaces.iter().map(|s| s.name.clone()).collect()
+    }
     pub(crate) fn point(&self, attachment: Transform, tag: &str, scale: f32) -> Vec3 {
         attachment.point(self.model.tags.get(tag).map_or(Vec3::ZERO, |v| v[0]) * self.scale * scale)
     }
@@ -1346,6 +1349,12 @@ impl Visuals {
     }
     pub fn stop_ice(&mut self) {
         self.ice.stop();
+    }
+    pub fn frozen(&self) -> Option<(f32, Vec3, f32)> {
+        self.ice.frozen()
+    }
+    pub fn phantasm_freeze(&mut self, feet: Vec3, yaw: f32) -> bool {
+        self.ice.phantasm(feet, yaw)
     }
     pub fn frozen_body(&self, meshes: &[Option<Mesh>]) {
         if self.ice.locked() {

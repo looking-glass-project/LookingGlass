@@ -296,7 +296,9 @@ pub async fn native(assets: &mut Assets, mode: &str) -> Result<()> {
         let eye = (0..32)
             .map(|i| {
                 let a = i as f32 * std::f32::consts::TAU / 32.;
-                target + vec3(a.cos() * radius, a.sin() * radius, 24.)
+                // Magma Men stand in lava pits: look down from above the surface.
+                let lift = if family == crate::magma::MODEL { 110. } else { 24. };
+                target + vec3(a.cos() * radius, a.sin() * radius, lift)
             })
             .find(|p| {
                 let t = scene.world.sweep(target, *p, Vec3::splat(2.));
@@ -750,6 +752,7 @@ pub async fn native(assets: &mut Assets, mode: &str) -> Result<()> {
                     });
                     g.health = if g.phase == Phase::Dead { 0. } else { 200. };
                     g.frozen = pose == "ice";
+                    g.update_wade(&scene.world);
                     g.time = if pose == "retired" { 20. } else { 0.4 };
                     if pose == "projectile" {
                         g.shots.push(crate::snark::Shot {

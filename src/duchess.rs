@@ -1170,9 +1170,6 @@ impl Duchess {
                         };
                         self.state.detour = if open(1.4) >= open(-1.4) { 1. } else { -1. };
                     }
-                    if std::env::var_os("DUCHESS_TRACE").is_some() && (self.state.clock * 4.).fract() < 0.05 {
-                        eprintln!("CHASE feet={:?} d={distance:.0} clear={clear} nav={nav:?} detour={} route={:?}", self.state.feet, self.state.detour, self.route);
-                    }
                     let wish = if let Some(n) = nav {
                         self.state.detour = 0.;
                         n
@@ -1269,15 +1266,16 @@ impl Duchess {
                     }
                     None => self.state.feet + front * 65. + Vec3::Z * 35.,
                 };
-                if std::env::var_os("DUCHESS_TRACE").is_some() { eprintln!("BITE clock {:.2} tag {:?}", self.state.clock, self.timing.held(self.state.clock)); }
-                if self.state.clock < self.timing.frame(Action::Bite, 64.) && world.body_clear(hold)
-                    && self.coop_hold_clear(victim, hold)
-                {
-                    player.feet = hold;
-                    player.velocity = Vec3::ZERO;
-                    player.cancel_climb();
-                    player.release_rope();
+                if self.state.clock < self.timing.frame(Action::Bite, 64.) {
+                    // Native IS_GRABBED holds for the whole grab, so the HELD shake plays even when
+                    // the hold point is blocked; only the carrying move is gated on clearance.
                     player.held = true;
+                    if world.body_clear(hold) && self.coop_hold_clear(victim, hold) {
+                        player.feet = hold;
+                        player.velocity = Vec3::ZERO;
+                        player.cancel_climb();
+                        player.release_rope();
+                    }
                 }
                 let frames = [34., 44., 54., 65.];
                 while self.state.cue < 4
@@ -1406,9 +1404,6 @@ impl Duchess {
                 path.push(prev[last]);
             }
             path.reverse();
-            if std::env::var_os("DUCHESS_TRACE").is_some() {
-                eprintln!("ROUTE feet={:?} start={start} end={end} path={:?}", self.state.feet, path);
-            }
             self.route = path;
         }
         // Drop waypoints already reached or that can be skipped with a clear walk.
